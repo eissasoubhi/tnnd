@@ -1,37 +1,37 @@
 import { getApiKey, getConfig, saveApiKey, saveConfig } from "./storage";
 import type { AppConfig, EmojiLevel, MessageLength, Tone, GenerateRequest, GenerateResponse } from "./types";
 
-function input<T extends HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(id: string): T {
-  const element = document.getElementById(id);
-  if (!element) throw new Error(`Missing options field: ${id}`);
-  return element as T;
+function element<T extends HTMLElement>(id: string): T {
+  const found = document.getElementById(id);
+  if (!found) throw new Error(`Missing options field: ${id}`);
+  return found as T;
 }
 
 const fields = {
-  form: input<HTMLFormElement>("settings-form"),
-  apiKey: input<HTMLInputElement>("apiKey"),
-  model: input<HTMLInputElement>("model"),
-  tone: input<HTMLSelectElement>("tone"),
-  messageLength: input<HTMLSelectElement>("messageLength"),
-  flirtLevel: input<HTMLInputElement>("flirtLevel"),
-  flirtValue: document.getElementById("flirtValue")!,
-  humorLevel: input<HTMLInputElement>("humorLevel"),
-  humorValue: document.getElementById("humorValue")!,
-  emojiLevel: input<HTMLSelectElement>("emojiLevel"),
-  replyCount: input<HTMLSelectElement>("replyCount"),
-  langFr: input<HTMLInputElement>("langFr"),
-  langDarija: input<HTMLInputElement>("langDarija"),
-  langEn: input<HTMLInputElement>("langEn"),
-  langAr: input<HTMLInputElement>("langAr"),
-  preferredWords: input<HTMLTextAreaElement>("preferredWords"),
-  avoidedWords: input<HTMLTextAreaElement>("avoidedWords"),
-  personalContext: input<HTMLTextAreaElement>("personalContext"),
-  extraInstructions: input<HTMLTextAreaElement>("extraInstructions"),
-  testGemini: input<HTMLButtonElement>("testGemini"),
-  status: document.getElementById("status")!
+  form: element<HTMLFormElement>("settings-form"),
+  apiKey: element<HTMLInputElement>("apiKey"),
+  model: element<HTMLInputElement>("model"),
+  tone: element<HTMLSelectElement>("tone"),
+  messageLength: element<HTMLSelectElement>("messageLength"),
+  flirtLevel: element<HTMLInputElement>("flirtLevel"),
+  flirtValue: element<HTMLElement>("flirtValue"),
+  humorLevel: element<HTMLInputElement>("humorLevel"),
+  humorValue: element<HTMLElement>("humorValue"),
+  emojiLevel: element<HTMLSelectElement>("emojiLevel"),
+  replyCount: element<HTMLSelectElement>("replyCount"),
+  langFr: element<HTMLInputElement>("langFr"),
+  langDarija: element<HTMLInputElement>("langDarija"),
+  langEn: element<HTMLInputElement>("langEn"),
+  langAr: element<HTMLInputElement>("langAr"),
+  preferredWords: element<HTMLTextAreaElement>("preferredWords"),
+  avoidedWords: element<HTMLTextAreaElement>("avoidedWords"),
+  personalContext: element<HTMLTextAreaElement>("personalContext"),
+  extraInstructions: element<HTMLTextAreaElement>("extraInstructions"),
+  testGemini: element<HTMLButtonElement>("testGemini"),
+  status: element<HTMLElement>("status")
 };
 
-function numberValue(element: HTMLInputElement, fallback = 0): number {
+function numberValue(element: HTMLInputElement | HTMLSelectElement, fallback = 0): number {
   const parsed = Number(element.value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
@@ -49,7 +49,7 @@ function readConfig(): AppConfig {
     flirtLevel: numberValue(fields.flirtLevel, 2),
     humorLevel: numberValue(fields.humorLevel, 65),
     emojiLevel: fields.emojiLevel.value as EmojiLevel,
-    replyCount: numberValue(fields.replyCount as unknown as HTMLInputElement, 3),
+    replyCount: numberValue(fields.replyCount, 3),
     languages: {
       fr: numberValue(fields.langFr),
       darija: numberValue(fields.langDarija),
