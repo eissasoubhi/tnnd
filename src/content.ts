@@ -13,6 +13,42 @@ interface AutoState {
   processed: Record<string, number>;
 }
 
+interface DiagnosticSnapshot {
+  generatedAt: string;
+  page: {
+    url: string;
+    title: string;
+    viewport: { width: number; height: number; devicePixelRatio: number };
+    document: { width: number; height: number };
+  };
+  selectors: ReturnType<TinderDomAdapter["diagnose"]>;
+  resources: Array<{
+    name: string;
+    initiatorType: string;
+    duration: number;
+    transferSize: number;
+    encodedBodySize: number;
+  }>;
+  config: {
+    model: string;
+    tone: string;
+    messageLength: string;
+    flirtLevel: number;
+    humorLevel: number;
+    emojiLevel: string;
+    languages: { fr: number; darija: number; en: number };
+    automation: {
+      enabled: boolean;
+      replyDelayMinSeconds?: number;
+      replyDelayMaxSeconds?: number;
+      quietHoursEnabled: boolean;
+      maxAutoRepliesPerDay: number;
+    };
+  };
+  domHtml: string;
+  domTruncated: boolean;
+}
+
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -70,6 +106,104 @@ async function generateReply(context: string, threadKey: string): Promise<string
   return response.suggestions[0];
 }
 
+function safeUrl(value: string): string {
+  try {
+    const url = new URL(value, location.href);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return `[${url.protocol.replace(":", "")}]`;
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return "[redacted-url]";
+  }
+}
+
+function sanitizeDom(): { html: string; truncated: boolean } {
+  const clone = document.documentElement.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll("script,style,noscript,template").forEach((node) => node.remove());
+
+  for (const element of Array.from(clone.querySelectorAll<HTMLElement>("*"))) {
+    if (element instanceof HTMLInputElement) {
+      element.value = "";
+      element.removeAttribute("value");
+    }
+    if (element instanceof HTMLTextAreaElement) element.textContent = "";
+    if (element.getAttribute("contenteditable") === "true") element.textContent = "[redacted-contenteditable]";
+
+    for (const attr of Array.from(element.attributes)) {
+      const name = attr.name.toLowerCase();
+      if (/token|auth|session|cookie|secret|password|credential/.test(name)) {
+        element.removeAttribute(attr.name);
+        continue;
+      }
+      if (["href", "src", "action", "poster"].includes(name)) {
+        element.setAttribute(attr.name, safeUrl(attr.value));
+        continue;
+      }
+      if (["alt", "title", "placeholder"].includes(name)) {
+        element.setAttribute(attr.name, "[redacted-text]");
+        continue;
+      }
+      if (name === "aria-label" && !/message|send|envoyer|chat|conversation|match|button|input|textbox/i.test(attr.value)) {
+        element.setAttribute(attr.name, "[redacted-label]");
+      }
+    }
+  }
+
+  const walker = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  let current = walker.nextNode();
+  while (current) {
+    if (current instanceof Text && current.data.trim()) textNodes.push(current);
+    current = walker.nextNode();
+  }
+  for (const node of textNodes) node.data = "[text]";
+
+  const full = `<!doctype html>\n${clone.outerHTML}`;
+  const maxLength = 1_500_000;
+  return { html: full.slice(0, maxLength), truncated: full.length > maxLength };
+}
+
+async function diagnosticSnapshot(): Promise<DiagnosticSnapshot> {
+  const config = await getConfig();
+  const dom = sanitizeDom();
+  const resources = (performance.getEntriesByType("resource") as PerformanceResourceTiming[]).slice(-500).map((entry) => ({
+    name: safeUrl(entry.name),
+    initiatorType: entry.initiatorType,
+    duration: Math.round(entry.duration * 100) / 100,
+    transferSize: entry.transferSize,
+    encodedBodySize: entry.encodedBodySize
+  }));
+
+  return {
+    generatedAt: new Date().toISOString(),
+    page: {
+      url: safeUrl(location.href),
+      title: "[redacted-title]",
+      viewport: { width: innerWidth, height: innerHeight, devicePixelRatio },
+      document: { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight }
+    },
+    selectors: adapter.diagnose(),
+    resources,
+    config: {
+      model: config.model,
+      tone: config.tone,
+      messageLength: config.messageLength,
+      flirtLevel: config.flirtLevel,
+      humorLevel: config.humorLevel,
+      emojiLevel: config.emojiLevel,
+      languages: { ...config.languages },
+      automation: {
+        enabled: config.automation.enabled,
+        replyDelayMinSeconds: config.automation.replyDelayMinSeconds,
+        replyDelayMaxSeconds: config.automation.replyDelayMaxSeconds,
+        quietHoursEnabled: config.automation.quietHoursEnabled,
+        maxAutoRepliesPerDay: config.automation.maxAutoRepliesPerDay
+      }
+    },
+    domHtml: dom.html,
+    domTruncated: dom.truncated
+  };
+}
+
 async function scan(): Promise<void> {
   if (busy) return;
   const config = await getConfig();
@@ -90,14 +224,14 @@ async function scan(): Promise<void> {
     const delaySeconds = randomCadenceSeconds(config.automation);
     console.info(`TNND queued an automatic reply in ${delaySeconds.toFixed(1)}s.`);
     await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
-    const current = adapter.read();
-    if (!current || current.latestIncomingKey !== snapshot.latestIncomingKey || current.threadKey !== snapshot.threadKey) return;
-    const latestChat = await getChatSettings(current.threadKey);
+    const currentSnapshot = adapter.read();
+    if (!currentSnapshot || currentSnapshot.latestIncomingKey !== snapshot.latestIncomingKey || currentSnapshot.threadKey !== snapshot.threadKey) return;
+    const latestChat = await getChatSettings(currentSnapshot.threadKey);
     if (!latestChat.enabled) return;
-    const reply = await generateReply(current.context, current.threadKey);
+    const reply = await generateReply(currentSnapshot.context, currentSnapshot.threadKey);
     await adapter.send(reply);
     const freshState = await getState();
-    freshState.processed[current.latestIncomingKey] = Date.now();
+    freshState.processed[currentSnapshot.latestIncomingKey] = Date.now();
     freshState.dailyCount += 1;
     await saveState(freshState);
     console.info("TNND sent an automatic reply.");
@@ -112,6 +246,14 @@ function scheduleScan(): void {
   if (scanTimer) window.clearTimeout(scanTimer);
   scanTimer = window.setTimeout(() => void scan(), 900);
 }
+
+chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+  if (!message || typeof message !== "object" || (message as { type?: string }).type !== "TNND_GET_DIAGNOSTICS") return false;
+  void diagnosticSnapshot()
+    .then((snapshot) => sendResponse({ ok: true, snapshot }))
+    .catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : "Could not create diagnostics." }));
+  return true;
+});
 
 const observer = new MutationObserver(scheduleScan);
 observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });

@@ -5,6 +5,16 @@ export interface ConversationSnapshot {
   latestIncomingText: string;
 }
 
+export interface TinderSelectorDiagnostics {
+  composerSelector: string | null;
+  composerFound: boolean;
+  messageSelectorMatches: Array<{ selector: string; count: number }>;
+  visibleCandidateCount: number;
+  directionCounts: { me: number; them: number; unknown: number };
+  sendButtonFound: boolean;
+  threadKeyHash: string;
+}
+
 type Direction = "me" | "them" | "unknown";
 
 const COMPOSER_SELECTORS = [
@@ -23,12 +33,16 @@ function textOf(element: Element): string {
   return (element.textContent ?? "").replace(/\s+/g, " ").trim();
 }
 
-function findComposer(): HTMLElement | null {
+function findComposerMatch(): { element: HTMLElement; selector: string } | null {
   for (const selector of COMPOSER_SELECTORS) {
     const element = document.querySelector<HTMLElement>(selector);
-    if (element && element.offsetParent !== null) return element;
+    if (element && element.offsetParent !== null) return { element, selector };
   }
   return null;
+}
+
+function findComposer(): HTMLElement | null {
+  return findComposerMatch()?.element ?? null;
 }
 
 function directionOf(element: HTMLElement): Direction {
@@ -120,6 +134,25 @@ export class TinderDomAdapter {
       context,
       latestIncomingText: latest.text,
       latestIncomingKey: simpleHash(`${threadKey}|${latestIncomingIndex}|${latest.text}|${messages.length}`)
+    };
+  }
+
+  diagnose(): TinderSelectorDiagnostics {
+    const match = findComposerMatch();
+    const candidates = match ? candidateMessages(match.element) : [];
+    const directionCounts = { me: 0, them: 0, unknown: 0 };
+    for (const element of candidates) directionCounts[directionOf(element)] += 1;
+    return {
+      composerSelector: match?.selector ?? null,
+      composerFound: Boolean(match),
+      messageSelectorMatches: MESSAGE_SELECTORS.map((selector) => ({
+        selector,
+        count: document.querySelectorAll(selector).length
+      })),
+      visibleCandidateCount: candidates.length,
+      directionCounts,
+      sendButtonFound: Boolean(match && findSendButton(match.element)),
+      threadKeyHash: simpleHash(`${location.pathname}|${document.title}`)
     };
   }
 

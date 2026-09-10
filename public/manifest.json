@@ -3,7 +3,7 @@
   "name": "TNND",
   "description": "Gemini-powered Tinder auto-chat with configurable identity, style and language mix.",
   "version": "0.2.0",
-  "permissions": ["storage"],
+  "permissions": ["storage", "activeTab"],
   "host_permissions": [
     "https://generativelanguage.googleapis.com/*",
     "https://tinder.com/*",
@@ -17,6 +17,9 @@
       "run_at": "document_idle"
     }
   ],
-  "action": { "default_title": "Open TNND" },
+  "action": {
+    "default_title": "Open TNND",
+    "default_popup": "popup.html"
+  },
   "options_page": "options.html"
 }
