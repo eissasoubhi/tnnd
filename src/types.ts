@@ -68,12 +68,25 @@ export interface ChatSettings {
   avoidedWords?: string;
 }
 
+export interface PreviewOverrides {
+  tone?: Tone;
+  messageLength?: MessageLength;
+  flirtLevel?: number;
+  humorLevel?: number;
+  emojiLevel?: EmojiLevel;
+  languages?: Partial<LanguageWeights>;
+  preferredWords?: string;
+  avoidedWords?: string;
+  extraInstructions?: string;
+}
+
 export interface GenerateRequest {
   type: "GENERATE_SUGGESTIONS";
   context: string;
   purpose?: GeneratePurpose;
   replyCount?: number;
   threadKey?: string;
+  previewOverrides?: PreviewOverrides;
 }
 
 export interface GenerateResponse {
