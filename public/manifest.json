@@ -1,17 +1,22 @@
 {
   "manifest_version": 3,
   "name": "TNND",
-  "description": "A user-controlled dating message copilot with Gemini-powered reply suggestions.",
-  "version": "0.1.0",
+  "description": "Gemini-powered Tinder auto-chat with configurable identity, style and language mix.",
+  "version": "0.2.0",
   "permissions": ["storage"],
   "host_permissions": [
-    "https://generativelanguage.googleapis.com/*"
+    "https://generativelanguage.googleapis.com/*",
+    "https://tinder.com/*",
+    "https://www.tinder.com/*"
   ],
-  "background": {
-    "service_worker": "assets/background.js"
-  },
-  "action": {
-    "default_title": "Open TNND"
-  },
+  "background": { "service_worker": "assets/background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://tinder.com/*", "https://www.tinder.com/*"],
+      "js": ["assets/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": { "default_title": "Open TNND" },
   "options_page": "options.html"
 }

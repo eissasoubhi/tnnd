@@ -11,16 +11,35 @@ export const DEFAULT_CONFIG: AppConfig = {
   humorLevel: 65,
   emojiLevel: "low",
   replyCount: 3,
-  languages: {
-    fr: 45,
-    darija: 40,
-    en: 15,
-    ar: 0
-  },
+  languages: { fr: 45, darija: 40, en: 15 },
   preferredWords: "",
   avoidedWords: "",
-  personalContext: "",
-  extraInstructions: ""
+  extraInstructions: "",
+  identity: {
+    firstName: "",
+    age: "",
+    city: "",
+    origin: "",
+    occupation: "",
+    interests: "",
+    aboutMe: "",
+    instagram: "",
+    whatsapp: "",
+    contactPreference: "instagram-first"
+  },
+  automation: {
+    enabled: false,
+    replyDelaySeconds: 45,
+    quietHoursEnabled: true,
+    quietStart: "00:00",
+    quietEnd: "08:00",
+    maxAutoRepliesPerDay: 40
+  }
+};
+
+type LegacyConfig = Partial<AppConfig> & {
+  personalContext?: string;
+  languages?: Partial<AppConfig["languages"]> & { ar?: number };
 };
 
 export async function lockStorageToTrustedContexts(): Promise<void> {
@@ -33,15 +52,17 @@ export async function lockStorageToTrustedContexts(): Promise<void> {
 
 export async function getConfig(): Promise<AppConfig> {
   const result = await chrome.storage.local.get(CONFIG_KEY);
-  const saved = result[CONFIG_KEY] as Partial<AppConfig> | undefined;
-
+  const saved = result[CONFIG_KEY] as LegacyConfig | undefined;
   return {
     ...DEFAULT_CONFIG,
     ...saved,
-    languages: {
-      ...DEFAULT_CONFIG.languages,
-      ...(saved?.languages ?? {})
-    }
+    languages: { ...DEFAULT_CONFIG.languages, ...(saved?.languages ?? {}) },
+    identity: {
+      ...DEFAULT_CONFIG.identity,
+      ...(saved?.identity ?? {}),
+      aboutMe: saved?.identity?.aboutMe ?? saved?.personalContext ?? DEFAULT_CONFIG.identity.aboutMe
+    },
+    automation: { ...DEFAULT_CONFIG.automation, ...(saved?.automation ?? {}) }
   };
 }
 
