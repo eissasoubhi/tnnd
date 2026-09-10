@@ -56,7 +56,7 @@ function candidateMessages(composer: HTMLElement): HTMLElement[] {
   const seen = new Set<HTMLElement>();
   const result: HTMLElement[] = [];
   for (const selector of MESSAGE_SELECTORS) {
-    for (const element of document.querySelectorAll<HTMLElement>(selector)) {
+    for (const element of Array.from(document.querySelectorAll<HTMLElement>(selector))) {
       if (seen.has(element) || element.contains(composer) || composer.contains(element) || element.offsetParent === null) continue;
       const text = textOf(element);
       if (!text || text.length > 1200) continue;
