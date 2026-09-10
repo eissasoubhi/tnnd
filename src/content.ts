@@ -1,6 +1,6 @@
-import { getConfig } from "./storage";
+import { getChatSettings, getConfig } from "./storage";
 import { TinderDomAdapter } from "./tinder-adapter";
-import type { GenerateRequest, GenerateResponse } from "./types";
+import type { AutomationConfig, GenerateRequest, GenerateResponse } from "./types";
 
 const STATE_KEY = "tnnd.autoState";
 const adapter = new TinderDomAdapter();
@@ -43,8 +43,28 @@ function insideQuietHours(start: string, end: string): boolean {
   return s < e ? current >= s && current < e : current >= s || current < e;
 }
 
-async function generateReply(context: string): Promise<string> {
-  const request: GenerateRequest = { type: "GENERATE_SUGGESTIONS", context, purpose: "auto", replyCount: 1 };
+function cadenceWindow(config: AutomationConfig): [number, number] {
+  const legacy = Number(config.replyDelaySeconds);
+  const rawMin = Number(config.replyDelayMinSeconds);
+  const rawMax = Number(config.replyDelayMaxSeconds);
+  const fallbackMin = Number.isFinite(legacy) ? Math.max(0, legacy - 15) : 20;
+  const fallbackMax = Number.isFinite(legacy) ? Math.max(fallbackMin, legacy + 15) : 60;
+  const min = Number.isFinite(rawMin) ? Math.max(0, rawMin) : fallbackMin;
+  const max = Number.isFinite(rawMax) ? Math.max(0, rawMax) : fallbackMax;
+  return min <= max ? [min, max] : [max, min];
+}
+
+function randomCadenceSeconds(config: AutomationConfig): number {
+  const [min, max] = cadenceWindow(config);
+  if (min === max) return min;
+  const bucket = new Uint32Array(1);
+  crypto.getRandomValues(bucket);
+  const unit = bucket[0] / 0x100000000;
+  return min + unit * (max - min);
+}
+
+async function generateReply(context: string, threadKey: string): Promise<string> {
+  const request: GenerateRequest = { type: "GENERATE_SUGGESTIONS", context, purpose: "auto", replyCount: 1, threadKey };
   const response = (await chrome.runtime.sendMessage(request)) as GenerateResponse;
   if (!response.ok || !response.suggestions?.[0]) throw new Error(response.error ?? "TNND received no automatic reply.");
   return response.suggestions[0];
@@ -58,16 +78,23 @@ async function scan(): Promise<void> {
 
   const snapshot = adapter.read();
   if (!snapshot) return;
+  const chat = await getChatSettings(snapshot.threadKey);
+  if (!chat.enabled) return;
+
   const state = await getState();
   if (state.processed[snapshot.latestIncomingKey]) return;
   if (state.dailyCount >= config.automation.maxAutoRepliesPerDay) return;
 
   busy = true;
   try {
-    await new Promise((resolve) => setTimeout(resolve, Math.max(0, config.automation.replyDelaySeconds) * 1000));
+    const delaySeconds = randomCadenceSeconds(config.automation);
+    console.info(`TNND queued an automatic reply in ${delaySeconds.toFixed(1)}s.`);
+    await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
     const current = adapter.read();
-    if (!current || current.latestIncomingKey !== snapshot.latestIncomingKey) return;
-    const reply = await generateReply(current.context);
+    if (!current || current.latestIncomingKey !== snapshot.latestIncomingKey || current.threadKey !== snapshot.threadKey) return;
+    const latestChat = await getChatSettings(current.threadKey);
+    if (!latestChat.enabled) return;
+    const reply = await generateReply(current.context, current.threadKey);
     await adapter.send(reply);
     const freshState = await getState();
     freshState.processed[current.latestIncomingKey] = Date.now();
