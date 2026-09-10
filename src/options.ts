@@ -13,7 +13,7 @@ const f = {
   tone: el<HTMLSelectElement>("tone"), messageLength: el<HTMLSelectElement>("messageLength"), flirtLevel: el<HTMLInputElement>("flirtLevel"), flirtValue: el<HTMLElement>("flirtValue"), humorLevel: el<HTMLInputElement>("humorLevel"), humorValue: el<HTMLElement>("humorValue"), emojiLevel: el<HTMLSelectElement>("emojiLevel"), replyCount: el<HTMLSelectElement>("replyCount"),
   langFr: el<HTMLInputElement>("langFr"), langDarija: el<HTMLInputElement>("langDarija"), langEn: el<HTMLInputElement>("langEn"), preferredWords: el<HTMLTextAreaElement>("preferredWords"), avoidedWords: el<HTMLTextAreaElement>("avoidedWords"), extraInstructions: el<HTMLTextAreaElement>("extraInstructions"),
   firstName: el<HTMLInputElement>("firstName"), age: el<HTMLInputElement>("age"), city: el<HTMLInputElement>("city"), origin: el<HTMLInputElement>("origin"), occupation: el<HTMLInputElement>("occupation"), interests: el<HTMLInputElement>("interests"), aboutMe: el<HTMLTextAreaElement>("aboutMe"), instagram: el<HTMLInputElement>("instagram"), whatsapp: el<HTMLInputElement>("whatsapp"), contactPreference: el<HTMLSelectElement>("contactPreference"),
-  autoEnabled: el<HTMLInputElement>("autoEnabled"), replyDelaySeconds: el<HTMLInputElement>("replyDelaySeconds"), quietHoursEnabled: el<HTMLInputElement>("quietHoursEnabled"), quietStart: el<HTMLInputElement>("quietStart"), quietEnd: el<HTMLInputElement>("quietEnd"), maxAutoRepliesPerDay: el<HTMLInputElement>("maxAutoRepliesPerDay"),
+  autoEnabled: el<HTMLInputElement>("autoEnabled"), replyDelayMinSeconds: el<HTMLInputElement>("replyDelayMinSeconds"), replyDelayMaxSeconds: el<HTMLInputElement>("replyDelayMaxSeconds"), quietHoursEnabled: el<HTMLInputElement>("quietHoursEnabled"), quietStart: el<HTMLInputElement>("quietStart"), quietEnd: el<HTMLInputElement>("quietEnd"), maxAutoRepliesPerDay: el<HTMLInputElement>("maxAutoRepliesPerDay"),
   exportProfile: el<HTMLButtonElement>("exportProfile"), importProfile: el<HTMLButtonElement>("importProfile"), importProfileFile: el<HTMLInputElement>("importProfileFile"), extensionVersion: el<HTMLElement>("extensionVersion"), aiStatus: el<HTMLElement>("aiStatus"),
   testGemini: el<HTMLButtonElement>("testGemini"), status: el<HTMLElement>("status")
 };
@@ -22,13 +22,18 @@ const num = (control: HTMLInputElement | HTMLSelectElement, fallback = 0) => Num
 const updateRanges = () => { f.flirtValue.textContent = `${f.flirtLevel.value}/3`; f.humorValue.textContent = `${f.humorLevel.value}/100`; };
 
 function readConfig(): AppConfig {
+  const rawMin = Math.max(0, num(f.replyDelayMinSeconds, 20));
+  const rawMax = Math.max(0, num(f.replyDelayMaxSeconds, 60));
+  const replyDelayMinSeconds = Math.min(rawMin, rawMax);
+  const replyDelayMaxSeconds = Math.max(rawMin, rawMax);
+
   return {
     model: f.model.value.trim(), tone: f.tone.value as Tone, messageLength: f.messageLength.value as MessageLength,
     flirtLevel: num(f.flirtLevel, 2), humorLevel: num(f.humorLevel, 65), emojiLevel: f.emojiLevel.value as EmojiLevel, replyCount: num(f.replyCount, 3),
     languages: { fr: num(f.langFr), darija: num(f.langDarija), en: num(f.langEn) },
     preferredWords: f.preferredWords.value.trim(), avoidedWords: f.avoidedWords.value.trim(), extraInstructions: f.extraInstructions.value.trim(),
     identity: { firstName: f.firstName.value.trim(), age: f.age.value.trim(), city: f.city.value.trim(), origin: f.origin.value.trim(), occupation: f.occupation.value.trim(), interests: f.interests.value.trim(), aboutMe: f.aboutMe.value.trim(), instagram: f.instagram.value.trim(), whatsapp: f.whatsapp.value.trim(), contactPreference: f.contactPreference.value as ContactPreference },
-    automation: { enabled: f.autoEnabled.checked, replyDelaySeconds: num(f.replyDelaySeconds, 45), quietHoursEnabled: f.quietHoursEnabled.checked, quietStart: f.quietStart.value, quietEnd: f.quietEnd.value, maxAutoRepliesPerDay: num(f.maxAutoRepliesPerDay, 40) }
+    automation: { enabled: f.autoEnabled.checked, replyDelayMinSeconds, replyDelayMaxSeconds, quietHoursEnabled: f.quietHoursEnabled.checked, quietStart: f.quietStart.value, quietEnd: f.quietEnd.value, maxAutoRepliesPerDay: num(f.maxAutoRepliesPerDay, 40) }
   };
 }
 
@@ -36,7 +41,11 @@ function applyConfig(c: AppConfig): void {
   f.model.value = c.model; f.tone.value = c.tone; f.messageLength.value = c.messageLength; f.flirtLevel.value = String(c.flirtLevel); f.humorLevel.value = String(c.humorLevel); f.emojiLevel.value = c.emojiLevel; f.replyCount.value = String(c.replyCount);
   f.langFr.value = String(c.languages.fr); f.langDarija.value = String(c.languages.darija); f.langEn.value = String(c.languages.en); f.preferredWords.value = c.preferredWords; f.avoidedWords.value = c.avoidedWords; f.extraInstructions.value = c.extraInstructions;
   f.firstName.value = c.identity.firstName; f.age.value = c.identity.age; f.city.value = c.identity.city; f.origin.value = c.identity.origin; f.occupation.value = c.identity.occupation; f.interests.value = c.identity.interests; f.aboutMe.value = c.identity.aboutMe; f.instagram.value = c.identity.instagram; f.whatsapp.value = c.identity.whatsapp; f.contactPreference.value = c.identity.contactPreference;
-  f.autoEnabled.checked = c.automation.enabled; f.replyDelaySeconds.value = String(c.automation.replyDelaySeconds); f.quietHoursEnabled.checked = c.automation.quietHoursEnabled; f.quietStart.value = c.automation.quietStart; f.quietEnd.value = c.automation.quietEnd; f.maxAutoRepliesPerDay.value = String(c.automation.maxAutoRepliesPerDay); updateRanges();
+  const legacy = Number(c.automation.replyDelaySeconds);
+  f.autoEnabled.checked = c.automation.enabled;
+  f.replyDelayMinSeconds.value = String(c.automation.replyDelayMinSeconds ?? (Number.isFinite(legacy) ? Math.max(0, legacy - 15) : 20));
+  f.replyDelayMaxSeconds.value = String(c.automation.replyDelayMaxSeconds ?? (Number.isFinite(legacy) ? legacy + 15 : 60));
+  f.quietHoursEnabled.checked = c.automation.quietHoursEnabled; f.quietStart.value = c.automation.quietStart; f.quietEnd.value = c.automation.quietEnd; f.maxAutoRepliesPerDay.value = String(c.automation.maxAutoRepliesPerDay); updateRanges();
 }
 
 function setAiStatus(kind: "unconfigured" | "idle" | "checking" | "connected" | "error", detail = ""): void {
