@@ -1,55 +1,72 @@
-import type { AppConfig } from "./types";
+import type { AppConfig, GeneratePurpose } from "./types";
 
 function csv(value: string): string[] {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
 function languageGuidance(config: AppConfig): string {
-  const languages = [
+  return [
     ["French", config.languages.fr],
     ["Moroccan Darija", config.languages.darija],
-    ["English", config.languages.en],
-    ["Arabic", config.languages.ar]
-  ] as const;
-
-  return languages
-    .filter(([, weight]) => weight > 0)
+    ["English", config.languages.en]
+  ]
+    .filter(([, weight]) => Number(weight) > 0)
     .map(([name, weight]) => `${name}: ${weight}`)
     .join(", ");
 }
 
-export function buildSystemInstruction(config: AppConfig): string {
+function identityGuidance(config: AppConfig): string {
+  const p = config.identity;
+  const facts = [
+    p.firstName && `first name=${p.firstName}`,
+    p.age && `age=${p.age}`,
+    p.city && `lives in=${p.city}`,
+    p.origin && `origin=${p.origin}`,
+    p.occupation && `occupation=${p.occupation}`,
+    p.interests && `interests=${p.interests}`,
+    p.aboutMe && `other context=${p.aboutMe}`
+  ].filter(Boolean);
+
+  const contact = [
+    `off-app preference=${p.contactPreference}`,
+    p.instagram && `Instagram=${p.instagram}`,
+    p.whatsapp && `WhatsApp=${p.whatsapp}`
+  ].filter(Boolean);
+
+  return [
+    facts.length ? `User identity facts: ${facts.join("; ")}. Use only when relevant; never dump profile facts unnaturally.` : "",
+    `Contact transition: ${contact.join("; ")}. Prefer asking for the other person's Instagram before WhatsApp when the preference is instagram-first. Move off Tinder only when the conversation shows mutual interest; do not pressure. Share the user's own contact only when it fits the conversation and the configured value exists.`
+  ].filter(Boolean).join("\n");
+}
+
+export function buildSystemInstruction(config: AppConfig, count: number, purpose: GeneratePurpose): string {
   const preferred = csv(config.preferredWords);
   const avoided = csv(config.avoidedWords);
 
   return [
-    "You are TNND, a writing copilot that drafts dating-app messages for the user to review before sending.",
-    "Write like a natural person, not like customer support or a chatbot.",
-    "Never invent personal facts, experiences, plans, availability, feelings, or promises that are not present in the supplied context or personal context.",
-    "Keep the interaction respectful and consensual. Do not pressure, manipulate, guilt-trip, threaten, harass, or sexualize someone who is not reciprocating.",
-    `Tone: ${config.tone}. Flirt level: ${config.flirtLevel}/3. Humor: ${config.humorLevel}/100. Emoji level: ${config.emojiLevel}.`,
-    `Target message length: ${config.messageLength}.`,
-    `Language weights: ${languageGuidance(config)}. Mirror the other person's language when it makes the exchange feel more natural. For Darija, prefer common Moroccan phrasing and Latin transliteration when the surrounding chat is in Latin script.`,
+    "You are TNND, a dating conversation writing engine acting from the user's configured identity.",
+    "Write concise, conversational messages. Avoid customer-support language, essays, generic motivational wording, repeated questions and canned pickup lines.",
+    "Never invent personal facts, experiences, availability, feelings or promises that are not present in the conversation or configured identity.",
+    "Keep the interaction respectful and consensual. Do not pressure, manipulate, guilt-trip, threaten or continue sexual escalation when the other person is not reciprocating.",
+    `Generation purpose: ${purpose}.`,
+    `Tone: ${config.tone}. Flirt level: ${config.flirtLevel}/3. Humor: ${config.humorLevel}/100. Emoji level: ${config.emojiLevel}. Message length: ${config.messageLength}.`,
+    `Language mix guidance: ${languageGuidance(config)}. Mirror the other person's language naturally. Code-switch only when it feels normal; never force all enabled languages into every message. For Darija, prefer common Moroccan Latin-script usage when the chat is in Latin script.`,
+    identityGuidance(config),
     preferred.length ? `Prefer naturally when useful: ${preferred.join(", ")}.` : "",
-    avoided.length ? `Avoid: ${avoided.join(", ")}.` : "",
-    config.personalContext ? `User-approved personal context: ${config.personalContext}` : "",
+    avoided.length ? `Avoid these words or expressions: ${avoided.join(", ")}.` : "",
     config.extraInstructions ? `Extra style instructions: ${config.extraInstructions}` : "",
-    `Return only a valid JSON array containing exactly ${config.replyCount} distinct message strings. No markdown, no explanation, no labels.`
-  ]
-    .filter(Boolean)
-    .join("\n");
+    `Return only a valid JSON array containing exactly ${count} distinct message string${count === 1 ? "" : "s"}. No markdown, explanation or labels.`
+  ].filter(Boolean).join("\n");
 }
 
-export function buildUserPrompt(context: string): string {
+export function buildUserPrompt(context: string, purpose: GeneratePurpose): string {
   return [
-    "Draft the next dating-app message based on the context pasted below.",
-    "If this is a new match or profile context without a conversation, draft an opener tied to something in the context instead of a generic hello.",
+    purpose === "auto" ? "Write the next reply to the latest incoming Tinder message." : "Draft the next dating-app message from this conversation/profile context.",
+    "Use the recent conversation flow, answer what was actually said, and avoid abruptly changing subject.",
+    "If there is no conversation yet, use something specific from the profile context instead of a generic hello.",
     "If context is incomplete, stay generic rather than inventing details.",
     "\n--- context ---",
-    context.trim().slice(-7000),
+    context.trim().slice(-9000),
     "--- end context ---"
   ].join("\n");
 }
