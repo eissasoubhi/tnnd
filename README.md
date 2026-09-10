@@ -15,7 +15,7 @@ TNND is a Chrome extension that can generate and automatically send Tinder repli
 - Language mix weights for French, Moroccan Darija and English.
 - Preferred/avoided vocabulary and custom style rules.
 - Dedicated Chat Preview page that generates example conversations from the currently saved configuration.
-- Gemini API key stored in `chrome.storage.local`; storage access is restricted to trusted extension contexts where Chrome supports it.
+- Gemini API key stored in `chrome.storage.local`; storage access is restricted to trusted extension contexts when Chrome supports it.
 
 TNND does not implement CAPTCHA bypass, fingerprint spoofing, rate-limit bypass or mechanisms whose purpose is to evade platform detection. Direct Tinder integration should only be used where the account/user has the required permission to automate it.
 
@@ -52,7 +52,7 @@ Reload the extension after each rebuild.
 3. Fill in the identity fields that Gemini is allowed to use.
 4. Configure FR / Darija / EN weights, tone, humor, flirt level and vocabulary rules.
 5. Add Instagram / WhatsApp if desired and choose the off-app transition preference.
-6. Open **Chat Preview** and generate examples until the style is right.
+6. Open **Chat Preview** and generate examples until the style is right. Preview generation makes normal Gemini API calls.
 7. Enable automatic Tinder replies when ready.
 
 ## Tinder DOM adapter
