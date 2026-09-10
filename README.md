@@ -1,33 +1,32 @@
 # TNND
 
-TNND is a Chrome extension message copilot for dating-app conversations. The first version is deliberately user-controlled: you paste the context you want to share with Gemini, TNND drafts replies in your style, and you choose what to copy and send yourself.
+TNND is a Chrome extension that can generate and automatically send Tinder replies through Gemini, using a configurable identity and conversation style.
 
-## MVP
+## Current v0.2 scope
 
-- Manual conversation/profile context input.
-- Gemini-powered reply suggestions.
-- Three configurable draft variants by default.
-- Tone presets: playful, flirty, direct, warm, chill, witty.
+- Tinder content script with an isolated DOM adapter.
+- Automatic reply mode, disabled by default until explicitly enabled.
+- Configurable reply delay, quiet hours and daily reply cap.
+- Duplicate-message protection and no automatic retry when a send cannot be confirmed.
+- Structured identity: first name, age, city, origin, occupation, interests and additional personal context.
+- Optional Instagram and WhatsApp details with configurable off-app preference.
+- Tone presets: playful, flirty, direct, warm, chill and witty.
 - Configurable flirt level, humor, emoji usage and message length.
-- Language mix weights for French, Moroccan Darija, English and Arabic.
-- Preferred/avoided vocabulary, user-approved personal context and custom instructions.
-- Copy button for each generated draft.
-- Gemini API key stored in `chrome.storage.local`; storage access is restricted to trusted extension contexts when Chrome supports it.
+- Language mix weights for French, Moroccan Darija and English.
+- Preferred/avoided vocabulary and custom style rules.
+- Dedicated Chat Preview page that generates example conversations from the currently saved configuration.
+- Gemini API key stored in `chrome.storage.local`; storage access is restricted to trusted extension contexts where Chrome supports it.
 
-TNND intentionally does not implement anti-detection, fingerprint spoofing, CAPTCHA bypass, rate-limit bypass, endless auto-like loops, autonomous message sending, or direct Tinder DOM automation.
-
-## Why the manual boundary exists
-
-Tinder's current Terms of Use prohibit automated processes and third-party applications/services that directly interact with Tinder or Member Content without written consent, including AI/ML systems. This MVP therefore does not request Tinder host permissions and does not read or click Tinder pages.
+TNND does not implement CAPTCHA bypass, fingerprint spoofing, rate-limit bypass or mechanisms whose purpose is to evade platform detection. Direct Tinder integration should only be used where the account/user has the required permission to automate it.
 
 ## Stack
 
 - Chrome Manifest V3
 - TypeScript
-- Vite (programmatic multi-entry builds)
+- Vite
 - Gemini `generateContent` API
 
-The default model is `gemini-3.8-flash`, but it is editable in Options.
+The default model is `gemini-3.8-flash` and remains editable in Options.
 
 ## Local development
 
@@ -36,7 +35,7 @@ npm install
 npm run build
 ```
 
-Then open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select the generated `dist/` folder.
+Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `dist/`.
 
 For rebuild-on-change:
 
@@ -44,20 +43,26 @@ For rebuild-on-change:
 npm run dev
 ```
 
-After rebuilding, reload TNND from `chrome://extensions`.
+Reload the extension after each rebuild.
 
-## Usage
+## Setup
 
-1. Click the TNND extension icon.
-2. Add your Gemini API key and configure your style.
-3. Paste the relevant dating-app conversation or profile context into **Message Lab**.
-4. Click **Generate replies**.
-5. Pick a draft, click **Copy**, review/edit it if needed, and send it yourself.
+1. Open TNND Options.
+2. Add the Gemini API key.
+3. Fill in the identity fields that Gemini is allowed to use.
+4. Configure FR / Darija / EN weights, tone, humor, flirt level and vocabulary rules.
+5. Add Instagram / WhatsApp if desired and choose the off-app transition preference.
+6. Open **Chat Preview** and generate examples until the style is right.
+7. Enable automatic Tinder replies when ready.
 
-## Next safe improvements
+## Tinder DOM adapter
 
-- Named style presets (for example "Darija chill", "FR playful", "EN direct").
-- Conversation sessions stored locally so you can keep context without repasting everything.
-- First-message / reply / date-proposal modes.
-- Per-contact style overrides stored locally under aliases chosen by the user.
-- Export/import of settings without exporting the Gemini API key.
+`src/tinder-adapter.ts` contains all Tinder-specific DOM discovery, conversation reading and message sending. The first implementation uses semantic selectors plus conservative layout fallbacks. Tinder's live DOM can change, so this file is intentionally isolated and should be adjusted from real-page diagnostics rather than spreading selectors throughout the codebase.
+
+## Next priorities
+
+- Real-page diagnostics for Tinder selectors and message direction detection.
+- Per-conversation memory and per-match overrides.
+- Conversation-stage classification: opener, normal reply, flirting, date proposal, re-engagement and off-app transition.
+- Better preview scenarios and named style presets.
+- Local activity log showing what triggered each automatic reply without storing more conversation content than necessary.
