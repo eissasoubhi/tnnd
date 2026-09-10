@@ -1,5 +1,5 @@
 import { buildSystemInstruction, buildUserPrompt } from "./prompt";
-import type { AppConfig, GeneratePurpose } from "./types";
+import type { AppConfig, ChatSettings, GeneratePurpose } from "./types";
 
 interface GeminiResponse {
   candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
@@ -20,7 +20,7 @@ function parseSuggestions(text: string, count: number): string[] {
   return suggestions;
 }
 
-export async function generateSuggestions(apiKey: string, config: AppConfig, context: string, purpose: GeneratePurpose = "manual", count = config.replyCount): Promise<string[]> {
+export async function generateSuggestions(apiKey: string, config: AppConfig, context: string, purpose: GeneratePurpose = "manual", count = config.replyCount, chat?: ChatSettings): Promise<string[]> {
   const model = config.model.trim();
   if (!apiKey) throw new Error("Gemini API key is missing. Open TNND settings first.");
   if (!model) throw new Error("Gemini model is missing.");
@@ -31,7 +31,7 @@ export async function generateSuggestions(apiKey: string, config: AppConfig, con
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: buildSystemInstruction(config, safeCount, purpose) }] },
+      systemInstruction: { parts: [{ text: buildSystemInstruction(config, safeCount, purpose, chat) }] },
       contents: [{ role: "user", parts: [{ text: buildUserPrompt(context, purpose) }] }],
       generationConfig: { temperature: 0.95, maxOutputTokens: 500 }
     })
