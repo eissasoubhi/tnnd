@@ -1,5 +1,5 @@
 import { generateSuggestions } from "./gemini";
-import { getApiKey, getConfig, lockStorageToTrustedContexts } from "./storage";
+import { getApiKey, getChatSettings, getConfig, lockStorageToTrustedContexts, resolveEffectiveConfig } from "./storage";
 import type { GenerateRequest, GenerateResponse } from "./types";
 
 void lockStorageToTrustedContexts();
@@ -21,8 +21,14 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest, sender, sendResp
 
   void (async () => {
     try {
-      const [apiKey, config] = await Promise.all([getApiKey(), getConfig()]);
-      const suggestions = await generateSuggestions(apiKey, config, message.context, message.purpose ?? "manual", message.replyCount ?? config.replyCount);
+      const [apiKey, baseConfig, chat] = await Promise.all([
+        getApiKey(),
+        getConfig(),
+        getChatSettings(message.threadKey ?? "")
+      ]);
+      if ((message.purpose ?? "manual") === "auto" && !chat.enabled) throw new Error("Automatic replies are disabled for this conversation.");
+      const config = resolveEffectiveConfig(baseConfig, chat);
+      const suggestions = await generateSuggestions(apiKey, config, message.context, message.purpose ?? "manual", message.replyCount ?? config.replyCount, chat);
       sendResponse({ ok: true, suggestions } satisfies GenerateResponse);
     } catch (error) {
       sendResponse({ ok: false, error: error instanceof Error ? error.message : "Unknown TNND error." } satisfies GenerateResponse);
