@@ -63,7 +63,7 @@ export async function lockStorageToTrustedContexts(): Promise<void> {
 export async function getConfig(): Promise<AppConfig> {
   const result = await chrome.storage.local.get(CONFIG_KEY);
   const saved = result[CONFIG_KEY] as LegacyConfig | undefined;
-  const savedAutomation = saved?.automation ?? {};
+  const savedAutomation = (saved?.automation ?? {}) as Partial<AppConfig["automation"]>;
   const legacyDelay = Number(savedAutomation.replyDelaySeconds);
   const hasWindow = Number.isFinite(savedAutomation.replyDelayMinSeconds) || Number.isFinite(savedAutomation.replyDelayMaxSeconds);
 
