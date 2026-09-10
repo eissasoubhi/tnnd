@@ -10,7 +10,9 @@ const scenarios = [
 const cards = document.getElementById("cards")!;
 const status = document.getElementById("status")!;
 const summary = document.getElementById("summary")!;
+const version = document.getElementById("extensionVersion")!;
 const regenerate = document.getElementById("regenerate") as HTMLButtonElement;
+version.textContent = `v${chrome.runtime.getManifest().version}`;
 
 async function generate(context: string): Promise<string> {
   const request: GenerateRequest = { type: "GENERATE_SUGGESTIONS", context, purpose: "preview", replyCount: 1 };
