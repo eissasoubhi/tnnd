@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "TNND",
+  "description": "A user-controlled Tinder Web companion with Gemini-powered reply suggestions.",
+  "version": "0.1.0",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://tinder.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
+  "background": {
+    "service_worker": "assets/background.js"
+  },
+  "action": {
+    "default_title": "TNND settings"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["https://tinder.com/*"],
+      "js": ["assets/content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
