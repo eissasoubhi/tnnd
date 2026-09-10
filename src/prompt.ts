@@ -1,4 +1,4 @@
-import type { AppConfig, GeneratePurpose } from "./types";
+import type { AppConfig, ChatSettings, GeneratePurpose } from "./types";
 
 function csv(value: string): string[] {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
@@ -39,7 +39,18 @@ function identityGuidance(config: AppConfig): string {
   ].filter(Boolean).join("\n");
 }
 
-export function buildSystemInstruction(config: AppConfig, count: number, purpose: GeneratePurpose): string {
+function perChatGuidance(chat?: ChatSettings): string {
+  if (!chat) return "";
+  const parts = [
+    chat.alias && `Local conversation alias: ${chat.alias}.`,
+    chat.stage !== "auto" && `Conversation stage override: ${chat.stage}.`,
+    chat.goal && `Goal for this conversation: ${chat.goal}. Progress toward it gradually; do not force it into every reply.`,
+    chat.instructions && `Instructions specific to this conversation: ${chat.instructions}`
+  ].filter(Boolean);
+  return parts.length ? `Per-chat configuration:\n${parts.join("\n")}` : "";
+}
+
+export function buildSystemInstruction(config: AppConfig, count: number, purpose: GeneratePurpose, chat?: ChatSettings): string {
   const preferred = csv(config.preferredWords);
   const avoided = csv(config.avoidedWords);
 
@@ -54,7 +65,8 @@ export function buildSystemInstruction(config: AppConfig, count: number, purpose
     identityGuidance(config),
     preferred.length ? `Prefer naturally when useful: ${preferred.join(", ")}.` : "",
     avoided.length ? `Avoid these words or expressions: ${avoided.join(", ")}.` : "",
-    config.extraInstructions ? `Extra style instructions: ${config.extraInstructions}` : "",
+    config.extraInstructions ? `Global conversation instructions: ${config.extraInstructions}` : "",
+    perChatGuidance(chat),
     `Return only a valid JSON array containing exactly ${count} distinct message string${count === 1 ? "" : "s"}. No markdown, explanation or labels.`
   ].filter(Boolean).join("\n");
 }
