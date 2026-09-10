@@ -1,4 +1,6 @@
 import { strToU8, zipSync } from "fflate";
+import { getChatSettings, saveChatSettings } from "./storage";
+import type { ChatSettings, ConversationStage, Tone } from "./types";
 
 interface DiagnosticResponse {
   ok: boolean;
@@ -14,11 +16,34 @@ interface DiagnosticResponse {
   error?: string;
 }
 
+interface ThreadInfoResponse {
+  ok: boolean;
+  threadKey?: string | null;
+  threadKeyHash?: string;
+}
+
 const version = document.getElementById("extensionVersion")!;
 const status = document.getElementById("status")!;
 const exportButton = document.getElementById("exportDiagnostics") as HTMLButtonElement;
 const openSettings = document.getElementById("openSettings") as HTMLButtonElement;
 const openPreview = document.getElementById("openPreview") as HTMLButtonElement;
+const chatEditor = document.getElementById("chatEditor")!;
+const chatUnavailable = document.getElementById("chatUnavailable")!;
+const chatEnabled = document.getElementById("chatEnabled") as HTMLInputElement;
+const chatAlias = document.getElementById("chatAlias") as HTMLInputElement;
+const chatStage = document.getElementById("chatStage") as HTMLSelectElement;
+const chatTone = document.getElementById("chatTone") as HTMLSelectElement;
+const chatGoal = document.getElementById("chatGoal") as HTMLInputElement;
+const chatInstructions = document.getElementById("chatInstructions") as HTMLTextAreaElement;
+const chatFlirtLevel = document.getElementById("chatFlirtLevel") as HTMLInputElement;
+const chatHumorLevel = document.getElementById("chatHumorLevel") as HTMLInputElement;
+const chatLangFr = document.getElementById("chatLangFr") as HTMLInputElement;
+const chatLangDarija = document.getElementById("chatLangDarija") as HTMLInputElement;
+const chatLangEn = document.getElementById("chatLangEn") as HTMLInputElement;
+const saveChat = document.getElementById("saveChat") as HTMLButtonElement;
+const chatStatus = document.getElementById("chatStatus")!;
+let currentThreadKey: string | null = null;
+
 version.textContent = `v${chrome.runtime.getManifest().version}`;
 
 function isTinderUrl(value?: string): boolean {
@@ -28,6 +53,64 @@ function isTinderUrl(value?: string): boolean {
     return url.protocol === "https:" && (url.hostname === "tinder.com" || url.hostname === "www.tinder.com");
   } catch {
     return false;
+  }
+}
+
+function optionalNumber(input: HTMLInputElement, min: number, max: number): number | undefined {
+  if (!input.value.trim()) return undefined;
+  const value = Number(input.value);
+  if (!Number.isFinite(value)) return undefined;
+  return Math.min(max, Math.max(min, value));
+}
+
+function applyChatSettings(settings: ChatSettings): void {
+  chatEnabled.checked = settings.enabled;
+  chatAlias.value = settings.alias;
+  chatStage.value = settings.stage;
+  chatTone.value = settings.tone ?? "";
+  chatGoal.value = settings.goal;
+  chatInstructions.value = settings.instructions;
+  chatFlirtLevel.value = settings.flirtLevel === undefined ? "" : String(settings.flirtLevel);
+  chatHumorLevel.value = settings.humorLevel === undefined ? "" : String(settings.humorLevel);
+  chatLangFr.value = settings.languages?.fr === undefined ? "" : String(settings.languages.fr);
+  chatLangDarija.value = settings.languages?.darija === undefined ? "" : String(settings.languages.darija);
+  chatLangEn.value = settings.languages?.en === undefined ? "" : String(settings.languages.en);
+}
+
+function readChatSettings(): ChatSettings {
+  const fr = optionalNumber(chatLangFr, 0, 100);
+  const darija = optionalNumber(chatLangDarija, 0, 100);
+  const en = optionalNumber(chatLangEn, 0, 100);
+  const languages = fr === undefined && darija === undefined && en === undefined
+    ? undefined
+    : { ...(fr === undefined ? {} : { fr }), ...(darija === undefined ? {} : { darija }), ...(en === undefined ? {} : { en }) };
+
+  return {
+    enabled: chatEnabled.checked,
+    alias: chatAlias.value.trim(),
+    stage: chatStage.value as ConversationStage,
+    goal: chatGoal.value.trim(),
+    instructions: chatInstructions.value.trim(),
+    tone: chatTone.value ? chatTone.value as Tone : undefined,
+    flirtLevel: optionalNumber(chatFlirtLevel, 0, 3),
+    humorLevel: optionalNumber(chatHumorLevel, 0, 100),
+    languages
+  };
+}
+
+async function loadCurrentChat(): Promise<void> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id || !isTinderUrl(tab.url)) return;
+  try {
+    const response = await chrome.tabs.sendMessage(tab.id, { type: "TNND_GET_THREAD_INFO" }) as ThreadInfoResponse;
+    if (!response?.ok || !response.threadKey) return;
+    currentThreadKey = response.threadKey;
+    applyChatSettings(await getChatSettings(currentThreadKey));
+    chatUnavailable.classList.add("hidden");
+    chatEditor.classList.remove("hidden");
+    chatStatus.textContent = response.threadKeyHash ? `Local thread ${response.threadKeyHash}` : "Current conversation detected.";
+  } catch {
+    chatStatus.textContent = "Reload the Tinder page once after updating TNND.";
   }
 }
 
@@ -97,9 +180,24 @@ async function exportDiagnostics(): Promise<void> {
   }
 }
 
+saveChat.addEventListener("click", () => {
+  void (async () => {
+    if (!currentThreadKey) throw new Error("No Tinder conversation is currently detected.");
+    saveChat.disabled = true;
+    chatStatus.textContent = "Saving chat instructions…";
+    await saveChatSettings(currentThreadKey, readChatSettings());
+    chatStatus.textContent = "Chat-specific instructions saved.";
+  })().catch((error) => {
+    chatStatus.textContent = error instanceof Error ? error.message : "Could not save chat settings.";
+  }).finally(() => {
+    saveChat.disabled = false;
+  });
+});
+
 openSettings.addEventListener("click", () => void chrome.runtime.openOptionsPage());
 openPreview.addEventListener("click", () => void chrome.tabs.create({ url: chrome.runtime.getURL("preview.html") }));
 exportButton.addEventListener("click", () => void exportDiagnostics().catch((error) => {
   status.textContent = error instanceof Error ? error.message : "Could not export diagnostics.";
   exportButton.disabled = false;
 }));
+void loadCurrentChat();
