@@ -13,7 +13,6 @@ await cp(resolve(root, "public/options.html"), resolve(outDir, "options.html"));
 
 const entries = [
   ["background", "src/background.ts"],
-  ["content", "src/content.ts"],
   ["options", "src/options.ts"]
 ];
 

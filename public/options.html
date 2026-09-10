@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TNND settings</title>
+  <title>TNND</title>
   <style>
     :root { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #171717; background: #f6f6f7; }
     * { box-sizing: border-box; }
@@ -21,13 +21,20 @@
     input, select, textarea { width: 100%; border: 1px solid #d4d4d8; border-radius: 10px; padding: 10px 11px; font: inherit; background: white; }
     input[type="range"] { padding: 0; }
     textarea { min-height: 86px; resize: vertical; }
+    #chatContext { min-height: 170px; }
     small { color: #71717a; font-weight: 400; }
-    .actions { display: flex; gap: 10px; align-items: center; position: sticky; bottom: 0; background: rgba(246,246,247,.92); backdrop-filter: blur(10px); padding: 12px 0; }
+    .actions, .lab-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .actions { position: sticky; bottom: 0; background: rgba(246,246,247,.92); backdrop-filter: blur(10px); padding: 12px 0; }
     button { border: 0; border-radius: 10px; padding: 11px 16px; font-weight: 700; cursor: pointer; }
     button.primary { background: #171717; color: white; }
     button.secondary { background: white; border: 1px solid #d4d4d8; }
-    #status { font-size: 13px; color: #52525b; }
+    button.copy { margin-top: 8px; padding: 7px 10px; background: #f4f4f5; }
+    button:disabled { opacity: .55; cursor: default; }
+    #status, #labStatus { font-size: 13px; color: #52525b; }
     .hint { margin-top: 10px; font-size: 12px; color: #71717a; }
+    .suggestions { display: grid; gap: 9px; margin-top: 14px; }
+    .suggestion { border: 1px solid #e4e4e7; border-radius: 12px; padding: 12px; background: #fafafa; }
+    .suggestion-text { white-space: pre-wrap; font-size: 14px; line-height: 1.45; }
     @media (max-width: 720px) { .grid, .grid.four { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -35,9 +42,23 @@
 <main>
   <header>
     <h1>TNND</h1>
-    <p>Configure Gemini and the voice used for reply suggestions. Suggestions are inserted as drafts; you decide what gets sent.</p>
+    <p>Paste a conversation or profile context, get Gemini-powered drafts in your style, then choose what you want to copy and send yourself.</p>
   </header>
   <form id="settings-form">
+    <section>
+      <h2>Message Lab</h2>
+      <label>Conversation / profile context
+        <textarea id="chatContext" placeholder="Paste the relevant conversation or profile details here…"></textarea>
+        <small>TNND does not read Tinder pages automatically. Paste only the context you want Gemini to process.</small>
+      </label>
+      <div class="lab-actions" style="margin-top:12px">
+        <button class="primary" id="generateLab" type="button">Generate replies</button>
+        <button class="secondary" id="clearLab" type="button">Clear</button>
+        <span id="labStatus"></span>
+      </div>
+      <div id="labSuggestions" class="suggestions"></div>
+    </section>
+
     <section>
       <h2>Gemini</h2>
       <div class="grid">

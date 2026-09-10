@@ -14,7 +14,7 @@ chrome.action.onClicked.addListener(() => {
 
 function senderAllowed(sender: chrome.runtime.MessageSender): boolean {
   const url = sender.url ?? "";
-  return url.startsWith("https://tinder.com/") || url.startsWith(`chrome-extension://${chrome.runtime.id}/`);
+  return url.startsWith(`chrome-extension://${chrome.runtime.id}/`);
 }
 
 chrome.runtime.onMessage.addListener((message: GenerateRequest, sender, sendResponse) => {

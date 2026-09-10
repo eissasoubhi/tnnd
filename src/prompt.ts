@@ -45,10 +45,10 @@ export function buildSystemInstruction(config: AppConfig): string {
 
 export function buildUserPrompt(context: string): string {
   return [
-    "Draft the next message based on the Tinder context below.",
-    "If this is a new match or profile context without a conversation, draft an opener tied to something visible in the context instead of a generic hello.",
+    "Draft the next dating-app message based on the context pasted below.",
+    "If this is a new match or profile context without a conversation, draft an opener tied to something in the context instead of a generic hello.",
     "If context is incomplete, stay generic rather than inventing details.",
-    "\n--- Tinder context ---",
+    "\n--- context ---",
     context.trim().slice(-7000),
     "--- end context ---"
   ].join("\n");
