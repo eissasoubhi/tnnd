@@ -7,7 +7,19 @@ export interface ConversationSummary {
   externalThreadId: string;
   status: ConversationStatus;
   currentTopic?: string;
+  lastMessageAt?: string;
   updatedAt: string;
+}
+
+export interface ConversationMessageRecord {
+  id: string;
+  direction: "incoming" | "outgoing";
+  text: string;
+  sentAt: string;
+}
+
+export interface ConversationDetailRecord extends ConversationSummary {
+  messages: ConversationMessageRecord[];
 }
 
 export async function syncConversation(userId: string, input: ConversationSyncRequest): Promise<ConversationSyncResponse> {
@@ -21,7 +33,7 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
       [userId, input.externalThreadId]
     );
     let conversationId = existing.rows[0]?.id;
-    let status: ConversationStatus = existing.rows[0]?.status ?? "active";
+    const status: ConversationStatus = existing.rows[0]?.status ?? "active";
     if (!conversationId) {
       conversationId = randomUUID();
       await client.query(
@@ -61,10 +73,16 @@ export async function listConversations(userId: string): Promise<ConversationSum
     external_thread_id: string;
     status: ConversationStatus;
     current_topic: string | null;
+    last_message_at: Date | null;
     updated_at: Date;
   }>(
-    `SELECT id, external_thread_id, status, current_topic, updated_at
-     FROM conversations WHERE user_id = $1 ORDER BY updated_at DESC`,
+    `SELECT c.id, c.external_thread_id, c.status, c.current_topic, c.updated_at,
+            MAX(m.sent_at) AS last_message_at
+     FROM conversations c
+     LEFT JOIN conversation_messages m ON m.conversation_id = c.id
+     WHERE c.user_id = $1
+     GROUP BY c.id
+     ORDER BY COALESCE(MAX(m.sent_at), c.updated_at) DESC`,
     [userId]
   );
   return result.rows.map((row) => ({
@@ -72,6 +90,55 @@ export async function listConversations(userId: string): Promise<ConversationSum
     externalThreadId: row.external_thread_id,
     status: row.status,
     ...(row.current_topic ? { currentTopic: row.current_topic } : {}),
+    ...(row.last_message_at ? { lastMessageAt: row.last_message_at.toISOString() } : {}),
     updatedAt: row.updated_at.toISOString()
   }));
+}
+
+export async function getConversation(userId: string, conversationId: string): Promise<ConversationDetailRecord | null> {
+  const conversationResult = await getPool().query<{
+    id: string;
+    external_thread_id: string;
+    status: ConversationStatus;
+    current_topic: string | null;
+    updated_at: Date;
+  }>(
+    `SELECT id, external_thread_id, status, current_topic, updated_at
+     FROM conversations
+     WHERE user_id = $1 AND id = $2
+     LIMIT 1`,
+    [userId, conversationId]
+  );
+  const conversation = conversationResult.rows[0];
+  if (!conversation) return null;
+
+  const messagesResult = await getPool().query<{
+    id: string;
+    direction: "incoming" | "outgoing";
+    body: string;
+    sent_at: Date;
+  }>(
+    `SELECT id, direction, body, sent_at
+     FROM conversation_messages
+     WHERE conversation_id = $1
+     ORDER BY sent_at ASC, created_at ASC`,
+    [conversationId]
+  );
+
+  const messages = messagesResult.rows.map((row) => ({
+    id: row.id,
+    direction: row.direction,
+    text: row.body,
+    sentAt: row.sent_at.toISOString()
+  }));
+
+  return {
+    id: conversation.id,
+    externalThreadId: conversation.external_thread_id,
+    status: conversation.status,
+    ...(conversation.current_topic ? { currentTopic: conversation.current_topic } : {}),
+    ...(messages.length ? { lastMessageAt: messages[messages.length - 1].sentAt } : {}),
+    updatedAt: conversation.updated_at.toISOString(),
+    messages
+  };
 }
