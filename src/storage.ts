@@ -16,6 +16,17 @@ export const DEFAULT_CONFIG: AppConfig = {
   preferredWords: "",
   avoidedWords: "",
   extraInstructions: "",
+  textingStyle: {
+    formality: "very-casual",
+    capitalization: "mostly-lowercase",
+    punctuation: "low",
+    abbreviations: "medium",
+    slang: "natural",
+    fragmentedMessages: true,
+    perfectGrammar: false,
+    questionFrequency: "medium",
+    doubleTexting: "sometimes"
+  },
   identity: {
     firstName: "",
     age: "",
@@ -71,6 +82,7 @@ export async function getConfig(): Promise<AppConfig> {
     ...DEFAULT_CONFIG,
     ...saved,
     languages: { ...DEFAULT_CONFIG.languages, ...(saved?.languages ?? {}) },
+    textingStyle: { ...DEFAULT_CONFIG.textingStyle!, ...(saved?.textingStyle ?? {}) },
     identity: {
       ...DEFAULT_CONFIG.identity,
       ...(saved?.identity ?? {}),
