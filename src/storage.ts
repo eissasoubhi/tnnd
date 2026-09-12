@@ -6,11 +6,18 @@ const API_KEY_KEY = "tnnd.geminiApiKey";
 const CHAT_SETTINGS_KEY = "tnnd.chatSettings";
 const SYNC_STATE_KEY = "tnnd.syncState";
 const BACKEND_SESSION_KEY = "tnnd.backendSession";
+const BACKEND_PROFILE_CACHE_KEY = "tnnd.backendProfileCache";
 
 export interface BackendSession {
   token: string;
   expiresAt: string;
   user: { id: string; email: string };
+}
+
+export interface BackendProfileCache {
+  profile: Record<string, unknown>;
+  updatedAt: string;
+  syncedAt: string;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -159,6 +166,20 @@ export async function saveBackendSession(session: BackendSession): Promise<void>
 
 export async function clearBackendSession(): Promise<void> {
   await chrome.storage.local.remove(BACKEND_SESSION_KEY);
+}
+
+export async function getBackendProfileCache(): Promise<BackendProfileCache | null> {
+  const result = await chrome.storage.local.get(BACKEND_PROFILE_CACHE_KEY);
+  const value = result[BACKEND_PROFILE_CACHE_KEY] as BackendProfileCache | undefined;
+  return value?.profile && value.updatedAt && value.syncedAt ? value : null;
+}
+
+export async function saveBackendProfileCache(cache: BackendProfileCache): Promise<void> {
+  await chrome.storage.local.set({ [BACKEND_PROFILE_CACHE_KEY]: cache });
+}
+
+export async function clearBackendProfileCache(): Promise<void> {
+  await chrome.storage.local.remove(BACKEND_PROFILE_CACHE_KEY);
 }
 
 export function resolveEffectiveConfig(base: AppConfig, chat: ChatSettings): AppConfig {
