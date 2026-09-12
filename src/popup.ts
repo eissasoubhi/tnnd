@@ -12,17 +12,19 @@ interface DiagnosticSelectors {
   [key: string]: unknown;
 }
 
+interface DiagnosticSnapshot {
+  generatedAt: string;
+  page: unknown;
+  selectors: DiagnosticSelectors;
+  resources: unknown;
+  config: unknown;
+  domHtml: string;
+  domTruncated: boolean;
+}
+
 interface DiagnosticResponse {
   ok: boolean;
-  snapshot?: {
-    generatedAt: string;
-    page: unknown;
-    selectors: DiagnosticSelectors;
-    resources: unknown;
-    config: unknown;
-    domHtml: string;
-    domTruncated: boolean;
-  };
+  snapshot?: DiagnosticSnapshot;
   error?: string;
 }
 
@@ -85,7 +87,7 @@ function displayView(view: TinderViewState | undefined, signals: string[] = []):
     : "No reliable detection signal yet";
 }
 
-async function fetchDiagnosticSnapshot(): Promise<DiagnosticResponse["snapshot"]> {
+async function fetchDiagnosticSnapshot(): Promise<DiagnosticSnapshot> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id || !isTinderUrl(tab.url)) throw new Error("Open Tinder in the active tab, then click TNND again.");
   const response = await chrome.tabs.sendMessage(tab.id, { type: "TNND_GET_DIAGNOSTICS" }) as DiagnosticResponse;
