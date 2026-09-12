@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run typecheck && node scripts/build.mjs",
+    "build": "npm run typecheck && npm run test:tinder-state && node scripts/build.mjs",
     "dev": "node scripts/build.mjs --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:tinder-state": "node --experimental-strip-types scripts/check-tinder-state-machine.mjs"
   },
   "dependencies": {
     "fflate": "^0.8.2"
