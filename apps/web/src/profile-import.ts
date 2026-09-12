@@ -4,22 +4,25 @@ export interface ImportedProfile {
   [key: string]: unknown;
 }
 
+export function validateImportedProfile(value: unknown): { ok: true; profile: ImportedProfile } | { ok: false; error: string } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, error: "Profile must be a JSON object." };
+  }
+
+  const candidate = value as Record<string, unknown>;
+  if (candidate.kind !== "tnnd-user-profile") {
+    return { ok: false, error: "Unsupported profile kind." };
+  }
+  if (candidate.schemaVersion !== 1) {
+    return { ok: false, error: "Unsupported profile schema version." };
+  }
+
+  return { ok: true, profile: candidate as ImportedProfile };
+}
+
 export function parseImportedProfile(raw: string): { ok: true; profile: ImportedProfile } | { ok: false; error: string } {
   try {
-    const value = JSON.parse(raw) as unknown;
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      return { ok: false, error: "Profile must be a JSON object." };
-    }
-
-    const candidate = value as Record<string, unknown>;
-    if (candidate.kind !== "tnnd-user-profile") {
-      return { ok: false, error: "Unsupported profile kind." };
-    }
-    if (candidate.schemaVersion !== 1) {
-      return { ok: false, error: "Unsupported profile schema version." };
-    }
-
-    return { ok: true, profile: candidate as ImportedProfile };
+    return validateImportedProfile(JSON.parse(raw) as unknown);
   } catch {
     return { ok: false, error: "Invalid JSON file." };
   }
