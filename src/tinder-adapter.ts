@@ -11,8 +11,8 @@ export interface TinderNavigationCandidate {
   kind: "discovery" | "inbox" | "conversation" | "unknown";
   tag: string;
   href: string | null;
-  ariaLabel: string | null;
-  testId: string | null;
+  ariaLabelHint: string | null;
+  testIdHint: string | null;
   visible: boolean;
 }
 
@@ -61,6 +61,11 @@ const DISCOVERY_SELECTORS = [
   '[aria-label*="nope" i]',
   'button[aria-label*="like" i]',
   'button[aria-label*="nope" i]'
+];
+
+const SAFE_NAV_HINTS = [
+  "message", "messages", "match", "matches", "inbox", "chat", "conversation",
+  "recs", "discover", "discovery", "swipe", "like", "nope", "send", "envoyer"
 ];
 
 function textOf(element: Element): string {
@@ -214,6 +219,13 @@ function classifyNavigationCandidate(element: HTMLElement): TinderNavigationCand
   return "unknown";
 }
 
+function semanticNavigationHint(value: string | null): string | null {
+  if (!value) return null;
+  const normalized = value.toLowerCase();
+  const matches = SAFE_NAV_HINTS.filter((token) => normalized.includes(token));
+  return matches.length ? Array.from(new Set(matches)).join("+") : "[redacted-navigation-label]";
+}
+
 function navigationCandidates(): TinderNavigationCandidate[] {
   const selector = "a[href],button,[role='button'],[data-testid],[aria-label]";
   const candidates: TinderNavigationCandidate[] = [];
@@ -235,8 +247,8 @@ function navigationCandidates(): TinderNavigationCandidate[] {
       kind,
       tag: element.tagName.toLowerCase(),
       href: safeHref,
-      ariaLabel: element.getAttribute("aria-label"),
-      testId: element.getAttribute("data-testid"),
+      ariaLabelHint: semanticNavigationHint(element.getAttribute("aria-label")),
+      testIdHint: semanticNavigationHint(element.getAttribute("data-testid")),
       visible: true
     });
     if (candidates.length >= 30) break;
