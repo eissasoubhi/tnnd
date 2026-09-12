@@ -77,32 +77,17 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
     if (acceptedOutgoingCount > 0) {
       await client.query(
         `UPDATE conversations
-         SET temporary_instruction_remaining = CASE
-               WHEN temporary_instruction_scope IN ('next-message', 'next-n-replies')
-                 AND temporary_instruction_remaining > $1
-               THEN temporary_instruction_remaining - $1
-               ELSE temporary_instruction_remaining
-             END,
-             temporary_instruction = CASE
-               WHEN temporary_instruction_scope IN ('next-message', 'next-n-replies')
-                 AND temporary_instruction_remaining <= $1
-               THEN NULL
+         SET temporary_instruction = CASE
+               WHEN temporary_instruction_remaining <= $1 THEN NULL
                ELSE temporary_instruction
              END,
              temporary_instruction_scope = CASE
-               WHEN temporary_instruction_scope IN ('next-message', 'next-n-replies')
-                 AND temporary_instruction_remaining <= $1
-               THEN NULL
+               WHEN temporary_instruction_remaining <= $1 THEN NULL
                ELSE temporary_instruction_scope
              END,
              temporary_instruction_remaining = CASE
-               WHEN temporary_instruction_scope IN ('next-message', 'next-n-replies')
-                 AND temporary_instruction_remaining <= $1
-               THEN NULL
-               WHEN temporary_instruction_scope IN ('next-message', 'next-n-replies')
-                 AND temporary_instruction_remaining > $1
-               THEN temporary_instruction_remaining - $1
-               ELSE temporary_instruction_remaining
+               WHEN temporary_instruction_remaining <= $1 THEN NULL
+               ELSE temporary_instruction_remaining - $1
              END,
              updated_at = now()
          WHERE id = $2 AND user_id = $3
