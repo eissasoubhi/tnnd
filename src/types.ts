@@ -4,11 +4,25 @@ export type EmojiLevel = "none" | "low" | "medium";
 export type GeneratePurpose = "manual" | "auto" | "preview";
 export type ContactPreference = "instagram-first" | "whatsapp-first" | "stay-on-tinder";
 export type ConversationStage = "auto" | "opener" | "discovery" | "playful" | "date-prep" | "off-app" | "re-engagement";
+export type TextingFormality = "very-casual" | "casual" | "neutral";
+export type TextingFrequency = "low" | "medium" | "high";
 
 export interface LanguageWeights {
   fr: number;
   darija: number;
   en: number;
+}
+
+export interface TextingStyleProfile {
+  formality: TextingFormality;
+  capitalization: "mostly-lowercase" | "normal";
+  punctuation: TextingFrequency;
+  abbreviations: TextingFrequency;
+  slang: "none" | "natural" | "high";
+  fragmentedMessages: boolean;
+  perfectGrammar: boolean;
+  questionFrequency: TextingFrequency;
+  doubleTexting: "rarely" | "sometimes" | "often";
 }
 
 export interface IdentityProfile {
@@ -50,6 +64,7 @@ export interface AppConfig {
   extraInstructions: string;
   identity: IdentityProfile;
   automation: AutomationConfig;
+  textingStyle?: TextingStyleProfile;
 }
 
 export interface ChatSettings {
