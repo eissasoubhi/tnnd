@@ -1,0 +1,44 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #171717;
+  background: #f5f5f4;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #f5f5f4; }
+button, input, select, textarea { font: inherit; }
+
+.shell { max-width: 1180px; margin: 0 auto; padding: 48px 24px 80px; }
+.topbar { display: flex; gap: 24px; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; }
+h1 { margin: 4px 0 8px; font-size: clamp(30px, 4vw, 52px); line-height: 1; letter-spacing: -0.04em; }
+h2 { margin: 4px 0 0; font-size: 20px; letter-spacing: -0.02em; }
+p { line-height: 1.55; }
+.eyebrow { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: #737373; }
+.subtle { max-width: 680px; margin: 0; color: #737373; }
+.status, .pill { display: inline-flex; align-items: center; border: 1px solid #d6d3d1; border-radius: 999px; padding: 7px 11px; font-size: 12px; font-weight: 700; white-space: nowrap; background: #fff; }
+.metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+.metric, .panel { background: #fff; border: 1px solid #e7e5e4; border-radius: 18px; box-shadow: 0 10px 30px rgba(0,0,0,.035); }
+.metric { padding: 18px; display: grid; gap: 8px; }
+.metric span, .metric small { color: #737373; font-size: 12px; }
+.metric strong { font-size: 34px; letter-spacing: -0.04em; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.panel { padding: 22px; }
+.panel-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.panel > p { margin: 18px 0 0; color: #57534e; }
+
+@media (max-width: 760px) {
+  .shell { padding: 28px 16px 56px; }
+  .topbar { display: grid; }
+  .metrics, .grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 480px) {
+  .metrics, .grid { grid-template-columns: 1fr; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root { color: #f5f5f4; background: #0c0a09; }
+  body { background: #0c0a09; }
+  .metric, .panel, .status, .pill { background: #171717; border-color: #292524; }
+  .subtle, .metric span, .metric small, .panel > p, .eyebrow { color: #a8a29e; }
+}
