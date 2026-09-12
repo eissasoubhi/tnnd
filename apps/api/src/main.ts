@@ -1,8 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { hashSessionToken } from "./auth.js";
 import { authenticateSession, listAccountSessions, loginWithPassword, registerAccount, revokeAccountSession, revokeSession } from "./auth-service.js";
-import { getConversation, listConversations, syncConversation } from "./conversation-service.js";
-import { validateConversationSyncRequest } from "./conversation-sync-contract.js";
+import { getConversation, listConversations, syncConversation, updateConversationStatus } from "./conversation-service.js";
+import { isConversationStatus, validateConversationSyncRequest } from "./conversation-sync-contract.js";
 import { getPool } from "./db-client.js";
 import { createHumanAction, listHumanActions, updateHumanActionStatus, type HumanActionSeverity, type HumanActionStatus } from "./human-action-service.js";
 import { profileSchemaVersion, publicProfileSchema, validateProfileEnvelope } from "./profile-schema.js";
@@ -71,7 +71,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "extension-sync-foundation", "conversation-sync", "conversation-read", "human-actions", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-status-control", "human-actions", "security-baseline"]
       });
       return;
     }
@@ -233,6 +233,23 @@ const server = createServer(async (request, response) => {
           pendingHumanActions: 0
         }))
       });
+      return;
+    }
+
+    if (request.method === "PATCH" && url.pathname.startsWith("/api/v1/conversations/")) {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const conversationId = decodeURIComponent(url.pathname.slice("/api/v1/conversations/".length));
+      const body = await readJsonBody(request);
+      if (!conversationId || !isConversationStatus(body.status)) {
+        sendJson(response, 400, { error: "invalid_conversation_status_update" });
+        return;
+      }
+      const conversation = await updateConversationStatus(session.user.id, conversationId, body.status);
+      sendJson(response, conversation ? 200 : 404, conversation ? { conversation } : { error: "conversation_not_found" });
       return;
     }
 
