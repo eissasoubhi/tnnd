@@ -7,6 +7,10 @@
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: #f5f5f4; }
 button, input, select, textarea { font: inherit; }
+button, input, select { border: 1px solid #d6d3d1; border-radius: 10px; padding: 10px 12px; background: #fff; color: inherit; }
+button { cursor: pointer; font-weight: 700; }
+button:disabled, select:disabled { opacity: .55; cursor: not-allowed; }
+label { display: grid; gap: 7px; font-size: 12px; font-weight: 700; color: #57534e; }
 
 .shell { max-width: 1180px; margin: 0 auto; padding: 48px 24px 80px; }
 .topbar { display: flex; gap: 24px; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; }
@@ -25,6 +29,7 @@ p { line-height: 1.55; }
 .panel { padding: 22px; }
 .panel-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .panel > p { margin: 18px 0 0; color: #57534e; }
+.preferences-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 18px 0 14px; }
 
 @media (max-width: 760px) {
   .shell { padding: 28px 16px 56px; }
@@ -33,12 +38,12 @@ p { line-height: 1.55; }
 }
 
 @media (max-width: 480px) {
-  .metrics, .grid { grid-template-columns: 1fr; }
+  .metrics, .grid, .preferences-grid { grid-template-columns: 1fr; }
 }
 
 @media (prefers-color-scheme: dark) {
   :root { color: #f5f5f4; background: #0c0a09; }
   body { background: #0c0a09; }
-  .metric, .panel, .status, .pill { background: #171717; border-color: #292524; }
-  .subtle, .metric span, .metric small, .panel > p, .eyebrow { color: #a8a29e; }
+  .metric, .panel, .status, .pill, button, input, select { background: #171717; border-color: #292524; }
+  .subtle, .metric span, .metric small, .panel > p, .eyebrow, label { color: #a8a29e; }
 }
