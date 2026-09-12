@@ -23,7 +23,7 @@ async function parseJson<T>(response: Response): Promise<T | null> {
 }
 
 export async function loginBackend(input: BackendLoginInput): Promise<BackendSession> {
-  await saveSyncState({ status: "connecting", pendingItems: 0 });
+  await saveSyncState({ status: "connecting", pendingItems: 0, lastSyncedAt: null, message: null });
   try {
     const response = await fetch(`${apiBase()}/api/v1/auth/login`, {
       method: "POST",
@@ -36,10 +36,10 @@ export async function loginBackend(input: BackendLoginInput): Promise<BackendSes
     }
     const session: BackendSession = { token: payload.token, expiresAt: payload.expiresAt, user: payload.user };
     await saveBackendSession(session);
-    await saveSyncState({ status: "connected", pendingItems: 0, lastSyncedAt: new Date().toISOString() });
+    await saveSyncState({ status: "connected", pendingItems: 0, lastSyncedAt: new Date().toISOString(), message: null });
     return session;
   } catch (error) {
-    await saveSyncState({ status: "error", pendingItems: 0, errorMessage: error instanceof Error ? error.message : "Connection failed." });
+    await saveSyncState({ status: "error", pendingItems: 0, lastSyncedAt: null, message: error instanceof Error ? error.message : "Connection failed." });
     throw error;
   }
 }
@@ -47,7 +47,7 @@ export async function loginBackend(input: BackendLoginInput): Promise<BackendSes
 export async function validateBackendSession(): Promise<BackendSession | null> {
   const session = await getBackendSession();
   if (!session) {
-    await saveSyncState({ status: "disconnected", pendingItems: 0 });
+    await saveSyncState({ status: "disconnected", pendingItems: 0, lastSyncedAt: null, message: null });
     return null;
   }
   const response = await fetch(`${apiBase()}/api/v1/auth/session`, {
@@ -55,10 +55,10 @@ export async function validateBackendSession(): Promise<BackendSession | null> {
   });
   if (!response.ok) {
     await clearBackendSession();
-    await saveSyncState({ status: "disconnected", pendingItems: 0 });
+    await saveSyncState({ status: "disconnected", pendingItems: 0, lastSyncedAt: null, message: null });
     return null;
   }
-  await saveSyncState({ status: "connected", pendingItems: 0, lastSyncedAt: new Date().toISOString() });
+  await saveSyncState({ status: "connected", pendingItems: 0, lastSyncedAt: new Date().toISOString(), message: null });
   return session;
 }
 
@@ -73,6 +73,6 @@ export async function logoutBackend(): Promise<void> {
     }
   } finally {
     await clearBackendSession();
-    await saveSyncState({ status: "disconnected", pendingItems: 0 });
+    await saveSyncState({ status: "disconnected", pendingItems: 0, lastSyncedAt: null, message: null });
   }
 }
