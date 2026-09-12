@@ -23,6 +23,11 @@ export interface AccountSession {
   current: boolean;
 }
 
+export interface LoginClientInfo {
+  clientType?: "web" | "extension";
+  deviceLabel?: string;
+}
+
 export type RegisterResult =
   | { ok: true; user: { id: string; email: string } }
   | { ok: false; error: "invalid_email" | "invalid_password" | "email_already_exists"; details?: string };
@@ -48,7 +53,7 @@ export async function registerAccount(emailInput: string, password: string): Pro
   }
 }
 
-export async function loginWithPassword(emailInput: string, password: string): Promise<LoginResult | null> {
+export async function loginWithPassword(emailInput: string, password: string, client: LoginClientInfo = {}): Promise<LoginResult | null> {
   const email = normalizeEmail(emailInput);
   if (!email || !password) return null;
   const pool = getPool();
@@ -60,10 +65,13 @@ export async function loginWithPassword(emailInput: string, password: string): P
   if (!user || !(await verifyPassword(password, user.password_hash))) return null;
 
   const session = await createSessionToken();
+  const clientType = client.clientType ?? "web";
+  const customLabel = client.deviceLabel?.trim().slice(0, 120);
+  const deviceLabel = customLabel ? `${clientType}:${customLabel}` : clientType;
   await pool.query(
     `INSERT INTO extension_sessions (id, user_id, device_label, token_hash, expires_at)
      VALUES ($1, $2, $3, $4, $5)`,
-    [randomUUID(), user.id, "web", session.tokenHash, session.expiresAt]
+    [randomUUID(), user.id, deviceLabel, session.tokenHash, session.expiresAt]
   );
 
   return {
