@@ -33,13 +33,18 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
       [userId, input.externalThreadId]
     );
     let conversationId = existing.rows[0]?.id;
-    const status: ConversationStatus = existing.rows[0]?.status ?? "active";
+    const status: ConversationStatus = input.status ?? existing.rows[0]?.status ?? "active";
     if (!conversationId) {
       conversationId = randomUUID();
       await client.query(
         `INSERT INTO conversations (id, user_id, external_thread_id, status)
          VALUES ($1, $2, $3, $4)`,
         [conversationId, userId, input.externalThreadId, status]
+      );
+    } else if (input.status && input.status !== existing.rows[0]?.status) {
+      await client.query(
+        "UPDATE conversations SET status = $1, updated_at = now() WHERE id = $2 AND user_id = $3",
+        [input.status, conversationId, userId]
       );
     }
 
