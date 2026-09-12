@@ -1,5 +1,6 @@
 import { createProfileBundle, parseProfileBundle } from "./profile-bundle";
 import { getApiKey, getConfig, saveApiKey, saveConfig } from "./storage";
+import { mountTextingStyleControls } from "./texting-options";
 import type { AppConfig, ContactPreference, EmojiLevel, MessageLength, Tone } from "./types";
 
 function el<T extends HTMLElement>(id: string): T {
@@ -7,6 +8,8 @@ function el<T extends HTMLElement>(id: string): T {
   if (!found) throw new Error(`Missing options field: ${id}`);
   return found as T;
 }
+
+const textingStyle = mountTextingStyleControls();
 
 const f = {
   form: el<HTMLFormElement>("settings-form"), apiKey: el<HTMLInputElement>("apiKey"), model: el<HTMLInputElement>("model"),
@@ -32,6 +35,7 @@ function readConfig(): AppConfig {
     flirtLevel: num(f.flirtLevel, 2), humorLevel: num(f.humorLevel, 65), emojiLevel: f.emojiLevel.value as EmojiLevel, replyCount: num(f.replyCount, 3),
     languages: { fr: num(f.langFr), darija: num(f.langDarija), en: num(f.langEn) },
     preferredWords: f.preferredWords.value.trim(), avoidedWords: f.avoidedWords.value.trim(), extraInstructions: f.extraInstructions.value.trim(),
+    textingStyle: textingStyle.read(),
     identity: { firstName: f.firstName.value.trim(), age: f.age.value.trim(), city: f.city.value.trim(), origin: f.origin.value.trim(), occupation: f.occupation.value.trim(), interests: f.interests.value.trim(), aboutMe: f.aboutMe.value.trim(), instagram: f.instagram.value.trim(), whatsapp: f.whatsapp.value.trim(), contactPreference: f.contactPreference.value as ContactPreference },
     automation: { enabled: f.autoEnabled.checked, replyDelayMinSeconds, replyDelayMaxSeconds, quietHoursEnabled: f.quietHoursEnabled.checked, quietStart: f.quietStart.value, quietEnd: f.quietEnd.value, maxAutoRepliesPerDay: num(f.maxAutoRepliesPerDay, 40) }
   };
@@ -40,6 +44,7 @@ function readConfig(): AppConfig {
 function applyConfig(c: AppConfig): void {
   f.model.value = c.model; f.tone.value = c.tone; f.messageLength.value = c.messageLength; f.flirtLevel.value = String(c.flirtLevel); f.humorLevel.value = String(c.humorLevel); f.emojiLevel.value = c.emojiLevel; f.replyCount.value = String(c.replyCount);
   f.langFr.value = String(c.languages.fr); f.langDarija.value = String(c.languages.darija); f.langEn.value = String(c.languages.en); f.preferredWords.value = c.preferredWords; f.avoidedWords.value = c.avoidedWords; f.extraInstructions.value = c.extraInstructions;
+  textingStyle.apply(c.textingStyle);
   f.firstName.value = c.identity.firstName; f.age.value = c.identity.age; f.city.value = c.identity.city; f.origin.value = c.identity.origin; f.occupation.value = c.identity.occupation; f.interests.value = c.identity.interests; f.aboutMe.value = c.identity.aboutMe; f.instagram.value = c.identity.instagram; f.whatsapp.value = c.identity.whatsapp; f.contactPreference.value = c.identity.contactPreference;
   const legacy = Number(c.automation.replyDelaySeconds);
   f.autoEnabled.checked = c.automation.enabled;
