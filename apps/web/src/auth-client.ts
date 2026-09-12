@@ -17,6 +17,15 @@ export interface RegisteredAccount {
   email: string;
 }
 
+export interface AccountSession {
+  id: string;
+  deviceLabel: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+  expiresAt: string;
+  current: boolean;
+}
+
 export class AuthApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -53,7 +62,8 @@ export async function login(credentials: LoginCredentials): Promise<AuthSession>
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       email: credentials.email.trim().toLowerCase(),
-      password: credentials.password
+      password: credentials.password,
+      clientType: "web"
     })
   });
 
@@ -78,6 +88,27 @@ export async function logout(session: AuthSession): Promise<void> {
   if (response.ok || response.status === 404 || response.status === 401) return;
   const payload = await parseJson<{ error?: string }>(response);
   throw new AuthApiError(payload?.error ?? "Unable to sign out.", response.status);
+}
+
+export async function listSessions(session: AuthSession): Promise<AccountSession[]> {
+  const response = await fetch(`${apiBase}/api/v1/auth/sessions`, {
+    headers: { authorization: `Bearer ${session.token}` }
+  });
+  const payload = await parseJson<{ sessions?: AccountSession[]; error?: string }>(response);
+  if (!response.ok || !payload?.sessions) {
+    throw new AuthApiError(payload?.error ?? "Unable to load account sessions.", response.status);
+  }
+  return payload.sessions;
+}
+
+export async function revokeSession(session: AuthSession, sessionId: string): Promise<void> {
+  const response = await fetch(`${apiBase}/api/v1/auth/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "DELETE",
+    headers: { authorization: `Bearer ${session.token}` }
+  });
+  if (response.ok || response.status === 404) return;
+  const payload = await parseJson<{ error?: string }>(response);
+  throw new AuthApiError(payload?.error ?? "Unable to revoke session.", response.status);
 }
 
 export function persistSession(session: AuthSession): void {
