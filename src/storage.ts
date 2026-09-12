@@ -5,6 +5,13 @@ const CONFIG_KEY = "tnnd.config";
 const API_KEY_KEY = "tnnd.geminiApiKey";
 const CHAT_SETTINGS_KEY = "tnnd.chatSettings";
 const SYNC_STATE_KEY = "tnnd.syncState";
+const BACKEND_SESSION_KEY = "tnnd.backendSession";
+
+export interface BackendSession {
+  token: string;
+  expiresAt: string;
+  user: { id: string; email: string };
+}
 
 export const DEFAULT_CONFIG: AppConfig = {
   model: "gemini-3.8-flash",
@@ -133,6 +140,25 @@ export async function getSyncState(): Promise<SyncState> {
 
 export async function saveSyncState(state: SyncState): Promise<void> {
   await chrome.storage.local.set({ [SYNC_STATE_KEY]: state });
+}
+
+export async function getBackendSession(): Promise<BackendSession | null> {
+  const result = await chrome.storage.local.get(BACKEND_SESSION_KEY);
+  const value = result[BACKEND_SESSION_KEY] as BackendSession | undefined;
+  if (!value?.token || !value?.expiresAt || !value.user?.id || !value.user?.email) return null;
+  if (Date.parse(value.expiresAt) <= Date.now()) {
+    await chrome.storage.local.remove(BACKEND_SESSION_KEY);
+    return null;
+  }
+  return value;
+}
+
+export async function saveBackendSession(session: BackendSession): Promise<void> {
+  await chrome.storage.local.set({ [BACKEND_SESSION_KEY]: session });
+}
+
+export async function clearBackendSession(): Promise<void> {
+  await chrome.storage.local.remove(BACKEND_SESSION_KEY);
 }
 
 export function resolveEffectiveConfig(base: AppConfig, chat: ChatSettings): AppConfig {
