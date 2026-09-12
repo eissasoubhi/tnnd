@@ -8,6 +8,7 @@ export interface ConversationSummary {
   status: ConversationStatus;
   currentTopic?: string;
   lastMessageAt?: string;
+  pendingHumanActions?: number;
   updatedAt: string;
 }
 
@@ -79,10 +80,18 @@ export async function listConversations(userId: string): Promise<ConversationSum
     status: ConversationStatus;
     current_topic: string | null;
     last_message_at: Date | null;
+    pending_human_actions: string | number;
     updated_at: Date;
   }>(
     `SELECT c.id, c.external_thread_id, c.status, c.current_topic, c.updated_at,
-            MAX(m.sent_at) AS last_message_at
+            MAX(m.sent_at) AS last_message_at,
+            (
+              SELECT COUNT(*)
+              FROM human_actions h
+              WHERE h.user_id = c.user_id
+                AND h.status = 'pending'
+                AND (h.conversation_ref = c.id::text OR h.conversation_ref = c.external_thread_id)
+            ) AS pending_human_actions
      FROM conversations c
      LEFT JOIN conversation_messages m ON m.conversation_id = c.id
      WHERE c.user_id = $1
@@ -96,6 +105,7 @@ export async function listConversations(userId: string): Promise<ConversationSum
     status: row.status,
     ...(row.current_topic ? { currentTopic: row.current_topic } : {}),
     ...(row.last_message_at ? { lastMessageAt: row.last_message_at.toISOString() } : {}),
+    pendingHumanActions: Number(row.pending_human_actions) || 0,
     updatedAt: row.updated_at.toISOString()
   }));
 }
@@ -106,11 +116,19 @@ export async function getConversation(userId: string, conversationId: string): P
     external_thread_id: string;
     status: ConversationStatus;
     current_topic: string | null;
+    pending_human_actions: string | number;
     updated_at: Date;
   }>(
-    `SELECT id, external_thread_id, status, current_topic, updated_at
-     FROM conversations
-     WHERE user_id = $1 AND id = $2
+    `SELECT c.id, c.external_thread_id, c.status, c.current_topic, c.updated_at,
+            (
+              SELECT COUNT(*)
+              FROM human_actions h
+              WHERE h.user_id = c.user_id
+                AND h.status = 'pending'
+                AND (h.conversation_ref = c.id::text OR h.conversation_ref = c.external_thread_id)
+            ) AS pending_human_actions
+     FROM conversations c
+     WHERE c.user_id = $1 AND c.id = $2
      LIMIT 1`,
     [userId, conversationId]
   );
@@ -143,6 +161,7 @@ export async function getConversation(userId: string, conversationId: string): P
     status: conversation.status,
     ...(conversation.current_topic ? { currentTopic: conversation.current_topic } : {}),
     ...(messages.length ? { lastMessageAt: messages[messages.length - 1].sentAt } : {}),
+    pendingHumanActions: Number(conversation.pending_human_actions) || 0,
     updatedAt: conversation.updated_at.toISOString(),
     messages
   };
