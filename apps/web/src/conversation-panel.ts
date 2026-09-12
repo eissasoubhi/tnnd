@@ -1,6 +1,6 @@
 import { readSession } from "./auth-client";
 import { getConversation, listConversations, type ConversationDetail } from "./conversation-client";
-import type { ConversationListItem } from "./conversation-contract";
+import type { ConversationListItem, ConversationStatus } from "./conversation-contract";
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>'"]/g, (char) => ({
@@ -18,10 +18,10 @@ function formatDate(value?: string | null): string {
   return Number.isNaN(date.getTime()) ? "Unknown date" : date.toLocaleString();
 }
 
-function renderList(items: ConversationListItem[]): string {
-  if (!items.length) return '<p class="subtle">No synchronized conversations yet.</p>';
+function renderList(items: ConversationListItem[], selectedId?: string): string {
+  if (!items.length) return '<p class="subtle">No conversations match this filter.</p>';
   return items.map((item) => `
-    <button type="button" class="conversation-row" data-conversation-id="${escapeHtml(item.id)}">
+    <button type="button" class="conversation-row${item.id === selectedId ? " selected" : ""}" data-conversation-id="${escapeHtml(item.id)}">
       <span class="conversation-row-main">
         <strong>${escapeHtml(item.displayName)}</strong>
         <small>${escapeHtml(item.currentTopic ?? "No topic yet")}</small>
@@ -62,10 +62,11 @@ function installStyles(): void {
   const style = document.createElement("style");
   style.id = "tnnd-conversation-panel-styles";
   style.textContent = `
+    .conversation-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;flex-wrap:wrap}.conversation-filter{display:flex;align-items:center;gap:7px;font-size:12px}.conversation-filter select{width:auto;min-width:170px}.conversation-summary{font-size:11px;opacity:.7}
     .conversation-layout{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(280px,1.1fr);gap:14px;margin-top:14px}
     .conversation-list{display:grid;gap:8px;align-content:start;max-height:430px;overflow:auto}
     .conversation-row{width:100%;display:flex;justify-content:space-between;gap:12px;text-align:left;padding:11px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:transparent;color:inherit;cursor:pointer}
-    .conversation-row:hover{border-color:currentColor}.conversation-row-main,.conversation-row-meta{display:grid;gap:4px}.conversation-row-meta{text-align:right;justify-items:end}.conversation-row small,.conversation-detail small,.conversation-message small{opacity:.65}
+    .conversation-row:hover{border-color:currentColor}.conversation-row.selected{outline:2px solid currentColor;outline-offset:1px}.conversation-row-main,.conversation-row-meta{display:grid;gap:4px}.conversation-row-meta{text-align:right;justify-items:end}.conversation-row small,.conversation-detail small,.conversation-message small{opacity:.65}
     .conversation-detail{min-height:180px;border:1px solid var(--border,#d4d4d8);border-radius:12px;padding:12px}.conversation-detail-heading{display:flex;justify-content:space-between;gap:12px;margin-bottom:12px}.conversation-detail-heading>div{display:grid;gap:4px}
     .conversation-messages{display:grid;gap:8px;max-height:340px;overflow:auto}.conversation-message{max-width:86%;padding:9px 10px;border-radius:10px;background:rgba(127,127,127,.12)}.conversation-message.outgoing{justify-self:end}.conversation-message.incoming{justify-self:start}.conversation-message span{font-size:10px;font-weight:700;opacity:.7}.conversation-message p{margin:3px 0 4px;white-space:pre-wrap}
     @media(max-width:760px){.conversation-layout{grid-template-columns:1fr}}
@@ -73,7 +74,7 @@ function installStyles(): void {
   document.head.append(style);
 }
 
-function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement } | null {
+function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement; filter: HTMLSelectElement; summary: HTMLElement } | null {
   const grid = document.querySelector<HTMLElement>(".grid");
   if (!grid) return null;
   installStyles();
@@ -85,6 +86,23 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement 
       <span class="pill" id="conversation-panel-status">Sign in required</span>
     </div>
     <p class="subtle">Synced Tinder conversations from the backend. Select one to inspect its current status, topic and message history.</p>
+    <div class="conversation-toolbar">
+      <label class="conversation-filter">Status
+        <select id="conversation-status-filter">
+          <option value="all">All conversations</option>
+          <option value="active">Active</option>
+          <option value="waiting-for-them">Waiting for them</option>
+          <option value="waiting-for-user">Waiting for user</option>
+          <option value="action-required">Action required</option>
+          <option value="paused">Paused</option>
+          <option value="disabled">Disabled</option>
+          <option value="moved-off-tinder">Moved off Tinder</option>
+          <option value="stale">Stale</option>
+          <option value="archived">Archived</option>
+        </select>
+      </label>
+      <span id="conversation-filter-summary" class="conversation-summary"></span>
+    </div>
     <div class="conversation-layout">
       <div id="conversation-list" class="conversation-list"></div>
       <div id="conversation-detail" class="conversation-detail"><p class="subtle">Select a conversation.</p></div>
@@ -94,11 +112,45 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement 
   return {
     list: panel.querySelector<HTMLElement>("#conversation-list")!,
     detail: panel.querySelector<HTMLElement>("#conversation-detail")!,
-    status: panel.querySelector<HTMLElement>("#conversation-panel-status")!
+    status: panel.querySelector<HTMLElement>("#conversation-panel-status")!,
+    filter: panel.querySelector<HTMLSelectElement>("#conversation-status-filter")!,
+    summary: panel.querySelector<HTMLElement>("#conversation-filter-summary")!
   };
 }
 
 const elements = mount();
+let cachedItems: ConversationListItem[] = [];
+let selectedConversationId: string | undefined;
+
+function filteredItems(): ConversationListItem[] {
+  if (!elements || elements.filter.value === "all") return cachedItems;
+  return cachedItems.filter((item) => item.status === elements.filter.value as ConversationStatus);
+}
+
+function bindRows(items: ConversationListItem[]): void {
+  if (!elements) return;
+  elements.list.querySelectorAll<HTMLElement>("[data-conversation-id]").forEach((row) => {
+    row.addEventListener("click", () => {
+      const id = row.dataset.conversationId;
+      if (!id) return;
+      selectedConversationId = id;
+      renderCurrentList();
+      void loadDetail(id);
+    });
+  });
+  if (selectedConversationId && !items.some((item) => item.id === selectedConversationId)) {
+    selectedConversationId = undefined;
+    elements.detail.innerHTML = '<p class="subtle">Select a conversation.</p>';
+  }
+}
+
+function renderCurrentList(): void {
+  if (!elements) return;
+  const items = filteredItems();
+  elements.list.innerHTML = renderList(items, selectedConversationId);
+  elements.summary.textContent = `${items.length} shown · ${cachedItems.length} total`;
+  bindRows(items);
+}
 
 async function loadDetail(conversationId: string): Promise<void> {
   if (!elements) return;
@@ -116,7 +168,10 @@ async function refresh(): Promise<void> {
   if (!elements) return;
   const session = readSession();
   if (!session) {
+    cachedItems = [];
+    selectedConversationId = undefined;
     elements.status.textContent = "Sign in required";
+    elements.summary.textContent = "0 shown · 0 total";
     elements.list.innerHTML = '<p class="subtle">Connect your TNND account to load conversations.</p>';
     elements.detail.innerHTML = '<p class="subtle">Conversation details will appear here.</p>';
     return;
@@ -124,18 +179,29 @@ async function refresh(): Promise<void> {
 
   elements.status.textContent = "Loading…";
   try {
-    const items = await listConversations(session);
-    elements.list.innerHTML = renderList(items);
-    elements.status.textContent = `${items.length} synced`;
-    elements.list.querySelectorAll<HTMLElement>("[data-conversation-id]").forEach((row) => {
-      row.addEventListener("click", () => void loadDetail(row.dataset.conversationId ?? ""));
-    });
-    if (items[0]) void loadDetail(items[0].id);
+    cachedItems = await listConversations(session);
+    elements.status.textContent = `${cachedItems.length} synced`;
+    const visible = filteredItems();
+    if (!selectedConversationId && visible[0]) selectedConversationId = visible[0].id;
+    renderCurrentList();
+    if (selectedConversationId) void loadDetail(selectedConversationId);
   } catch (error) {
+    cachedItems = [];
+    selectedConversationId = undefined;
     elements.status.textContent = "Unavailable";
+    elements.summary.textContent = "0 shown · 0 total";
     elements.list.innerHTML = `<p class="subtle">${escapeHtml(error instanceof Error ? error.message : "Unable to load conversations.")}</p>`;
   }
 }
+
+elements?.filter.addEventListener("change", () => {
+  const visible = filteredItems();
+  if (!selectedConversationId || !visible.some((item) => item.id === selectedConversationId)) {
+    selectedConversationId = visible[0]?.id;
+  }
+  renderCurrentList();
+  if (selectedConversationId) void loadDetail(selectedConversationId);
+});
 
 window.addEventListener("tnnd:auth-session-changed", () => void refresh());
 void refresh();
