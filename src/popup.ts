@@ -12,9 +12,14 @@ interface DiagnosticSelectors {
   [key: string]: unknown;
 }
 
+interface DiagnosticPage {
+  url?: string;
+  [key: string]: unknown;
+}
+
 interface DiagnosticSnapshot {
   generatedAt: string;
-  page: unknown;
+  page: DiagnosticPage;
   selectors: DiagnosticSelectors;
   resources: unknown;
   config: unknown;
@@ -28,16 +33,28 @@ interface DiagnosticResponse {
   error?: string;
 }
 
+interface DiagnosticTraceEntry {
+  step: number;
+  capturedAt: string;
+  view: TinderViewState;
+  previousView: TinderViewState | null;
+  path: string;
+  signalCount: number;
+}
+
 interface ThreadInfoResponse {
   ok: boolean;
   threadKey?: string | null;
   threadKeyHash?: string;
 }
 
+const DIAGNOSTIC_TRACE_KEY = "tnnd.diagnosticTrace.v1";
 const version = document.getElementById("extensionVersion")!;
 const status = document.getElementById("status")!;
 const diagnosticView = document.getElementById("diagnosticView")!;
 const diagnosticViewEvidence = document.getElementById("diagnosticViewEvidence")!;
+const diagnosticSequence = document.getElementById("diagnosticSequence")!;
+const resetDiagnosticSequence = document.getElementById("resetDiagnosticSequence") as HTMLButtonElement;
 const exportButton = document.getElementById("exportDiagnostics") as HTMLButtonElement;
 const openSettings = document.getElementById("openSettings") as HTMLButtonElement;
 const openPreview = document.getElementById("openPreview") as HTMLButtonElement;
@@ -85,6 +102,39 @@ function displayView(view: TinderViewState | undefined, signals: string[] = []):
   diagnosticViewEvidence.textContent = signals.length
     ? `${signals.length} detection signal${signals.length === 1 ? "" : "s"}`
     : "No reliable detection signal yet";
+}
+
+function tracePath(value?: string): string {
+  if (!value) return "[unknown-path]";
+  try {
+    const url = new URL(value);
+    return url.pathname || "/";
+  } catch {
+    return "[unknown-path]";
+  }
+}
+
+async function readDiagnosticTrace(): Promise<DiagnosticTraceEntry[]> {
+  const raw = (await chrome.storage.local.get(DIAGNOSTIC_TRACE_KEY))[DIAGNOSTIC_TRACE_KEY];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((entry): entry is DiagnosticTraceEntry => Boolean(entry) && typeof entry === "object").slice(-20);
+}
+
+async function saveDiagnosticTrace(trace: DiagnosticTraceEntry[]): Promise<void> {
+  await chrome.storage.local.set({ [DIAGNOSTIC_TRACE_KEY]: trace.slice(-20) });
+}
+
+function renderDiagnosticSequence(trace: DiagnosticTraceEntry[]): void {
+  if (!trace.length) {
+    diagnosticSequence.textContent = "Sequence: no captured steps yet";
+    return;
+  }
+  const last = trace[trace.length - 1];
+  diagnosticSequence.textContent = `Sequence: ${trace.length} step${trace.length === 1 ? "" : "s"} · last ${last.view}`;
+}
+
+async function refreshDiagnosticSequence(): Promise<void> {
+  renderDiagnosticSequence(await readDiagnosticTrace());
 }
 
 async function fetchDiagnosticSnapshot(): Promise<DiagnosticSnapshot> {
@@ -190,13 +240,13 @@ function screenshotBytes(dataUrl: string): Uint8Array {
   return bytes;
 }
 
-function downloadZip(files: Record<string, Uint8Array>, view: TinderViewState): void {
+function downloadZip(files: Record<string, Uint8Array>, view: TinderViewState, step: number): void {
   const zipped = zipSync(files, { level: 6 });
   const blob = new Blob([zipped], { type: "application/zip" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `tnnd-diagnostics-${view}-${new Date().toISOString().replace(/[:.]/g, "-")}.zip`;
+  anchor.download = `tnnd-diagnostics-step-${String(step).padStart(2, "0")}-${view}-${new Date().toISOString().replace(/[:.]/g, "-")}.zip`;
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
@@ -212,7 +262,21 @@ async function exportDiagnostics(): Promise<void> {
     if (!response?.ok || !response.snapshot) throw new Error(response?.error ?? "The Tinder content script did not return diagnostics.");
     const snapshot = response.snapshot;
     const view = snapshot.selectors.view ?? "unknown";
-    displayView(view, snapshot.selectors.viewSignals);
+    const signals = snapshot.selectors.viewSignals ?? [];
+    displayView(view, signals);
+
+    const trace = await readDiagnosticTrace();
+    const traceEntry: DiagnosticTraceEntry = {
+      step: trace.length + 1,
+      capturedAt: new Date().toISOString(),
+      view,
+      previousView: trace.at(-1)?.view ?? null,
+      path: tracePath(snapshot.page.url),
+      signalCount: signals.length
+    };
+    const nextTrace = [...trace, traceEntry].slice(-20).map((entry, index) => ({ ...entry, step: index + 1 }));
+    await saveDiagnosticTrace(nextTrace);
+    renderDiagnosticSequence(nextTrace);
 
     let screenshot: Uint8Array | null = null;
     let screenshotError = "";
@@ -225,11 +289,13 @@ async function exportDiagnostics(): Promise<void> {
 
     const metadata = {
       kind: "tnnd-diagnostics",
-      schemaVersion: 2,
+      schemaVersion: 3,
       extensionVersion: chrome.runtime.getManifest().version,
       exportedAt: new Date().toISOString(),
+      diagnosticStep: traceEntry.step,
       tinderView: view,
-      viewSignals: snapshot.selectors.viewSignals ?? [],
+      previousTinderView: traceEntry.previousView,
+      viewSignals: signals,
       domTruncated: snapshot.domTruncated,
       screenshotIncluded: Boolean(screenshot),
       screenshotError: screenshotError || undefined,
@@ -238,6 +304,7 @@ async function exportDiagnostics(): Promise<void> {
 
     const files: Record<string, Uint8Array> = {
       "metadata.json": strToU8(JSON.stringify(metadata, null, 2)),
+      "navigation-trace.json": strToU8(JSON.stringify({ schemaVersion: 1, steps: nextTrace }, null, 2)),
       "page.json": strToU8(JSON.stringify(snapshot.page, null, 2)),
       "selectors.json": strToU8(JSON.stringify(snapshot.selectors, null, 2)),
       "resources.json": strToU8(JSON.stringify(snapshot.resources, null, 2)),
@@ -245,10 +312,10 @@ async function exportDiagnostics(): Promise<void> {
       "dom-redacted.html": strToU8(snapshot.domHtml)
     };
     if (screenshot) files["screenshot-visible.png"] = screenshot;
-    downloadZip(files, view);
+    downloadZip(files, view, traceEntry.step);
     status.textContent = screenshot
-      ? `Diagnostic ZIP exported for ${view} with visible screenshot.`
-      : `Diagnostic ZIP exported for ${view}. Screenshot was unavailable; the rest of the bundle is included.`;
+      ? `Diagnostic step ${traceEntry.step} exported for ${view} with visible screenshot.`
+      : `Diagnostic step ${traceEntry.step} exported for ${view}. Screenshot was unavailable; the rest of the bundle is included.`;
   } finally {
     exportButton.disabled = false;
   }
@@ -302,6 +369,12 @@ saveChat.addEventListener("click", () => {
   });
 });
 
+resetDiagnosticSequence.addEventListener("click", () => {
+  void chrome.storage.local.remove(DIAGNOSTIC_TRACE_KEY).then(() => {
+    renderDiagnosticSequence([]);
+    status.textContent = "Diagnostic sequence reset. Start again from the discovery view.";
+  });
+});
 openSettings.addEventListener("click", () => void chrome.runtime.openOptionsPage());
 openPreview.addEventListener("click", () => void chrome.tabs.create({ url: chrome.runtime.getURL("preview.html") }));
 exportButton.addEventListener("click", () => void exportDiagnostics().catch((error) => {
@@ -311,3 +384,4 @@ exportButton.addEventListener("click", () => void exportDiagnostics().catch((err
 void refreshBackendAuth();
 void loadCurrentChat();
 void loadDiagnosticView();
+void refreshDiagnosticSequence();
