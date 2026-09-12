@@ -14,7 +14,13 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      - name: Verify extension version consistency
+        run: node -e "const p=require('./package.json');const m=require('./public/manifest.json');if(p.version!==m.version){console.error('Version mismatch',p.version,m.version);process.exit(1)}"
       - run: npm run build
+      - name: Add build integrity metadata
+        run: |
+          printf '{"commit":"%s","version":"%s"}\n' "$GITHUB_SHA" "$(node -p "require('./package.json').version")" > dist/BUILD-INFO.json
+          find dist -type f ! -name BUILD-SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > dist/BUILD-SHA256SUMS.txt
       - name: Upload installable extension
         uses: actions/upload-artifact@v4
         with:
