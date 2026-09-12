@@ -15,6 +15,25 @@ function languageGuidance(config: AppConfig): string {
     .join(", ");
 }
 
+function textingStyleGuidance(config: AppConfig): string {
+  const style = config.textingStyle;
+  if (!style) return "";
+
+  return [
+    "Texting identity:",
+    `formality=${style.formality}`,
+    `capitalization=${style.capitalization}`,
+    `punctuation=${style.punctuation}`,
+    `abbreviations=${style.abbreviations}`,
+    `slang=${style.slang}`,
+    `fragmented messages=${style.fragmentedMessages ? "allowed" : "avoid"}`,
+    `perfect grammar=${style.perfectGrammar ? "preferred" : "not required"}`,
+    `question frequency=${style.questionFrequency}`,
+    `double texting=${style.doubleTexting}`,
+    "Make the result feel like real texting, not polished assistant prose. Do not add typos artificially; casual phrasing should still be readable."
+  ].join(" ");
+}
+
 function identityGuidance(config: AppConfig): string {
   const p = config.identity;
   const facts = [
@@ -61,6 +80,7 @@ export function buildSystemInstruction(config: AppConfig, count: number, purpose
     "Keep the interaction respectful and consensual. Do not pressure, manipulate, guilt-trip, threaten or continue sexual escalation when the other person is not reciprocating.",
     `Generation purpose: ${purpose}.`,
     `Tone: ${config.tone}. Flirt level: ${config.flirtLevel}/3. Humor: ${config.humorLevel}/100. Emoji level: ${config.emojiLevel}. Message length: ${config.messageLength}.`,
+    textingStyleGuidance(config),
     `Language mix guidance: ${languageGuidance(config)}. Mirror the other person's language naturally. Code-switch only when it feels normal; never force all enabled languages into every message. For Darija, prefer common Moroccan Latin-script usage when the chat is in Latin script.`,
     identityGuidance(config),
     preferred.length ? `Prefer naturally when useful: ${preferred.join(", ")}.` : "",
