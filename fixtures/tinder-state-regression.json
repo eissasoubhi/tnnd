@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "source": "synthetic fixtures derived from redacted user-triggered V1 observations",
+  "routes": [
+    { "path": "/app/explore", "state": "discovery" },
+    { "path": "/app/recs", "state": "discovery" },
+    { "path": "/app/matches", "state": "inbox" },
+    { "path": "/app/messages", "state": "inbox" },
+    { "path": "/app/messages/thread-fixture-001", "state": "conversation", "conversationRef": "thread-fixture-001" },
+    { "path": "/settings", "state": "unknown" }
+  ],
+  "observedSequence": [
+    "discovery",
+    "discovery",
+    "conversation",
+    "inbox",
+    "discovery"
+  ]
+}
