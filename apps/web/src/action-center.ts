@@ -5,6 +5,7 @@ export type HumanActionStatus = "pending" | "completed" | "ignored";
 
 export interface HumanActionItem {
   id: string;
+  conversationRef?: string | null;
   conversationLabel: string;
   title: string;
   detail: string;
@@ -55,6 +56,7 @@ function isHumanActionItem(value: unknown): value is HumanActionItem {
   if (!value || typeof value !== "object") return false;
   const item = value as Partial<HumanActionItem>;
   return typeof item.id === "string"
+    && (item.conversationRef === undefined || item.conversationRef === null || typeof item.conversationRef === "string")
     && typeof item.conversationLabel === "string"
     && typeof item.title === "string"
     && typeof item.detail === "string"
