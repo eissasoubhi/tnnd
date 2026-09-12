@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { planBoundedTinderJob } from "../src/tinder-orchestrator.ts";
 import { classifyTinderPath, composeTinderUiState, isObservedV1Transition, planNavigation } from "../src/tinder-state-machine.ts";
 
 const fixtureUrl = new URL("../fixtures/tinder-state-regression.json", import.meta.url);
@@ -36,5 +37,31 @@ assert.equal(
   "/app/messages/thread-fixture-001"
 );
 assert.equal(planNavigation(classifyTinderPath("/app/matches"), "process-thread").path, null);
+
+const blockedByModal = planBoundedTinderJob(
+  composeTinderUiState(classifyTinderPath("/app/explore"), { visibleModal: true }),
+  "swipe"
+);
+assert.equal(blockedByModal.allowed, false);
+assert.equal(blockedByModal.navigation.path, null);
+
+const safeDiscovery = planBoundedTinderJob(
+  composeTinderUiState(classifyTinderPath("/app/recs"), { visibleModal: false }),
+  "swipe"
+);
+assert.equal(safeDiscovery.allowed, true);
+assert.equal(safeDiscovery.navigation.path, null);
+
+const unresolvedThread = planBoundedTinderJob(
+  composeTinderUiState(classifyTinderPath("/app/matches")),
+  "process-thread"
+);
+assert.equal(unresolvedThread.allowed, false);
+
+const syncFromUnknown = planBoundedTinderJob(
+  composeTinderUiState(classifyTinderPath("/settings")),
+  "sync-only"
+);
+assert.equal(syncFromUnknown.allowed, true);
 
 console.log(`Tinder state regression fixtures passed (${fixture.routes.length} routes, ${fixture.uiObservations.length} UI observations).`);
