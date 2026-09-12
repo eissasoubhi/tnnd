@@ -9,7 +9,14 @@ const host = process.env.HOST ?? "127.0.0.1";
 const maxBodyBytes = 32 * 1024;
 
 function sendJson(response: ServerResponse, status: number, payload: unknown): void {
-  response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
+  response.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer",
+    "permissions-policy": "camera=(), microphone=(), geolocation=()",
+    "cross-origin-resource-policy": "same-site"
+  });
   response.end(JSON.stringify(payload));
 }
 
@@ -56,7 +63,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "account-profile", "extension-sync-foundation"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "account-profile", "extension-sync-foundation", "security-baseline"]
       });
       return;
     }
