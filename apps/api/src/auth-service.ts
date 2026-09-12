@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { createSessionToken, hashPassword, normalizeEmail, validatePassword, verifyPassword } from "./auth.js";
 import { getPool } from "./db-client.js";
 
+const ACTIVE_SESSION_LIMIT = 20;
+
 export interface LoginResult {
   token: string;
   expiresAt: string;
@@ -53,6 +55,24 @@ export async function registerAccount(emailInput: string, password: string): Pro
   }
 }
 
+async function enforceActiveSessionLimit(userId: string): Promise<void> {
+  await getPool().query(
+    `WITH overflow AS (
+       SELECT id
+       FROM extension_sessions
+       WHERE user_id = $1
+         AND revoked_at IS NULL
+         AND expires_at > now()
+       ORDER BY created_at DESC, id DESC
+       OFFSET $2
+     )
+     UPDATE extension_sessions
+        SET revoked_at = now()
+      WHERE id IN (SELECT id FROM overflow)`,
+    [userId, ACTIVE_SESSION_LIMIT]
+  );
+}
+
 export async function loginWithPassword(emailInput: string, password: string, client: LoginClientInfo = {}): Promise<LoginResult | null> {
   const email = normalizeEmail(emailInput);
   if (!email || !password) return null;
@@ -73,6 +93,7 @@ export async function loginWithPassword(emailInput: string, password: string, cl
      VALUES ($1, $2, $3, $4, $5)`,
     [randomUUID(), user.id, deviceLabel, session.tokenHash, session.expiresAt]
   );
+  await enforceActiveSessionLimit(user.id);
 
   return {
     token: session.token,
