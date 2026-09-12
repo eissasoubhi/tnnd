@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { hashSessionToken } from "./auth.js";
-import { authenticateSession, loginWithPassword, registerAccount, revokeSession } from "./auth-service.js";
+import { authenticateSession, listAccountSessions, loginWithPassword, registerAccount, revokeAccountSession, revokeSession } from "./auth-service.js";
 import { getPool } from "./db-client.js";
 import { profileSchemaVersion, publicProfileSchema, validateProfileEnvelope } from "./profile-schema.js";
 
@@ -63,7 +63,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "account-profile", "extension-sync-foundation", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "account-profile", "extension-sync-foundation", "security-baseline"]
       });
       return;
     }
@@ -107,6 +107,32 @@ const server = createServer(async (request, response) => {
         return;
       }
       sendJson(response, 200, session);
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/v1/auth/sessions") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      sendJson(response, 200, { sessions: await listAccountSessions(session.user.id, session.sessionId) });
+      return;
+    }
+
+    if (request.method === "DELETE" && url.pathname.startsWith("/api/v1/auth/sessions/")) {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const sessionId = decodeURIComponent(url.pathname.slice("/api/v1/auth/sessions/".length));
+      if (!sessionId) {
+        sendJson(response, 400, { error: "missing_session_id" });
+        return;
+      }
+      const revoked = await revokeAccountSession(session.user.id, sessionId);
+      sendJson(response, revoked ? 200 : 404, revoked ? { ok: true } : { error: "session_not_found" });
       return;
     }
 
