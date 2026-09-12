@@ -1,6 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { hashSessionToken } from "./auth.js";
 import { authenticateSession, listAccountSessions, loginWithPassword, registerAccount, revokeAccountSession, revokeSession } from "./auth-service.js";
+import { getConversation, listConversations, syncConversation } from "./conversation-service.js";
+import { validateConversationSyncRequest } from "./conversation-sync-contract.js";
 import { getPool } from "./db-client.js";
 import { createHumanAction, listHumanActions, updateHumanActionStatus, type HumanActionSeverity, type HumanActionStatus } from "./human-action-service.js";
 import { profileSchemaVersion, publicProfileSchema, validateProfileEnvelope } from "./profile-schema.js";
@@ -53,6 +55,10 @@ function stringField(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function conversationDisplayName(conversationId: string): string {
+  return `Conversation ${conversationId.slice(0, 8)}`;
+}
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${host}:${port}`}`);
 
@@ -65,7 +71,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "extension-sync-foundation", "human-actions", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "extension-sync-foundation", "conversation-sync", "conversation-read", "human-actions", "security-baseline"]
       });
       return;
     }
@@ -190,6 +196,71 @@ const server = createServer(async (request, response) => {
         [session.user.id, profileSchemaVersion, JSON.stringify(validated.profile)]
       );
       sendJson(response, 200, { profile: validated.profile, updatedAt: result.rows[0]?.updated_at.toISOString() ?? new Date().toISOString() });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/v1/conversations/sync") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      try {
+        const body = await readJsonBody(request);
+        const input = validateConversationSyncRequest(body);
+        sendJson(response, 200, await syncConversation(session.user.id, input));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "invalid_conversation_sync";
+        sendJson(response, 400, { error: "invalid_conversation_sync", details: message });
+      }
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/v1/conversations") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const conversations = await listConversations(session.user.id);
+      sendJson(response, 200, {
+        conversations: conversations.map((conversation) => ({
+          id: conversation.id,
+          displayName: conversationDisplayName(conversation.id),
+          status: conversation.status,
+          currentTopic: conversation.currentTopic ?? null,
+          lastMessageAt: conversation.lastMessageAt ?? conversation.updatedAt,
+          pendingHumanActions: 0
+        }))
+      });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname.startsWith("/api/v1/conversations/")) {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const conversationId = decodeURIComponent(url.pathname.slice("/api/v1/conversations/".length));
+      if (!conversationId) {
+        sendJson(response, 400, { error: "missing_conversation_id" });
+        return;
+      }
+      const conversation = await getConversation(session.user.id, conversationId);
+      if (!conversation) {
+        sendJson(response, 404, { error: "conversation_not_found" });
+        return;
+      }
+      sendJson(response, 200, {
+        conversation: {
+          id: conversation.id,
+          displayName: conversationDisplayName(conversation.id),
+          status: conversation.status,
+          currentTopic: conversation.currentTopic ?? null,
+          messages: conversation.messages
+        }
+      });
       return;
     }
 
