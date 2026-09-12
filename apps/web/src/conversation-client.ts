@@ -1,5 +1,5 @@
 import type { AuthSession } from "./auth-client";
-import { normalizeConversationListItem, type ConversationListItem } from "./conversation-contract";
+import { normalizeConversationListItem, type ConversationListItem, type ConversationStatus } from "./conversation-contract";
 
 const apiBase = (import.meta.env.VITE_TNND_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "http://127.0.0.1:4000";
 
@@ -35,8 +35,9 @@ export interface ConversationMessage {
 export interface ConversationDetail {
   id: string;
   displayName: string;
-  status: ConversationListItem["status"];
+  status: ConversationStatus;
   currentTopic: string | null;
+  pendingHumanActions?: number;
   messages: ConversationMessage[];
 }
 
@@ -49,4 +50,23 @@ export async function getConversation(session: AuthSession, conversationId: stri
     throw new ConversationApiError(payload?.error ?? "Unable to load conversation.", response.status);
   }
   return payload.conversation;
+}
+
+export async function updateConversationStatus(
+  session: AuthSession,
+  conversationId: string,
+  status: ConversationStatus
+): Promise<void> {
+  const response = await fetch(`${apiBase}/api/v1/conversations/${encodeURIComponent(conversationId)}`, {
+    method: "PATCH",
+    headers: {
+      authorization: `Bearer ${session.token}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ status })
+  });
+  const payload = await parseJson<{ error?: string }>(response);
+  if (!response.ok) {
+    throw new ConversationApiError(payload?.error ?? "Unable to update conversation status.", response.status);
+  }
 }
