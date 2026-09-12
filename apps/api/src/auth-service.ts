@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { createSessionToken, normalizeEmail, verifyPassword } from "./auth.js";
+import { createSessionToken, hashPassword, normalizeEmail, validatePassword, verifyPassword } from "./auth.js";
 import { getPool } from "./db-client.js";
 
 export interface LoginResult {
@@ -12,6 +12,31 @@ export interface AuthenticatedSession {
   sessionId: string;
   user: { id: string; email: string };
   expiresAt: string;
+}
+
+export type RegisterResult =
+  | { ok: true; user: { id: string; email: string } }
+  | { ok: false; error: "invalid_email" | "invalid_password" | "email_already_exists"; details?: string };
+
+export async function registerAccount(emailInput: string, password: string): Promise<RegisterResult> {
+  const email = normalizeEmail(emailInput);
+  if (!email || !email.includes("@") || email.length > 320) return { ok: false, error: "invalid_email" };
+  const passwordError = validatePassword(password);
+  if (passwordError) return { ok: false, error: "invalid_password", details: passwordError };
+
+  const id = randomUUID();
+  const passwordHash = await hashPassword(password);
+  try {
+    await getPool().query(
+      "INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3)",
+      [id, email, passwordHash]
+    );
+    return { ok: true, user: { id, email } };
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+    if (code === "23505") return { ok: false, error: "email_already_exists" };
+    throw error;
+  }
 }
 
 export async function loginWithPassword(emailInput: string, password: string): Promise<LoginResult | null> {
