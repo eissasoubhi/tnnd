@@ -57,11 +57,32 @@ function renderDetail(detail: ConversationDetail): string {
   `;
 }
 
+function countStatus(items: ConversationListItem[], status: ConversationStatus): number {
+  return items.filter((item) => item.status === status).length;
+}
+
+function renderOperationalSummary(items: ConversationListItem[]): string {
+  const cards: Array<{ label: string; value: number }> = [
+    { label: "Active", value: countStatus(items, "active") },
+    { label: "Waiting for them", value: countStatus(items, "waiting-for-them") },
+    { label: "Waiting for you", value: countStatus(items, "waiting-for-user") },
+    { label: "Action required", value: countStatus(items, "action-required") },
+    { label: "Paused", value: countStatus(items, "paused") }
+  ];
+  return cards.map((card) => `
+    <div class="conversation-stat">
+      <strong>${card.value}</strong>
+      <span>${escapeHtml(card.label)}</span>
+    </div>
+  `).join("");
+}
+
 function installStyles(): void {
   if (document.querySelector("#tnnd-conversation-panel-styles")) return;
   const style = document.createElement("style");
   style.id = "tnnd-conversation-panel-styles";
   style.textContent = `
+    .conversation-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:12px}.conversation-stat{display:grid;gap:2px;padding:9px 10px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:rgba(127,127,127,.05)}.conversation-stat strong{font-size:18px}.conversation-stat span{font-size:10px;opacity:.7}
     .conversation-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;flex-wrap:wrap}.conversation-filter{display:flex;align-items:center;gap:7px;font-size:12px}.conversation-filter select{width:auto;min-width:170px}.conversation-summary{font-size:11px;opacity:.7}
     .conversation-layout{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(280px,1.1fr);gap:14px;margin-top:14px}
     .conversation-list{display:grid;gap:8px;align-content:start;max-height:430px;overflow:auto}
@@ -69,12 +90,12 @@ function installStyles(): void {
     .conversation-row:hover{border-color:currentColor}.conversation-row.selected{outline:2px solid currentColor;outline-offset:1px}.conversation-row-main,.conversation-row-meta{display:grid;gap:4px}.conversation-row-meta{text-align:right;justify-items:end}.conversation-row small,.conversation-detail small,.conversation-message small{opacity:.65}
     .conversation-detail{min-height:180px;border:1px solid var(--border,#d4d4d8);border-radius:12px;padding:12px}.conversation-detail-heading{display:flex;justify-content:space-between;gap:12px;margin-bottom:12px}.conversation-detail-heading>div{display:grid;gap:4px}
     .conversation-messages{display:grid;gap:8px;max-height:340px;overflow:auto}.conversation-message{max-width:86%;padding:9px 10px;border-radius:10px;background:rgba(127,127,127,.12)}.conversation-message.outgoing{justify-self:end}.conversation-message.incoming{justify-self:start}.conversation-message span{font-size:10px;font-weight:700;opacity:.7}.conversation-message p{margin:3px 0 4px;white-space:pre-wrap}
-    @media(max-width:760px){.conversation-layout{grid-template-columns:1fr}}
+    @media(max-width:760px){.conversation-layout{grid-template-columns:1fr}.conversation-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
   `;
   document.head.append(style);
 }
 
-function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement; filter: HTMLSelectElement; summary: HTMLElement } | null {
+function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement; filter: HTMLSelectElement; summary: HTMLElement; stats: HTMLElement } | null {
   const grid = document.querySelector<HTMLElement>(".grid");
   if (!grid) return null;
   installStyles();
@@ -86,6 +107,7 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
       <span class="pill" id="conversation-panel-status">Sign in required</span>
     </div>
     <p class="subtle">Synced Tinder conversations from the backend. Select one to inspect its current status, topic and message history.</p>
+    <div id="conversation-operational-summary" class="conversation-stats"></div>
     <div class="conversation-toolbar">
       <label class="conversation-filter">Status
         <select id="conversation-status-filter">
@@ -114,7 +136,8 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
     detail: panel.querySelector<HTMLElement>("#conversation-detail")!,
     status: panel.querySelector<HTMLElement>("#conversation-panel-status")!,
     filter: panel.querySelector<HTMLSelectElement>("#conversation-status-filter")!,
-    summary: panel.querySelector<HTMLElement>("#conversation-filter-summary")!
+    summary: panel.querySelector<HTMLElement>("#conversation-filter-summary")!,
+    stats: panel.querySelector<HTMLElement>("#conversation-operational-summary")!
   };
 }
 
@@ -149,6 +172,7 @@ function renderCurrentList(): void {
   const items = filteredItems();
   elements.list.innerHTML = renderList(items, selectedConversationId);
   elements.summary.textContent = `${items.length} shown · ${cachedItems.length} total`;
+  elements.stats.innerHTML = renderOperationalSummary(cachedItems);
   bindRows(items);
 }
 
@@ -172,6 +196,7 @@ async function refresh(): Promise<void> {
     selectedConversationId = undefined;
     elements.status.textContent = "Sign in required";
     elements.summary.textContent = "0 shown · 0 total";
+    elements.stats.innerHTML = renderOperationalSummary([]);
     elements.list.innerHTML = '<p class="subtle">Connect your TNND account to load conversations.</p>';
     elements.detail.innerHTML = '<p class="subtle">Conversation details will appear here.</p>';
     return;
@@ -190,6 +215,7 @@ async function refresh(): Promise<void> {
     selectedConversationId = undefined;
     elements.status.textContent = "Unavailable";
     elements.summary.textContent = "0 shown · 0 total";
+    elements.stats.innerHTML = renderOperationalSummary([]);
     elements.list.innerHTML = `<p class="subtle">${escapeHtml(error instanceof Error ? error.message : "Unable to load conversations.")}</p>`;
   }
 }
