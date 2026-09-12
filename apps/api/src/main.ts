@@ -1,7 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { hashSessionToken } from "./auth.js";
-import { loginWithPassword, revokeSession } from "./auth-service.js";
-import { publicProfileSchema } from "./profile-schema.js";
+import { authenticateSession, loginWithPassword, revokeSession } from "./auth-service.js";
+import { getPool } from "./db-client.js";
+import { profileSchemaVersion, publicProfileSchema, validateProfileEnvelope } from "./profile-schema.js";
 
 const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? "127.0.0.1";
@@ -27,6 +28,17 @@ async function readJsonBody(request: IncomingMessage): Promise<Record<string, un
   return parsed as Record<string, unknown>;
 }
 
+function bearerToken(request: IncomingMessage): string {
+  const authorization = request.headers.authorization ?? "";
+  return authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+}
+
+async function authenticatedUser(request: IncomingMessage) {
+  const token = bearerToken(request);
+  if (!token) return null;
+  return authenticateSession(await hashSessionToken(token));
+}
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${host}:${port}`}`);
 
@@ -44,7 +56,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "password-login", "session-revocation", "account-foundation", "extension-sync-foundation"]
+        capabilities: ["health", "profile-schema", "password-login", "session-auth", "session-revocation", "account-profile", "extension-sync-foundation"]
       });
       return;
     }
@@ -67,15 +79,66 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/v1/auth/session") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      sendJson(response, 200, session);
+      return;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/v1/auth/logout") {
-      const authorization = request.headers.authorization ?? "";
-      const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+      const token = bearerToken(request);
       if (!token) {
         sendJson(response, 401, { error: "missing_bearer_token" });
         return;
       }
       const revoked = await revokeSession(await hashSessionToken(token));
       sendJson(response, revoked ? 200 : 404, revoked ? { ok: true } : { error: "session_not_found" });
+      return;
+    }
+
+    if ((request.method === "GET" || request.method === "PUT") && url.pathname === "/api/v1/profile") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+
+      if (request.method === "GET") {
+        const result = await getPool().query<{ profile_json: unknown; updated_at: Date }>(
+          "SELECT profile_json, updated_at FROM user_profiles WHERE user_id = $1 LIMIT 1",
+          [session.user.id]
+        );
+        const row = result.rows[0];
+        if (!row) {
+          sendJson(response, 404, { error: "profile_not_found" });
+          return;
+        }
+        sendJson(response, 200, { profile: row.profile_json, updatedAt: row.updated_at.toISOString() });
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      const candidate = body.profile ?? body;
+      const validated = validateProfileEnvelope(candidate);
+      if (!validated.ok) {
+        sendJson(response, 400, { error: "invalid_profile", details: validated.errors });
+        return;
+      }
+      const result = await getPool().query<{ updated_at: Date }>(
+        `INSERT INTO user_profiles (user_id, schema_version, profile_json)
+         VALUES ($1, $2, $3::jsonb)
+         ON CONFLICT (user_id) DO UPDATE SET
+           schema_version = EXCLUDED.schema_version,
+           profile_json = EXCLUDED.profile_json,
+           updated_at = now()
+         RETURNING updated_at`,
+        [session.user.id, profileSchemaVersion, JSON.stringify(validated.profile)]
+      );
+      sendJson(response, 200, { profile: validated.profile, updatedAt: result.rows[0]?.updated_at.toISOString() ?? new Date().toISOString() });
       return;
     }
 
