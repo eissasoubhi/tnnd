@@ -16,6 +16,15 @@ export interface TinderNavigationCandidate {
   visible: boolean;
 }
 
+export interface TinderRuntimeIssue {
+  kind: "error" | "unhandled-rejection";
+  capturedAt: string;
+  message: string;
+  source: string | null;
+  line: number | null;
+  column: number | null;
+}
+
 export interface TinderSelectorDiagnostics {
   view: TinderViewState;
   viewSignals: string[];
@@ -28,6 +37,7 @@ export interface TinderSelectorDiagnostics {
   directionCounts: { me: number; them: number; unknown: number };
   sendButtonFound: boolean;
   navigationCandidates: TinderNavigationCandidate[];
+  runtimeIssues: TinderRuntimeIssue[];
   threadKeyHash: string;
 }
 
@@ -67,6 +77,56 @@ const SAFE_NAV_HINTS = [
   "message", "messages", "match", "matches", "inbox", "chat", "conversation",
   "recs", "discover", "discovery", "swipe", "like", "nope", "send", "envoyer"
 ];
+
+const runtimeIssues: TinderRuntimeIssue[] = [];
+
+function safeRuntimeSource(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value, location.href);
+    if (url.protocol === "http:" || url.protocol === "https:") return `${url.origin}${url.pathname}`;
+    return `[${url.protocol.replace(":", "")}]`;
+  } catch {
+    return "[redacted-source]";
+  }
+}
+
+function safeRuntimeMessage(value: unknown): string {
+  const raw = value instanceof Error ? `${value.name}: ${value.message}` : String(value ?? "Unknown runtime error");
+  return raw
+    .replace(/https?:\/\/[^\s)\]}]+/gi, (match) => safeRuntimeSource(match) ?? "[redacted-url]")
+    .replace(/\b(?:token|auth|session|cookie|secret|password|credential|api[-_ ]?key)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
+    .slice(0, 500);
+}
+
+function recordRuntimeIssue(issue: TinderRuntimeIssue): void {
+  const previous = runtimeIssues.at(-1);
+  if (previous && previous.kind === issue.kind && previous.message === issue.message && previous.source === issue.source) return;
+  runtimeIssues.push(issue);
+  if (runtimeIssues.length > 20) runtimeIssues.splice(0, runtimeIssues.length - 20);
+}
+
+window.addEventListener("error", (event) => {
+  recordRuntimeIssue({
+    kind: "error",
+    capturedAt: new Date().toISOString(),
+    message: safeRuntimeMessage(event.error ?? event.message),
+    source: safeRuntimeSource(event.filename),
+    line: Number.isFinite(event.lineno) ? event.lineno : null,
+    column: Number.isFinite(event.colno) ? event.colno : null
+  });
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  recordRuntimeIssue({
+    kind: "unhandled-rejection",
+    capturedAt: new Date().toISOString(),
+    message: safeRuntimeMessage(event.reason),
+    source: null,
+    line: null,
+    column: null
+  });
+});
 
 function textOf(element: Element): string {
   return (element.textContent ?? "").replace(/\s+/g, " ").trim();
@@ -302,6 +362,7 @@ export class TinderDomAdapter {
       directionCounts,
       sendButtonFound: Boolean(match && findSendButton(match.element)),
       navigationCandidates: navigationCandidates(),
+      runtimeIssues: runtimeIssues.map((issue) => ({ ...issue })),
       threadKeyHash: simpleHash(`${location.pathname}|${document.title}`)
     };
   }
