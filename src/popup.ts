@@ -4,17 +4,27 @@ import { getChatSettings, saveChatSettings } from "./storage";
 import { renderSyncStatus } from "./sync-status-panel";
 import type { ChatSettings, ConversationStage, Tone } from "./types";
 
+type TinderViewState = "discovery" | "inbox" | "conversation" | "unknown";
+
+interface DiagnosticSelectors {
+  view?: TinderViewState;
+  viewSignals?: string[];
+  [key: string]: unknown;
+}
+
+interface DiagnosticSnapshot {
+  generatedAt: string;
+  page: unknown;
+  selectors: DiagnosticSelectors;
+  resources: unknown;
+  config: unknown;
+  domHtml: string;
+  domTruncated: boolean;
+}
+
 interface DiagnosticResponse {
   ok: boolean;
-  snapshot?: {
-    generatedAt: string;
-    page: unknown;
-    selectors: unknown;
-    resources: unknown;
-    config: unknown;
-    domHtml: string;
-    domTruncated: boolean;
-  };
+  snapshot?: DiagnosticSnapshot;
   error?: string;
 }
 
@@ -26,6 +36,8 @@ interface ThreadInfoResponse {
 
 const version = document.getElementById("extensionVersion")!;
 const status = document.getElementById("status")!;
+const diagnosticView = document.getElementById("diagnosticView")!;
+const diagnosticViewEvidence = document.getElementById("diagnosticViewEvidence")!;
 const exportButton = document.getElementById("exportDiagnostics") as HTMLButtonElement;
 const openSettings = document.getElementById("openSettings") as HTMLButtonElement;
 const openPreview = document.getElementById("openPreview") as HTMLButtonElement;
@@ -63,6 +75,33 @@ function isTinderUrl(value?: string): boolean {
     return url.protocol === "https:" && (url.hostname === "tinder.com" || url.hostname === "www.tinder.com");
   } catch {
     return false;
+  }
+}
+
+function displayView(view: TinderViewState | undefined, signals: string[] = []): void {
+  const resolved = view ?? "unknown";
+  diagnosticView.textContent = resolved;
+  diagnosticView.dataset.view = resolved;
+  diagnosticViewEvidence.textContent = signals.length
+    ? `${signals.length} detection signal${signals.length === 1 ? "" : "s"}`
+    : "No reliable detection signal yet";
+}
+
+async function fetchDiagnosticSnapshot(): Promise<DiagnosticSnapshot> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id || !isTinderUrl(tab.url)) throw new Error("Open Tinder in the active tab, then click TNND again.");
+  const response = await chrome.tabs.sendMessage(tab.id, { type: "TNND_GET_DIAGNOSTICS" }) as DiagnosticResponse;
+  if (!response?.ok || !response.snapshot) throw new Error(response?.error ?? "The Tinder content script did not return diagnostics.");
+  return response.snapshot;
+}
+
+async function loadDiagnosticView(): Promise<void> {
+  try {
+    const snapshot = await fetchDiagnosticSnapshot();
+    displayView(snapshot.selectors.view, snapshot.selectors.viewSignals);
+  } catch {
+    displayView("unknown");
+    diagnosticViewEvidence.textContent = "Reload Tinder once after updating TNND";
   }
 }
 
@@ -151,13 +190,13 @@ function screenshotBytes(dataUrl: string): Uint8Array {
   return bytes;
 }
 
-function downloadZip(files: Record<string, Uint8Array>): void {
+function downloadZip(files: Record<string, Uint8Array>, view: TinderViewState): void {
   const zipped = zipSync(files, { level: 6 });
   const blob = new Blob([zipped], { type: "application/zip" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `tnnd-diagnostics-${new Date().toISOString().replace(/[:.]/g, "-")}.zip`;
+  anchor.download = `tnnd-diagnostics-${view}-${new Date().toISOString().replace(/[:.]/g, "-")}.zip`;
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
@@ -172,6 +211,8 @@ async function exportDiagnostics(): Promise<void> {
     const response = await chrome.tabs.sendMessage(tab.id, { type: "TNND_GET_DIAGNOSTICS" }) as DiagnosticResponse;
     if (!response?.ok || !response.snapshot) throw new Error(response?.error ?? "The Tinder content script did not return diagnostics.");
     const snapshot = response.snapshot;
+    const view = snapshot.selectors.view ?? "unknown";
+    displayView(view, snapshot.selectors.viewSignals);
 
     let screenshot: Uint8Array | null = null;
     let screenshotError = "";
@@ -184,9 +225,11 @@ async function exportDiagnostics(): Promise<void> {
 
     const metadata = {
       kind: "tnnd-diagnostics",
-      schemaVersion: 1,
+      schemaVersion: 2,
       extensionVersion: chrome.runtime.getManifest().version,
       exportedAt: new Date().toISOString(),
+      tinderView: view,
+      viewSignals: snapshot.selectors.viewSignals ?? [],
       domTruncated: snapshot.domTruncated,
       screenshotIncluded: Boolean(screenshot),
       screenshotError: screenshotError || undefined,
@@ -202,8 +245,10 @@ async function exportDiagnostics(): Promise<void> {
       "dom-redacted.html": strToU8(snapshot.domHtml)
     };
     if (screenshot) files["screenshot-visible.png"] = screenshot;
-    downloadZip(files);
-    status.textContent = screenshot ? "Diagnostic ZIP exported with visible screenshot." : "Diagnostic ZIP exported. Screenshot was unavailable; the rest of the bundle is included.";
+    downloadZip(files, view);
+    status.textContent = screenshot
+      ? `Diagnostic ZIP exported for ${view} with visible screenshot.`
+      : `Diagnostic ZIP exported for ${view}. Screenshot was unavailable; the rest of the bundle is included.`;
   } finally {
     exportButton.disabled = false;
   }
@@ -265,3 +310,4 @@ exportButton.addEventListener("click", () => void exportDiagnostics().catch((err
 }));
 void refreshBackendAuth();
 void loadCurrentChat();
+void loadDiagnosticView();
