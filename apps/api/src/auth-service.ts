@@ -55,6 +55,17 @@ export async function registerAccount(emailInput: string, password: string): Pro
   }
 }
 
+async function markExpiredSessionsRevoked(userId: string): Promise<void> {
+  await getPool().query(
+    `UPDATE extension_sessions
+        SET revoked_at = now()
+      WHERE user_id = $1
+        AND revoked_at IS NULL
+        AND expires_at <= now()`,
+    [userId]
+  );
+}
+
 async function enforceActiveSessionLimit(userId: string): Promise<void> {
   await getPool().query(
     `WITH overflow AS (
@@ -84,6 +95,7 @@ export async function loginWithPassword(emailInput: string, password: string, cl
   const user = userResult.rows[0];
   if (!user || !(await verifyPassword(password, user.password_hash))) return null;
 
+  await markExpiredSessionsRevoked(user.id);
   const session = await createSessionToken();
   const clientType = client.clientType ?? "web";
   const customLabel = client.deviceLabel?.trim().slice(0, 120);
@@ -129,6 +141,7 @@ export async function authenticateSession(tokenHash: string): Promise<Authentica
 }
 
 export async function listAccountSessions(userId: string, currentSessionId: string): Promise<AccountSession[]> {
+  await markExpiredSessionsRevoked(userId);
   const result = await getPool().query<{
     id: string;
     device_label: string | null;
