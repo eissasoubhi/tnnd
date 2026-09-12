@@ -230,7 +230,7 @@ const server = createServer(async (request, response) => {
           status: conversation.status,
           currentTopic: conversation.currentTopic ?? null,
           lastMessageAt: conversation.lastMessageAt ?? conversation.updatedAt,
-          pendingHumanActions: 0
+          pendingHumanActions: conversation.pendingHumanActions ?? 0
         }))
       });
       return;
@@ -275,6 +275,7 @@ const server = createServer(async (request, response) => {
           displayName: conversationDisplayName(conversation.id),
           status: conversation.status,
           currentTopic: conversation.currentTopic ?? null,
+          pendingHumanActions: conversation.pendingHumanActions ?? 0,
           messages: conversation.messages
         }
       });
