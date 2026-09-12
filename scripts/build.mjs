@@ -20,7 +20,7 @@ const entries = [
 const builds = entries.map(([name, entry]) => build({
   configFile: false, logLevel: "info",
   build: { target: "chrome120", outDir: resolve(outDir, "assets"), emptyOutDir: false, sourcemap: true, minify: false, watch: watch ? {} : null,
-    lib: { entry: resolve(root, entry), name: `TNND_${name}`, formats: ["iife"], fileName: () => `${name}.js` }
+    lib: { entry: resolve(root, entry), name: `TNND_${name.replaceAll("-", "_")}`, formats: ["iife"], fileName: () => `${name}.js` }
   }
 }));
 await Promise.all(builds);
