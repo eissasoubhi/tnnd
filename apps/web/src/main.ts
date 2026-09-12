@@ -1,5 +1,5 @@
 import "./styles.css";
-import { bindActionCenter, readHumanActions, renderActionCenter } from "./action-center";
+import { bindActionCenter, loadHumanActions, readHumanActions, renderActionCenter, type HumanActionItem } from "./action-center";
 import { readSession } from "./auth-client";
 import { fetchProfile, saveProfile } from "./profile-client";
 import { downloadProfile, parseImportedProfile, type ImportedProfile } from "./profile-import";
@@ -16,7 +16,7 @@ interface DashboardCard {
 const cards: DashboardCard[] = [
   { label: "Active conversations", value: 0, state: "Active" },
   { label: "Waiting for them", value: 0, state: "Waiting for them" },
-  { label: "Human actions", value: readHumanActions().filter((item) => item.status === "pending").length, state: "Action required" },
+  { label: "Human actions", value: 0, state: "Action required" },
   { label: "Paused", value: 0, state: "Paused" }
 ];
 
@@ -164,10 +164,24 @@ function refreshPreferences(profile: ImportedProfile | null): void {
   if (preferencesStatus) preferencesStatus.textContent = readSession() ? "Synced" : "Local fallback";
 }
 
-function refreshActionCounts(): void {
-  const pending = readHumanActions().filter((item) => item.status === "pending").length;
+function refreshActionCounts(items: HumanActionItem[] = readHumanActions()): void {
+  const pending = items.filter((item) => item.status === "pending").length;
   if (actionCount) actionCount.textContent = `${pending} pending`;
   if (humanActionMetric) humanActionMetric.textContent = String(pending);
+}
+
+async function refreshActionCenter(): Promise<void> {
+  if (!actionCenter) return;
+  try {
+    const items = await loadHumanActions();
+    renderActionCenter(actionCenter, items);
+    refreshActionCounts(items);
+  } catch (error) {
+    const fallback = readHumanActions();
+    renderActionCenter(actionCenter, fallback);
+    refreshActionCounts(fallback);
+    console.error("Unable to load TNND actions", error);
+  }
 }
 
 async function persistProfile(profile: ImportedProfile): Promise<void> {
@@ -221,12 +235,12 @@ preferencesSave?.addEventListener("click", async () => {
   }
 });
 
-window.addEventListener("tnnd:auth-session-changed", () => { void refreshProfile(); });
+window.addEventListener("tnnd:auth-session-changed", () => {
+  void refreshProfile();
+  void refreshActionCenter();
+});
 
-if (actionCenter) {
-  renderActionCenter(actionCenter);
-  bindActionCenter(actionCenter, refreshActionCounts);
-}
-refreshActionCounts();
+if (actionCenter) bindActionCenter(actionCenter, refreshActionCounts);
+void refreshActionCenter();
 void refreshProfile();
 void import("./auth-panel");

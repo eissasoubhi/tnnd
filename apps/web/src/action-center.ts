@@ -1,3 +1,5 @@
+import { fetchHumanActions, setHumanActionStatus } from "./human-action-client";
+
 export type HumanActionSeverity = "info" | "action-required" | "decision-required" | "urgent";
 export type HumanActionStatus = "pending" | "completed" | "ignored";
 
@@ -28,10 +30,25 @@ export function writeHumanActions(items: HumanActionItem[]): void {
   localStorage.setItem(storageKey, JSON.stringify(items));
 }
 
+export async function loadHumanActions(): Promise<HumanActionItem[]> {
+  const remote = await fetchHumanActions();
+  if (remote) {
+    localStorage.removeItem(storageKey);
+    return remote.filter(isHumanActionItem);
+  }
+  return readHumanActions();
+}
+
 export function updateHumanActionStatus(id: string, status: HumanActionStatus): HumanActionItem[] {
   const next = readHumanActions().map((item) => item.id === id ? { ...item, status } : item);
   writeHumanActions(next);
   return next;
+}
+
+export async function updateHumanActionStatusSynced(id: string, status: HumanActionStatus): Promise<HumanActionItem[]> {
+  const remote = await setHumanActionStatus(id, status);
+  if (remote) return loadHumanActions();
+  return updateHumanActionStatus(id, status);
 }
 
 function isHumanActionItem(value: unknown): value is HumanActionItem {
@@ -49,7 +66,7 @@ function isHumanActionItem(value: unknown): value is HumanActionItem {
 export function renderActionCenter(container: HTMLElement, items = readHumanActions()): void {
   const pending = items.filter((item) => item.status === "pending");
   if (pending.length === 0) {
-    container.innerHTML = `<div class="action-empty"><strong>No human action needed</strong><p>TNND will surface Instagram/WhatsApp transitions, real-world availability, date confirmation and low-confidence personal questions here.</p></div>`;
+    container.innerHTML = `<div class="action-empty"><strong>No human action needed</strong><p>Items that need your confirmation or a manual step will appear here.</p></div>`;
     return;
   }
 
@@ -79,9 +96,16 @@ export function bindActionCenter(container: HTMLElement, onChange: (items: Human
     const item = target.closest<HTMLElement>("[data-action-id]");
     const id = item?.dataset.actionId;
     if (!id) return;
-    const next = updateHumanActionStatus(id, action === "complete" ? "completed" : "ignored");
-    renderActionCenter(container, next);
-    onChange(next);
+    target.setAttribute("disabled", "true");
+    void updateHumanActionStatusSynced(id, action === "complete" ? "completed" : "ignored")
+      .then((next) => {
+        renderActionCenter(container, next);
+        onChange(next);
+      })
+      .catch((error) => {
+        target.removeAttribute("disabled");
+        console.error("Unable to update TNND action", error);
+      });
   });
 }
 
