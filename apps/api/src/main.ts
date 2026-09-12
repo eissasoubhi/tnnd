@@ -51,19 +51,14 @@ const server = createServer(async (request, response) => {
 
   try {
     if (request.method === "GET" && url.pathname === "/health") {
-      sendJson(response, 200, {
-        ok: true,
-        service: "tnnd-api",
-        version: "0.1.0",
-        now: new Date().toISOString()
-      });
+      sendJson(response, 200, { ok: true, service: "tnnd-api", version: "0.1.0", now: new Date().toISOString() });
       return;
     }
 
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "account-profile", "extension-sync-foundation", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "extension-sync-foundation", "security-baseline"]
       });
       return;
     }
@@ -91,7 +86,9 @@ const server = createServer(async (request, response) => {
       const body = await readJsonBody(request);
       const email = typeof body.email === "string" ? body.email : "";
       const password = typeof body.password === "string" ? body.password : "";
-      const login = await loginWithPassword(email, password);
+      const clientType = body.clientType === "extension" ? "extension" : "web";
+      const deviceLabel = typeof body.deviceLabel === "string" ? body.deviceLabel : undefined;
+      const login = await loginWithPassword(email, password, { clientType, deviceLabel });
       if (!login) {
         sendJson(response, 401, { error: "invalid_credentials" });
         return;
