@@ -1,5 +1,6 @@
 import type { AppConfig, ChatSettings } from "./types";
 import { defaultSyncState, type SyncState } from "./sync-status";
+import { applyServerProfile } from "./server-effective-config";
 
 const CONFIG_KEY = "tnnd.config";
 const API_KEY_KEY = "tnnd.geminiApiKey";
@@ -88,13 +89,13 @@ export async function lockStorageToTrustedContexts(): Promise<void> {
 }
 
 export async function getConfig(): Promise<AppConfig> {
-  const result = await chrome.storage.local.get(CONFIG_KEY);
+  const result = await chrome.storage.local.get([CONFIG_KEY, BACKEND_PROFILE_CACHE_KEY]);
   const saved = result[CONFIG_KEY] as LegacyConfig | undefined;
   const savedAutomation = (saved?.automation ?? {}) as Partial<AppConfig["automation"]>;
   const legacyDelay = Number(savedAutomation.replyDelaySeconds);
   const hasWindow = Number.isFinite(savedAutomation.replyDelayMinSeconds) || Number.isFinite(savedAutomation.replyDelayMaxSeconds);
 
-  return {
+  const localConfig: AppConfig = {
     ...DEFAULT_CONFIG,
     ...saved,
     languages: { ...DEFAULT_CONFIG.languages, ...(saved?.languages ?? {}) },
@@ -113,6 +114,9 @@ export async function getConfig(): Promise<AppConfig> {
       } : {})
     }
   };
+
+  const cache = result[BACKEND_PROFILE_CACHE_KEY] as BackendProfileCache | undefined;
+  return applyServerProfile(localConfig, cache?.profile);
 }
 
 export async function saveConfig(config: AppConfig): Promise<void> {
