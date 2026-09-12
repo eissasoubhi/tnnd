@@ -4,7 +4,7 @@ export interface DatabaseConfig {
   maxConnections: number;
 }
 
-export const migrationFiles = ["0001_platform.sql"] as const;
+export const migrationFiles = ["0001_platform.sql", "0002_auth_sessions.sql"] as const;
 
 export function getDatabaseConfig(env: NodeJS.ProcessEnv = process.env): DatabaseConfig {
   const url = env.DATABASE_URL?.trim();
