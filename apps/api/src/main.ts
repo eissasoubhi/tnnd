@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { hashSessionToken } from "./auth.js";
 import { authenticateSession, listAccountSessions, loginWithPassword, registerAccount, revokeAccountSession, revokeSession } from "./auth-service.js";
-import { getConversation, listConversations, syncConversation, updateConversationStatus } from "./conversation-service.js";
+import { clearConversationTemporaryInstruction, getConversation, listConversations, setConversationTemporaryInstruction, syncConversation, updateConversationStatus, type TemporaryInstructionScope } from "./conversation-service.js";
 import { isConversationStatus, validateConversationSyncRequest } from "./conversation-sync-contract.js";
 import { getPool } from "./db-client.js";
 import { createHumanAction, listHumanActions, updateHumanActionStatus, type HumanActionSeverity, type HumanActionStatus } from "./human-action-service.js";
@@ -12,6 +12,7 @@ const host = process.env.HOST ?? "127.0.0.1";
 const maxBodyBytes = 32 * 1024;
 const humanActionSeverities = new Set<HumanActionSeverity>(["info", "action-required", "decision-required", "urgent"]);
 const humanActionStatuses = new Set<HumanActionStatus>(["pending", "completed", "ignored"]);
+const temporaryInstructionScopes = new Set<TemporaryInstructionScope>(["next-message", "next-n-replies", "until-cleared"]);
 
 function sendJson(response: ServerResponse, status: number, payload: unknown): void {
   response.writeHead(status, {
@@ -59,6 +60,14 @@ function conversationDisplayName(conversationId: string): string {
   return `Conversation ${conversationId.slice(0, 8)}`;
 }
 
+function temporaryInstructionConversationId(pathname: string): string | null {
+  const prefix = "/api/v1/conversations/";
+  const suffix = "/instruction";
+  if (!pathname.startsWith(prefix) || !pathname.endsWith(suffix)) return null;
+  const encoded = pathname.slice(prefix.length, -suffix.length);
+  return encoded ? decodeURIComponent(encoded) : null;
+}
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${host}:${port}`}`);
 
@@ -71,7 +80,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-status-control", "human-actions", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-status-control", "conversation-temporary-instructions", "human-actions", "security-baseline"]
       });
       return;
     }
@@ -236,6 +245,42 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    const instructionConversationId = temporaryInstructionConversationId(url.pathname);
+    if (instructionConversationId && (request.method === "PUT" || request.method === "DELETE")) {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+
+      if (request.method === "DELETE") {
+        const cleared = await clearConversationTemporaryInstruction(session.user.id, instructionConversationId);
+        sendJson(response, cleared ? 200 : 404, cleared ? { ok: true } : { error: "conversation_not_found" });
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      const text = stringField(body.text);
+      const scope = body.scope as TemporaryInstructionScope;
+      const rawRemainingReplies = body.remainingReplies;
+      const remainingReplies = typeof rawRemainingReplies === "number" && Number.isInteger(rawRemainingReplies)
+        ? rawRemainingReplies
+        : undefined;
+      const validRemainingReplies = scope !== "next-n-replies"
+        || (remainingReplies !== undefined && remainingReplies >= 1 && remainingReplies <= 50);
+      if (!text || text.length > 2000 || !temporaryInstructionScopes.has(scope) || !validRemainingReplies) {
+        sendJson(response, 400, { error: "invalid_temporary_instruction" });
+        return;
+      }
+      const instruction = await setConversationTemporaryInstruction(session.user.id, instructionConversationId, {
+        text,
+        scope,
+        ...(scope === "next-n-replies" && remainingReplies ? { remainingReplies } : {})
+      });
+      sendJson(response, instruction ? 200 : 404, instruction ? { instruction } : { error: "conversation_not_found" });
+      return;
+    }
+
     if (request.method === "PATCH" && url.pathname.startsWith("/api/v1/conversations/")) {
       const session = await authenticatedUser(request);
       if (!session) {
@@ -276,6 +321,7 @@ const server = createServer(async (request, response) => {
           status: conversation.status,
           currentTopic: conversation.currentTopic ?? null,
           pendingHumanActions: conversation.pendingHumanActions ?? 0,
+          temporaryInstruction: conversation.temporaryInstruction ?? null,
           messages: conversation.messages
         }
       });
