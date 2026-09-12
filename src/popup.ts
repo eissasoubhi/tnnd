@@ -1,5 +1,6 @@
 import { strToU8, zipSync } from "fflate";
 import { getChatSettings, saveChatSettings } from "./storage";
+import { renderSyncStatus } from "./sync-status-panel";
 import type { ChatSettings, ConversationStage, Tone } from "./types";
 
 interface DiagnosticResponse {
@@ -200,4 +201,5 @@ exportButton.addEventListener("click", () => void exportDiagnostics().catch((err
   status.textContent = error instanceof Error ? error.message : "Could not export diagnostics.";
   exportButton.disabled = false;
 }));
+void renderSyncStatus();
 void loadCurrentChat();
