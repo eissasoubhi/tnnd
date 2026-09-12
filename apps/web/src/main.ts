@@ -1,4 +1,5 @@
 import "./styles.css";
+import { bindActionCenter, readHumanActions, renderActionCenter } from "./action-center";
 import { downloadProfile, parseImportedProfile, type ImportedProfile } from "./profile-import";
 import { datingGoals, disclosureStrategies, readEditablePreferences, writeEditablePreferences } from "./profile-preferences";
 
@@ -13,7 +14,7 @@ interface DashboardCard {
 const cards: DashboardCard[] = [
   { label: "Active conversations", value: 0, state: "Active" },
   { label: "Waiting for them", value: 0, state: "Waiting for them" },
-  { label: "Human actions", value: 0, state: "Action required" },
+  { label: "Human actions", value: readHumanActions().filter((item) => item.status === "pending").length, state: "Action required" },
   { label: "Paused", value: 0, state: "Paused" }
 ];
 
@@ -38,7 +39,7 @@ app.innerHTML = `
       ${cards.map((card) => `
         <article class="metric">
           <span>${card.label}</span>
-          <strong>${card.value}</strong>
+          <strong data-metric-state="${card.state}">${card.value}</strong>
           <small>${card.state}</small>
         </article>
       `).join("")}
@@ -79,15 +80,15 @@ app.innerHTML = `
         <p class="subtle">These values update the imported profile JSON locally until backend persistence lands.</p>
       </article>
 
-      <article class="panel">
+      <article class="panel panel-wide">
         <div class="panel-heading">
           <div>
             <p class="eyebrow">Operations</p>
             <h2>Action Center</h2>
           </div>
-          <span class="pill">0 pending</span>
+          <span class="pill" id="action-count">0 pending</span>
         </div>
-        <p>Manual actions such as Instagram, WhatsApp, availability and low-confidence personal questions will be surfaced here.</p>
+        <div id="action-center"></div>
       </article>
     </section>
   </section>
@@ -105,6 +106,9 @@ const textFormality = document.querySelector<HTMLSelectElement>("#text-formality
 const emojiFrequency = document.querySelector<HTMLSelectElement>("#emoji-frequency");
 const abbreviations = document.querySelector<HTMLSelectElement>("#abbreviations");
 const messageLength = document.querySelector<HTMLSelectElement>("#message-length");
+const actionCenter = document.querySelector<HTMLElement>("#action-center");
+const actionCount = document.querySelector<HTMLElement>("#action-count");
+const humanActionMetric = document.querySelector<HTMLElement>('[data-metric-state="Action required"]');
 
 function loadStoredProfile(): ImportedProfile | null {
   const raw = localStorage.getItem(storageKey);
@@ -136,6 +140,12 @@ function refreshStatus(): void {
   if (status) status.textContent = current ? `Schema v${current.schemaVersion}` : "No profile";
   if (exportButton) exportButton.disabled = !current;
   refreshPreferences(current);
+}
+
+function refreshActionCounts(): void {
+  const pending = readHumanActions().filter((item) => item.status === "pending").length;
+  if (actionCount) actionCount.textContent = `${pending} pending`;
+  if (humanActionMetric) humanActionMetric.textContent = String(pending);
 }
 
 input?.addEventListener("change", async () => {
@@ -173,4 +183,9 @@ preferencesSave?.addEventListener("click", () => {
   if (message) message.textContent = "Dating and texting preferences updated in the local profile.";
 });
 
+if (actionCenter) {
+  renderActionCenter(actionCenter);
+  bindActionCenter(actionCenter, refreshActionCounts);
+}
+refreshActionCounts();
 refreshStatus();
