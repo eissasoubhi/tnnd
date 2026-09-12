@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { publicProfileSchema } from "./profile-schema";
 
 const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? "127.0.0.1";
@@ -21,8 +22,14 @@ const server = createServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
     response.end(JSON.stringify({
       apiVersion: "v1",
-      capabilities: ["health", "account-foundation", "extension-sync-foundation"]
+      capabilities: ["health", "profile-schema", "account-foundation", "extension-sync-foundation"]
     }));
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/v1/profile/schema") {
+    response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify(publicProfileSchema()));
     return;
   }
 
