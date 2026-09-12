@@ -15,3 +15,10 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run build
+      - name: Upload installable extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: tnnd-extension-v1-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
