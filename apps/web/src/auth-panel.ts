@@ -1,4 +1,4 @@
-import { clearSession, login, persistSession, readSession } from "./auth-client";
+import { clearSession, login, logout as logoutSession, persistSession, readSession } from "./auth-client";
 
 const grid = document.querySelector<HTMLElement>(".grid");
 if (!grid) throw new Error("TNND dashboard grid was not found.");
@@ -21,7 +21,7 @@ panel.innerHTML = `
       <button id="logout-submit" type="button">Sign out</button>
     </div>
   </form>
-  <p class="subtle" id="auth-message" role="status">Account sessions stay in session storage until server-side auth persistence is connected.</p>
+  <p class="subtle" id="auth-message" role="status">Sign in to sync TNND account data with the backend.</p>
 `;
 grid.prepend(panel);
 
@@ -51,7 +51,7 @@ form?.addEventListener("submit", async (event) => {
     const session = await login({ email: email.value, password: password.value });
     persistSession(session);
     password.value = "";
-    if (message) message.textContent = "Signed in. Server-side profile sync can now use this session contract.";
+    if (message) message.textContent = "Signed in. This session can now authenticate profile and sync requests.";
   } catch (error) {
     if (message) message.textContent = error instanceof Error ? error.message : "Unable to sign in.";
   } finally {
@@ -59,11 +59,21 @@ form?.addEventListener("submit", async (event) => {
   }
 });
 
-logout?.addEventListener("click", () => {
-  clearSession();
-  if (password) password.value = "";
-  if (message) message.textContent = "Signed out locally.";
-  refresh();
+logout?.addEventListener("click", async () => {
+  const session = readSession();
+  if (!session) return;
+  if (logout) logout.disabled = true;
+  if (message) message.textContent = "Signing out…";
+  try {
+    await logoutSession(session);
+    if (message) message.textContent = "Signed out.";
+  } catch (error) {
+    if (message) message.textContent = error instanceof Error ? `${error.message} Local session was cleared.` : "Local session was cleared.";
+  } finally {
+    clearSession();
+    if (password) password.value = "";
+    refresh();
+  }
 });
 
 refresh();
