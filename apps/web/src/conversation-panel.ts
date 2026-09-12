@@ -1,5 +1,13 @@
 import { readSession } from "./auth-client";
-import { getConversation, listConversations, updateConversationStatus, type ConversationDetail } from "./conversation-client";
+import {
+  clearTemporaryInstruction,
+  getConversation,
+  listConversations,
+  saveTemporaryInstruction,
+  updateConversationStatus,
+  type ConversationDetail,
+  type TemporaryInstructionScope
+} from "./conversation-client";
 import type { ConversationListItem, ConversationStatus } from "./conversation-contract";
 
 function escapeHtml(value: string): string {
@@ -47,6 +55,41 @@ function renderStatusActions(detail: ConversationDetail): string {
   `).join("");
 }
 
+function renderTemporaryInstruction(detail: ConversationDetail): string {
+  const instruction = detail.temporaryInstruction;
+  const scope = instruction?.scope ?? "next-message";
+  const remaining = instruction?.remainingReplies ?? 3;
+  return `
+    <section class="temporary-instruction-panel" aria-label="Temporary conversation instruction">
+      <div class="temporary-instruction-heading">
+        <div>
+          <strong>Temporary instruction</strong>
+          <small>Short-lived steering for this conversation only.</small>
+        </div>
+        ${instruction ? '<span class="pill">Active</span>' : '<span class="pill">None</span>'}
+      </div>
+      <textarea id="conversation-temporary-instruction" maxlength="2000" placeholder="Example: be more direct now, change subject, keep the next replies shorter…">${escapeHtml(instruction?.text ?? "")}</textarea>
+      <div class="temporary-instruction-controls">
+        <label>Scope
+          <select id="conversation-temporary-instruction-scope">
+            <option value="next-message"${scope === "next-message" ? " selected" : ""}>Next message</option>
+            <option value="next-n-replies"${scope === "next-n-replies" ? " selected" : ""}>Next N replies</option>
+            <option value="until-cleared"${scope === "until-cleared" ? " selected" : ""}>Until cleared</option>
+          </select>
+        </label>
+        <label>Replies
+          <input id="conversation-temporary-instruction-replies" type="number" min="1" max="50" value="${remaining}"${scope === "next-n-replies" ? "" : " disabled"}>
+        </label>
+      </div>
+      <div class="temporary-instruction-actions">
+        <button type="button" data-temporary-instruction-save>Save instruction</button>
+        ${instruction ? '<button type="button" class="danger" data-temporary-instruction-clear>Clear</button>' : ""}
+      </div>
+      <p class="subtle" data-temporary-instruction-status>${instruction ? `Current scope: ${escapeHtml(scope)}${instruction.remainingReplies ? ` · ${instruction.remainingReplies} remaining` : ""}` : "No temporary instruction is active."}</p>
+    </section>
+  `;
+}
+
 function renderDetail(detail: ConversationDetail): string {
   const messages = detail.messages.length
     ? detail.messages.map((message) => `
@@ -69,6 +112,7 @@ function renderDetail(detail: ConversationDetail): string {
     <div class="conversation-status-actions" aria-label="Conversation controls">
       ${renderStatusActions(detail)}
     </div>
+    ${renderTemporaryInstruction(detail)}
     <div class="conversation-messages">${messages}</div>
   `;
 }
@@ -106,8 +150,9 @@ function installStyles(): void {
     .conversation-row:hover{border-color:currentColor}.conversation-row.selected{outline:2px solid currentColor;outline-offset:1px}.conversation-row-main,.conversation-row-meta{display:grid;gap:4px}.conversation-row-meta{text-align:right;justify-items:end}.conversation-row small,.conversation-detail small,.conversation-message small{opacity:.65}
     .conversation-detail{min-height:180px;border:1px solid var(--border,#d4d4d8);border-radius:12px;padding:12px}.conversation-detail-heading{display:flex;justify-content:space-between;gap:12px;margin-bottom:10px}.conversation-detail-heading>div{display:grid;gap:4px}
     .conversation-status-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.conversation-status-action{width:auto;padding:7px 10px;border:1px solid var(--border,#d4d4d8);border-radius:8px;background:transparent;color:inherit;cursor:pointer}.conversation-status-action:hover{border-color:currentColor}.conversation-status-action.danger{border-style:dashed}.conversation-status-action:disabled{opacity:.55;cursor:wait}
+    .temporary-instruction-panel{display:grid;gap:9px;padding:11px;margin-bottom:12px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:rgba(127,127,127,.04)}.temporary-instruction-heading{display:flex;align-items:start;justify-content:space-between;gap:10px}.temporary-instruction-heading>div{display:grid;gap:3px}.temporary-instruction-panel textarea{width:100%;min-height:74px;resize:vertical}.temporary-instruction-controls{display:grid;grid-template-columns:1fr 110px;gap:8px}.temporary-instruction-controls label{display:grid;gap:4px;font-size:11px}.temporary-instruction-controls select,.temporary-instruction-controls input{width:100%}.temporary-instruction-actions{display:flex;gap:8px}.temporary-instruction-actions button{width:auto;padding:7px 10px;border:1px solid var(--border,#d4d4d8);border-radius:8px;background:transparent;color:inherit;cursor:pointer}.temporary-instruction-actions .danger{border-style:dashed}.temporary-instruction-actions button:disabled{opacity:.55;cursor:wait}
     .conversation-messages{display:grid;gap:8px;max-height:340px;overflow:auto}.conversation-message{max-width:86%;padding:9px 10px;border-radius:10px;background:rgba(127,127,127,.12)}.conversation-message.outgoing{justify-self:end}.conversation-message.incoming{justify-self:start}.conversation-message span{font-size:10px;font-weight:700;opacity:.7}.conversation-message p{margin:3px 0 4px;white-space:pre-wrap}
-    @media(max-width:760px){.conversation-layout{grid-template-columns:1fr}.conversation-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:760px){.conversation-layout{grid-template-columns:1fr}.conversation-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.temporary-instruction-controls{grid-template-columns:1fr}}
   `;
   document.head.append(style);
 }
@@ -220,6 +265,74 @@ function bindStatusActions(conversationId: string): void {
   });
 }
 
+function bindTemporaryInstructionActions(conversationId: string): void {
+  if (!elements) return;
+  const scope = elements.detail.querySelector<HTMLSelectElement>("#conversation-temporary-instruction-scope");
+  const replies = elements.detail.querySelector<HTMLInputElement>("#conversation-temporary-instruction-replies");
+  const text = elements.detail.querySelector<HTMLTextAreaElement>("#conversation-temporary-instruction");
+  const status = elements.detail.querySelector<HTMLElement>("[data-temporary-instruction-status]");
+  const save = elements.detail.querySelector<HTMLButtonElement>("[data-temporary-instruction-save]");
+  const clear = elements.detail.querySelector<HTMLButtonElement>("[data-temporary-instruction-clear]");
+  if (!scope || !replies || !text || !status || !save) return;
+
+  const syncRepliesAvailability = () => {
+    replies.disabled = scope.value !== "next-n-replies";
+  };
+  scope.addEventListener("change", syncRepliesAvailability);
+  syncRepliesAvailability();
+
+  save.addEventListener("click", () => {
+    void (async () => {
+      const session = readSession();
+      if (!session) return;
+      const trimmed = text.value.trim();
+      const selectedScope = scope.value as TemporaryInstructionScope;
+      const remainingReplies = Number(replies.value);
+      if (!trimmed) {
+        status.textContent = "Enter an instruction before saving.";
+        return;
+      }
+      if (selectedScope === "next-n-replies" && (!Number.isInteger(remainingReplies) || remainingReplies < 1 || remainingReplies > 50)) {
+        status.textContent = "Replies must be an integer between 1 and 50.";
+        return;
+      }
+      save.disabled = true;
+      if (clear) clear.disabled = true;
+      status.textContent = "Saving temporary instruction…";
+      try {
+        await saveTemporaryInstruction(session, conversationId, {
+          text: trimmed,
+          scope: selectedScope,
+          ...(selectedScope === "next-n-replies" ? { remainingReplies } : {})
+        });
+        await loadDetail(conversationId);
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : "Unable to save temporary instruction.";
+        save.disabled = false;
+        if (clear) clear.disabled = false;
+      }
+    })();
+  });
+
+  clear?.addEventListener("click", () => {
+    void (async () => {
+      const session = readSession();
+      if (!session) return;
+      save.disabled = true;
+      clear.disabled = true;
+      status.textContent = "Clearing temporary instruction…";
+      try {
+        await clearTemporaryInstruction(session, conversationId);
+        await loadDetail(conversationId);
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : "Unable to clear temporary instruction.";
+        save.disabled = false;
+        clear.disabled = false;
+      }
+    })();
+  });
+}
+
 async function loadDetail(conversationId: string): Promise<void> {
   if (!elements) return;
   const session = readSession();
@@ -229,6 +342,7 @@ async function loadDetail(conversationId: string): Promise<void> {
     const detail = await getConversation(session, conversationId);
     elements.detail.innerHTML = renderDetail(detail);
     bindStatusActions(conversationId);
+    bindTemporaryInstructionActions(conversationId);
   } catch (error) {
     elements.detail.innerHTML = `<p class="subtle">${escapeHtml(error instanceof Error ? error.message : "Unable to load conversation.")}</p>`;
   }
