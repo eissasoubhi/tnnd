@@ -1,4 +1,4 @@
-import { planNavigation, type TinderJobKind, type TinderNavigationPlan, type TinderUiStateSnapshot } from "./tinder-state-machine";
+import { planNavigation, type TinderJobKind, type TinderNavigationPlan, type TinderUiStateSnapshot } from "./tinder-state-machine.ts";
 
 export interface TinderJobDecision {
   allowed: boolean;
