@@ -19,6 +19,8 @@ export interface TinderNavigationCandidate {
 export interface TinderSelectorDiagnostics {
   view: TinderViewState;
   viewSignals: string[];
+  viewConfidence: number;
+  viewConfidenceLabel: "low" | "medium" | "high";
   composerSelector: string | null;
   composerFound: boolean;
   messageSelectorMatches: Array<{ selector: string; count: number }>;
@@ -186,6 +188,19 @@ function detectView(composer: HTMLElement | null): { view: TinderViewState; sign
   return { view: "unknown", signals };
 }
 
+function confidenceForView(view: TinderViewState, signals: string[]): { score: number; label: "low" | "medium" | "high" } {
+  if (view === "unknown") return { score: 0, label: "low" };
+  const hasPathSignal = signals.some((signal) => signal.startsWith("path:"));
+  const hasSelectorSignal = signals.some((signal) => signal.includes("-selector:"));
+  const hasComposerSignal = signals.includes("visible-message-composer");
+  let score = 0.45;
+  if (hasPathSignal) score += 0.25;
+  if (hasSelectorSignal) score += 0.2;
+  if (hasComposerSignal) score += 0.3;
+  score = Math.min(1, Math.round(score * 100) / 100);
+  return { score, label: score >= 0.8 ? "high" : score >= 0.6 ? "medium" : "low" };
+}
+
 function classifyNavigationCandidate(element: HTMLElement): TinderNavigationCandidate["kind"] {
   const hint = [
     element.getAttribute("href"),
@@ -259,9 +274,12 @@ export class TinderDomAdapter {
     const directionCounts = { me: 0, them: 0, unknown: 0 };
     for (const element of candidates) directionCounts[directionOf(element)] += 1;
     const detected = detectView(match?.element ?? null);
+    const confidence = confidenceForView(detected.view, detected.signals);
     return {
       view: detected.view,
       viewSignals: detected.signals,
+      viewConfidence: confidence.score,
+      viewConfidenceLabel: confidence.label,
       composerSelector: match?.selector ?? null,
       composerFound: Boolean(match),
       messageSelectorMatches: MESSAGE_SELECTORS.map((selector) => ({
