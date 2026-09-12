@@ -1,8 +1,10 @@
 import type { AppConfig, ChatSettings } from "./types";
+import { defaultSyncState, type SyncState } from "./sync-status";
 
 const CONFIG_KEY = "tnnd.config";
 const API_KEY_KEY = "tnnd.geminiApiKey";
 const CHAT_SETTINGS_KEY = "tnnd.chatSettings";
+const SYNC_STATE_KEY = "tnnd.syncState";
 
 export const DEFAULT_CONFIG: AppConfig = {
   model: "gemini-3.8-flash",
@@ -121,6 +123,16 @@ export async function saveChatSettings(threadKey: string, settings: ChatSettings
   const map = (result[CHAT_SETTINGS_KEY] as Record<string, ChatSettings> | undefined) ?? {};
   map[threadKey] = settings;
   await chrome.storage.local.set({ [CHAT_SETTINGS_KEY]: map });
+}
+
+export async function getSyncState(): Promise<SyncState> {
+  const result = await chrome.storage.local.get(SYNC_STATE_KEY);
+  const saved = result[SYNC_STATE_KEY] as Partial<SyncState> | undefined;
+  return { ...defaultSyncState, ...(saved ?? {}) };
+}
+
+export async function saveSyncState(state: SyncState): Promise<void> {
+  await chrome.storage.local.set({ [SYNC_STATE_KEY]: state });
 }
 
 export function resolveEffectiveConfig(base: AppConfig, chat: ChatSettings): AppConfig {
