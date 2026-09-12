@@ -6,6 +6,7 @@ export interface ConversationSnapshot {
 }
 
 export type TinderViewState = "discovery" | "inbox" | "conversation" | "unknown";
+export type TinderSidebarState = "matches" | "messages" | "unknown";
 
 export interface TinderNavigationCandidate {
   kind: "discovery" | "inbox" | "conversation" | "unknown";
@@ -30,12 +31,15 @@ export interface TinderSelectorDiagnostics {
   viewSignals: string[];
   viewConfidence: number;
   viewConfidenceLabel: "low" | "medium" | "high";
+  sidebarState: TinderSidebarState;
+  sidebarSignals: string[];
   composerSelector: string | null;
   composerFound: boolean;
   messageSelectorMatches: Array<{ selector: string; count: number }>;
   visibleCandidateCount: number;
   directionCounts: { me: number; them: number; unknown: number };
   sendButtonFound: boolean;
+  sendButtonEnabled: boolean;
   navigationCandidates: TinderNavigationCandidate[];
   runtimeIssues: TinderRuntimeIssue[];
   threadKeyHash: string;
@@ -50,6 +54,7 @@ const COMPOSER_SELECTORS = [
 ];
 
 const MESSAGE_SELECTORS = [
+  'ol[aria-label="Messages" i] [role="article"]',
   '[data-testid*="message" i]',
   '[data-testid*="chat" i] [role="listitem"]',
   '[aria-label*="message" i]'
@@ -66,7 +71,9 @@ const INBOX_SELECTORS = [
 
 const DISCOVERY_SELECTORS = [
   'a[href*="/app/recs" i]',
+  'a[href*="/app/explore" i]',
   '[data-testid*="recs" i]',
+  '[data-testid*="explore" i]',
   '[aria-label*="like" i]',
   '[aria-label*="nope" i]',
   'button[aria-label*="like" i]',
@@ -75,7 +82,7 @@ const DISCOVERY_SELECTORS = [
 
 const SAFE_NAV_HINTS = [
   "message", "messages", "match", "matches", "inbox", "chat", "conversation",
-  "recs", "discover", "discovery", "swipe", "like", "nope", "send", "envoyer"
+  "recs", "explore", "discover", "discovery", "swipe", "like", "nope", "send", "envoyer"
 ];
 
 const runtimeIssues: TinderRuntimeIssue[] = [];
@@ -151,12 +158,16 @@ function findComposer(): HTMLElement | null {
 function directionOf(element: HTMLElement): Direction {
   let current: HTMLElement | null = element;
   const tokens: string[] = [];
-  for (let i = 0; current && i < 3; i++, current = current.parentElement) {
-    tokens.push(current.className?.toString() ?? "", current.getAttribute("data-testid") ?? "", current.getAttribute("aria-label") ?? "");
+  for (let i = 0; current && i < 4; i++, current = current.parentElement) {
+    tokens.push(
+      current.className?.toString() ?? "",
+      current.getAttribute("data-testid") ?? "",
+      current.getAttribute("aria-label") ?? ""
+    );
   }
   const hint = tokens.join(" ").toLowerCase();
-  if (/outgoing|sent|sender|from-me|mine|self/.test(hint)) return "me";
-  if (/incoming|received|from-match|receiver/.test(hint)) return "them";
+  if (/outgoing|sent|sender|from-me|mine|self|chat-bubble-send/.test(hint)) return "me";
+  if (/incoming|received|from-match|receiver|msg--received|chat-bubble-receive/.test(hint)) return "them";
 
   const root = document.querySelector("main") ?? document.body;
   const rootRect = root.getBoundingClientRect();
@@ -206,11 +217,11 @@ function setComposerValue(composer: HTMLElement, value: string): void {
   composer.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function findSendButton(composer: HTMLElement): HTMLButtonElement | null {
+function findSendButton(composer: HTMLElement, includeDisabled = false): HTMLButtonElement | null {
   const scope = composer.closest("form") ?? composer.parentElement?.parentElement ?? document;
   const buttons = Array.from(scope.querySelectorAll<HTMLButtonElement>("button"));
   return buttons.find((button) => {
-    if (button.disabled || button.offsetParent === null) return false;
+    if ((!includeDisabled && button.disabled) || button.offsetParent === null) return false;
     const hint = `${button.getAttribute("aria-label") ?? ""} ${button.textContent ?? ""}`.toLowerCase();
     return /send|envoyer/.test(hint) || button.type === "submit";
   }) ?? null;
@@ -221,6 +232,35 @@ function anyVisible(selectors: string[]): string | null {
     if (Array.from(document.querySelectorAll(selector)).some((element) => visible(element))) return selector;
   }
   return null;
+}
+
+function discoveryPath(path: string): boolean {
+  return /\/app\/(?:recs|explore)|\/(?:recs|explore)|\/swipe/.test(path);
+}
+
+function inboxPath(path: string): boolean {
+  return /\/app\/messages(?:\/?$)|\/messages(?:\/?$)|\/matches(?:\/?$)/.test(path);
+}
+
+function detectSidebarState(): { state: TinderSidebarState; signals: string[] } {
+  const signals: string[] = [];
+  const visibleConversationLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/app/messages/"]'))
+    .filter((element) => visible(element));
+  if (visibleConversationLinks.length) {
+    signals.push(`visible-conversation-links:${visibleConversationLinks.length}`);
+    return { state: "messages", signals };
+  }
+
+  const visibleMatchList = anyVisible([
+    '[data-testid*="matchList" i]',
+    '[aria-label*="matches" i]'
+  ]);
+  if (visibleMatchList) {
+    signals.push(`matches-selector:${visibleMatchList}`);
+    return { state: "matches", signals };
+  }
+
+  return { state: "unknown", signals };
 }
 
 function detectView(composer: HTMLElement | null): { view: TinderViewState; signals: string[] } {
@@ -236,20 +276,18 @@ function detectView(composer: HTMLElement | null): { view: TinderViewState; sign
   const discoverySelector = anyVisible(DISCOVERY_SELECTORS);
   const inboxSelector = anyVisible(INBOX_SELECTORS);
 
-  if (/\/app\/recs|\/recs|\/swipe/.test(path)) signals.push(`path:${path}`);
-  if (/\/app\/messages|\/messages|\/matches/.test(path)) signals.push(`path:${path}`);
+  if (discoveryPath(path)) signals.push(`path:${path}`);
+  if (inboxPath(path)) signals.push(`path:${path}`);
   if (discoverySelector) signals.push(`discovery-selector:${discoverySelector}`);
   if (inboxSelector) signals.push(`inbox-selector:${inboxSelector}`);
 
-  const looksDiscovery = Boolean(discoverySelector) || /\/app\/recs|\/recs|\/swipe/.test(path);
-  const looksInbox = Boolean(inboxSelector) || /\/app\/messages|\/messages|\/matches/.test(path);
+  const looksDiscovery = Boolean(discoverySelector) || discoveryPath(path);
+  const looksInbox = Boolean(inboxSelector) || inboxPath(path);
 
+  if (discoveryPath(path)) return { view: "discovery", signals };
+  if (inboxPath(path) && !looksDiscovery) return { view: "inbox", signals };
   if (looksDiscovery && !looksInbox) return { view: "discovery", signals };
   if (looksInbox && !looksDiscovery) return { view: "inbox", signals };
-  if (looksDiscovery && looksInbox) {
-    if (/\/app\/recs|\/recs|\/swipe/.test(path)) return { view: "discovery", signals };
-    if (/\/app\/messages|\/messages|\/matches/.test(path)) return { view: "inbox", signals };
-  }
   return { view: "unknown", signals };
 }
 
@@ -273,7 +311,7 @@ function classifyNavigationCandidate(element: HTMLElement): TinderNavigationCand
     element.getAttribute("data-testid"),
     element.getAttribute("role")
   ].filter(Boolean).join(" ").toLowerCase();
-  if (/recs|discover|swipe|like|nope/.test(hint)) return "discovery";
+  if (/recs|explore|discover|swipe|like|nope/.test(hint)) return "discovery";
   if (/messages|matches|inbox/.test(hint)) return "inbox";
   if (/chat|conversation/.test(hint)) return "conversation";
   return "unknown";
@@ -347,11 +385,15 @@ export class TinderDomAdapter {
     for (const element of candidates) directionCounts[directionOf(element)] += 1;
     const detected = detectView(match?.element ?? null);
     const confidence = confidenceForView(detected.view, detected.signals);
+    const sidebar = detectSidebarState();
+    const sendButton = match ? findSendButton(match.element, true) : null;
     return {
       view: detected.view,
       viewSignals: detected.signals,
       viewConfidence: confidence.score,
       viewConfidenceLabel: confidence.label,
+      sidebarState: sidebar.state,
+      sidebarSignals: sidebar.signals,
       composerSelector: match?.selector ?? null,
       composerFound: Boolean(match),
       messageSelectorMatches: MESSAGE_SELECTORS.map((selector) => ({
@@ -360,7 +402,8 @@ export class TinderDomAdapter {
       })),
       visibleCandidateCount: candidates.length,
       directionCounts,
-      sendButtonFound: Boolean(match && findSendButton(match.element)),
+      sendButtonFound: Boolean(sendButton),
+      sendButtonEnabled: Boolean(sendButton && !sendButton.disabled),
       navigationCandidates: navigationCandidates(),
       runtimeIssues: runtimeIssues.map((issue) => ({ ...issue })),
       threadKeyHash: simpleHash(`${location.pathname}|${document.title}`)
