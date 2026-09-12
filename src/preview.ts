@@ -15,6 +15,17 @@ interface PreviewVariant {
   overrides?: PreviewOverrides;
 }
 
+type PreviewFeedbackTag = "good" | "too-formal" | "too-flirty" | "too-much-darija" | "too-long";
+
+interface PreviewFeedbackEntry {
+  scenarioId: string;
+  variantId: string;
+  tag: PreviewFeedbackTag;
+  createdAt: string;
+}
+
+const feedbackStorageKey = "previewFeedback";
+
 const scenarios: PreviewScenario[] = [
   {
     id: "discovery",
@@ -50,6 +61,14 @@ const variants: PreviewVariant[] = [
     description: "Shorter, more playful/flirty messages with stronger humor.",
     overrides: { tone: "flirty", messageLength: "short", flirtLevel: 3, humorLevel: 85, emojiLevel: "low", languages: { fr: 45, darija: 45, en: 10 } }
   }
+];
+
+const feedbackTags: Array<{ tag: PreviewFeedbackTag; label: string }> = [
+  { tag: "good", label: "Good" },
+  { tag: "too-formal", label: "Too formal" },
+  { tag: "too-flirty", label: "Too flirty" },
+  { tag: "too-much-darija", label: "Too much Darija" },
+  { tag: "too-long", label: "Too long" }
 ];
 
 const cards = document.getElementById("cards")!;
@@ -167,6 +186,35 @@ function appendBubble(container: HTMLElement, speaker: "them" | "tnnd", text: st
   container.append(bubble);
 }
 
+async function saveFeedback(scenarioId: string, variantId: string, tag: PreviewFeedbackTag): Promise<void> {
+  const stored = await chrome.storage.local.get(feedbackStorageKey);
+  const current = Array.isArray(stored[feedbackStorageKey]) ? stored[feedbackStorageKey] as PreviewFeedbackEntry[] : [];
+  const next = current.filter((entry) => !(entry.scenarioId === scenarioId && entry.variantId === variantId));
+  next.push({ scenarioId, variantId, tag, createdAt: new Date().toISOString() });
+  await chrome.storage.local.set({ [feedbackStorageKey]: next.slice(-100) });
+}
+
+function buildFeedbackControls(scenario: PreviewScenario, variant: PreviewVariant): HTMLElement {
+  const wrapper = document.createElement("div");
+  wrapper.className = "control-actions";
+  const label = document.createElement("span");
+  label.className = "meta";
+  label.textContent = "Feedback:";
+  wrapper.append(label);
+
+  for (const item of feedbackTags) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = item.label;
+    button.addEventListener("click", async () => {
+      await saveFeedback(scenario.id, variant.id, item.tag);
+      status.textContent = `Saved feedback: ${item.label} · ${scenario.title} · ${variant.title}`;
+    });
+    wrapper.append(button);
+  }
+  return wrapper;
+}
+
 async function buildConversation(scenario: PreviewScenario, variant: PreviewVariant, base: AppConfig): Promise<HTMLElement> {
   const card = document.createElement("section");
   const heading = document.createElement("div");
@@ -197,7 +245,7 @@ async function buildConversation(scenario: PreviewScenario, variant: PreviewVari
     context += `\nMe: ${reply}`;
   }
 
-  card.append(heading, chat);
+  card.append(heading, chat, buildFeedbackControls(scenario, variant));
   return card;
 }
 
@@ -223,7 +271,7 @@ async function renderMatrix(): Promise<void> {
         status.textContent = `Generated ${completed}/${total} Gemini turns.`;
       }
     }
-    status.textContent = `Done · ${total} Gemini calls. Compare the conversations, then change your saved configuration or regenerate a smaller selection.`;
+    status.textContent = `Done · ${total} Gemini calls. Compare the conversations and tag useful feedback for future preset tuning.`;
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : "Could not generate preview matrix.";
   } finally {
