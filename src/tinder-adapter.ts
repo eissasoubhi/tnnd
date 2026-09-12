@@ -5,13 +5,27 @@ export interface ConversationSnapshot {
   latestIncomingText: string;
 }
 
+export type TinderViewState = "discovery" | "inbox" | "conversation" | "unknown";
+
+export interface TinderNavigationCandidate {
+  kind: "discovery" | "inbox" | "conversation" | "unknown";
+  tag: string;
+  href: string | null;
+  ariaLabel: string | null;
+  testId: string | null;
+  visible: boolean;
+}
+
 export interface TinderSelectorDiagnostics {
+  view: TinderViewState;
+  viewSignals: string[];
   composerSelector: string | null;
   composerFound: boolean;
   messageSelectorMatches: Array<{ selector: string; count: number }>;
   visibleCandidateCount: number;
   directionCounts: { me: number; them: number; unknown: number };
   sendButtonFound: boolean;
+  navigationCandidates: TinderNavigationCandidate[];
   threadKeyHash: string;
 }
 
@@ -29,14 +43,36 @@ const MESSAGE_SELECTORS = [
   '[aria-label*="message" i]'
 ];
 
+const INBOX_SELECTORS = [
+  'a[href*="/app/messages" i]',
+  'a[href*="/messages" i]',
+  '[data-testid*="matchList" i]',
+  '[data-testid*="messageList" i]',
+  '[aria-label*="messages" i]',
+  '[aria-label*="matches" i]'
+];
+
+const DISCOVERY_SELECTORS = [
+  'a[href*="/app/recs" i]',
+  '[data-testid*="recs" i]',
+  '[aria-label*="like" i]',
+  '[aria-label*="nope" i]',
+  'button[aria-label*="like" i]',
+  'button[aria-label*="nope" i]'
+];
+
 function textOf(element: Element): string {
   return (element.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
+function visible(element: Element | null): element is HTMLElement {
+  return element instanceof HTMLElement && element.offsetParent !== null;
 }
 
 function findComposerMatch(): { element: HTMLElement; selector: string } | null {
   for (const selector of COMPOSER_SELECTORS) {
     const element = document.querySelector<HTMLElement>(selector);
-    if (element && element.offsetParent !== null) return { element, selector };
+    if (visible(element)) return { element, selector };
   }
   return null;
 }
@@ -113,6 +149,86 @@ function findSendButton(composer: HTMLElement): HTMLButtonElement | null {
   }) ?? null;
 }
 
+function anyVisible(selectors: string[]): string | null {
+  for (const selector of selectors) {
+    if (Array.from(document.querySelectorAll(selector)).some((element) => visible(element))) return selector;
+  }
+  return null;
+}
+
+function detectView(composer: HTMLElement | null): { view: TinderViewState; signals: string[] } {
+  const signals: string[] = [];
+  const path = location.pathname.toLowerCase();
+
+  if (composer) {
+    signals.push("visible-message-composer");
+    if (/message|chat|match/.test(path)) signals.push(`path:${path}`);
+    return { view: "conversation", signals };
+  }
+
+  const discoverySelector = anyVisible(DISCOVERY_SELECTORS);
+  const inboxSelector = anyVisible(INBOX_SELECTORS);
+
+  if (/\/app\/recs|\/recs|\/swipe/.test(path)) signals.push(`path:${path}`);
+  if (/\/app\/messages|\/messages|\/matches/.test(path)) signals.push(`path:${path}`);
+  if (discoverySelector) signals.push(`discovery-selector:${discoverySelector}`);
+  if (inboxSelector) signals.push(`inbox-selector:${inboxSelector}`);
+
+  const looksDiscovery = Boolean(discoverySelector) || /\/app\/recs|\/recs|\/swipe/.test(path);
+  const looksInbox = Boolean(inboxSelector) || /\/app\/messages|\/messages|\/matches/.test(path);
+
+  if (looksDiscovery && !looksInbox) return { view: "discovery", signals };
+  if (looksInbox && !looksDiscovery) return { view: "inbox", signals };
+  if (looksDiscovery && looksInbox) {
+    if (/\/app\/recs|\/recs|\/swipe/.test(path)) return { view: "discovery", signals };
+    if (/\/app\/messages|\/messages|\/matches/.test(path)) return { view: "inbox", signals };
+  }
+  return { view: "unknown", signals };
+}
+
+function classifyNavigationCandidate(element: HTMLElement): TinderNavigationCandidate["kind"] {
+  const hint = [
+    element.getAttribute("href"),
+    element.getAttribute("aria-label"),
+    element.getAttribute("data-testid"),
+    element.getAttribute("role")
+  ].filter(Boolean).join(" ").toLowerCase();
+  if (/recs|discover|swipe|like|nope/.test(hint)) return "discovery";
+  if (/messages|matches|inbox/.test(hint)) return "inbox";
+  if (/chat|conversation/.test(hint)) return "conversation";
+  return "unknown";
+}
+
+function navigationCandidates(): TinderNavigationCandidate[] {
+  const selector = "a[href],button,[role='button'],[data-testid],[aria-label]";
+  const candidates: TinderNavigationCandidate[] = [];
+  for (const element of Array.from(document.querySelectorAll<HTMLElement>(selector))) {
+    if (!visible(element)) continue;
+    const kind = classifyNavigationCandidate(element);
+    if (kind === "unknown") continue;
+    const href = element instanceof HTMLAnchorElement ? element.href : element.getAttribute("href");
+    let safeHref: string | null = null;
+    if (href) {
+      try {
+        const parsed = new URL(href, location.href);
+        safeHref = parsed.origin === location.origin ? parsed.pathname : parsed.origin;
+      } catch {
+        safeHref = null;
+      }
+    }
+    candidates.push({
+      kind,
+      tag: element.tagName.toLowerCase(),
+      href: safeHref,
+      ariaLabel: element.getAttribute("aria-label"),
+      testId: element.getAttribute("data-testid"),
+      visible: true
+    });
+    if (candidates.length >= 30) break;
+  }
+  return candidates;
+}
+
 export class TinderDomAdapter {
   read(): ConversationSnapshot | null {
     const composer = findComposer();
@@ -142,7 +258,10 @@ export class TinderDomAdapter {
     const candidates = match ? candidateMessages(match.element) : [];
     const directionCounts = { me: 0, them: 0, unknown: 0 };
     for (const element of candidates) directionCounts[directionOf(element)] += 1;
+    const detected = detectView(match?.element ?? null);
     return {
+      view: detected.view,
+      viewSignals: detected.signals,
       composerSelector: match?.selector ?? null,
       composerFound: Boolean(match),
       messageSelectorMatches: MESSAGE_SELECTORS.map((selector) => ({
@@ -152,6 +271,7 @@ export class TinderDomAdapter {
       visibleCandidateCount: candidates.length,
       directionCounts,
       sendButtonFound: Boolean(match && findSendButton(match.element)),
+      navigationCandidates: navigationCandidates(),
       threadKeyHash: simpleHash(`${location.pathname}|${document.title}`)
     };
   }
