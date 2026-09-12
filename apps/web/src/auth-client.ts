@@ -1,5 +1,5 @@
 export interface AuthSession {
-  accessToken: string;
+  token: string;
   expiresAt: string;
   user: {
     id: string;
@@ -21,6 +21,10 @@ export class AuthApiError extends Error {
 
 const apiBase = (import.meta.env.VITE_TNND_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "http://127.0.0.1:4000";
 
+async function parseJson<T>(response: Response): Promise<T | null> {
+  return response.json().catch(() => null) as Promise<T | null>;
+}
+
 export async function login(credentials: LoginCredentials): Promise<AuthSession> {
   const response = await fetch(`${apiBase}/api/v1/auth/login`, {
     method: "POST",
@@ -31,13 +35,27 @@ export async function login(credentials: LoginCredentials): Promise<AuthSession>
     })
   });
 
-  const payload = await response.json().catch(() => null) as AuthSession | { error?: string } | null;
+  const payload = await parseJson<AuthSession | { error?: string }>(response);
   if (!response.ok) {
     const message = payload && "error" in payload && payload.error ? payload.error : "Unable to sign in.";
     throw new AuthApiError(message, response.status);
   }
 
-  return payload as AuthSession;
+  const session = payload as AuthSession | null;
+  if (!session?.token || !session.user?.email) {
+    throw new AuthApiError("Invalid authentication response.", 502);
+  }
+  return session;
+}
+
+export async function logout(session: AuthSession): Promise<void> {
+  const response = await fetch(`${apiBase}/api/v1/auth/logout`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${session.token}` }
+  });
+  if (response.ok || response.status === 404 || response.status === 401) return;
+  const payload = await parseJson<{ error?: string }>(response);
+  throw new AuthApiError(payload?.error ?? "Unable to sign out.", response.status);
 }
 
 export function persistSession(session: AuthSession): void {
@@ -49,8 +67,17 @@ export function readSession(): AuthSession | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as AuthSession;
-    return parsed.accessToken && parsed.user?.email ? parsed : null;
+    if (!parsed.token || !parsed.user?.email) {
+      clearSession();
+      return null;
+    }
+    if (Number.isFinite(Date.parse(parsed.expiresAt)) && Date.parse(parsed.expiresAt) <= Date.now()) {
+      clearSession();
+      return null;
+    }
+    return parsed;
   } catch {
+    clearSession();
     return null;
   }
 }
