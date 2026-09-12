@@ -59,6 +59,7 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
     }
 
     const acceptedMessageIds: string[] = [];
+    let acceptedOutgoingCount = 0;
     for (const message of input.messages) {
       const result = await client.query(
         `INSERT INTO conversation_messages (id, conversation_id, external_message_id, direction, body, sent_at)
@@ -67,7 +68,48 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
          RETURNING external_message_id`,
         [randomUUID(), conversationId, message.externalMessageId, message.direction, message.text, message.sentAt]
       );
-      if (result.rowCount) acceptedMessageIds.push(message.externalMessageId);
+      if (result.rowCount) {
+        acceptedMessageIds.push(message.externalMessageId);
+        if (message.direction === "outgoing") acceptedOutgoingCount += 1;
+      }
+    }
+
+    if (acceptedOutgoingCount > 0) {
+      await client.query(
+        `UPDATE conversations
+         SET temporary_instruction_remaining = CASE
+               WHEN temporary_instruction_scope IN ('next-message', 'next-n-replies')
+                 AND temporary_instruction_remaining > $1
+               THEN temporary_instruction_remaining - $1
+               ELSE temporary_instruction_remaining
+             END,
+             temporary_instruction = CASE
+               WHEN temporary_instruction_scope IN ('next-message', 'next-n-replies')
+                 AND temporary_instruction_remaining <= $1
+               THEN NULL
+               ELSE temporary_instruction
+             END,
+             temporary_instruction_scope = CASE
+               WHEN temporary_instruction_scope IN ('next-message', 'next-n-replies')
+                 AND temporary_instruction_remaining <= $1
+               THEN NULL
+               ELSE temporary_instruction_scope
+             END,
+             temporary_instruction_remaining = CASE
+               WHEN temporary_instruction_scope IN ('next-message', 'next-n-replies')
+                 AND temporary_instruction_remaining <= $1
+               THEN NULL
+               WHEN temporary_instruction_scope IN ('next-message', 'next-n-replies')
+                 AND temporary_instruction_remaining > $1
+               THEN temporary_instruction_remaining - $1
+               ELSE temporary_instruction_remaining
+             END,
+             updated_at = now()
+         WHERE id = $2 AND user_id = $3
+           AND temporary_instruction_scope IN ('next-message', 'next-n-replies')
+           AND temporary_instruction_remaining IS NOT NULL`,
+        [acceptedOutgoingCount, conversationId, userId]
+      );
     }
 
     await client.query("UPDATE conversations SET updated_at = now() WHERE id = $1", [conversationId]);
