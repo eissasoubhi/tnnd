@@ -189,3 +189,4 @@ if (actionCenter) {
 }
 refreshActionCounts();
 refreshStatus();
+void import("./auth-panel");
