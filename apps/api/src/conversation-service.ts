@@ -147,3 +147,32 @@ export async function getConversation(userId: string, conversationId: string): P
     messages
   };
 }
+
+export async function updateConversationStatus(
+  userId: string,
+  conversationId: string,
+  status: ConversationStatus
+): Promise<ConversationSummary | null> {
+  const result = await getPool().query<{
+    id: string;
+    external_thread_id: string;
+    status: ConversationStatus;
+    current_topic: string | null;
+    updated_at: Date;
+  }>(
+    `UPDATE conversations
+     SET status = $1, updated_at = now()
+     WHERE id = $2 AND user_id = $3
+     RETURNING id, external_thread_id, status, current_topic, updated_at`,
+    [status, conversationId, userId]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    externalThreadId: row.external_thread_id,
+    status: row.status,
+    ...(row.current_topic ? { currentTopic: row.current_topic } : {}),
+    updatedAt: row.updated_at.toISOString()
+  };
+}
