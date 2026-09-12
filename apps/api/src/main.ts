@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { hashSessionToken } from "./auth.js";
-import { authenticateSession, loginWithPassword, revokeSession } from "./auth-service.js";
+import { authenticateSession, loginWithPassword, registerAccount, revokeSession } from "./auth-service.js";
 import { getPool } from "./db-client.js";
 import { profileSchemaVersion, publicProfileSchema, validateProfileEnvelope } from "./profile-schema.js";
 
@@ -56,13 +56,27 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "password-login", "session-auth", "session-revocation", "account-profile", "extension-sync-foundation"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "account-profile", "extension-sync-foundation"]
       });
       return;
     }
 
     if (request.method === "GET" && url.pathname === "/api/v1/profile/schema") {
       sendJson(response, 200, publicProfileSchema());
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/v1/auth/register") {
+      const body = await readJsonBody(request);
+      const email = typeof body.email === "string" ? body.email : "";
+      const password = typeof body.password === "string" ? body.password : "";
+      const registration = await registerAccount(email, password);
+      if (!registration.ok) {
+        const status = registration.error === "email_already_exists" ? 409 : 400;
+        sendJson(response, status, { error: registration.error, ...(registration.details ? { details: registration.details } : {}) });
+        return;
+      }
+      sendJson(response, 201, registration);
       return;
     }
 
