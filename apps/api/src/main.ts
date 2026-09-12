@@ -2,11 +2,14 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { hashSessionToken } from "./auth.js";
 import { authenticateSession, listAccountSessions, loginWithPassword, registerAccount, revokeAccountSession, revokeSession } from "./auth-service.js";
 import { getPool } from "./db-client.js";
+import { createHumanAction, listHumanActions, updateHumanActionStatus, type HumanActionSeverity, type HumanActionStatus } from "./human-action-service.js";
 import { profileSchemaVersion, publicProfileSchema, validateProfileEnvelope } from "./profile-schema.js";
 
 const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? "127.0.0.1";
 const maxBodyBytes = 32 * 1024;
+const humanActionSeverities = new Set<HumanActionSeverity>(["info", "action-required", "decision-required", "urgent"]);
+const humanActionStatuses = new Set<HumanActionStatus>(["pending", "completed", "ignored"]);
 
 function sendJson(response: ServerResponse, status: number, payload: unknown): void {
   response.writeHead(status, {
@@ -46,6 +49,10 @@ async function authenticatedUser(request: IncomingMessage) {
   return authenticateSession(await hashSessionToken(token));
 }
 
+function stringField(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${host}:${port}`}`);
 
@@ -58,7 +65,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "extension-sync-foundation", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "extension-sync-foundation", "human-actions", "security-baseline"]
       });
       return;
     }
@@ -183,6 +190,64 @@ const server = createServer(async (request, response) => {
         [session.user.id, profileSchemaVersion, JSON.stringify(validated.profile)]
       );
       sendJson(response, 200, { profile: validated.profile, updatedAt: result.rows[0]?.updated_at.toISOString() ?? new Date().toISOString() });
+      return;
+    }
+
+    if ((request.method === "GET" || request.method === "POST") && url.pathname === "/api/v1/human-actions") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+
+      if (request.method === "GET") {
+        const rawStatus = url.searchParams.get("status");
+        if (rawStatus && !humanActionStatuses.has(rawStatus as HumanActionStatus)) {
+          sendJson(response, 400, { error: "invalid_human_action_status" });
+          return;
+        }
+        sendJson(response, 200, { actions: await listHumanActions(session.user.id, rawStatus as HumanActionStatus | undefined) });
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      const title = stringField(body.title);
+      const detail = stringField(body.detail);
+      const severity = body.severity as HumanActionSeverity;
+      if (!title || !detail || !humanActionSeverities.has(severity)) {
+        sendJson(response, 400, { error: "invalid_human_action" });
+        return;
+      }
+      const context = body.context && typeof body.context === "object" && !Array.isArray(body.context)
+        ? body.context as Record<string, unknown>
+        : undefined;
+      const action = await createHumanAction(session.user.id, {
+        title,
+        detail,
+        severity,
+        conversationRef: stringField(body.conversationRef) || undefined,
+        conversationLabel: stringField(body.conversationLabel) || undefined,
+        context
+      });
+      sendJson(response, 201, { action });
+      return;
+    }
+
+    if (request.method === "PATCH" && url.pathname.startsWith("/api/v1/human-actions/")) {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const actionId = decodeURIComponent(url.pathname.slice("/api/v1/human-actions/".length));
+      const body = await readJsonBody(request);
+      const status = body.status as HumanActionStatus;
+      if (!actionId || !humanActionStatuses.has(status)) {
+        sendJson(response, 400, { error: "invalid_human_action_update" });
+        return;
+      }
+      const action = await updateHumanActionStatus(session.user.id, actionId, status);
+      sendJson(response, action ? 200 : 404, action ? { action } : { error: "human_action_not_found" });
       return;
     }
 
