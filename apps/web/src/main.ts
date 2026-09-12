@@ -1,5 +1,7 @@
 import "./styles.css";
 import { bindActionCenter, readHumanActions, renderActionCenter } from "./action-center";
+import { readSession } from "./auth-client";
+import { fetchProfile, saveProfile } from "./profile-client";
 import { downloadProfile, parseImportedProfile, type ImportedProfile } from "./profile-import";
 import { datingGoals, disclosureStrategies, readEditablePreferences, writeEditablePreferences } from "./profile-preferences";
 
@@ -77,7 +79,7 @@ app.innerHTML = `
           <label>Message length<select id="message-length"><option value="very-short">very-short</option><option value="short">short</option><option value="medium">medium</option></select></label>
         </div>
         <button id="preferences-save" type="button">Save preferences</button>
-        <p class="subtle">These values update the imported profile JSON locally until backend persistence lands.</p>
+        <p class="subtle">Signed-in profiles are stored in the backend. Browser storage is only a disconnected fallback.</p>
       </article>
 
       <article class="panel panel-wide">
@@ -110,11 +112,38 @@ const actionCenter = document.querySelector<HTMLElement>("#action-center");
 const actionCount = document.querySelector<HTMLElement>("#action-count");
 const humanActionMetric = document.querySelector<HTMLElement>('[data-metric-state="Action required"]');
 
-function loadStoredProfile(): ImportedProfile | null {
+let currentProfile: ImportedProfile | null = null;
+
+function loadFallbackProfile(): ImportedProfile | null {
   const raw = localStorage.getItem(storageKey);
   if (!raw) return null;
   const parsed = parseImportedProfile(raw);
   return parsed.ok ? parsed.profile : null;
+}
+
+function setProfile(profile: ImportedProfile | null, source: "backend" | "local" | "none"): void {
+  currentProfile = profile;
+  if (status) status.textContent = profile ? `Schema v${profile.schemaVersion} · ${source}` : "No profile";
+  if (exportButton) exportButton.disabled = !profile;
+  refreshPreferences(profile);
+}
+
+async function refreshProfile(): Promise<void> {
+  if (!readSession()) {
+    setProfile(loadFallbackProfile(), localStorage.getItem(storageKey) ? "local" : "none");
+    if (message) message.textContent = "Sign in to sync your profile with the backend.";
+    return;
+  }
+
+  if (message) message.textContent = "Loading profile from backend…";
+  try {
+    const profile = await fetchProfile();
+    setProfile(profile, profile ? "backend" : "none");
+    if (message) message.textContent = profile ? "Profile loaded from backend." : "No backend profile yet. Import one to create it.";
+  } catch (error) {
+    setProfile(loadFallbackProfile(), localStorage.getItem(storageKey) ? "local" : "none");
+    if (message) message.textContent = error instanceof Error ? `${error.message} Using local fallback when available.` : "Unable to load backend profile.";
+  }
 }
 
 function refreshPreferences(profile: ImportedProfile | null): void {
@@ -132,20 +161,24 @@ function refreshPreferences(profile: ImportedProfile | null): void {
   if (emojiFrequency) emojiFrequency.value = preferences.emojiFrequency;
   if (abbreviations) abbreviations.value = preferences.abbreviations;
   if (messageLength) messageLength.value = preferences.messageLength;
-  if (preferencesStatus) preferencesStatus.textContent = "Ready";
-}
-
-function refreshStatus(): void {
-  const current = loadStoredProfile();
-  if (status) status.textContent = current ? `Schema v${current.schemaVersion}` : "No profile";
-  if (exportButton) exportButton.disabled = !current;
-  refreshPreferences(current);
+  if (preferencesStatus) preferencesStatus.textContent = readSession() ? "Synced" : "Local fallback";
 }
 
 function refreshActionCounts(): void {
   const pending = readHumanActions().filter((item) => item.status === "pending").length;
   if (actionCount) actionCount.textContent = `${pending} pending`;
   if (humanActionMetric) humanActionMetric.textContent = String(pending);
+}
+
+async function persistProfile(profile: ImportedProfile): Promise<void> {
+  if (readSession()) {
+    currentProfile = await saveProfile(profile);
+    localStorage.removeItem(storageKey);
+    setProfile(currentProfile, "backend");
+    return;
+  }
+  localStorage.setItem(storageKey, JSON.stringify(profile));
+  setProfile(profile, "local");
 }
 
 input?.addEventListener("change", async () => {
@@ -157,20 +190,21 @@ input?.addEventListener("change", async () => {
     return;
   }
 
-  localStorage.setItem(storageKey, JSON.stringify(parsed.profile));
-  if (message) message.textContent = "Profile imported locally. Backend persistence will replace this temporary browser storage.";
-  refreshStatus();
+  try {
+    await persistProfile(parsed.profile);
+    if (message) message.textContent = readSession() ? "Profile imported and saved to backend." : "Profile imported locally. Sign in to move it to backend storage.";
+  } catch (error) {
+    if (message) message.textContent = error instanceof Error ? error.message : "Unable to save profile.";
+  }
 });
 
 exportButton?.addEventListener("click", () => {
-  const profile = loadStoredProfile();
-  if (profile) downloadProfile(profile);
+  if (currentProfile) downloadProfile(currentProfile);
 });
 
-preferencesSave?.addEventListener("click", () => {
-  const profile = loadStoredProfile();
-  if (!profile || !datingGoal || !disclosureStrategy || !textFormality || !emojiFrequency || !abbreviations || !messageLength) return;
-  const updated = writeEditablePreferences(profile, {
+preferencesSave?.addEventListener("click", async () => {
+  if (!currentProfile || !datingGoal || !disclosureStrategy || !textFormality || !emojiFrequency || !abbreviations || !messageLength) return;
+  const updated = writeEditablePreferences(currentProfile, {
     datingGoal: datingGoal.value,
     disclosureStrategy: disclosureStrategy.value,
     formality: textFormality.value,
@@ -178,15 +212,21 @@ preferencesSave?.addEventListener("click", () => {
     abbreviations: abbreviations.value,
     messageLength: messageLength.value
   });
-  localStorage.setItem(storageKey, JSON.stringify(updated));
-  if (preferencesStatus) preferencesStatus.textContent = "Saved locally";
-  if (message) message.textContent = "Dating and texting preferences updated in the local profile.";
+  try {
+    await persistProfile(updated);
+    if (preferencesStatus) preferencesStatus.textContent = readSession() ? "Synced" : "Saved locally";
+    if (message) message.textContent = readSession() ? "Preferences saved to backend." : "Preferences saved to local fallback.";
+  } catch (error) {
+    if (message) message.textContent = error instanceof Error ? error.message : "Unable to save preferences.";
+  }
 });
+
+window.addEventListener("tnnd:auth-session-changed", () => { void refreshProfile(); });
 
 if (actionCenter) {
   renderActionCenter(actionCenter);
   bindActionCenter(actionCenter, refreshActionCounts);
 }
 refreshActionCounts();
-refreshStatus();
+void refreshProfile();
 void import("./auth-panel");
