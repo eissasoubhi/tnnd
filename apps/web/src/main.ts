@@ -1,4 +1,5 @@
 import "./styles.css";
+import { downloadProfile, parseImportedProfile, type ImportedProfile } from "./profile-import";
 
 type ConversationState = "Active" | "Waiting for them" | "Action required" | "Paused";
 
@@ -15,6 +16,7 @@ const cards: DashboardCard[] = [
   { label: "Paused", value: 0, state: "Paused" }
 ];
 
+const storageKey = "tnnd:web:imported-profile";
 const app = document.querySelector<HTMLElement>("#app");
 if (!app) throw new Error("TNND web app root was not found.");
 
@@ -43,12 +45,15 @@ app.innerHTML = `
       <article class="panel">
         <div class="panel-heading">
           <div>
-            <p class="eyebrow">Next foundation</p>
-            <h2>Account & profile</h2>
+            <p class="eyebrow">Account</p>
+            <h2>Profile import / export</h2>
           </div>
-          <span class="pill">Planned</span>
+          <span class="pill" id="profile-status">No profile</span>
         </div>
-        <p>Authentication, global dating intent, texting identity and secure AI-provider settings will live here.</p>
+        <p>Import a schema-versioned TNND profile JSON. Secrets such as Gemini API keys do not belong in this file.</p>
+        <input id="profile-file" type="file" accept="application/json,.json" />
+        <button id="profile-export" type="button">Export current profile</button>
+        <p class="subtle" id="profile-message" role="status"></p>
       </article>
 
       <article class="panel">
@@ -64,3 +69,42 @@ app.innerHTML = `
     </section>
   </section>
 `;
+
+const status = document.querySelector<HTMLElement>("#profile-status");
+const message = document.querySelector<HTMLElement>("#profile-message");
+const input = document.querySelector<HTMLInputElement>("#profile-file");
+const exportButton = document.querySelector<HTMLButtonElement>("#profile-export");
+
+function loadStoredProfile(): ImportedProfile | null {
+  const raw = localStorage.getItem(storageKey);
+  if (!raw) return null;
+  const parsed = parseImportedProfile(raw);
+  return parsed.ok ? parsed.profile : null;
+}
+
+function refreshStatus(): void {
+  const current = loadStoredProfile();
+  if (status) status.textContent = current ? `Schema v${current.schemaVersion}` : "No profile";
+  if (exportButton) exportButton.disabled = !current;
+}
+
+input?.addEventListener("change", async () => {
+  const file = input.files?.[0];
+  if (!file) return;
+  const parsed = parseImportedProfile(await file.text());
+  if (!parsed.ok) {
+    if (message) message.textContent = parsed.error;
+    return;
+  }
+
+  localStorage.setItem(storageKey, JSON.stringify(parsed.profile));
+  if (message) message.textContent = "Profile imported locally. Backend persistence will replace this temporary browser storage.";
+  refreshStatus();
+});
+
+exportButton?.addEventListener("click", () => {
+  const profile = loadStoredProfile();
+  if (profile) downloadProfile(profile);
+});
+
+refreshStatus();
