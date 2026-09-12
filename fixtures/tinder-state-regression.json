@@ -1,19 +1,59 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "source": "synthetic fixtures derived from redacted user-triggered V1 observations",
   "routes": [
-    { "path": "/app/explore", "state": "discovery" },
-    { "path": "/app/recs", "state": "discovery" },
-    { "path": "/app/matches", "state": "inbox" },
-    { "path": "/app/messages", "state": "inbox" },
-    { "path": "/app/messages/thread-fixture-001", "state": "conversation", "conversationRef": "thread-fixture-001" },
-    { "path": "/settings", "state": "unknown" }
+    { "path": "/app/explore", "state": "discovery", "discoveryContext": "explore-catalog" },
+    { "path": "/app/explore/category-fixture-001", "state": "discovery", "discoveryContext": "explore-category" },
+    { "path": "/app/recs", "state": "discovery", "discoveryContext": "recs" },
+    { "path": "/app/matches", "state": "inbox", "discoveryContext": "unknown" },
+    { "path": "/app/messages", "state": "inbox", "discoveryContext": "unknown" },
+    { "path": "/app/messages/thread-fixture-001", "state": "conversation", "conversationRef": "thread-fixture-001", "discoveryContext": "unknown" },
+    { "path": "/settings", "state": "unknown", "discoveryContext": "unknown" }
+  ],
+  "uiObservations": [
+    {
+      "name": "discovery-with-visible-modal",
+      "path": "/app/explore",
+      "signals": { "visibleModal": true },
+      "overlay": "blocking-modal",
+      "profileState": "card",
+      "boundedActionAllowed": false
+    },
+    {
+      "name": "discovery-profile-expanded",
+      "path": "/app/explore",
+      "signals": { "profileExpanded": true },
+      "overlay": "none",
+      "profileState": "expanded",
+      "boundedActionAllowed": true
+    },
+    {
+      "name": "explore-category-stack",
+      "path": "/app/explore/category-fixture-001",
+      "signals": {},
+      "overlay": "none",
+      "profileState": "card",
+      "boundedActionAllowed": true
+    },
+    {
+      "name": "discovery-with-messages-sidebar",
+      "path": "/app/recs",
+      "signals": { "sidebarState": "messages" },
+      "overlay": "none",
+      "profileState": "card",
+      "boundedActionAllowed": true
+    }
   ],
   "observedSequence": [
     "discovery",
     "discovery",
     "conversation",
     "inbox",
+    "discovery",
+    "discovery",
+    "discovery",
+    "discovery",
+    "discovery",
     "discovery"
   ]
 }
