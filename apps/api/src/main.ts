@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { publicProfileSchema } from "./profile-schema";
+import { publicProfileSchema } from "./profile-schema.js";
 
 const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? "127.0.0.1";
