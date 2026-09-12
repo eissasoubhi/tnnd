@@ -32,12 +32,21 @@ export interface ConversationMessage {
   sentAt: string;
 }
 
+export type TemporaryInstructionScope = "next-message" | "next-n-replies" | "until-cleared";
+
+export interface TemporaryInstruction {
+  text: string;
+  scope: TemporaryInstructionScope;
+  remainingReplies?: number;
+}
+
 export interface ConversationDetail {
   id: string;
   displayName: string;
   status: ConversationStatus;
   currentTopic: string | null;
   pendingHumanActions?: number;
+  temporaryInstruction?: TemporaryInstruction | null;
   messages: ConversationMessage[];
 }
 
@@ -68,5 +77,36 @@ export async function updateConversationStatus(
   const payload = await parseJson<{ error?: string }>(response);
   if (!response.ok) {
     throw new ConversationApiError(payload?.error ?? "Unable to update conversation status.", response.status);
+  }
+}
+
+export async function saveTemporaryInstruction(
+  session: AuthSession,
+  conversationId: string,
+  instruction: TemporaryInstruction
+): Promise<TemporaryInstruction> {
+  const response = await fetch(`${apiBase}/api/v1/conversations/${encodeURIComponent(conversationId)}/instruction`, {
+    method: "PUT",
+    headers: {
+      authorization: `Bearer ${session.token}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(instruction)
+  });
+  const payload = await parseJson<{ instruction?: TemporaryInstruction; error?: string }>(response);
+  if (!response.ok || !payload?.instruction) {
+    throw new ConversationApiError(payload?.error ?? "Unable to save temporary instruction.", response.status);
+  }
+  return payload.instruction;
+}
+
+export async function clearTemporaryInstruction(session: AuthSession, conversationId: string): Promise<void> {
+  const response = await fetch(`${apiBase}/api/v1/conversations/${encodeURIComponent(conversationId)}/instruction`, {
+    method: "DELETE",
+    headers: { authorization: `Bearer ${session.token}` }
+  });
+  const payload = await parseJson<{ error?: string }>(response);
+  if (!response.ok) {
+    throw new ConversationApiError(payload?.error ?? "Unable to clear temporary instruction.", response.status);
   }
 }
