@@ -1,3 +1,4 @@
+import { deletePreviewPreset, getPreviewPresets, savePreviewPreset, type PreviewPreset } from "./preview-presets";
 import { getConfig } from "./storage";
 import type { AppConfig, GenerateRequest, GenerateResponse, PreviewOverrides } from "./types";
 
@@ -78,6 +79,11 @@ const version = document.getElementById("extensionVersion")!;
 const generateButton = document.getElementById("generateMatrix") as HTMLButtonElement;
 const selection = document.getElementById("selection")!;
 const callEstimate = document.getElementById("callEstimate")!;
+const presetName = document.getElementById("presetName") as HTMLInputElement;
+const presetSelect = document.getElementById("presetSelect") as HTMLSelectElement;
+const savePresetButton = document.getElementById("savePreset") as HTMLButtonElement;
+const deletePresetButton = document.getElementById("deletePreset") as HTMLButtonElement;
+let savedPresets: PreviewPreset[] = [];
 version.textContent = `v${chrome.runtime.getManifest().version}`;
 
 function selectedIds(name: string): Set<string> {
@@ -144,6 +150,44 @@ function renderSelectors(): void {
   }
   selection.append(scenariosBox, variantsBox);
   updateEstimate();
+}
+
+function applyPreset(preset: PreviewPreset): void {
+  const scenarioIds = new Set(preset.scenarioIds);
+  const variantIds = new Set(preset.variantIds);
+  document.querySelectorAll<HTMLInputElement>('input[name="scenario"]').forEach((input) => {
+    input.checked = scenarioIds.has(input.value);
+  });
+  document.querySelectorAll<HTMLInputElement>('input[name="variant"]').forEach((input) => {
+    input.checked = variantIds.has(input.value);
+  });
+  presetName.value = preset.name;
+  updateEstimate();
+}
+
+async function refreshPresetOptions(selectedId = ""): Promise<void> {
+  savedPresets = await getPreviewPresets();
+  presetSelect.replaceChildren(new Option("Saved presets", ""));
+  for (const preset of savedPresets) presetSelect.add(new Option(preset.name, preset.id));
+  if (selectedId && savedPresets.some((preset) => preset.id === selectedId)) presetSelect.value = selectedId;
+  deletePresetButton.disabled = !presetSelect.value;
+}
+
+async function handleSavePreset(): Promise<void> {
+  savePresetButton.disabled = true;
+  try {
+    const preset = await savePreviewPreset(
+      presetName.value,
+      [...selectedIds("scenario")],
+      [...selectedIds("variant")]
+    );
+    await refreshPresetOptions(preset.id);
+    status.textContent = `Saved preview preset: ${preset.name}`;
+  } catch (error) {
+    status.textContent = error instanceof Error ? error.message : "Could not save preview preset.";
+  } finally {
+    savePresetButton.disabled = false;
+  }
 }
 
 function overrideValue<T>(override: T | undefined, current: T): T {
@@ -281,10 +325,31 @@ async function renderMatrix(): Promise<void> {
 }
 
 renderSelectors();
+void refreshPresetOptions();
 void getConfig().then((base) => {
   summary.textContent = `Saved profile: ${base.tone} · flirt ${base.flirtLevel}/3 · humor ${base.humorLevel}/100 · FR ${base.languages.fr} / Darija ${base.languages.darija} / EN ${base.languages.en}`;
 });
 generateButton.addEventListener("click", () => void renderMatrix());
+savePresetButton.addEventListener("click", () => void handleSavePreset());
+presetSelect.addEventListener("change", () => {
+  const preset = savedPresets.find((item) => item.id === presetSelect.value);
+  deletePresetButton.disabled = !preset;
+  if (preset) {
+    applyPreset(preset);
+    status.textContent = `Loaded preview preset: ${preset.name}`;
+  }
+});
+deletePresetButton.addEventListener("click", () => {
+  void (async () => {
+    const id = presetSelect.value;
+    const preset = savedPresets.find((item) => item.id === id);
+    if (!id || !preset) return;
+    await deletePreviewPreset(id);
+    presetName.value = "";
+    await refreshPresetOptions();
+    status.textContent = `Deleted preview preset: ${preset.name}`;
+  })();
+});
 chrome.storage.onChanged.addListener((_changes, area) => {
   if (area === "local") status.textContent = "Settings changed. Generate again to compare the updated profile.";
 });
