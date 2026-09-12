@@ -1,5 +1,5 @@
 import { readSession } from "./auth-client";
-import { getConversation, listConversations, type ConversationDetail } from "./conversation-client";
+import { getConversation, listConversations, updateConversationStatus, type ConversationDetail } from "./conversation-client";
 import type { ConversationListItem, ConversationStatus } from "./conversation-contract";
 
 function escapeHtml(value: string): string {
@@ -34,6 +34,19 @@ function renderList(items: ConversationListItem[], selectedId?: string): string 
   `).join("");
 }
 
+function renderStatusActions(detail: ConversationDetail): string {
+  const actions: Array<{ label: string; status: ConversationStatus; danger?: boolean }> = [];
+  if (detail.status === "paused" || detail.status === "disabled") {
+    actions.push({ label: "Resume", status: "active" });
+  } else {
+    actions.push({ label: "Pause", status: "paused" });
+  }
+  if (detail.status !== "disabled") actions.push({ label: "Disable", status: "disabled", danger: true });
+  return actions.map((action) => `
+    <button type="button" class="conversation-status-action${action.danger ? " danger" : ""}" data-conversation-status-action="${action.status}">${action.label}</button>
+  `).join("");
+}
+
 function renderDetail(detail: ConversationDetail): string {
   const messages = detail.messages.length
     ? detail.messages.map((message) => `
@@ -52,6 +65,9 @@ function renderDetail(detail: ConversationDetail): string {
         <small>${escapeHtml(detail.currentTopic ?? "No current topic")}</small>
       </div>
       <span class="pill">${escapeHtml(detail.status)}</span>
+    </div>
+    <div class="conversation-status-actions" aria-label="Conversation controls">
+      ${renderStatusActions(detail)}
     </div>
     <div class="conversation-messages">${messages}</div>
   `;
@@ -88,7 +104,8 @@ function installStyles(): void {
     .conversation-list{display:grid;gap:8px;align-content:start;max-height:430px;overflow:auto}
     .conversation-row{width:100%;display:flex;justify-content:space-between;gap:12px;text-align:left;padding:11px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:transparent;color:inherit;cursor:pointer}
     .conversation-row:hover{border-color:currentColor}.conversation-row.selected{outline:2px solid currentColor;outline-offset:1px}.conversation-row-main,.conversation-row-meta{display:grid;gap:4px}.conversation-row-meta{text-align:right;justify-items:end}.conversation-row small,.conversation-detail small,.conversation-message small{opacity:.65}
-    .conversation-detail{min-height:180px;border:1px solid var(--border,#d4d4d8);border-radius:12px;padding:12px}.conversation-detail-heading{display:flex;justify-content:space-between;gap:12px;margin-bottom:12px}.conversation-detail-heading>div{display:grid;gap:4px}
+    .conversation-detail{min-height:180px;border:1px solid var(--border,#d4d4d8);border-radius:12px;padding:12px}.conversation-detail-heading{display:flex;justify-content:space-between;gap:12px;margin-bottom:10px}.conversation-detail-heading>div{display:grid;gap:4px}
+    .conversation-status-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.conversation-status-action{width:auto;padding:7px 10px;border:1px solid var(--border,#d4d4d8);border-radius:8px;background:transparent;color:inherit;cursor:pointer}.conversation-status-action:hover{border-color:currentColor}.conversation-status-action.danger{border-style:dashed}.conversation-status-action:disabled{opacity:.55;cursor:wait}
     .conversation-messages{display:grid;gap:8px;max-height:340px;overflow:auto}.conversation-message{max-width:86%;padding:9px 10px;border-radius:10px;background:rgba(127,127,127,.12)}.conversation-message.outgoing{justify-self:end}.conversation-message.incoming{justify-self:start}.conversation-message span{font-size:10px;font-weight:700;opacity:.7}.conversation-message p{margin:3px 0 4px;white-space:pre-wrap}
     @media(max-width:760px){.conversation-layout{grid-template-columns:1fr}.conversation-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
   `;
@@ -176,13 +193,42 @@ function renderCurrentList(): void {
   bindRows(items);
 }
 
+async function applyStatus(conversationId: string, status: ConversationStatus): Promise<void> {
+  if (!elements) return;
+  const session = readSession();
+  if (!session) return;
+  const buttons = Array.from(elements.detail.querySelectorAll<HTMLButtonElement>("[data-conversation-status-action]"));
+  buttons.forEach((button) => { button.disabled = true; });
+  try {
+    await updateConversationStatus(session, conversationId, status);
+    cachedItems = cachedItems.map((item) => item.id === conversationId ? { ...item, status } : item);
+    renderCurrentList();
+    await loadDetail(conversationId);
+  } catch (error) {
+    elements.detail.insertAdjacentHTML("afterbegin", `<p class="subtle">${escapeHtml(error instanceof Error ? error.message : "Unable to update conversation status.")}</p>`);
+    buttons.forEach((button) => { button.disabled = false; });
+  }
+}
+
+function bindStatusActions(conversationId: string): void {
+  if (!elements) return;
+  elements.detail.querySelectorAll<HTMLButtonElement>("[data-conversation-status-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextStatus = button.dataset.conversationStatusAction as ConversationStatus | undefined;
+      if (nextStatus) void applyStatus(conversationId, nextStatus);
+    });
+  });
+}
+
 async function loadDetail(conversationId: string): Promise<void> {
   if (!elements) return;
   const session = readSession();
   if (!session) return;
   elements.detail.innerHTML = '<p class="subtle">Loading conversation…</p>';
   try {
-    elements.detail.innerHTML = renderDetail(await getConversation(session, conversationId));
+    const detail = await getConversation(session, conversationId);
+    elements.detail.innerHTML = renderDetail(detail);
+    bindStatusActions(conversationId);
   } catch (error) {
     elements.detail.innerHTML = `<p class="subtle">${escapeHtml(error instanceof Error ? error.message : "Unable to load conversation.")}</p>`;
   }
