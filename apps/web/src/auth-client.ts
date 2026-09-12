@@ -12,6 +12,11 @@ export interface LoginCredentials {
   password: string;
 }
 
+export interface RegisteredAccount {
+  id: string;
+  email: string;
+}
+
 export class AuthApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -23,6 +28,23 @@ const apiBase = (import.meta.env.VITE_TNND_API_BASE_URL as string | undefined)?.
 
 async function parseJson<T>(response: Response): Promise<T | null> {
   return response.json().catch(() => null) as Promise<T | null>;
+}
+
+export async function register(credentials: LoginCredentials): Promise<RegisteredAccount> {
+  const response = await fetch(`${apiBase}/api/v1/auth/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      email: credentials.email.trim().toLowerCase(),
+      password: credentials.password
+    })
+  });
+  const payload = await parseJson<{ ok?: boolean; user?: RegisteredAccount; error?: string; details?: string }>(response);
+  if (!response.ok || !payload?.ok || !payload.user?.email) {
+    const message = payload?.details ?? payload?.error ?? "Unable to create account.";
+    throw new AuthApiError(message, response.status);
+  }
+  return payload.user;
 }
 
 export async function login(credentials: LoginCredentials): Promise<AuthSession> {

@@ -1,4 +1,4 @@
-import { clearSession, login, logout as logoutSession, persistSession, readSession } from "./auth-client";
+import { clearSession, login, logout as logoutSession, persistSession, readSession, register } from "./auth-client";
 
 const grid = document.querySelector<HTMLElement>(".grid");
 if (!grid) throw new Error("TNND dashboard grid was not found.");
@@ -18,10 +18,11 @@ panel.innerHTML = `
     <label>Password<input id="login-password" type="password" autocomplete="current-password" minlength="12" required /></label>
     <div>
       <button id="login-submit" type="submit">Sign in</button>
+      <button id="register-submit" type="button">Create account</button>
       <button id="logout-submit" type="button">Sign out</button>
     </div>
   </form>
-  <p class="subtle" id="auth-message" role="status">Sign in to sync TNND account data with the backend.</p>
+  <p class="subtle" id="auth-message" role="status">Sign in or create an account to sync TNND data with the backend.</p>
 `;
 grid.prepend(panel);
 
@@ -29,6 +30,7 @@ const form = panel.querySelector<HTMLFormElement>("#login-form");
 const email = panel.querySelector<HTMLInputElement>("#login-email");
 const password = panel.querySelector<HTMLInputElement>("#login-password");
 const submit = panel.querySelector<HTMLButtonElement>("#login-submit");
+const registerButton = panel.querySelector<HTMLButtonElement>("#register-submit");
 const logout = panel.querySelector<HTMLButtonElement>("#logout-submit");
 const status = panel.querySelector<HTMLElement>("#auth-status");
 const message = panel.querySelector<HTMLElement>("#auth-message");
@@ -42,14 +44,15 @@ function refresh(): void {
   if (status) status.textContent = session ? session.user.email : "Signed out";
   if (logout) logout.disabled = !session;
   if (submit) submit.disabled = Boolean(session);
+  if (registerButton) registerButton.disabled = Boolean(session);
   if (email) email.disabled = Boolean(session);
   if (password) password.disabled = Boolean(session);
 }
 
-form?.addEventListener("submit", async (event) => {
-  event.preventDefault();
+async function signIn(): Promise<void> {
   if (!email || !password || !submit) return;
   submit.disabled = true;
+  if (registerButton) registerButton.disabled = true;
   if (message) message.textContent = "Signing in…";
   try {
     const session = await login({ email: email.value, password: password.value });
@@ -59,6 +62,28 @@ form?.addEventListener("submit", async (event) => {
     notifySessionChanged();
   } catch (error) {
     if (message) message.textContent = error instanceof Error ? error.message : "Unable to sign in.";
+  } finally {
+    refresh();
+  }
+}
+
+form?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await signIn();
+});
+
+registerButton?.addEventListener("click", async () => {
+  if (!email || !password || !registerButton) return;
+  if (!form?.reportValidity()) return;
+  registerButton.disabled = true;
+  if (submit) submit.disabled = true;
+  if (message) message.textContent = "Creating your TNND account…";
+  try {
+    await register({ email: email.value, password: password.value });
+    if (message) message.textContent = "Account created. Signing in…";
+    await signIn();
+  } catch (error) {
+    if (message) message.textContent = error instanceof Error ? error.message : "Unable to create account.";
   } finally {
     refresh();
   }
