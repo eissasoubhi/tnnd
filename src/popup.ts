@@ -1,4 +1,5 @@
 import { strToU8, zipSync } from "fflate";
+import { loginBackend, logoutBackend, validateBackendSession } from "./backend-session";
 import { getChatSettings, saveChatSettings } from "./storage";
 import { renderSyncStatus } from "./sync-status-panel";
 import type { ChatSettings, ConversationStage, Tone } from "./types";
@@ -28,6 +29,14 @@ const status = document.getElementById("status")!;
 const exportButton = document.getElementById("exportDiagnostics") as HTMLButtonElement;
 const openSettings = document.getElementById("openSettings") as HTMLButtonElement;
 const openPreview = document.getElementById("openPreview") as HTMLButtonElement;
+const backendLoggedOut = document.getElementById("backendLoggedOut")!;
+const backendLoggedIn = document.getElementById("backendLoggedIn")!;
+const backendAccount = document.getElementById("backendAccount")!;
+const backendEmail = document.getElementById("backendEmail") as HTMLInputElement;
+const backendPassword = document.getElementById("backendPassword") as HTMLInputElement;
+const backendLogin = document.getElementById("backendLogin") as HTMLButtonElement;
+const backendLogout = document.getElementById("backendLogout") as HTMLButtonElement;
+const backendAuthStatus = document.getElementById("backendAuthStatus")!;
 const chatEditor = document.getElementById("chatEditor")!;
 const chatUnavailable = document.getElementById("chatUnavailable")!;
 const chatEnabled = document.getElementById("chatEnabled") as HTMLInputElement;
@@ -97,6 +106,25 @@ function readChatSettings(): ChatSettings {
     humorLevel: optionalNumber(chatHumorLevel, 0, 100),
     languages
   };
+}
+
+function showBackendSession(email: string | null): void {
+  backendLoggedOut.classList.toggle("hidden", Boolean(email));
+  backendLoggedIn.classList.toggle("hidden", !email);
+  backendAccount.textContent = email ? `Connected as ${email}` : "";
+}
+
+async function refreshBackendAuth(): Promise<void> {
+  try {
+    const session = await validateBackendSession();
+    showBackendSession(session?.user.email ?? null);
+    backendAuthStatus.textContent = session ? "TNND account session is active." : "Connect your TNND account to enable server sync.";
+  } catch (error) {
+    showBackendSession(null);
+    backendAuthStatus.textContent = error instanceof Error ? error.message : "Could not validate TNND session.";
+  } finally {
+    await renderSyncStatus();
+  }
 }
 
 async function loadCurrentChat(): Promise<void> {
@@ -181,6 +209,40 @@ async function exportDiagnostics(): Promise<void> {
   }
 }
 
+backendLogin.addEventListener("click", () => {
+  void (async () => {
+    const email = backendEmail.value.trim();
+    const password = backendPassword.value;
+    if (!email || !password) throw new Error("Enter your TNND email and password.");
+    backendLogin.disabled = true;
+    backendAuthStatus.textContent = "Connecting to TNND…";
+    const session = await loginBackend({ email, password });
+    backendPassword.value = "";
+    showBackendSession(session.user.email);
+    backendAuthStatus.textContent = "TNND account connected.";
+    await renderSyncStatus();
+  })().catch((error) => {
+    backendAuthStatus.textContent = error instanceof Error ? error.message : "Could not connect to TNND.";
+  }).finally(() => {
+    backendLogin.disabled = false;
+  });
+});
+
+backendLogout.addEventListener("click", () => {
+  void (async () => {
+    backendLogout.disabled = true;
+    backendAuthStatus.textContent = "Disconnecting…";
+    await logoutBackend();
+    showBackendSession(null);
+    backendAuthStatus.textContent = "TNND account disconnected.";
+    await renderSyncStatus();
+  })().catch((error) => {
+    backendAuthStatus.textContent = error instanceof Error ? error.message : "Could not disconnect TNND.";
+  }).finally(() => {
+    backendLogout.disabled = false;
+  });
+});
+
 saveChat.addEventListener("click", () => {
   void (async () => {
     if (!currentThreadKey) throw new Error("No Tinder conversation is currently detected.");
@@ -201,5 +263,5 @@ exportButton.addEventListener("click", () => void exportDiagnostics().catch((err
   status.textContent = error instanceof Error ? error.message : "Could not export diagnostics.";
   exportButton.disabled = false;
 }));
-void renderSyncStatus();
+void refreshBackendAuth();
 void loadCurrentChat();
