@@ -8,6 +8,12 @@ export interface LoginResult {
   user: { id: string; email: string };
 }
 
+export interface AuthenticatedSession {
+  sessionId: string;
+  user: { id: string; email: string };
+  expiresAt: string;
+}
+
 export async function loginWithPassword(emailInput: string, password: string): Promise<LoginResult | null> {
   const email = normalizeEmail(emailInput);
   if (!email || !password) return null;
@@ -31,6 +37,32 @@ export async function loginWithPassword(emailInput: string, password: string): P
     token: session.token,
     expiresAt: session.expiresAt.toISOString(),
     user: { id: user.id, email: user.email }
+  };
+}
+
+export async function authenticateSession(tokenHash: string): Promise<AuthenticatedSession | null> {
+  const result = await getPool().query<{
+    session_id: string;
+    user_id: string;
+    email: string;
+    expires_at: Date;
+  }>(
+    `UPDATE extension_sessions AS session
+     SET last_seen_at = now()
+     FROM users
+     WHERE session.token_hash = $1
+       AND session.user_id = users.id
+       AND session.revoked_at IS NULL
+       AND session.expires_at > now()
+     RETURNING session.id AS session_id, users.id AS user_id, users.email, session.expires_at`,
+    [tokenHash]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    sessionId: row.session_id,
+    user: { id: row.user_id, email: row.email },
+    expiresAt: row.expires_at.toISOString()
   };
 }
 
