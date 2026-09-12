@@ -33,6 +33,10 @@ const logout = panel.querySelector<HTMLButtonElement>("#logout-submit");
 const status = panel.querySelector<HTMLElement>("#auth-status");
 const message = panel.querySelector<HTMLElement>("#auth-message");
 
+function notifySessionChanged(): void {
+  window.dispatchEvent(new CustomEvent("tnnd:auth-session-changed", { detail: { session: readSession() } }));
+}
+
 function refresh(): void {
   const session = readSession();
   if (status) status.textContent = session ? session.user.email : "Signed out";
@@ -51,7 +55,8 @@ form?.addEventListener("submit", async (event) => {
     const session = await login({ email: email.value, password: password.value });
     persistSession(session);
     password.value = "";
-    if (message) message.textContent = "Signed in. This session can now authenticate profile and sync requests.";
+    if (message) message.textContent = "Signed in. Profile data will now sync with the backend.";
+    notifySessionChanged();
   } catch (error) {
     if (message) message.textContent = error instanceof Error ? error.message : "Unable to sign in.";
   } finally {
@@ -73,6 +78,7 @@ logout?.addEventListener("click", async () => {
     clearSession();
     if (password) password.value = "";
     refresh();
+    notifySessionChanged();
   }
 });
 
