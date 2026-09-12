@@ -1,8 +1,6 @@
-import { getChatSettings, getConfig } from "./storage";
 import { TinderDomAdapter } from "./tinder-adapter";
 import type { AutomationConfig, GenerateRequest, GenerateResponse } from "./types";
 
-const STATE_KEY = "tnnd.autoState";
 const adapter = new TinderDomAdapter();
 let busy = false;
 let scanTimer: number | undefined;
@@ -11,6 +9,17 @@ interface AutoState {
   date: string;
   dailyCount: number;
   processed: Record<string, number>;
+}
+
+interface ContentConfig {
+  model: string;
+  tone: string;
+  messageLength: string;
+  flirtLevel: number;
+  humorLevel: number;
+  emojiLevel: string;
+  languages: { fr: number; darija: number; en: number };
+  automation: AutomationConfig;
 }
 
 interface DiagnosticSnapshot {
@@ -53,16 +62,29 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+async function getContentConfig(): Promise<ContentConfig> {
+  const response = await chrome.runtime.sendMessage({ type: "TNND_GET_CONTENT_CONFIG" }) as { ok: boolean; config?: ContentConfig; error?: string };
+  if (!response?.ok || !response.config) throw new Error(response?.error ?? "Could not load TNND configuration.");
+  return response.config;
+}
+
+async function getChatAutomationEnabled(threadKey: string): Promise<boolean> {
+  const response = await chrome.runtime.sendMessage({ type: "TNND_GET_CHAT_AUTOMATION", threadKey }) as { ok: boolean; enabled?: boolean; error?: string };
+  if (!response?.ok) throw new Error(response?.error ?? "Could not load TNND chat configuration.");
+  return response.enabled !== false;
+}
+
 async function getState(): Promise<AutoState> {
-  const raw = (await chrome.storage.local.get(STATE_KEY))[STATE_KEY] as AutoState | undefined;
-  if (!raw || raw.date !== today()) return { date: today(), dailyCount: 0, processed: {} };
-  return raw;
+  const response = await chrome.runtime.sendMessage({ type: "TNND_GET_AUTO_STATE" }) as { ok: boolean; state?: AutoState; error?: string };
+  if (!response?.ok || !response.state) throw new Error(response?.error ?? "Could not load TNND automation state.");
+  return response.state.date === today() ? response.state : { date: today(), dailyCount: 0, processed: {} };
 }
 
 async function saveState(state: AutoState): Promise<void> {
   const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
   state.processed = Object.fromEntries(Object.entries(state.processed).filter(([, timestamp]) => timestamp >= cutoff));
-  await chrome.storage.local.set({ [STATE_KEY]: state });
+  const response = await chrome.runtime.sendMessage({ type: "TNND_SAVE_AUTO_STATE", state }) as { ok: boolean; error?: string };
+  if (!response?.ok) throw new Error(response?.error ?? "Could not save TNND automation state.");
 }
 
 function minutes(value: string): number {
@@ -163,7 +185,7 @@ function sanitizeDom(): { html: string; truncated: boolean } {
 }
 
 async function diagnosticSnapshot(): Promise<DiagnosticSnapshot> {
-  const config = await getConfig();
+  const config = await getContentConfig();
   const dom = sanitizeDom();
   const resources = (performance.getEntriesByType("resource") as PerformanceResourceTiming[]).slice(-500).map((entry) => ({
     name: safeUrl(entry.name),
@@ -206,14 +228,13 @@ async function diagnosticSnapshot(): Promise<DiagnosticSnapshot> {
 
 async function scan(): Promise<void> {
   if (busy) return;
-  const config = await getConfig();
+  const config = await getContentConfig();
   if (!config.automation.enabled) return;
   if (config.automation.quietHoursEnabled && insideQuietHours(config.automation.quietStart, config.automation.quietEnd)) return;
 
   const snapshot = adapter.read();
   if (!snapshot) return;
-  const chat = await getChatSettings(snapshot.threadKey);
-  if (!chat.enabled) return;
+  if (!(await getChatAutomationEnabled(snapshot.threadKey))) return;
 
   const state = await getState();
   if (state.processed[snapshot.latestIncomingKey]) return;
@@ -226,8 +247,7 @@ async function scan(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
     const currentSnapshot = adapter.read();
     if (!currentSnapshot || currentSnapshot.latestIncomingKey !== snapshot.latestIncomingKey || currentSnapshot.threadKey !== snapshot.threadKey) return;
-    const latestChat = await getChatSettings(currentSnapshot.threadKey);
-    if (!latestChat.enabled) return;
+    if (!(await getChatAutomationEnabled(currentSnapshot.threadKey))) return;
     const reply = await generateReply(currentSnapshot.context, currentSnapshot.threadKey);
     await adapter.send(reply);
     const freshState = await getState();
@@ -258,5 +278,4 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
 const observer = new MutationObserver(scheduleScan);
 observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
 window.addEventListener("focus", scheduleScan);
-chrome.storage.onChanged.addListener((_changes, area) => { if (area === "local") scheduleScan(); });
 scheduleScan();
