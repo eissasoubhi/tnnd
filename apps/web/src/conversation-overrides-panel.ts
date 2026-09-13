@@ -1,4 +1,10 @@
 import { readSession } from "./auth-client";
+import {
+  draftLifecycleLabel,
+  emptyConversationDraftLifecycle,
+  markDraftApproved,
+  markDraftGenerated
+} from "./conversation-draft-lifecycle";
 import { generateConversationReply, type ConversationGeneration } from "./conversation-generation-client";
 import {
   clearConversationOverrides,
@@ -54,6 +60,7 @@ function installStyles(): void {
     .conversation-inline-generation-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .conversation-inline-generation-preview{white-space:pre-wrap;margin:0}
     .conversation-inline-generation-preview[data-approved="true"]{font-weight:600}
+    .conversation-inline-generation-lifecycle{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px}
   `;
   document.head.append(style);
 }
@@ -105,6 +112,10 @@ async function mountInlineEditor(): Promise<void> {
         <button type="button" data-generation-approve disabled>Approve draft</button>
         <span class="subtle" data-generation-status></span>
       </div>
+      <div class="conversation-inline-generation-lifecycle">
+        <span class="pill" data-generation-lifecycle>No draft</span>
+        <span class="subtle">Generated → Approved locally → Confirmed sent</span>
+      </div>
       <p class="conversation-inline-generation-preview" data-generation-preview aria-live="polite"></p>
       <small class="subtle" data-generation-provenance></small>
     </div>
@@ -124,18 +135,20 @@ async function mountInlineEditor(): Promise<void> {
   const copyButton = section.querySelector<HTMLButtonElement>("[data-generation-copy]")!;
   const approveButton = section.querySelector<HTMLButtonElement>("[data-generation-approve]")!;
   const generationStatus = section.querySelector<HTMLElement>("[data-generation-status]")!;
+  const generationLifecycle = section.querySelector<HTMLElement>("[data-generation-lifecycle]")!;
   const generationPreview = section.querySelector<HTMLElement>("[data-generation-preview]")!;
   const generationProvenance = section.querySelector<HTMLElement>("[data-generation-provenance]")!;
   const session = readSession();
   let currentDraft: ConversationGeneration | null = null;
-  let approvedDraftText: string | null = null;
+  let lifecycle = emptyConversationDraftLifecycle();
 
   const setDraftControls = () => {
     const hasDraft = Boolean(currentDraft?.text);
     regenerateButton.disabled = !hasDraft;
     copyButton.disabled = !hasDraft;
-    approveButton.disabled = !hasDraft;
-    generationPreview.dataset.approved = String(Boolean(currentDraft && approvedDraftText === currentDraft.text));
+    approveButton.disabled = !hasDraft || lifecycle.phase === "approved";
+    generationPreview.dataset.approved = String(lifecycle.phase === "approved");
+    generationLifecycle.textContent = draftLifecycleLabel(lifecycle);
   };
 
   if (!session) {
@@ -156,11 +169,11 @@ async function mountInlineEditor(): Promise<void> {
     generationButton.disabled = true;
     regenerateButton.disabled = true;
     generationStatus.textContent = currentDraft ? "Regenerating…" : "Generating…";
-    approvedDraftText = null;
     try {
       const result = await generateConversationReply(session, conversationId, latestMessage);
       if (!section.isConnected) return;
       currentDraft = result;
+      lifecycle = markDraftGenerated(lifecycle, result.text);
       generationPreview.textContent = result.text;
       const sources = result.provenance.overriddenFields.length
         ? `Chat overrides: ${result.provenance.overriddenFields.join(", ")}. `
@@ -190,9 +203,9 @@ async function mountInlineEditor(): Promise<void> {
   });
   approveButton.addEventListener("click", () => {
     if (!currentDraft?.text) return;
-    approvedDraftText = currentDraft.text;
+    lifecycle = markDraftApproved(lifecycle);
     setDraftControls();
-    generationStatus.textContent = "Draft approved locally — not sent";
+    generationStatus.textContent = "Draft approved locally — awaiting confirmed send";
   });
 
   try {
