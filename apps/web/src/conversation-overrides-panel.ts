@@ -6,6 +6,7 @@ import {
   markDraftApproved,
   markDraftConfirmedSent,
   markDraftGenerated,
+  setDraftPreviewFeedbackNote,
   setDraftPreviewPreset,
   toggleDraftFeedbackTag
 } from "./conversation-draft-lifecycle";
@@ -82,6 +83,7 @@ function installStyles(): void {
     .conversation-inline-confirmation input{min-width:220px;flex:1 1 260px}
     .conversation-inline-feedback{display:grid;gap:6px;padding:8px;border:1px solid var(--border,#d4d4d8);border-radius:8px}
     .conversation-inline-feedback button[aria-pressed="true"]{font-weight:700;outline:2px solid currentColor;outline-offset:1px}
+    .conversation-inline-feedback textarea{min-height:60px}
     .conversation-inline-generation-preview{white-space:pre-wrap;margin:0}
     .conversation-inline-generation-preview[data-approved="true"]{font-weight:600}
     .conversation-inline-generation-lifecycle{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px}
@@ -137,9 +139,10 @@ async function mountInlineEditor(): Promise<void> {
         <span class="subtle" data-generation-status></span>
       </div>
       <div class="conversation-inline-feedback" data-generation-feedback hidden>
-        <small><strong>Regeneration feedback</strong> — choose one preset and any useful tags.</small>
+        <small><strong>Regeneration feedback</strong> — choose one preset, useful tags, and optionally add your own instruction.</small>
         <div class="conversation-inline-feedback-options" data-generation-presets aria-label="Preview regeneration presets"></div>
         <div class="conversation-inline-feedback-options" data-generation-tags aria-label="Preview feedback tags"></div>
+        <textarea data-generation-feedback-note maxlength="500" placeholder="Optional: say exactly what should change in the next draft" aria-label="Freeform preview feedback"></textarea>
         <small class="subtle" data-generation-feedback-summary>No regeneration steering selected.</small>
       </div>
       <div class="conversation-inline-confirmation">
@@ -176,6 +179,7 @@ async function mountInlineEditor(): Promise<void> {
   const generationFeedback = section.querySelector<HTMLElement>("[data-generation-feedback]")!;
   const generationPresets = section.querySelector<HTMLElement>("[data-generation-presets]")!;
   const generationTags = section.querySelector<HTMLElement>("[data-generation-tags]")!;
+  const generationFeedbackNote = section.querySelector<HTMLTextAreaElement>("[data-generation-feedback-note]")!;
   const generationFeedbackSummary = section.querySelector<HTMLElement>("[data-generation-feedback-summary]")!;
   const confirmationMessageId = section.querySelector<HTMLInputElement>("[data-confirmation-message-id]")!;
   const confirmationButton = section.querySelector<HTMLButtonElement>("[data-confirmation-button]")!;
@@ -186,13 +190,14 @@ async function mountInlineEditor(): Promise<void> {
 
   const renderFeedbackControls = () => {
     const hasDraft = lifecycle.phase !== "empty";
+    const feedbackLocked = !hasDraft || lifecycle.phase === "confirmed-sent";
     generationFeedback.hidden = !hasDraft;
     generationPresets.innerHTML = "";
     for (const preset of CONVERSATION_PREVIEW_PRESETS) {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = preset.label;
-      button.disabled = !hasDraft || lifecycle.phase === "confirmed-sent";
+      button.disabled = feedbackLocked;
       button.setAttribute("aria-pressed", String(lifecycle.feedback.presetId === preset.id));
       button.addEventListener("click", () => {
         const nextPreset = lifecycle.feedback.presetId === preset.id ? null : preset.id;
@@ -206,13 +211,17 @@ async function mountInlineEditor(): Promise<void> {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = tag.label;
-      button.disabled = !hasDraft || lifecycle.phase === "confirmed-sent";
+      button.disabled = feedbackLocked;
       button.setAttribute("aria-pressed", String(lifecycle.feedback.tags.includes(tag.id)));
       button.addEventListener("click", () => {
         lifecycle = toggleDraftFeedbackTag(lifecycle, tag.id);
         renderFeedbackControls();
       });
       generationTags.append(button);
+    }
+    generationFeedbackNote.disabled = feedbackLocked;
+    if (generationFeedbackNote.value !== (lifecycle.feedback.note ?? "")) {
+      generationFeedbackNote.value = lifecycle.feedback.note ?? "";
     }
     generationFeedbackSummary.textContent = draftPreviewInstruction(lifecycle)
       ? "Selected feedback will steer Regenerate only; durable chat settings are unchanged."
@@ -276,6 +285,13 @@ async function mountInlineEditor(): Promise<void> {
 
   generationButton.addEventListener("click", () => { void generateDraft(false); });
   regenerateButton.addEventListener("click", () => { void generateDraft(true); });
+  generationFeedbackNote.addEventListener("input", () => {
+    if (lifecycle.phase === "empty" || lifecycle.phase === "confirmed-sent") return;
+    lifecycle = setDraftPreviewFeedbackNote(lifecycle, generationFeedbackNote.value);
+    generationFeedbackSummary.textContent = draftPreviewInstruction(lifecycle)
+      ? "Selected feedback will steer Regenerate only; durable chat settings are unchanged."
+      : "No regeneration steering selected.";
+  });
   copyButton.addEventListener("click", async () => {
     if (!currentDraft?.text) return;
     try {

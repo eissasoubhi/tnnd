@@ -1,6 +1,7 @@
 import {
   emptyConversationPreviewFeedback,
   previewFeedbackInstruction,
+  setConversationPreviewFeedbackNote,
   setConversationPreviewPreset,
   toggleConversationPreviewFeedbackTag,
   type ConversationPreviewFeedbackState,
@@ -64,6 +65,14 @@ export function toggleDraftFeedbackTag(
 ): ConversationDraftLifecycle {
   if (previous.phase === "empty") throw new Error("generated_draft_required");
   return { ...previous, feedback: toggleConversationPreviewFeedbackTag(previous.feedback, tag) };
+}
+
+export function setDraftPreviewFeedbackNote(
+  previous: ConversationDraftLifecycle,
+  note: string | null
+): ConversationDraftLifecycle {
+  if (previous.phase === "empty") throw new Error("generated_draft_required");
+  return { ...previous, feedback: setConversationPreviewFeedbackNote(previous.feedback, note) };
 }
 
 export function draftPreviewInstruction(state: ConversationDraftLifecycle): string | null {
