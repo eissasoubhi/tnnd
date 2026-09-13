@@ -12,7 +12,7 @@ import type { TinderUiStateSnapshot } from "./tinder-state-machine";
 
 export interface TinderSingleTabExecutorHooks {
   navigate(path: string): void | Promise<void>;
-  execute(job: TinderScheduledJob, state: TinderUiStateSnapshot): void | Promise<void>;
+  execute(job: TinderScheduledJob, state: TinderUiStateSnapshot): boolean | Promise<boolean>;
 }
 
 export interface TinderSingleTabExecutionResult {
@@ -20,6 +20,7 @@ export interface TinderSingleTabExecutionResult {
   checkpoint: TinderSchedulerCheckpoint;
   navigated: boolean;
   executed: boolean;
+  completed: boolean;
 }
 
 export async function executeTinderSingleTabStep(
@@ -35,7 +36,8 @@ export async function executeTinderSingleTabStep(
       step,
       checkpoint: step.checkpoint,
       navigated: false,
-      executed: false
+      executed: false,
+      completed: false
     };
   }
 
@@ -47,17 +49,29 @@ export async function executeTinderSingleTabStep(
       step,
       checkpoint: step.checkpoint,
       navigated: true,
-      executed: false
+      executed: false,
+      completed: false
     };
   }
 
-  await hooks.execute(job, state);
+  const completedByHandler = await hooks.execute(job, state);
+  if (!completedByHandler) {
+    return {
+      step,
+      checkpoint: step.checkpoint,
+      navigated: false,
+      executed: false,
+      completed: false
+    };
+  }
+
   const completed = completeTinderSchedulerStep(step.checkpoint, state.path);
   const saved = await saveTinderCheckpoint(completed);
   return {
     step,
     checkpoint: saved,
     navigated: false,
-    executed: true
+    executed: true,
+    completed: true
   };
 }
