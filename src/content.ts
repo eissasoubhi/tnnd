@@ -10,6 +10,7 @@ let busy = false;
 let scanTimer: number | undefined;
 let runtimeReadBusy = false;
 let runtimeObservedJobs: TinderScheduledJob[] = [];
+const runtimeProcessedThreadRefs = new Set<string>();
 
 interface AutoState {
   date: string;
@@ -232,16 +233,50 @@ async function diagnosticSnapshot(): Promise<DiagnosticSnapshot> {
   };
 }
 
+function currentConversationRef(): string | null {
+  const prefix = "/app/messages/";
+  if (!location.pathname.startsWith(prefix) || location.pathname.length <= prefix.length) return null;
+  try {
+    return decodeURIComponent(location.pathname.slice(prefix.length)).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 async function observeRuntimeReadMode(): Promise<void> {
   if (runtimeReadBusy) return;
   const observation = observeTinderRuntime(adapter);
-  if (!observation.readOnlyStepAllowed || observation.route.state !== "inbox") return;
+  if (!observation.readOnlyStepAllowed) return;
+  if (observation.route.state !== "inbox" && observation.route.state !== "conversation") return;
 
   runtimeReadBusy = true;
   try {
     const uiState = readCurrentTinderUiState();
-    if (uiState.state !== "inbox" || uiState.path !== observation.route.path || !uiState.boundedActionAllowed) return;
-    const job: TinderScheduledJob = { id: "runtime-observe-inbox", kind: "scan-inbox" };
+    if (uiState.state !== observation.route.state || uiState.path !== observation.route.path || !uiState.boundedActionAllowed) return;
+
+    if (uiState.state === "inbox") {
+      const job: TinderScheduledJob = { id: "runtime-observe-inbox", kind: "scan-inbox" };
+      const result = await executeUnreadAwareTinderStep(
+        uiState,
+        job,
+        adapter,
+        {
+          navigate: () => {
+            throw new Error("observe_mode_navigation_blocked");
+          }
+        },
+        runtimeObservedJobs
+      );
+      runtimeObservedJobs = result.discoveredJobs;
+      console.debug(`TNND observe/read mode discovered ${runtimeObservedJobs.length} unread thread candidate(s).`);
+      return;
+    }
+
+    const conversationRef = currentConversationRef();
+    if (!conversationRef || runtimeProcessedThreadRefs.has(conversationRef)) return;
+    const job = runtimeObservedJobs.find((candidate) => candidate.kind === "process-thread" && candidate.conversationRef === conversationRef);
+    if (!job) return;
+
     const result = await executeUnreadAwareTinderStep(
       uiState,
       job,
@@ -253,8 +288,11 @@ async function observeRuntimeReadMode(): Promise<void> {
       },
       runtimeObservedJobs
     );
-    runtimeObservedJobs = result.discoveredJobs;
-    console.debug(`TNND observe/read mode discovered ${runtimeObservedJobs.length} unread thread candidate(s).`);
+    if (!result.execution.completed) return;
+
+    runtimeProcessedThreadRefs.add(conversationRef);
+    runtimeObservedJobs = runtimeObservedJobs.filter((candidate) => candidate.id !== job.id);
+    console.debug(`TNND observe/read mode processed one manually opened unread thread; ${runtimeObservedJobs.length} candidate(s) remain.`);
   } catch (error) {
     console.debug("TNND observe/read mode skipped", error);
   } finally {
