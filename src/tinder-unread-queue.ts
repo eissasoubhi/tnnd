@@ -69,9 +69,15 @@ function stableJobId(conversationRef: string): string {
 
 export function buildUnreadProcessThreadJobs(
   candidates: readonly TinderUnreadThreadCandidate[],
-  existing: readonly TinderScheduledJob[] = []
+  existing: readonly TinderScheduledJob[] = [],
+  completedVisibleRefs: readonly string[] = []
 ): TinderScheduledJob[] {
   const occupied = new Set(existing.filter((job) => job.kind === "process-thread").map((job) => job.conversationRef).filter(Boolean));
+  for (const ref of completedVisibleRefs) {
+    const normalized = ref.trim();
+    if (normalized) occupied.add(normalized);
+  }
+
   const jobs: TinderScheduledJob[] = [];
   for (const candidate of candidates) {
     if (occupied.has(candidate.conversationRef)) continue;
