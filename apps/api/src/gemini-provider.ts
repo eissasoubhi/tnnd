@@ -3,6 +3,7 @@ import type { PersistedGeminiConversationPayload } from "./effective-conversatio
 export interface GeminiGenerationInput {
   context: PersistedGeminiConversationPayload;
   latestMessage: string;
+  previewInstruction?: string;
 }
 
 export interface GeminiGenerationResult {
@@ -40,13 +41,20 @@ export const callGeminiConversationProvider: GeminiConversationProvider = async 
   if (!apiKey) throw new Error("gemini_not_configured");
   const model = configuredModel();
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-  const prompt = [
+  const promptParts = [
     "You are generating one concise dating-chat reply for TNND.",
     "Respect the supplied effective settings and instructions. Never fabricate mutual interest or ignore expressed boundaries.",
     `Effective context JSON: ${JSON.stringify(input.context)}`,
-    `Latest incoming message: ${input.latestMessage}`,
-    "Return only the reply text."
-  ].join("\n\n");
+    `Latest incoming message: ${input.latestMessage}`
+  ];
+  if (input.previewInstruction?.trim()) {
+    promptParts.push(
+      "Preview-only regeneration instruction follows. Apply it only to this generated draft; it does not change durable conversation settings.",
+      input.previewInstruction.trim()
+    );
+  }
+  promptParts.push("Return only the reply text.");
+  const prompt = promptParts.join("\n\n");
 
   const response = await fetch(endpoint, {
     method: "POST",

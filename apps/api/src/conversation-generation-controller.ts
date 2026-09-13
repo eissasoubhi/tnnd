@@ -6,6 +6,7 @@ import type { GeminiConversationProvider } from "./gemini-provider.js";
 
 export interface ConversationGenerationRequest {
   latestMessage: string;
+  previewInstruction?: string;
 }
 
 export type ConversationGenerationControllerResult =
@@ -22,7 +23,18 @@ export function validateConversationGenerationRequest(value: unknown): Conversat
   const normalized = latestMessage.trim();
   if (!normalized) throw new Error("latest_message_required");
   if (normalized.length > 4000) throw new Error("latest_message_too_long");
-  return { latestMessage: normalized };
+
+  const rawPreviewInstruction = (value as { previewInstruction?: unknown }).previewInstruction;
+  if (rawPreviewInstruction !== undefined && typeof rawPreviewInstruction !== "string") {
+    throw new Error("preview_instruction_must_be_string");
+  }
+  const previewInstruction = typeof rawPreviewInstruction === "string" ? rawPreviewInstruction.trim() : "";
+  if (previewInstruction.length > 1000) throw new Error("preview_instruction_too_long");
+
+  return {
+    latestMessage: normalized,
+    ...(previewInstruction ? { previewInstruction } : {})
+  };
 }
 
 export async function handleConversationGenerationRequest(
@@ -48,7 +60,8 @@ export async function handleConversationGenerationRequest(
     userId,
     conversationId,
     request.latestMessage,
-    provider
+    provider,
+    request.previewInstruction
   );
   if (!generation) return { status: 404, body: { error: "conversation_not_found" } };
   return { status: 200, body: { generation } };
