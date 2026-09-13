@@ -6,6 +6,7 @@ import { handleOutgoingConfirmationRequest } from "./conversation-outgoing-confi
 import { clearConversationOverrides, getConversationOverrides, replaceConversationOverrides } from "./conversation-overrides-service.js";
 import { clearConversationTemporaryInstruction, getConversation, listConversations, setConversationTemporaryInstruction, syncConversation, updateConversationStatus, type TemporaryInstructionScope } from "./conversation-service.js";
 import { isConversationStatus, validateConversationSyncRequest } from "./conversation-sync-contract.js";
+import { handleConversationThreadLookupRequest } from "./conversation-thread-lookup-controller.js";
 import { getPool } from "./db-client.js";
 import { createHumanAction, listHumanActions, updateHumanActionStatus, type HumanActionSeverity, type HumanActionStatus } from "./human-action-service.js";
 import { profileSchemaVersion, publicProfileSchema, validateProfileEnvelope } from "./profile-schema.js";
@@ -82,7 +83,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-status-control", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "human-actions", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "human-actions", "security-baseline"]
       });
       return;
     }
@@ -244,6 +245,17 @@ const server = createServer(async (request, response) => {
           pendingHumanActions: conversation.pendingHumanActions ?? 0
         }))
       });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/v1/conversations/by-external-thread") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const result = await handleConversationThreadLookupRequest(session.user.id, url.searchParams.get("externalThreadId"));
+      sendJson(response, result.status, result.body);
       return;
     }
 
