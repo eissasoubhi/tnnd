@@ -1,4 +1,5 @@
 import { TinderDomAdapter } from "./tinder-adapter";
+import { buildNormalizedMessageKeys } from "./tinder-message-key";
 import type { TinderScheduledJob } from "./tinder-scheduler";
 import type { TinderUiStateSnapshot } from "./tinder-state-machine";
 import { buildUnreadProcessThreadJobs, discoverUnreadThreadCandidates } from "./tinder-unread-queue";
@@ -43,16 +44,29 @@ export function executeBoundedTinderRead(
 
   if (job.kind === "process-thread") {
     const snapshot = adapter.read();
+    if (!snapshot) {
+      return {
+        completed: false,
+        kind: job.kind,
+        observation: { hasConversationContext: false }
+      };
+    }
+
+    const threadKeyHash = adapter.diagnose().threadKeyHash;
+    const normalizedMessages = buildNormalizedMessageKeys(snapshot.context, threadKeyHash);
+    const latestIncomingKey = normalizedMessages
+      .filter((message) => message.direction === "them")
+      .at(-1)?.key ?? snapshot.latestIncomingKey;
+
     return {
-      completed: state.state === "conversation" && Boolean(snapshot),
+      completed: state.state === "conversation",
       kind: job.kind,
-      observation: snapshot
-        ? {
-            threadKeyHash: adapter.diagnose().threadKeyHash,
-            latestIncomingKey: snapshot.latestIncomingKey,
-            hasConversationContext: Boolean(snapshot.context)
-          }
-        : { hasConversationContext: false }
+      observation: {
+        threadKeyHash,
+        latestIncomingKey,
+        messageKeys: normalizedMessages.map((message) => message.key),
+        hasConversationContext: Boolean(snapshot.context)
+      }
     };
   }
 

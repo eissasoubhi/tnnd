@@ -1,5 +1,6 @@
 import { executeBoundedTinderRead, type TinderBoundedReadResult } from "./tinder-bounded-read-handlers";
 import { loadTinderMessageCursor, saveTinderMessageCursor } from "./tinder-message-cursor-store";
+import { planTinderMessageDelta } from "./tinder-message-delta";
 import { executeTinderSingleTabStep, type TinderSingleTabExecutionResult } from "./tinder-single-tab-executor";
 import type { TinderScheduledJob } from "./tinder-scheduler";
 import type { TinderUiStateSnapshot } from "./tinder-state-machine";
@@ -17,6 +18,9 @@ export interface TinderMessageCursorUpdate {
   nextCursor: string;
   changed: boolean;
   persisted: boolean;
+  cursorFound: boolean;
+  deltaCount: number;
+  truncated: boolean;
 }
 
 export interface TinderUnreadExecutorResult {
@@ -30,6 +34,12 @@ export interface TinderUnreadExecutorResult {
 function observedIncomingCursor(read: TinderBoundedReadResult | null): string | null {
   const value = read?.observation.latestIncomingKey;
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function observedMessageKeys(read: TinderBoundedReadResult | null): string[] {
+  const value = read?.observation.messageKeys;
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map((item) => item.trim());
 }
 
 export async function executeUnreadAwareTinderStep(
@@ -63,15 +73,32 @@ export async function executeUnreadAwareTinderStep(
   }
 
   let messageCursor: TinderMessageCursorUpdate | null = null;
-  const nextCursor = execution.completed ? observedIncomingCursor(read) : null;
-  if (conversationRef && nextCursor) {
-    const changed = previousCursor !== nextCursor;
-    let persisted = false;
-    if (changed) {
-      await saveCursor(conversationRef, nextCursor);
-      persisted = true;
+  if (execution.completed && conversationRef) {
+    const messageKeys = observedMessageKeys(read);
+    const delta = planTinderMessageDelta(
+      messageKeys.map((key) => ({ key, value: null })),
+      previousCursor,
+      { maxItems: 40 }
+    );
+    const nextCursor = delta.nextCursor ?? observedIncomingCursor(read);
+
+    if (nextCursor) {
+      const changed = previousCursor !== nextCursor;
+      let persisted = false;
+      if (changed) {
+        await saveCursor(conversationRef, nextCursor);
+        persisted = true;
+      }
+      messageCursor = {
+        previousCursor,
+        nextCursor,
+        changed,
+        persisted,
+        cursorFound: delta.cursorFound,
+        deltaCount: delta.items.length,
+        truncated: delta.truncated
+      };
     }
-    messageCursor = { previousCursor, nextCursor, changed, persisted };
   }
 
   return {
