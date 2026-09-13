@@ -24,6 +24,7 @@ export interface TinderMessageCursorUpdate {
   nextCursor: string;
   changed: boolean;
   persisted: boolean;
+  deferredForBackendSync: boolean;
   cursorFound: boolean;
   deltaCount: number;
   truncated: boolean;
@@ -80,6 +81,15 @@ export async function executeUnreadAwareTinderStep(
     unreadCompletionPersisted = Boolean(await completeUnreadCycleThread(conversationRef, now));
   }
 
+  let backendSyncDecision: TinderBackendSyncDecision | null = null;
+  if (execution.completed && conversationRef && read) {
+    try {
+      backendSyncDecision = await resolveBackendDecision(conversationRef, read, previousCursor);
+    } catch (error) {
+      console.debug("TNND backend takeover gate failed closed", error);
+    }
+  }
+
   let messageCursor: TinderMessageCursorUpdate | null = null;
   if (execution.completed && conversationRef) {
     const messageKeys = observedMessageKeys(read);
@@ -92,8 +102,9 @@ export async function executeUnreadAwareTinderStep(
 
     if (nextCursor) {
       const changed = previousCursor !== nextCursor;
+      const deferredForBackendSync = changed && backendSyncDecision?.shouldSync === true;
       let persisted = false;
-      if (changed) {
+      if (changed && backendSyncDecision && !backendSyncDecision.shouldSync) {
         await saveCursor(conversationRef, nextCursor);
         persisted = true;
       }
@@ -102,19 +113,11 @@ export async function executeUnreadAwareTinderStep(
         nextCursor,
         changed,
         persisted,
+        deferredForBackendSync,
         cursorFound: delta.cursorFound,
         deltaCount: delta.items.length,
         truncated: delta.truncated
       };
-    }
-  }
-
-  let backendSyncDecision: TinderBackendSyncDecision | null = null;
-  if (execution.completed && conversationRef && read) {
-    try {
-      backendSyncDecision = await resolveBackendDecision(conversationRef, read, previousCursor);
-    } catch (error) {
-      console.debug("TNND backend takeover gate failed closed", error);
     }
   }
 
