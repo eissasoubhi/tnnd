@@ -1,4 +1,5 @@
 import { readSession } from "./auth-client";
+import { generateConversationReply } from "./conversation-generation-client";
 import {
   clearConversationOverrides,
   getConversationOverrides,
@@ -27,9 +28,7 @@ function selectedConversationId(): string | null {
 
 function provenanceText(overrides: ConversationOverridesPayload): string {
   const summary = summarizeOverrideProvenance(overrides);
-  if (!summary.overriddenFields.length) {
-    return "All values currently inherit the global TNND profile.";
-  }
+  if (!summary.overriddenFields.length) return "All values currently inherit the global TNND profile.";
   const languages = summary.nestedLanguageFields.length
     ? ` Language overrides: ${summary.nestedLanguageFields.join(", ")}.`
     : "";
@@ -49,7 +48,11 @@ function installStyles(): void {
     .conversation-inline-overrides-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
     .conversation-inline-overrides-heading>div{display:grid;gap:3px}
     .conversation-inline-overrides [data-inline-overrides-provenance],.conversation-inline-overrides [data-inline-effective-values]{margin:0}
-    .conversation-inline-effective{padding:8px;border-radius:8px;background:rgba(127,127,127,.06)}
+    .conversation-inline-effective,.conversation-inline-generation{padding:8px;border-radius:8px;background:rgba(127,127,127,.06)}
+    .conversation-inline-generation{display:grid;gap:8px}
+    .conversation-inline-generation textarea{width:100%;min-height:72px;resize:vertical}
+    .conversation-inline-generation-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .conversation-inline-generation-preview{white-space:pre-wrap;margin:0}
   `;
   document.head.append(style);
 }
@@ -75,7 +78,7 @@ async function mountInlineEditor(): Promise<void> {
   const section = document.createElement("section");
   section.className = "conversation-inline-overrides";
   section.dataset.conversationId = conversationId;
-  section.setAttribute("aria-label", "Conversation-specific overrides");
+  section.setAttribute("aria-label", "Conversation-specific controls");
   section.innerHTML = `
     <div class="conversation-inline-overrides-heading">
       <div>
@@ -90,6 +93,17 @@ async function mountInlineEditor(): Promise<void> {
       <p class="subtle" data-inline-effective-values>Resolving global and chat values…</p>
     </div>
     <div data-inline-overrides-editor><p class="subtle">Loading chat overrides…</p></div>
+    <div class="conversation-inline-generation">
+      <strong>AI reply preview</strong>
+      <small>Generate only. Nothing is sent to Tinder from this preview.</small>
+      <textarea data-generation-message maxlength="4000" placeholder="Paste the latest incoming message"></textarea>
+      <div class="conversation-inline-generation-actions">
+        <button type="button" data-generation-button>Generate preview</button>
+        <span class="subtle" data-generation-status></span>
+      </div>
+      <p class="conversation-inline-generation-preview" data-generation-preview aria-live="polite"></p>
+      <small class="subtle" data-generation-provenance></small>
+    </div>
   `;
 
   const messages = detail.querySelector(".conversation-messages");
@@ -100,13 +114,46 @@ async function mountInlineEditor(): Promise<void> {
   const provenance = section.querySelector<HTMLElement>("[data-inline-overrides-provenance]")!;
   const effective = section.querySelector<HTMLElement>("[data-inline-effective-values]")!;
   const editor = section.querySelector<HTMLElement>("[data-inline-overrides-editor]")!;
+  const generationMessage = section.querySelector<HTMLTextAreaElement>("[data-generation-message]")!;
+  const generationButton = section.querySelector<HTMLButtonElement>("[data-generation-button]")!;
+  const generationStatus = section.querySelector<HTMLElement>("[data-generation-status]")!;
+  const generationPreview = section.querySelector<HTMLElement>("[data-generation-preview]")!;
+  const generationProvenance = section.querySelector<HTMLElement>("[data-generation-provenance]")!;
   const session = readSession();
   if (!session) {
     status.textContent = "Sign in required";
     editor.innerHTML = '<p class="subtle">Connect your TNND account to edit this conversation.</p>';
     effective.textContent = "Sign in to resolve effective values.";
+    generationButton.disabled = true;
+    generationStatus.textContent = "Sign in required";
     return;
   }
+
+  generationButton.addEventListener("click", async () => {
+    const latestMessage = generationMessage.value.trim();
+    if (!latestMessage) {
+      generationStatus.textContent = "Latest message required";
+      return;
+    }
+    generationButton.disabled = true;
+    generationStatus.textContent = "Generating…";
+    generationPreview.textContent = "";
+    generationProvenance.textContent = "";
+    try {
+      const result = await generateConversationReply(session, conversationId, latestMessage);
+      if (!section.isConnected) return;
+      generationPreview.textContent = result.text;
+      const sources = result.provenance.overriddenFields.length
+        ? `Chat overrides: ${result.provenance.overriddenFields.join(", ")}. `
+        : "Global defaults only. ";
+      generationProvenance.textContent = `${sources}Persistent instruction: ${result.provenance.hasPersistentInstruction ? "yes" : "no"}; temporary instruction: ${result.provenance.hasTemporaryInstruction ? "yes" : "no"}. Model: ${result.model}.`;
+      generationStatus.textContent = "Preview ready";
+    } catch (error) {
+      generationStatus.textContent = error instanceof Error ? error.message : "Unable to generate preview.";
+    } finally {
+      if (section.isConnected) generationButton.disabled = false;
+    }
+  });
 
   try {
     const [overrides, profile] = await Promise.all([
