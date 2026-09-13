@@ -6,18 +6,20 @@ import {
   saveConversationOverrides
 } from "./conversation-overrides-client";
 import { mountConversationOverridesEditor } from "./conversation-overrides-editor";
+import { summarizeOverrideProvenance } from "./conversation-overrides-provenance";
+import type { ConversationOverridesPayload } from "./conversation-overrides-model";
 
 function escapeHtml(value: string): string {
-  return value.replace(/[&<>'"]/g, (char) => ({
+  return value.replace(/[&<>'\"]/g, (char) => ({
     "&": "&amp;",
     "<": "&lt;",
     ">": "&gt;",
     "'": "&#39;",
-    '"': "&quot;"
+    '\"': "&quot;"
   })[char] ?? char);
 }
 
-function mountPanel(): { panel: HTMLElement; select: HTMLSelectElement; editor: HTMLElement; status: HTMLElement } | null {
+function mountPanel(): { panel: HTMLElement; select: HTMLSelectElement; editor: HTMLElement; status: HTMLElement; provenance: HTMLElement } | null {
   const grid = document.querySelector<HTMLElement>(".grid");
   if (!grid) return null;
   const panel = document.createElement("article");
@@ -28,6 +30,7 @@ function mountPanel(): { panel: HTMLElement; select: HTMLSelectElement; editor: 
       <span class="pill" data-overrides-panel-status>Sign in required</span>
     </div>
     <p class="subtle">Override global defaults for one synchronized conversation. Empty fields continue to inherit the global profile.</p>
+    <p class="subtle" data-overrides-provenance>Inherited settings will be shown after selecting a conversation.</p>
     <label>Conversation<select data-overrides-conversation disabled><option value="">Select a conversation</option></select></label>
     <div data-overrides-editor><p class="subtle">Choose a conversation to edit its overrides.</p></div>
   `;
@@ -36,12 +39,26 @@ function mountPanel(): { panel: HTMLElement; select: HTMLSelectElement; editor: 
     panel,
     select: panel.querySelector<HTMLSelectElement>("[data-overrides-conversation]")!,
     editor: panel.querySelector<HTMLElement>("[data-overrides-editor]")!,
-    status: panel.querySelector<HTMLElement>("[data-overrides-panel-status]")!
+    status: panel.querySelector<HTMLElement>("[data-overrides-panel-status]")!,
+    provenance: panel.querySelector<HTMLElement>("[data-overrides-provenance]")!
   };
 }
 
 const elements = mountPanel();
 let disposeEditor: (() => void) | null = null;
+
+function renderProvenance(overrides: ConversationOverridesPayload): void {
+  if (!elements) return;
+  const summary = summarizeOverrideProvenance(overrides);
+  if (!summary.overriddenFields.length) {
+    elements.provenance.textContent = "No chat-specific values: this conversation currently inherits all global settings.";
+    return;
+  }
+  const languageDetail = summary.nestedLanguageFields.length
+    ? ` Language mix: ${summary.nestedLanguageFields.join(", ")}.`
+    : "";
+  elements.provenance.textContent = `${summary.overriddenFields.length} chat-specific override(s): ${summary.overriddenFields.join(", ")}. All other values inherit global settings.${languageDetail}`;
+}
 
 async function loadEditor(conversationId: string): Promise<void> {
   if (!elements) return;
@@ -50,6 +67,7 @@ async function loadEditor(conversationId: string): Promise<void> {
   const session = readSession();
   if (!session || !conversationId) {
     elements.editor.innerHTML = '<p class="subtle">Choose a conversation to edit its overrides.</p>';
+    elements.provenance.textContent = "Inherited settings will be shown after selecting a conversation.";
     return;
   }
 
@@ -57,10 +75,12 @@ async function loadEditor(conversationId: string): Promise<void> {
   elements.editor.innerHTML = '<p class="subtle">Loading chat overrides…</p>';
   try {
     const overrides = await getConversationOverrides(session, conversationId);
+    renderProvenance(overrides);
     elements.status.textContent = "Ready";
     disposeEditor = mountConversationOverridesEditor(elements.editor, overrides, {
       onSave: async (next) => {
-        await saveConversationOverrides(session, conversationId, next);
+        const saved = await saveConversationOverrides(session, conversationId, next);
+        renderProvenance(saved);
         elements.status.textContent = "Saved";
       },
       onClear: async () => {
@@ -85,6 +105,7 @@ async function refresh(): Promise<void> {
     elements.select.disabled = true;
     elements.select.innerHTML = '<option value="">Select a conversation</option>';
     elements.editor.innerHTML = '<p class="subtle">Connect your TNND account to edit conversation overrides.</p>';
+    elements.provenance.textContent = "Inherited settings will be shown after sign-in and conversation selection.";
     return;
   }
 
@@ -97,6 +118,7 @@ async function refresh(): Promise<void> {
     elements.select.disabled = conversations.length === 0;
     elements.status.textContent = `${conversations.length} available`;
     elements.editor.innerHTML = '<p class="subtle">Choose a conversation to edit its overrides.</p>';
+    elements.provenance.textContent = "Inherited settings will be shown after selecting a conversation.";
   } catch (error) {
     elements.select.disabled = true;
     elements.status.textContent = "Unavailable";
