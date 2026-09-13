@@ -3,9 +3,11 @@ import {
   draftLifecycleLabel,
   emptyConversationDraftLifecycle,
   markDraftApproved,
+  markDraftConfirmedSent,
   markDraftGenerated
 } from "./conversation-draft-lifecycle";
 import { generateConversationReply, type ConversationGeneration } from "./conversation-generation-client";
+import { confirmConversationOutgoingMessage } from "./conversation-outgoing-confirmation-client";
 import {
   clearConversationOverrides,
   getConversationOverrides,
@@ -56,8 +58,10 @@ function installStyles(): void {
     .conversation-inline-overrides [data-inline-overrides-provenance],.conversation-inline-overrides [data-inline-effective-values]{margin:0}
     .conversation-inline-effective,.conversation-inline-generation{padding:8px;border-radius:8px;background:rgba(127,127,127,.06)}
     .conversation-inline-generation{display:grid;gap:8px}
-    .conversation-inline-generation textarea{width:100%;min-height:72px;resize:vertical}
-    .conversation-inline-generation-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .conversation-inline-generation textarea,.conversation-inline-generation input{width:100%;box-sizing:border-box}
+    .conversation-inline-generation textarea{min-height:72px;resize:vertical}
+    .conversation-inline-generation-actions,.conversation-inline-confirmation{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .conversation-inline-confirmation input{min-width:220px;flex:1 1 260px}
     .conversation-inline-generation-preview{white-space:pre-wrap;margin:0}
     .conversation-inline-generation-preview[data-approved="true"]{font-weight:600}
     .conversation-inline-generation-lifecycle{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px}
@@ -112,6 +116,11 @@ async function mountInlineEditor(): Promise<void> {
         <button type="button" data-generation-approve disabled>Approve draft</button>
         <span class="subtle" data-generation-status></span>
       </div>
+      <div class="conversation-inline-confirmation">
+        <input data-confirmation-message-id maxlength="500" placeholder="Confirmed Tinder message ID" aria-label="Confirmed Tinder message ID" disabled>
+        <button type="button" data-confirmation-button disabled>Confirm sent</button>
+      </div>
+      <small class="subtle" data-confirmation-status>Confirmation records an already-sent Tinder message; it never sends one.</small>
       <div class="conversation-inline-generation-lifecycle">
         <span class="pill" data-generation-lifecycle>No draft</span>
         <span class="subtle">Generated → Approved locally → Confirmed sent</span>
@@ -138,16 +147,22 @@ async function mountInlineEditor(): Promise<void> {
   const generationLifecycle = section.querySelector<HTMLElement>("[data-generation-lifecycle]")!;
   const generationPreview = section.querySelector<HTMLElement>("[data-generation-preview]")!;
   const generationProvenance = section.querySelector<HTMLElement>("[data-generation-provenance]")!;
+  const confirmationMessageId = section.querySelector<HTMLInputElement>("[data-confirmation-message-id]")!;
+  const confirmationButton = section.querySelector<HTMLButtonElement>("[data-confirmation-button]")!;
+  const confirmationStatus = section.querySelector<HTMLElement>("[data-confirmation-status]")!;
   const session = readSession();
   let currentDraft: ConversationGeneration | null = null;
   let lifecycle = emptyConversationDraftLifecycle();
 
   const setDraftControls = () => {
     const hasDraft = Boolean(currentDraft?.text);
+    const approved = lifecycle.phase === "approved";
     regenerateButton.disabled = !hasDraft;
     copyButton.disabled = !hasDraft;
-    approveButton.disabled = !hasDraft || lifecycle.phase === "approved";
-    generationPreview.dataset.approved = String(lifecycle.phase === "approved");
+    approveButton.disabled = !hasDraft || approved || lifecycle.phase === "confirmed-sent";
+    confirmationMessageId.disabled = !approved;
+    confirmationButton.disabled = !approved || !confirmationMessageId.value.trim();
+    generationPreview.dataset.approved = String(approved || lifecycle.phase === "confirmed-sent");
     generationLifecycle.textContent = draftLifecycleLabel(lifecycle);
   };
 
@@ -174,6 +189,8 @@ async function mountInlineEditor(): Promise<void> {
       if (!section.isConnected) return;
       currentDraft = result;
       lifecycle = markDraftGenerated(lifecycle, result.text);
+      confirmationMessageId.value = "";
+      confirmationStatus.textContent = "Confirmation records an already-sent Tinder message; it never sends one.";
       generationPreview.textContent = result.text;
       const sources = result.provenance.overriddenFields.length
         ? `Chat overrides: ${result.provenance.overriddenFields.join(", ")}. `
@@ -206,6 +223,37 @@ async function mountInlineEditor(): Promise<void> {
     lifecycle = markDraftApproved(lifecycle);
     setDraftControls();
     generationStatus.textContent = "Draft approved locally — awaiting confirmed send";
+  });
+  confirmationMessageId.addEventListener("input", setDraftControls);
+  confirmationButton.addEventListener("click", () => {
+    void (async () => {
+      if (!currentDraft?.text || lifecycle.phase !== "approved") return;
+      const externalMessageId = confirmationMessageId.value.trim();
+      if (!externalMessageId) return;
+      confirmationButton.disabled = true;
+      confirmationStatus.textContent = "Recording confirmed send…";
+      const sentAt = new Date().toISOString();
+      try {
+        const confirmation = await confirmConversationOutgoingMessage(session, conversationId, {
+          externalMessageId,
+          text: currentDraft.text,
+          sentAt
+        });
+        if (!section.isConnected) return;
+        lifecycle = markDraftConfirmedSent(lifecycle, confirmation.externalMessageId, sentAt);
+        const instruction = confirmation.temporaryInstructionScope
+          ? `${confirmation.temporaryInstructionScope}${confirmation.temporaryInstructionRemaining !== null ? ` (${confirmation.temporaryInstructionRemaining} remaining)` : ""}`
+          : "cleared";
+        confirmationStatus.textContent = confirmation.accepted
+          ? `Confirmed. Temporary instruction: ${instruction}.`
+          : `Already confirmed earlier. Temporary instruction: ${instruction}.`;
+        generationStatus.textContent = confirmation.accepted ? "Confirmed sent" : "Already confirmed";
+      } catch (error) {
+        confirmationStatus.textContent = error instanceof Error ? error.message : "Unable to confirm the outgoing message.";
+      } finally {
+        if (section.isConnected) setDraftControls();
+      }
+    })();
   });
 
   try {
