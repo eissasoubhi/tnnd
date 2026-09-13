@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { hashSessionToken } from "./auth.js";
 import { authenticateSession, listAccountSessions, loginWithPassword, registerAccount, revokeAccountSession, revokeSession } from "./auth-service.js";
+import { clearConversationOverrides, getConversationOverrides, replaceConversationOverrides } from "./conversation-overrides-service.js";
 import { clearConversationTemporaryInstruction, getConversation, listConversations, setConversationTemporaryInstruction, syncConversation, updateConversationStatus, type TemporaryInstructionScope } from "./conversation-service.js";
 import { isConversationStatus, validateConversationSyncRequest } from "./conversation-sync-contract.js";
 import { getPool } from "./db-client.js";
@@ -68,6 +69,14 @@ function temporaryInstructionConversationId(pathname: string): string | null {
   return encoded ? decodeURIComponent(encoded) : null;
 }
 
+function overridesConversationId(pathname: string): string | null {
+  const prefix = "/api/v1/conversations/";
+  const suffix = "/overrides";
+  if (!pathname.startsWith(prefix) || !pathname.endsWith(suffix)) return null;
+  const encoded = pathname.slice(prefix.length, -suffix.length);
+  return encoded ? decodeURIComponent(encoded) : null;
+}
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${host}:${port}`}`);
 
@@ -80,7 +89,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-status-control", "conversation-temporary-instructions", "human-actions", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-status-control", "conversation-temporary-instructions", "conversation-overrides", "human-actions", "security-baseline"]
       });
       return;
     }
@@ -278,6 +287,37 @@ const server = createServer(async (request, response) => {
         ...(scope === "next-n-replies" && remainingReplies ? { remainingReplies } : {})
       });
       sendJson(response, instruction ? 200 : 404, instruction ? { instruction } : { error: "conversation_not_found" });
+      return;
+    }
+
+    const overridesId = overridesConversationId(url.pathname);
+    if (overridesId && (request.method === "GET" || request.method === "PUT" || request.method === "DELETE")) {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+
+      if (request.method === "GET") {
+        const overrides = await getConversationOverrides(session.user.id, overridesId);
+        sendJson(response, overrides ? 200 : 404, overrides ? { overrides } : { error: "conversation_not_found" });
+        return;
+      }
+
+      if (request.method === "DELETE") {
+        const cleared = await clearConversationOverrides(session.user.id, overridesId);
+        sendJson(response, cleared ? 200 : 404, cleared ? { ok: true } : { error: "conversation_not_found" });
+        return;
+      }
+
+      try {
+        const body = await readJsonBody(request);
+        const overrides = await replaceConversationOverrides(session.user.id, overridesId, body.overrides ?? body);
+        sendJson(response, overrides ? 200 : 404, overrides ? { overrides } : { error: "conversation_not_found" });
+      } catch (error) {
+        const details = error instanceof Error ? error.message : "invalid_conversation_overrides";
+        sendJson(response, 400, { error: "invalid_conversation_overrides", details });
+      }
       return;
     }
 
