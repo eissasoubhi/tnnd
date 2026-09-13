@@ -74,13 +74,22 @@ app.innerHTML = `
           <label>Dating goal<select id="dating-goal">${options(datingGoals)}</select></label>
           <label>Disclosure<select id="disclosure-strategy">${options(disclosureStrategies)}</select></label>
           <label>Formality<select id="text-formality"><option value="very-casual">very-casual</option><option value="casual">casual</option><option value="neutral">neutral</option></select></label>
+          <label>Capitalization<select id="capitalization"><option value="relaxed">relaxed</option><option value="standard">standard</option><option value="lowercase-heavy">lowercase-heavy</option></select></label>
           <label>Emoji frequency<select id="emoji-frequency"><option value="none">none</option><option value="low">low</option><option value="medium">medium</option></select></label>
           <label>Abbreviations<select id="abbreviations"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
           <label>Message length<select id="message-length"><option value="very-short">very-short</option><option value="short">short</option><option value="medium">medium</option></select></label>
           <label>Punctuation<select id="punctuation-density"><option value="none">none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
           <label>Slang level<select id="slang-level"><option value="none">none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
+          <label>Fragments<select id="fragment-style"><option value="sentences">sentences</option><option value="mixed">mixed</option><option value="fragment-heavy">fragment-heavy</option></select></label>
+          <label>Grammar<select id="grammar-style"><option value="clean">clean</option><option value="casual">casual</option><option value="very-casual">very-casual</option></select></label>
           <label>Directness<select id="directness"><option value="soft">soft</option><option value="balanced">balanced</option><option value="direct">direct</option><option value="very-direct">very-direct</option></select></label>
           <label>Question frequency<select id="question-frequency"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
+          <label>Teasing<select id="teasing-style"><option value="none">none</option><option value="light">light</option><option value="playful">playful</option><option value="bold">bold</option></select></label>
+          <label>Humor<select id="humor-style"><option value="dry">dry</option><option value="playful">playful</option><option value="witty">witty</option><option value="mixed">mixed</option></select></label>
+          <label>Double texting<select id="double-texting"><option value="avoid">avoid</option><option value="sometimes">sometimes</option><option value="comfortable">comfortable</option></select></label>
+          <label>French behavior<select id="french-style"><option value="neutral">neutral</option><option value="casual">casual</option><option value="very-casual">very-casual</option></select></label>
+          <label>Darija behavior<select id="darija-style"><option value="light">light</option><option value="natural">natural</option><option value="darija-heavy">darija-heavy</option></select></label>
+          <label>English behavior<select id="english-style"><option value="neutral">neutral</option><option value="casual">casual</option><option value="very-casual">very-casual</option></select></label>
         </div>
         <button id="preferences-save" type="button">Save preferences</button>
         <p class="subtle">Signed-in profiles are stored in the backend. Browser storage is only a disconnected fallback.</p>
@@ -109,13 +118,22 @@ const preferencesSave = document.querySelector<HTMLButtonElement>("#preferences-
 const datingGoal = document.querySelector<HTMLSelectElement>("#dating-goal");
 const disclosureStrategy = document.querySelector<HTMLSelectElement>("#disclosure-strategy");
 const textFormality = document.querySelector<HTMLSelectElement>("#text-formality");
+const capitalization = document.querySelector<HTMLSelectElement>("#capitalization");
 const emojiFrequency = document.querySelector<HTMLSelectElement>("#emoji-frequency");
 const abbreviations = document.querySelector<HTMLSelectElement>("#abbreviations");
 const messageLength = document.querySelector<HTMLSelectElement>("#message-length");
 const punctuationDensity = document.querySelector<HTMLSelectElement>("#punctuation-density");
 const slangLevel = document.querySelector<HTMLSelectElement>("#slang-level");
+const fragmentStyle = document.querySelector<HTMLSelectElement>("#fragment-style");
+const grammarStyle = document.querySelector<HTMLSelectElement>("#grammar-style");
 const directness = document.querySelector<HTMLSelectElement>("#directness");
 const questionFrequency = document.querySelector<HTMLSelectElement>("#question-frequency");
+const teasingStyle = document.querySelector<HTMLSelectElement>("#teasing-style");
+const humorStyle = document.querySelector<HTMLSelectElement>("#humor-style");
+const doubleTexting = document.querySelector<HTMLSelectElement>("#double-texting");
+const frenchStyle = document.querySelector<HTMLSelectElement>("#french-style");
+const darijaStyle = document.querySelector<HTMLSelectElement>("#darija-style");
+const englishStyle = document.querySelector<HTMLSelectElement>("#english-style");
 const actionCenter = document.querySelector<HTMLElement>("#action-center");
 const actionCount = document.querySelector<HTMLElement>("#action-count");
 const humanActionMetric = document.querySelector<HTMLElement>('[data-metric-state="Action required"]');
@@ -155,7 +173,7 @@ async function refreshProfile(): Promise<void> {
 }
 
 function refreshPreferences(profile: ImportedProfile | null): void {
-  const controls = [datingGoal, disclosureStrategy, textFormality, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, directness, questionFrequency, preferencesSave];
+  const controls = [datingGoal, disclosureStrategy, textFormality, capitalization, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, fragmentStyle, grammarStyle, directness, questionFrequency, teasingStyle, humorStyle, doubleTexting, frenchStyle, darijaStyle, englishStyle, preferencesSave];
   controls.forEach((control) => { if (control) control.disabled = !profile; });
   if (!profile) {
     if (preferencesStatus) preferencesStatus.textContent = "Import a profile first";
@@ -166,13 +184,22 @@ function refreshPreferences(profile: ImportedProfile | null): void {
   if (datingGoal) datingGoal.value = preferences.datingGoal;
   if (disclosureStrategy) disclosureStrategy.value = preferences.disclosureStrategy;
   if (textFormality) textFormality.value = preferences.formality;
+  if (capitalization) capitalization.value = preferences.capitalization;
   if (emojiFrequency) emojiFrequency.value = preferences.emojiFrequency;
   if (abbreviations) abbreviations.value = preferences.abbreviations;
   if (messageLength) messageLength.value = preferences.messageLength;
   if (punctuationDensity) punctuationDensity.value = preferences.punctuationDensity;
   if (slangLevel) slangLevel.value = preferences.slangLevel;
+  if (fragmentStyle) fragmentStyle.value = preferences.fragmentStyle;
+  if (grammarStyle) grammarStyle.value = preferences.grammarStyle;
   if (directness) directness.value = preferences.directness;
   if (questionFrequency) questionFrequency.value = preferences.questionFrequency;
+  if (teasingStyle) teasingStyle.value = preferences.teasingStyle;
+  if (humorStyle) humorStyle.value = preferences.humorStyle;
+  if (doubleTexting) doubleTexting.value = preferences.doubleTexting;
+  if (frenchStyle) frenchStyle.value = preferences.frenchStyle;
+  if (darijaStyle) darijaStyle.value = preferences.darijaStyle;
+  if (englishStyle) englishStyle.value = preferences.englishStyle;
   if (preferencesStatus) preferencesStatus.textContent = readSession() ? "Synced" : "Local fallback";
 }
 
@@ -229,18 +256,27 @@ exportButton?.addEventListener("click", () => {
 });
 
 preferencesSave?.addEventListener("click", async () => {
-  if (!currentProfile || !datingGoal || !disclosureStrategy || !textFormality || !emojiFrequency || !abbreviations || !messageLength || !punctuationDensity || !slangLevel || !directness || !questionFrequency) return;
+  if (!currentProfile || !datingGoal || !disclosureStrategy || !textFormality || !capitalization || !emojiFrequency || !abbreviations || !messageLength || !punctuationDensity || !slangLevel || !fragmentStyle || !grammarStyle || !directness || !questionFrequency || !teasingStyle || !humorStyle || !doubleTexting || !frenchStyle || !darijaStyle || !englishStyle) return;
   const updated = writeEditablePreferences(currentProfile, {
     datingGoal: datingGoal.value,
     disclosureStrategy: disclosureStrategy.value,
     formality: textFormality.value,
+    capitalization: capitalization.value,
     emojiFrequency: emojiFrequency.value,
     abbreviations: abbreviations.value,
     messageLength: messageLength.value,
     punctuationDensity: punctuationDensity.value,
     slangLevel: slangLevel.value,
+    fragmentStyle: fragmentStyle.value,
+    grammarStyle: grammarStyle.value,
     directness: directness.value,
-    questionFrequency: questionFrequency.value
+    questionFrequency: questionFrequency.value,
+    teasingStyle: teasingStyle.value,
+    humorStyle: humorStyle.value,
+    doubleTexting: doubleTexting.value,
+    frenchStyle: frenchStyle.value,
+    darijaStyle: darijaStyle.value,
+    englishStyle: englishStyle.value
   });
   try {
     await persistProfile(updated);
@@ -259,4 +295,3 @@ window.addEventListener("tnnd:auth-session-changed", () => {
 if (actionCenter) bindActionCenter(actionCenter, refreshActionCounts);
 void refreshActionCenter();
 void refreshProfile();
-void import("./auth-panel");
