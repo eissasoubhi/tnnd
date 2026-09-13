@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { planBoundedTinderJob } from "../src/tinder-orchestrator.ts";
+import { completeTinderSchedulerStep, canResumeCheckpoint, planTinderSchedulerStep } from "../src/tinder-scheduler.ts";
 import { classifyTinderPath, composeTinderUiState, isObservedV1Transition, planNavigation } from "../src/tinder-state-machine.ts";
 
 const fixtureUrl = new URL("../fixtures/tinder-state-regression.json", import.meta.url);
@@ -63,5 +64,28 @@ const syncFromUnknown = planBoundedTinderJob(
   "sync-only"
 );
 assert.equal(syncFromUnknown.allowed, true);
+
+const schedulerNavigate = planTinderSchedulerStep(
+  composeTinderUiState(classifyTinderPath("/app/recs")),
+  { id: "job-fixture-inbox", kind: "scan-inbox" },
+  "2026-09-13T00:00:00.000Z"
+);
+assert.equal(schedulerNavigate.action, "navigate");
+assert.equal(schedulerNavigate.checkpoint.phase, "navigating");
+assert.equal(schedulerNavigate.checkpoint.navigationTarget, "/app/matches");
+assert.equal(canResumeCheckpoint(schedulerNavigate.checkpoint), true);
+
+const schedulerBlocked = planTinderSchedulerStep(
+  composeTinderUiState(classifyTinderPath("/app/explore"), { visibleModal: true }),
+  { id: "job-fixture-swipe", kind: "swipe" },
+  "2026-09-13T00:00:01.000Z"
+);
+assert.equal(schedulerBlocked.action, "none");
+assert.equal(schedulerBlocked.checkpoint.phase, "blocked");
+
+const completed = completeTinderSchedulerStep(schedulerNavigate.checkpoint, "/app/matches", "2026-09-13T00:00:02.000Z");
+assert.equal(completed.phase, "completed");
+assert.equal(completed.lastPath, "/app/matches");
+assert.equal(completed.navigationTarget, null);
 
 console.log(`Tinder state regression fixtures passed (${fixture.routes.length} routes, ${fixture.uiObservations.length} UI observations).`);
