@@ -1,4 +1,5 @@
 import "./tinder-checkpoint-background";
+import "./tinder-unread-observation-background";
 import { generateSuggestions } from "./gemini";
 import { getApiKey, getChatSettings, getConfig, lockStorageToTrustedContexts, resolveEffectiveConfig } from "./storage";
 import type { AppConfig, GenerateRequest, GenerateResponse, PreviewOverrides } from "./types";
