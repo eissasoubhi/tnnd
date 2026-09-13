@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { hashSessionToken } from "./auth.js";
 import { authenticateSession, listAccountSessions, loginWithPassword, registerAccount, revokeAccountSession, revokeSession } from "./auth-service.js";
+import { handleConversationGenerationRequest } from "./conversation-generation-controller.js";
 import { clearConversationOverrides, getConversationOverrides, replaceConversationOverrides } from "./conversation-overrides-service.js";
 import { clearConversationTemporaryInstruction, getConversation, listConversations, setConversationTemporaryInstruction, syncConversation, updateConversationStatus, type TemporaryInstructionScope } from "./conversation-service.js";
 import { isConversationStatus, validateConversationSyncRequest } from "./conversation-sync-contract.js";
@@ -61,17 +62,8 @@ function conversationDisplayName(conversationId: string): string {
   return `Conversation ${conversationId.slice(0, 8)}`;
 }
 
-function temporaryInstructionConversationId(pathname: string): string | null {
+function conversationSubresourceId(pathname: string, suffix: string): string | null {
   const prefix = "/api/v1/conversations/";
-  const suffix = "/instruction";
-  if (!pathname.startsWith(prefix) || !pathname.endsWith(suffix)) return null;
-  const encoded = pathname.slice(prefix.length, -suffix.length);
-  return encoded ? decodeURIComponent(encoded) : null;
-}
-
-function overridesConversationId(pathname: string): string | null {
-  const prefix = "/api/v1/conversations/";
-  const suffix = "/overrides";
   if (!pathname.startsWith(prefix) || !pathname.endsWith(suffix)) return null;
   const encoded = pathname.slice(prefix.length, -suffix.length);
   return encoded ? decodeURIComponent(encoded) : null;
@@ -89,7 +81,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-status-control", "conversation-temporary-instructions", "conversation-overrides", "human-actions", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-status-control", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "human-actions", "security-baseline"]
       });
       return;
     }
@@ -254,7 +246,19 @@ const server = createServer(async (request, response) => {
       return;
     }
 
-    const instructionConversationId = temporaryInstructionConversationId(url.pathname);
+    const generationConversationId = conversationSubresourceId(url.pathname, "/generate");
+    if (generationConversationId && request.method === "POST") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const result = await handleConversationGenerationRequest(session.user.id, generationConversationId, await readJsonBody(request));
+      sendJson(response, result.status, result.body);
+      return;
+    }
+
+    const instructionConversationId = conversationSubresourceId(url.pathname, "/instruction");
     if (instructionConversationId && (request.method === "PUT" || request.method === "DELETE")) {
       const session = await authenticatedUser(request);
       if (!session) {
@@ -290,7 +294,7 @@ const server = createServer(async (request, response) => {
       return;
     }
 
-    const overridesId = overridesConversationId(url.pathname);
+    const overridesId = conversationSubresourceId(url.pathname, "/overrides");
     if (overridesId && (request.method === "GET" || request.method === "PUT" || request.method === "DELETE")) {
       const session = await authenticatedUser(request);
       if (!session) {
