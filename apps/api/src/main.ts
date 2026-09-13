@@ -6,6 +6,7 @@ import { handleOutgoingConfirmationRequest } from "./conversation-outgoing-confi
 import { clearConversationOverrides, getConversationOverrides, replaceConversationOverrides } from "./conversation-overrides-service.js";
 import { clearConversationTemporaryInstruction, getConversation, listConversations, setConversationTemporaryInstruction, syncConversation, updateConversationStatus, type TemporaryInstructionScope } from "./conversation-service.js";
 import { isConversationStatus, validateConversationSyncRequest } from "./conversation-sync-contract.js";
+import { conversationSyncErrorResponse } from "./conversation-sync-error-response.js";
 import { handleConversationThreadLookupRequest } from "./conversation-thread-lookup-controller.js";
 import { getPool } from "./db-client.js";
 import { createHumanAction, listHumanActions, updateHumanActionStatus, type HumanActionSeverity, type HumanActionStatus } from "./human-action-service.js";
@@ -222,8 +223,8 @@ const server = createServer(async (request, response) => {
         const input = validateConversationSyncRequest(body);
         sendJson(response, 200, await syncConversation(session.user.id, input));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "invalid_conversation_sync";
-        sendJson(response, 400, { error: "invalid_conversation_sync", details: message });
+        const mapped = conversationSyncErrorResponse(error);
+        sendJson(response, mapped.status, mapped.body);
       }
       return;
     }
