@@ -1,4 +1,5 @@
 import { TinderDomAdapter } from "./tinder-adapter";
+import { executeBoundedTinderRead } from "./tinder-bounded-read-handlers";
 import { planCurrentTinderJob, readCurrentTinderUiState } from "./tinder-runtime-state";
 import { executeTinderSingleTabStep } from "./tinder-single-tab-executor";
 import type { TinderJobKind } from "./tinder-state-machine";
@@ -52,6 +53,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     const kind = input.job as TinderJobKind;
     const conversationRef = typeof input.conversationRef === "string" ? input.conversationRef : undefined;
     const state = readCurrentTinderUiState();
+    let boundedObservation: Record<string, unknown> | null = null;
     void executeTinderSingleTabStep(
       state,
       { id: input.jobId.trim(), kind, ...(conversationRef ? { conversationRef } : {}) },
@@ -59,7 +61,11 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
         navigate: async (path) => {
           location.assign(path);
         },
-        execute: async (job) => job.kind === "sync-only"
+        execute: async (job, currentState) => {
+          const result = executeBoundedTinderRead(adapter, job, currentState);
+          boundedObservation = result.observation;
+          return result.completed;
+        }
       }
     )
       .then((result) => sendResponse({
@@ -67,6 +73,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
         checkpoint: result.checkpoint,
         navigated: result.navigated,
         completed: result.completed,
+        observation: boundedObservation,
         requiresBoundedAction: result.step.action === "execute" && !result.completed
       }))
       .catch((error) => sendResponse({
