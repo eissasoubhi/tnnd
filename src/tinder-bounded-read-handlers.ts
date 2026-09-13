@@ -1,6 +1,7 @@
 import { TinderDomAdapter } from "./tinder-adapter";
 import type { TinderScheduledJob } from "./tinder-scheduler";
 import type { TinderUiStateSnapshot } from "./tinder-state-machine";
+import { buildUnreadProcessThreadJobs, discoverUnreadThreadCandidates } from "./tinder-unread-queue";
 
 export interface TinderBoundedReadResult {
   completed: boolean;
@@ -19,6 +20,8 @@ export function executeBoundedTinderRead(
 
   if (job.kind === "scan-inbox") {
     const diagnostics = adapter.diagnose();
+    const unreadCandidates = state.state === "inbox" ? discoverUnreadThreadCandidates() : [];
+    const queuedJobs = buildUnreadProcessThreadJobs(unreadCandidates);
     return {
       completed: state.state === "inbox",
       kind: job.kind,
@@ -27,7 +30,13 @@ export function executeBoundedTinderRead(
         sidebarState: diagnostics.sidebarState,
         visibleCandidateCount: diagnostics.visibleCandidateCount,
         viewConfidence: diagnostics.viewConfidence,
-        viewConfidenceLabel: diagnostics.viewConfidenceLabel
+        viewConfidenceLabel: diagnostics.viewConfidenceLabel,
+        unreadThreadCount: unreadCandidates.length,
+        unreadSignals: unreadCandidates.reduce<Record<string, number>>((counts, candidate) => {
+          counts[candidate.signal] = (counts[candidate.signal] ?? 0) + 1;
+          return counts;
+        }, {}),
+        queuedJobs
       }
     };
   }
