@@ -1,13 +1,13 @@
 import { readSession } from "./auth-client";
 import { listConversations } from "./conversation-client";
 import type { ConversationListItem } from "./conversation-contract";
+import {
+  listConversationManagement,
+  saveConversationManagement,
+  type ConversationManagementState
+} from "./conversation-management-client";
 
-export type ConversationTakeoverChoice =
-  | "unmanaged"
-  | "ai-managed"
-  | "manual"
-  | "moved-off-tinder"
-  | "archived";
+export type ConversationTakeoverChoice = ConversationManagementState;
 
 interface ConversationTakeoverDraft {
   version: 1;
@@ -17,10 +17,10 @@ interface ConversationTakeoverDraft {
 const storageKey = "tnnd:web:conversation-takeover-draft:v1";
 
 const choices: Array<{ value: ConversationTakeoverChoice; label: string; help: string }> = [
-  { value: "unmanaged", label: "Decide later", help: "TNND can observe read-only but must not take over." },
-  { value: "ai-managed", label: "Let AI continue", help: "Eligible for AI only after backend confirmation is implemented." },
+  { value: "unmanaged", label: "Decide later", help: "TNND may observe read-only but cannot take over this chat." },
+  { value: "ai-managed", label: "Let AI continue", help: "After you save and confirm, this chat becomes eligible for AI-managed processing." },
   { value: "manual", label: "Keep manual", help: "You keep replying yourself on Tinder." },
-  { value: "moved-off-tinder", label: "Moved off Tinder", help: "Conversation continued on WhatsApp, Instagram or another channel." },
+  { value: "moved-off-tinder", label: "Moved off Tinder", help: "Conversation continued on WhatsApp, Instagram or another channel. Tinder automation stays off." },
   { value: "archived", label: "Archive", help: "Finished or no longer relevant." }
 ];
 
@@ -79,8 +79,7 @@ function buildRow(conversation: ConversationListItem, draft: ConversationTakeove
   row.append(help);
 
   select.addEventListener("change", () => {
-    const next = select.value as ConversationTakeoverChoice;
-    draft.choices[conversation.id] = next;
+    draft.choices[conversation.id] = select.value as ConversationTakeoverChoice;
     saveDraft(draft);
     refreshHelp();
   });
@@ -103,11 +102,11 @@ async function mount(): Promise<void> {
   section.append(heading);
 
   const intro = document.createElement("p");
-  intro.textContent = "TNND will not automatically take over chats that already existed before setup. Review them and decide which ones may eventually be AI-managed.";
+  intro.textContent = "TNND never takes over chats that existed before setup by default. Review them and explicitly decide what TNND may manage.";
   section.append(intro);
 
   const safety = document.createElement("p");
-  safety.textContent = "Safety default: every chat remains unmanaged. These choices are currently kept only as a session draft until the authenticated backend update API is wired; no AI takeover is enabled by this screen yet.";
+  safety.textContent = "Safety default: existing chats remain unmanaged until these decisions are saved. Unread status alone never authorizes AI takeover.";
   section.append(safety);
 
   const bulk = document.createElement("div");
@@ -118,16 +117,49 @@ async function mount(): Promise<void> {
 
   const list = document.createElement("div");
   section.append(list);
+
+  const actions = document.createElement("div");
+  actions.style.display = "flex";
+  actions.style.gap = "0.75rem";
+  actions.style.alignItems = "center";
+  actions.style.marginTop = "1rem";
+  section.append(actions);
+
+  const saveButton = document.createElement("button");
+  saveButton.type = "button";
+  saveButton.textContent = "Save chat decisions";
+  actions.append(saveButton);
+
+  const status = document.createElement("span");
+  status.setAttribute("role", "status");
+  actions.append(status);
+
   app.append(section);
 
   try {
-    const conversations = await listConversations(session);
+    const [conversations, persistedManagement] = await Promise.all([
+      listConversations(session),
+      listConversationManagement(session)
+    ]);
+    const persistedById = new Map(persistedManagement.map((record) => [record.conversationId, record]));
     const draft = loadDraft();
+
+    for (const conversation of conversations) {
+      if (!draft.choices[conversation.id]) {
+        draft.choices[conversation.id] = persistedById.get(conversation.id)?.managementState ?? "unmanaged";
+      }
+    }
+    saveDraft(draft);
+
+    const render = () => {
+      list.replaceChildren(...conversations.map((conversation) => buildRow(conversation, draft)));
+    };
 
     const applyBulk = (choice: ConversationTakeoverChoice) => {
       for (const conversation of conversations) draft.choices[conversation.id] = choice;
       saveDraft(draft);
-      list.replaceChildren(...conversations.map((conversation) => buildRow(conversation, draft)));
+      render();
+      status.textContent = "Unsaved changes.";
     };
 
     for (const option of [
@@ -146,14 +178,46 @@ async function mount(): Promise<void> {
       const empty = document.createElement("p");
       empty.textContent = "No existing conversations found yet.";
       list.append(empty);
+      saveButton.disabled = true;
       return;
     }
 
-    list.replaceChildren(...conversations.map((conversation) => buildRow(conversation, draft)));
+    render();
+
+    saveButton.addEventListener("click", async () => {
+      const updates = conversations.map((conversation) => ({
+        conversationId: conversation.id,
+        managementState: draft.choices[conversation.id] ?? "unmanaged"
+      }));
+      const aiManagedCount = updates.filter((update) => update.managementState === "ai-managed").length;
+      if (aiManagedCount > 0) {
+        const confirmed = window.confirm(
+          `Enable AI-managed processing for ${aiManagedCount} selected chat${aiManagedCount === 1 ? "" : "s"}? TNND will use the existing conversation context before continuing.`
+        );
+        if (!confirmed) {
+          status.textContent = "Nothing saved.";
+          return;
+        }
+      }
+
+      saveButton.disabled = true;
+      status.textContent = "Saving…";
+      try {
+        const saved = await saveConversationManagement(session, updates);
+        for (const record of saved) draft.choices[record.conversationId] = record.managementState;
+        sessionStorage.removeItem(storageKey);
+        status.textContent = `Saved ${saved.length} chat decision${saved.length === 1 ? "" : "s"}.`;
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : "Unable to save chat decisions.";
+      } finally {
+        saveButton.disabled = false;
+      }
+    });
   } catch (error) {
     const message = document.createElement("p");
     message.textContent = error instanceof Error ? error.message : "Unable to load existing conversations.";
     list.append(message);
+    saveButton.disabled = true;
   }
 }
 
