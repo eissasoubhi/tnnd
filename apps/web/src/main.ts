@@ -295,3 +295,4 @@ window.addEventListener("tnnd:auth-session-changed", () => {
 if (actionCenter) bindActionCenter(actionCenter, refreshActionCounts);
 void refreshActionCenter();
 void refreshProfile();
+void import("./auth-panel");
