@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { hashSessionToken } from "./auth.js";
 import { authenticateSession, listAccountSessions, loginWithPassword, registerAccount, revokeAccountSession, revokeSession } from "./auth-service.js";
 import { handleConversationGenerationRequest } from "./conversation-generation-controller.js";
+import { bulkUpdateConversationManagement, isConversationManagementState, listConversationManagement, updateConversationManagement, type ConversationManagementUpdate } from "./conversation-management-service.js";
 import { handleOutgoingConfirmationRequest } from "./conversation-outgoing-confirmation-controller.js";
 import { clearConversationOverrides, getConversationOverrides, replaceConversationOverrides } from "./conversation-overrides-service.js";
 import { clearConversationTemporaryInstruction, getConversation, listConversations, setConversationTemporaryInstruction, syncConversation, updateConversationStatus, type TemporaryInstructionScope } from "./conversation-service.js";
@@ -73,6 +74,21 @@ function conversationSubresourceId(pathname: string, suffix: string): string | n
   return encoded ? decodeURIComponent(encoded) : null;
 }
 
+function parseConversationManagementUpdates(value: unknown): ConversationManagementUpdate[] | null {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 100) return null;
+  const updates: ConversationManagementUpdate[] = [];
+  const ids = new Set<string>();
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    const input = item as Record<string, unknown>;
+    const conversationId = stringField(input.conversationId);
+    if (!conversationId || ids.has(conversationId) || !isConversationManagementState(input.managementState)) return null;
+    ids.add(conversationId);
+    updates.push({ conversationId, managementState: input.managementState });
+  }
+  return updates;
+}
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${host}:${port}`}`);
 
@@ -85,7 +101,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "texting-style-analysis", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "human-actions", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "texting-style-analysis", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-management", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "human-actions", "security-baseline"]
       });
       return;
     }
@@ -261,6 +277,29 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (url.pathname === "/api/v1/conversations/management" && (request.method === "GET" || request.method === "PUT")) {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+
+      if (request.method === "GET") {
+        sendJson(response, 200, { conversations: await listConversationManagement(session.user.id) });
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      const updates = parseConversationManagementUpdates(body.updates);
+      if (!updates) {
+        sendJson(response, 400, { error: "invalid_conversation_management_bulk_update" });
+        return;
+      }
+      const records = await bulkUpdateConversationManagement(session.user.id, updates);
+      sendJson(response, records ? 200 : 404, records ? { conversations: records } : { error: "conversation_not_found" });
+      return;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/v1/conversations/by-external-thread") {
       const session = await authenticatedUser(request);
       if (!session) {
@@ -269,6 +308,23 @@ const server = createServer(async (request, response) => {
       }
       const result = await handleConversationThreadLookupRequest(session.user.id, url.searchParams.get("externalThreadId"));
       sendJson(response, result.status, result.body);
+      return;
+    }
+
+    const managementConversationId = conversationSubresourceId(url.pathname, "/management");
+    if (managementConversationId && request.method === "PATCH") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const body = await readJsonBody(request);
+      if (!isConversationManagementState(body.managementState)) {
+        sendJson(response, 400, { error: "invalid_conversation_management_state" });
+        return;
+      }
+      const conversation = await updateConversationManagement(session.user.id, managementConversationId, body.managementState);
+      sendJson(response, conversation ? 200 : 404, conversation ? { conversation } : { error: "conversation_not_found" });
       return;
     }
 
