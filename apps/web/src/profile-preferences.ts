@@ -20,6 +20,10 @@ export interface EditablePreferences {
   emojiFrequency: string;
   abbreviations: string;
   messageLength: string;
+  punctuationDensity: string;
+  slangLevel: string;
+  directness: string;
+  questionFrequency: string;
 }
 
 function objectValue(value: unknown): Record<string, unknown> {
@@ -39,7 +43,11 @@ export function readEditablePreferences(profile: ImportedProfile): EditablePrefe
     formality: stringValue(textingStyle.formality, "very-casual"),
     emojiFrequency: stringValue(textingStyle.emojiFrequency, "low"),
     abbreviations: stringValue(textingStyle.abbreviations, "medium"),
-    messageLength: stringValue(textingStyle.messageLength, "short")
+    messageLength: stringValue(textingStyle.messageLength, "short"),
+    punctuationDensity: stringValue(textingStyle.punctuationDensity, "low"),
+    slangLevel: stringValue(textingStyle.slangLevel, "medium"),
+    directness: stringValue(textingStyle.directness, "balanced"),
+    questionFrequency: stringValue(textingStyle.questionFrequency, "medium")
   };
 }
 
@@ -59,7 +67,11 @@ export function writeEditablePreferences(profile: ImportedProfile, preferences: 
       formality: preferences.formality,
       emojiFrequency: preferences.emojiFrequency,
       abbreviations: preferences.abbreviations,
-      messageLength: preferences.messageLength
+      messageLength: preferences.messageLength,
+      punctuationDensity: preferences.punctuationDensity,
+      slangLevel: preferences.slangLevel,
+      directness: preferences.directness,
+      questionFrequency: preferences.questionFrequency
     }
   };
 }
