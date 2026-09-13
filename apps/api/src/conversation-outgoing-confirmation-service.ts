@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { getPool } from "./db-client.js";
 
+export type TemporaryInstructionScope = "next-message" | "next-n-replies" | "until-cleared";
+
 export interface ConfirmOutgoingMessageInput {
   externalMessageId: string;
   text: string;
@@ -12,6 +14,7 @@ export interface ConfirmOutgoingMessageResult {
   conversationId: string;
   externalMessageId: string;
   temporaryInstructionConsumed: boolean;
+  temporaryInstructionScope: TemporaryInstructionScope | null;
   temporaryInstructionRemaining: number | null;
 }
 
@@ -24,7 +27,7 @@ export async function confirmOutgoingMessage(
   try {
     await client.query("BEGIN");
     const conversation = await client.query<{
-      temporary_instruction_scope: "next-message" | "next-n-replies" | "until-cleared" | null;
+      temporary_instruction_scope: TemporaryInstructionScope | null;
       temporary_instruction_remaining: number | null;
     }>(
       `SELECT temporary_instruction_scope, temporary_instruction_remaining
@@ -50,6 +53,7 @@ export async function confirmOutgoingMessage(
 
     const accepted = Boolean(inserted.rowCount);
     let temporaryInstructionConsumed = false;
+    let temporaryInstructionScope = row.temporary_instruction_scope;
     let temporaryInstructionRemaining = row.temporary_instruction_remaining;
 
     if (accepted && row.temporary_instruction_scope === "next-message") {
@@ -63,9 +67,11 @@ export async function confirmOutgoingMessage(
         [conversationId, userId]
       );
       temporaryInstructionConsumed = true;
+      temporaryInstructionScope = null;
       temporaryInstructionRemaining = null;
     } else if (accepted && row.temporary_instruction_scope === "next-n-replies" && row.temporary_instruction_remaining !== null) {
       const nextRemaining = row.temporary_instruction_remaining - 1;
+      temporaryInstructionConsumed = true;
       if (nextRemaining <= 0) {
         await client.query(
           `UPDATE conversations
@@ -76,7 +82,7 @@ export async function confirmOutgoingMessage(
            WHERE id = $1 AND user_id = $2`,
           [conversationId, userId]
         );
-        temporaryInstructionConsumed = true;
+        temporaryInstructionScope = null;
         temporaryInstructionRemaining = null;
       } else {
         await client.query(
@@ -86,7 +92,7 @@ export async function confirmOutgoingMessage(
            WHERE id = $2 AND user_id = $3`,
           [nextRemaining, conversationId, userId]
         );
-        temporaryInstructionConsumed = true;
+        temporaryInstructionScope = "next-n-replies";
         temporaryInstructionRemaining = nextRemaining;
       }
     } else if (accepted) {
@@ -99,6 +105,7 @@ export async function confirmOutgoingMessage(
       conversationId,
       externalMessageId: input.externalMessageId,
       temporaryInstructionConsumed,
+      temporaryInstructionScope,
       temporaryInstructionRemaining
     };
   } catch (error) {
