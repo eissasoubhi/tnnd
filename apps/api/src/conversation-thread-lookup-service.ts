@@ -1,10 +1,13 @@
 import { getPool } from "./db-client.js";
+import type { ConversationManagementState } from "./conversation-management-service.js";
 import type { ConversationStatus } from "./conversation-sync-contract.js";
 
 export interface ConversationThreadLookup {
   id: string;
   externalThreadId: string;
   status: ConversationStatus;
+  managementState: ConversationManagementState;
+  explicitlySelected: boolean;
   updatedAt: string;
 }
 
@@ -16,9 +19,11 @@ export async function findConversationByExternalThreadId(
     id: string;
     external_thread_id: string;
     status: ConversationStatus;
+    management_state: ConversationManagementState;
+    management_selected_at: Date | null;
     updated_at: Date;
   }>(
-    `SELECT id, external_thread_id, status, updated_at
+    `SELECT id, external_thread_id, status, management_state, management_selected_at, updated_at
      FROM conversations
      WHERE user_id = $1 AND external_thread_id = $2
      LIMIT 1`,
@@ -30,6 +35,8 @@ export async function findConversationByExternalThreadId(
     id: row.id,
     externalThreadId: row.external_thread_id,
     status: row.status,
+    managementState: row.management_state,
+    explicitlySelected: row.management_selected_at !== null,
     updatedAt: row.updated_at.toISOString()
   };
 }
