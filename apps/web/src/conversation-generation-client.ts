@@ -10,21 +10,27 @@ export interface ConversationGeneration {
     overriddenFields: string[];
     hasPersistentInstruction: boolean;
     hasTemporaryInstruction: boolean;
+    hasPreviewInstruction?: boolean;
   };
 }
 
 export async function generateConversationReply(
   session: AuthSession,
   conversationId: string,
-  latestMessage: string
+  latestMessage: string,
+  previewInstruction?: string
 ): Promise<ConversationGeneration> {
+  const normalizedPreviewInstruction = previewInstruction?.trim();
   const response = await fetch(`${apiBase}/api/v1/conversations/${encodeURIComponent(conversationId)}/generate`, {
     method: "POST",
     headers: {
       authorization: `Bearer ${session.token}`,
       "content-type": "application/json"
     },
-    body: JSON.stringify({ latestMessage })
+    body: JSON.stringify({
+      latestMessage,
+      ...(normalizedPreviewInstruction ? { previewInstruction: normalizedPreviewInstruction } : {})
+    })
   });
   const payload = await response.json().catch(() => null) as { generation?: ConversationGeneration; error?: string; details?: string } | null;
   if (!response.ok || !payload?.generation) {
