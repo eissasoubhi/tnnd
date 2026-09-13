@@ -4,9 +4,12 @@ import {
   getConversationOverrides,
   saveConversationOverrides
 } from "./conversation-overrides-client";
+import { resolveEffectiveConversationConfig, summarizeEffectiveConversationConfig } from "./conversation-effective-config";
 import { mountConversationOverridesEditor } from "./conversation-overrides-editor";
 import { summarizeOverrideProvenance } from "./conversation-overrides-provenance";
 import type { ConversationOverridesPayload } from "./conversation-overrides-model";
+import { fetchProfile } from "./profile-client";
+import type { ImportedProfile } from "./profile-import";
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>'\"]/g, (char) => ({
@@ -25,12 +28,16 @@ function selectedConversationId(): string | null {
 function provenanceText(overrides: ConversationOverridesPayload): string {
   const summary = summarizeOverrideProvenance(overrides);
   if (!summary.overriddenFields.length) {
-    return "Effective configuration: all values currently inherit the global TNND profile.";
+    return "All values currently inherit the global TNND profile.";
   }
   const languages = summary.nestedLanguageFields.length
     ? ` Language overrides: ${summary.nestedLanguageFields.join(", ")}.`
     : "";
-  return `Effective configuration: ${summary.overriddenFields.join(", ")} come from this chat; all other values inherit the global profile.${languages}`;
+  return `${summary.overriddenFields.join(", ")} come from this chat; all other values inherit the global profile.${languages}`;
+}
+
+function effectiveText(profile: ImportedProfile | null, overrides: ConversationOverridesPayload): string {
+  return summarizeEffectiveConversationConfig(resolveEffectiveConversationConfig(profile, overrides));
 }
 
 function installStyles(): void {
@@ -41,7 +48,8 @@ function installStyles(): void {
     .conversation-inline-overrides{display:grid;gap:9px;padding:11px;margin-bottom:12px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:rgba(127,127,127,.04)}
     .conversation-inline-overrides-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
     .conversation-inline-overrides-heading>div{display:grid;gap:3px}
-    .conversation-inline-overrides [data-inline-overrides-provenance]{margin:0}
+    .conversation-inline-overrides [data-inline-overrides-provenance],.conversation-inline-overrides [data-inline-effective-values]{margin:0}
+    .conversation-inline-effective{padding:8px;border-radius:8px;background:rgba(127,127,127,.06)}
   `;
   document.head.append(style);
 }
@@ -76,7 +84,11 @@ async function mountInlineEditor(): Promise<void> {
       </div>
       <span class="pill" data-inline-overrides-status>Loading…</span>
     </div>
-    <p class="subtle" data-inline-overrides-provenance>Resolving effective configuration…</p>
+    <p class="subtle" data-inline-overrides-provenance>Resolving configuration provenance…</p>
+    <div class="conversation-inline-effective">
+      <small>Effective values</small>
+      <p class="subtle" data-inline-effective-values>Resolving global and chat values…</p>
+    </div>
     <div data-inline-overrides-editor><p class="subtle">Loading chat overrides…</p></div>
   `;
 
@@ -86,41 +98,50 @@ async function mountInlineEditor(): Promise<void> {
 
   const status = section.querySelector<HTMLElement>("[data-inline-overrides-status]")!;
   const provenance = section.querySelector<HTMLElement>("[data-inline-overrides-provenance]")!;
+  const effective = section.querySelector<HTMLElement>("[data-inline-effective-values]")!;
   const editor = section.querySelector<HTMLElement>("[data-inline-overrides-editor]")!;
   const session = readSession();
   if (!session) {
     status.textContent = "Sign in required";
     editor.innerHTML = '<p class="subtle">Connect your TNND account to edit this conversation.</p>';
+    effective.textContent = "Sign in to resolve effective values.";
     return;
   }
 
   try {
-    const overrides = await getConversationOverrides(session, conversationId);
+    const [overrides, profile] = await Promise.all([
+      getConversationOverrides(session, conversationId),
+      fetchProfile()
+    ]);
     if (generation !== mountGeneration || !section.isConnected) return;
-    provenance.textContent = provenanceText(overrides);
+    const refreshSummary = (next: ConversationOverridesPayload) => {
+      provenance.textContent = provenanceText(next);
+      effective.textContent = effectiveText(profile, next);
+    };
+    refreshSummary(overrides);
     status.textContent = "Ready";
     disposeEditor = mountConversationOverridesEditor(editor, overrides, {
       onSave: async (next) => {
         const saved = await saveConversationOverrides(session, conversationId, next);
         if (!section.isConnected) return;
-        provenance.textContent = provenanceText(saved);
+        refreshSummary(saved);
         status.textContent = "Saved";
       },
       onClear: async () => {
         await clearConversationOverrides(session, conversationId);
         if (!section.isConnected) return;
-        provenance.textContent = provenanceText({});
+        refreshSummary({});
         status.textContent = "Cleared";
         disposeEditor?.();
         disposeEditor = mountConversationOverridesEditor(editor, {}, {
           onSave: async (next) => {
             const saved = await saveConversationOverrides(session, conversationId, next);
-            provenance.textContent = provenanceText(saved);
+            refreshSummary(saved);
             status.textContent = "Saved";
           },
           onClear: async () => {
             await clearConversationOverrides(session, conversationId);
-            provenance.textContent = provenanceText({});
+            refreshSummary({});
             status.textContent = "Cleared";
           }
         });
