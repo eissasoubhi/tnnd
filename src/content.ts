@@ -1,5 +1,6 @@
 import { TinderDomAdapter } from "./tinder-adapter";
 import { observeTinderRuntime } from "./tinder-runtime-observation";
+import { readCurrentTinderUiState } from "./tinder-runtime-state";
 import type { TinderScheduledJob } from "./tinder-scheduler";
 import { executeUnreadAwareTinderStep } from "./tinder-unread-executor";
 import type { AutomationConfig, GenerateRequest, GenerateResponse } from "./types";
@@ -238,9 +239,11 @@ async function observeRuntimeReadMode(): Promise<void> {
 
   runtimeReadBusy = true;
   try {
+    const uiState = readCurrentTinderUiState();
+    if (uiState.state !== "inbox" || uiState.path !== observation.route.path || !uiState.boundedActionAllowed) return;
     const job: TinderScheduledJob = { id: "runtime-observe-inbox", kind: "scan-inbox" };
     const result = await executeUnreadAwareTinderStep(
-      observation.route,
+      uiState,
       job,
       adapter,
       {
