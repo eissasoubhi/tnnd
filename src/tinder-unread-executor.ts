@@ -1,4 +1,5 @@
 import { executeBoundedTinderRead, type TinderBoundedReadResult } from "./tinder-bounded-read-handlers";
+import { loadTinderMessageCursor, saveTinderMessageCursor } from "./tinder-message-cursor-store";
 import { executeTinderSingleTabStep, type TinderSingleTabExecutionResult } from "./tinder-single-tab-executor";
 import type { TinderScheduledJob } from "./tinder-scheduler";
 import type { TinderUiStateSnapshot } from "./tinder-state-machine";
@@ -43,9 +44,9 @@ export async function executeUnreadAwareTinderStep(
     ? await reconcileUnreadCycle(document, existingJobs, now)
     : null;
   const conversationRef = job.kind === "process-thread" ? job.conversationRef ?? null : null;
-  const previousCursor = conversationRef && hooks.loadMessageCursor
-    ? await hooks.loadMessageCursor(conversationRef)
-    : null;
+  const loadCursor = hooks.loadMessageCursor ?? loadTinderMessageCursor;
+  const saveCursor = hooks.saveMessageCursor ?? saveTinderMessageCursor;
+  const previousCursor = conversationRef ? await loadCursor(conversationRef) : null;
   let read: TinderBoundedReadResult | null = null;
 
   const execution = await executeTinderSingleTabStep(state, job, {
@@ -66,8 +67,8 @@ export async function executeUnreadAwareTinderStep(
   if (conversationRef && nextCursor) {
     const changed = previousCursor !== nextCursor;
     let persisted = false;
-    if (changed && hooks.saveMessageCursor) {
-      await hooks.saveMessageCursor(conversationRef, nextCursor);
+    if (changed) {
+      await saveCursor(conversationRef, nextCursor);
       persisted = true;
     }
     messageCursor = { previousCursor, nextCursor, changed, persisted };
