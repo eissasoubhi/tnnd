@@ -21,9 +21,11 @@ export async function handleTextingStyleAnalysisRequest(
       body: {
         analysis: result.analysis,
         model: result.model,
+        retainedSourceExamples: false,
         sourceExamplesRetention: {
           requested: validated.value.retainSourceExamples,
-          persisted: false
+          persisted: false,
+          reason: validated.value.retainSourceExamples ? "retention_not_implemented" : "not_requested"
         }
       }
     };
