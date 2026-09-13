@@ -1,5 +1,4 @@
 import { readSession } from "./auth-client";
-import { listConversations } from "./conversation-client";
 import {
   clearConversationOverrides,
   getConversationOverrides,
@@ -19,113 +18,138 @@ function escapeHtml(value: string): string {
   })[char] ?? char);
 }
 
-function mountPanel(): { panel: HTMLElement; select: HTMLSelectElement; editor: HTMLElement; status: HTMLElement; provenance: HTMLElement } | null {
-  const grid = document.querySelector<HTMLElement>(".grid");
-  if (!grid) return null;
-  const panel = document.createElement("article");
-  panel.className = "panel panel-wide";
-  panel.innerHTML = `
-    <div class="panel-heading">
-      <div><p class="eyebrow">Per-chat control</p><h2>Conversation overrides</h2></div>
-      <span class="pill" data-overrides-panel-status>Sign in required</span>
-    </div>
-    <p class="subtle">Override global defaults for one synchronized conversation. Empty fields continue to inherit the global profile.</p>
-    <p class="subtle" data-overrides-provenance>Inherited settings will be shown after selecting a conversation.</p>
-    <label>Conversation<select data-overrides-conversation disabled><option value="">Select a conversation</option></select></label>
-    <div data-overrides-editor><p class="subtle">Choose a conversation to edit its overrides.</p></div>
-  `;
-  grid.prepend(panel);
-  return {
-    panel,
-    select: panel.querySelector<HTMLSelectElement>("[data-overrides-conversation]")!,
-    editor: panel.querySelector<HTMLElement>("[data-overrides-editor]")!,
-    status: panel.querySelector<HTMLElement>("[data-overrides-panel-status]")!,
-    provenance: panel.querySelector<HTMLElement>("[data-overrides-provenance]")!
-  };
+function selectedConversationId(): string | null {
+  return document.querySelector<HTMLElement>(".conversation-row.selected")?.dataset.conversationId ?? null;
 }
 
-const elements = mountPanel();
-let disposeEditor: (() => void) | null = null;
-
-function renderProvenance(overrides: ConversationOverridesPayload): void {
-  if (!elements) return;
+function provenanceText(overrides: ConversationOverridesPayload): string {
   const summary = summarizeOverrideProvenance(overrides);
   if (!summary.overriddenFields.length) {
-    elements.provenance.textContent = "No chat-specific values: this conversation currently inherits all global settings.";
-    return;
+    return "Effective configuration: all values currently inherit the global TNND profile.";
   }
-  const languageDetail = summary.nestedLanguageFields.length
-    ? ` Language mix: ${summary.nestedLanguageFields.join(", ")}.`
+  const languages = summary.nestedLanguageFields.length
+    ? ` Language overrides: ${summary.nestedLanguageFields.join(", ")}.`
     : "";
-  elements.provenance.textContent = `${summary.overriddenFields.length} chat-specific override(s): ${summary.overriddenFields.join(", ")}. All other values inherit global settings.${languageDetail}`;
+  return `Effective configuration: ${summary.overriddenFields.join(", ")} come from this chat; all other values inherit the global profile.${languages}`;
 }
 
-async function loadEditor(conversationId: string): Promise<void> {
-  if (!elements) return;
+function installStyles(): void {
+  if (document.querySelector("#tnnd-inline-overrides-styles")) return;
+  const style = document.createElement("style");
+  style.id = "tnnd-inline-overrides-styles";
+  style.textContent = `
+    .conversation-inline-overrides{display:grid;gap:9px;padding:11px;margin-bottom:12px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:rgba(127,127,127,.04)}
+    .conversation-inline-overrides-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+    .conversation-inline-overrides-heading>div{display:grid;gap:3px}
+    .conversation-inline-overrides [data-inline-overrides-provenance]{margin:0}
+  `;
+  document.head.append(style);
+}
+
+let disposeEditor: (() => void) | null = null;
+let mountedConversationId: string | null = null;
+let mountGeneration = 0;
+
+async function mountInlineEditor(): Promise<void> {
+  const detail = document.querySelector<HTMLElement>("#conversation-detail");
+  const conversationId = selectedConversationId();
+  if (!detail || !conversationId) return;
+
+  const existing = detail.querySelector<HTMLElement>(".conversation-inline-overrides");
+  if (existing?.dataset.conversationId === conversationId && mountedConversationId === conversationId) return;
+
   disposeEditor?.();
   disposeEditor = null;
+  mountedConversationId = conversationId;
+  const generation = ++mountGeneration;
+  existing?.remove();
+
+  const section = document.createElement("section");
+  section.className = "conversation-inline-overrides";
+  section.dataset.conversationId = conversationId;
+  section.setAttribute("aria-label", "Conversation-specific overrides");
+  section.innerHTML = `
+    <div class="conversation-inline-overrides-heading">
+      <div>
+        <strong>Conversation overrides</strong>
+        <small>Only set what should differ from your global profile.</small>
+      </div>
+      <span class="pill" data-inline-overrides-status>Loading…</span>
+    </div>
+    <p class="subtle" data-inline-overrides-provenance>Resolving effective configuration…</p>
+    <div data-inline-overrides-editor><p class="subtle">Loading chat overrides…</p></div>
+  `;
+
+  const messages = detail.querySelector(".conversation-messages");
+  if (messages) detail.insertBefore(section, messages);
+  else detail.append(section);
+
+  const status = section.querySelector<HTMLElement>("[data-inline-overrides-status]")!;
+  const provenance = section.querySelector<HTMLElement>("[data-inline-overrides-provenance]")!;
+  const editor = section.querySelector<HTMLElement>("[data-inline-overrides-editor]")!;
   const session = readSession();
-  if (!session || !conversationId) {
-    elements.editor.innerHTML = '<p class="subtle">Choose a conversation to edit its overrides.</p>';
-    elements.provenance.textContent = "Inherited settings will be shown after selecting a conversation.";
+  if (!session) {
+    status.textContent = "Sign in required";
+    editor.innerHTML = '<p class="subtle">Connect your TNND account to edit this conversation.</p>';
     return;
   }
 
-  elements.status.textContent = "Loading overrides…";
-  elements.editor.innerHTML = '<p class="subtle">Loading chat overrides…</p>';
   try {
     const overrides = await getConversationOverrides(session, conversationId);
-    renderProvenance(overrides);
-    elements.status.textContent = "Ready";
-    disposeEditor = mountConversationOverridesEditor(elements.editor, overrides, {
+    if (generation !== mountGeneration || !section.isConnected) return;
+    provenance.textContent = provenanceText(overrides);
+    status.textContent = "Ready";
+    disposeEditor = mountConversationOverridesEditor(editor, overrides, {
       onSave: async (next) => {
         const saved = await saveConversationOverrides(session, conversationId, next);
-        renderProvenance(saved);
-        elements.status.textContent = "Saved";
+        if (!section.isConnected) return;
+        provenance.textContent = provenanceText(saved);
+        status.textContent = "Saved";
       },
       onClear: async () => {
         await clearConversationOverrides(session, conversationId);
-        elements.status.textContent = "Cleared";
-        await loadEditor(conversationId);
+        if (!section.isConnected) return;
+        provenance.textContent = provenanceText({});
+        status.textContent = "Cleared";
+        disposeEditor?.();
+        disposeEditor = mountConversationOverridesEditor(editor, {}, {
+          onSave: async (next) => {
+            const saved = await saveConversationOverrides(session, conversationId, next);
+            provenance.textContent = provenanceText(saved);
+            status.textContent = "Saved";
+          },
+          onClear: async () => {
+            await clearConversationOverrides(session, conversationId);
+            provenance.textContent = provenanceText({});
+            status.textContent = "Cleared";
+          }
+        });
       }
     });
   } catch (error) {
-    elements.status.textContent = "Unavailable";
-    elements.editor.innerHTML = `<p class="subtle">${escapeHtml(error instanceof Error ? error.message : "Unable to load chat overrides.")}</p>`;
+    if (generation !== mountGeneration || !section.isConnected) return;
+    status.textContent = "Unavailable";
+    editor.innerHTML = `<p class="subtle">${escapeHtml(error instanceof Error ? error.message : "Unable to load chat overrides.")}</p>`;
   }
 }
 
-async function refresh(): Promise<void> {
-  if (!elements) return;
-  disposeEditor?.();
-  disposeEditor = null;
-  const session = readSession();
-  if (!session) {
-    elements.status.textContent = "Sign in required";
-    elements.select.disabled = true;
-    elements.select.innerHTML = '<option value="">Select a conversation</option>';
-    elements.editor.innerHTML = '<p class="subtle">Connect your TNND account to edit conversation overrides.</p>';
-    elements.provenance.textContent = "Inherited settings will be shown after sign-in and conversation selection.";
-    return;
-  }
-
-  elements.status.textContent = "Loading…";
-  try {
-    const conversations = await listConversations(session);
-    elements.select.innerHTML = conversations.length
-      ? `<option value="">Select a conversation</option>${conversations.map((conversation) => `<option value="${escapeHtml(conversation.id)}">${escapeHtml(conversation.displayName)}</option>`).join("")}`
-      : '<option value="">No synchronized conversations</option>';
-    elements.select.disabled = conversations.length === 0;
-    elements.status.textContent = `${conversations.length} available`;
-    elements.editor.innerHTML = '<p class="subtle">Choose a conversation to edit its overrides.</p>';
-    elements.provenance.textContent = "Inherited settings will be shown after selecting a conversation.";
-  } catch (error) {
-    elements.select.disabled = true;
-    elements.status.textContent = "Unavailable";
-    elements.editor.innerHTML = `<p class="subtle">${escapeHtml(error instanceof Error ? error.message : "Unable to load conversations.")}</p>`;
-  }
+function installInlineController(): void {
+  installStyles();
+  const detail = document.querySelector<HTMLElement>("#conversation-detail");
+  if (!detail) return;
+  let scheduled = false;
+  const scheduleMount = () => {
+    if (scheduled) return;
+    scheduled = true;
+    queueMicrotask(() => {
+      scheduled = false;
+      void mountInlineEditor();
+    });
+  };
+  const observer = new MutationObserver(scheduleMount);
+  observer.observe(detail, { childList: true, subtree: false });
+  scheduleMount();
+  window.addEventListener("tnnd:auth-session-changed", scheduleMount);
 }
 
-elements?.select.addEventListener("change", () => void loadEditor(elements.select.value));
-window.addEventListener("tnnd:auth-session-changed", () => void refresh());
-void refresh();
+installInlineController();
