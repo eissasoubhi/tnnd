@@ -1,9 +1,14 @@
 import { TinderDomAdapter } from "./tinder-adapter";
+import { observeTinderRuntime } from "./tinder-runtime-observation";
+import type { TinderScheduledJob } from "./tinder-scheduler";
+import { executeUnreadAwareTinderStep } from "./tinder-unread-executor";
 import type { AutomationConfig, GenerateRequest, GenerateResponse } from "./types";
 
 const adapter = new TinderDomAdapter();
 let busy = false;
 let scanTimer: number | undefined;
+let runtimeReadBusy = false;
+let runtimeObservedJobs: TinderScheduledJob[] = [];
 
 interface AutoState {
   date: string;
@@ -226,6 +231,34 @@ async function diagnosticSnapshot(): Promise<DiagnosticSnapshot> {
   };
 }
 
+async function observeRuntimeReadMode(): Promise<void> {
+  if (runtimeReadBusy) return;
+  const observation = observeTinderRuntime(adapter);
+  if (!observation.readOnlyStepAllowed || observation.route.state !== "inbox") return;
+
+  runtimeReadBusy = true;
+  try {
+    const job: TinderScheduledJob = { id: "runtime-observe-inbox", kind: "scan-inbox" };
+    const result = await executeUnreadAwareTinderStep(
+      observation.route,
+      job,
+      adapter,
+      {
+        navigate: () => {
+          throw new Error("observe_mode_navigation_blocked");
+        }
+      },
+      runtimeObservedJobs
+    );
+    runtimeObservedJobs = result.discoveredJobs;
+    console.debug(`TNND observe/read mode discovered ${runtimeObservedJobs.length} unread thread candidate(s).`);
+  } catch (error) {
+    console.debug("TNND observe/read mode skipped", error);
+  } finally {
+    runtimeReadBusy = false;
+  }
+}
+
 async function scan(): Promise<void> {
   if (busy) return;
   const config = await getContentConfig();
@@ -263,6 +296,7 @@ async function scan(): Promise<void> {
 }
 
 function scheduleScan(): void {
+  void observeRuntimeReadMode();
   if (scanTimer) window.clearTimeout(scanTimer);
   scanTimer = window.setTimeout(() => void scan(), 900);
 }
