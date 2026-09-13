@@ -1,4 +1,8 @@
 import type { TinderBoundedReadResult } from "./tinder-bounded-read-handlers";
+import {
+  mayAiTakeOverTinderConversation,
+  type TinderConversationManagement
+} from "./tinder-ai-takeover-policy";
 
 export interface TinderThreadSyncCandidate {
   threadKeyHash: string;
@@ -33,6 +37,14 @@ export function readTinderThreadSyncCandidate(result: TinderBoundedReadResult): 
   };
 }
 
+export function readAiManagedTinderThreadSyncCandidate(
+  result: TinderBoundedReadResult,
+  management: Partial<TinderConversationManagement> | null | undefined
+): TinderThreadSyncCandidate | null {
+  if (!mayAiTakeOverTinderConversation(management)) return null;
+  return readTinderThreadSyncCandidate(result);
+}
+
 export function shouldSyncTinderThreadCandidate(
   candidate: TinderThreadSyncCandidate,
   persistedCursor: string | null
@@ -40,4 +52,13 @@ export function shouldSyncTinderThreadCandidate(
   if (!persistedCursor) return true;
   if (candidate.latestIncomingKey && candidate.latestIncomingKey !== persistedCursor) return true;
   return !candidate.messageKeys.includes(persistedCursor);
+}
+
+export function shouldSyncAiManagedTinderThreadCandidate(
+  candidate: TinderThreadSyncCandidate,
+  persistedCursor: string | null,
+  management: Partial<TinderConversationManagement> | null | undefined
+): boolean {
+  return mayAiTakeOverTinderConversation(management)
+    && shouldSyncTinderThreadCandidate(candidate, persistedCursor);
 }
