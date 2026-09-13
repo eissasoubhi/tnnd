@@ -1,5 +1,6 @@
 import {
   emptyConversationPreviewFeedback,
+  previewFeedbackInstruction,
   setConversationPreviewPreset,
   toggleConversationPreviewFeedbackTag,
   type ConversationPreviewFeedbackState,
@@ -63,6 +64,11 @@ export function toggleDraftFeedbackTag(
 ): ConversationDraftLifecycle {
   if (previous.phase === "empty") throw new Error("generated_draft_required");
   return { ...previous, feedback: toggleConversationPreviewFeedbackTag(previous.feedback, tag) };
+}
+
+export function draftPreviewInstruction(state: ConversationDraftLifecycle): string | null {
+  if (state.phase === "empty") return null;
+  return previewFeedbackInstruction(state.feedback);
 }
 
 export function markDraftApproved(
