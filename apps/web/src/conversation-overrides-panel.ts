@@ -1,10 +1,13 @@
 import { readSession } from "./auth-client";
 import {
   draftLifecycleLabel,
+  draftPreviewInstruction,
   emptyConversationDraftLifecycle,
   markDraftApproved,
   markDraftConfirmedSent,
-  markDraftGenerated
+  markDraftGenerated,
+  setDraftPreviewPreset,
+  toggleDraftFeedbackTag
 } from "./conversation-draft-lifecycle";
 import { generateConversationReply, type ConversationGeneration } from "./conversation-generation-client";
 import { confirmConversationOutgoingMessage } from "./conversation-outgoing-confirmation-client";
@@ -17,8 +20,23 @@ import { resolveEffectiveConversationConfig, summarizeEffectiveConversationConfi
 import { mountConversationOverridesEditor } from "./conversation-overrides-editor";
 import { summarizeOverrideProvenance } from "./conversation-overrides-provenance";
 import type { ConversationOverridesPayload } from "./conversation-overrides-model";
+import {
+  CONVERSATION_PREVIEW_PRESETS,
+  type ConversationPreviewFeedbackTag
+} from "./conversation-preview-feedback";
 import { fetchProfile } from "./profile-client";
 import type { ImportedProfile } from "./profile-import";
+
+const feedbackTags: ReadonlyArray<{ id: ConversationPreviewFeedbackTag; label: string }> = [
+  { id: "too-long", label: "Too long" },
+  { id: "too-short", label: "Too short" },
+  { id: "too-formal", label: "Too formal" },
+  { id: "too-direct", label: "Too direct" },
+  { id: "not-direct-enough", label: "Not direct enough" },
+  { id: "too-flirty", label: "Too flirty" },
+  { id: "not-flirty-enough", label: "Not flirty enough" },
+  { id: "not-natural", label: "Not natural" }
+];
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>'\"]/g, (char) => ({
@@ -60,8 +78,10 @@ function installStyles(): void {
     .conversation-inline-generation{display:grid;gap:8px}
     .conversation-inline-generation textarea,.conversation-inline-generation input{width:100%;box-sizing:border-box}
     .conversation-inline-generation textarea{min-height:72px;resize:vertical}
-    .conversation-inline-generation-actions,.conversation-inline-confirmation{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .conversation-inline-generation-actions,.conversation-inline-confirmation,.conversation-inline-feedback-options{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .conversation-inline-confirmation input{min-width:220px;flex:1 1 260px}
+    .conversation-inline-feedback{display:grid;gap:6px;padding:8px;border:1px solid var(--border,#d4d4d8);border-radius:8px}
+    .conversation-inline-feedback button[aria-pressed="true"]{font-weight:700;outline:2px solid currentColor;outline-offset:1px}
     .conversation-inline-generation-preview{white-space:pre-wrap;margin:0}
     .conversation-inline-generation-preview[data-approved="true"]{font-weight:600}
     .conversation-inline-generation-lifecycle{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px}
@@ -116,6 +136,12 @@ async function mountInlineEditor(): Promise<void> {
         <button type="button" data-generation-approve disabled>Approve draft</button>
         <span class="subtle" data-generation-status></span>
       </div>
+      <div class="conversation-inline-feedback" data-generation-feedback hidden>
+        <small><strong>Regeneration feedback</strong> — choose one preset and any useful tags.</small>
+        <div class="conversation-inline-feedback-options" data-generation-presets aria-label="Preview regeneration presets"></div>
+        <div class="conversation-inline-feedback-options" data-generation-tags aria-label="Preview feedback tags"></div>
+        <small class="subtle" data-generation-feedback-summary>No regeneration steering selected.</small>
+      </div>
       <div class="conversation-inline-confirmation">
         <input data-confirmation-message-id maxlength="500" placeholder="Confirmed Tinder message ID" aria-label="Confirmed Tinder message ID" disabled>
         <button type="button" data-confirmation-button disabled>Confirm sent</button>
@@ -147,12 +173,51 @@ async function mountInlineEditor(): Promise<void> {
   const generationLifecycle = section.querySelector<HTMLElement>("[data-generation-lifecycle]")!;
   const generationPreview = section.querySelector<HTMLElement>("[data-generation-preview]")!;
   const generationProvenance = section.querySelector<HTMLElement>("[data-generation-provenance]")!;
+  const generationFeedback = section.querySelector<HTMLElement>("[data-generation-feedback]")!;
+  const generationPresets = section.querySelector<HTMLElement>("[data-generation-presets]")!;
+  const generationTags = section.querySelector<HTMLElement>("[data-generation-tags]")!;
+  const generationFeedbackSummary = section.querySelector<HTMLElement>("[data-generation-feedback-summary]")!;
   const confirmationMessageId = section.querySelector<HTMLInputElement>("[data-confirmation-message-id]")!;
   const confirmationButton = section.querySelector<HTMLButtonElement>("[data-confirmation-button]")!;
   const confirmationStatus = section.querySelector<HTMLElement>("[data-confirmation-status]")!;
   const session = readSession();
   let currentDraft: ConversationGeneration | null = null;
   let lifecycle = emptyConversationDraftLifecycle();
+
+  const renderFeedbackControls = () => {
+    const hasDraft = lifecycle.phase !== "empty";
+    generationFeedback.hidden = !hasDraft;
+    generationPresets.innerHTML = "";
+    for (const preset of CONVERSATION_PREVIEW_PRESETS) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = preset.label;
+      button.disabled = !hasDraft || lifecycle.phase === "confirmed-sent";
+      button.setAttribute("aria-pressed", String(lifecycle.feedback.presetId === preset.id));
+      button.addEventListener("click", () => {
+        const nextPreset = lifecycle.feedback.presetId === preset.id ? null : preset.id;
+        lifecycle = setDraftPreviewPreset(lifecycle, nextPreset);
+        renderFeedbackControls();
+      });
+      generationPresets.append(button);
+    }
+    generationTags.innerHTML = "";
+    for (const tag of feedbackTags) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = tag.label;
+      button.disabled = !hasDraft || lifecycle.phase === "confirmed-sent";
+      button.setAttribute("aria-pressed", String(lifecycle.feedback.tags.includes(tag.id)));
+      button.addEventListener("click", () => {
+        lifecycle = toggleDraftFeedbackTag(lifecycle, tag.id);
+        renderFeedbackControls();
+      });
+      generationTags.append(button);
+    }
+    generationFeedbackSummary.textContent = draftPreviewInstruction(lifecycle)
+      ? "Selected feedback will steer Regenerate only; durable chat settings are unchanged."
+      : "No regeneration steering selected.";
+  };
 
   const setDraftControls = () => {
     const hasDraft = Boolean(currentDraft?.text);
@@ -164,6 +229,7 @@ async function mountInlineEditor(): Promise<void> {
     confirmationButton.disabled = !approved || !confirmationMessageId.value.trim();
     generationPreview.dataset.approved = String(approved || lifecycle.phase === "confirmed-sent");
     generationLifecycle.textContent = draftLifecycleLabel(lifecycle);
+    renderFeedbackControls();
   };
 
   if (!session) {
@@ -175,17 +241,18 @@ async function mountInlineEditor(): Promise<void> {
     return;
   }
 
-  const generateDraft = async () => {
+  const generateDraft = async (regenerate = false) => {
     const latestMessage = generationMessage.value.trim();
     if (!latestMessage) {
       generationStatus.textContent = "Latest message required";
       return;
     }
+    const previewInstruction = regenerate ? draftPreviewInstruction(lifecycle) : null;
     generationButton.disabled = true;
     regenerateButton.disabled = true;
-    generationStatus.textContent = currentDraft ? "Regenerating…" : "Generating…";
+    generationStatus.textContent = regenerate ? "Regenerating…" : "Generating…";
     try {
-      const result = await generateConversationReply(session, conversationId, latestMessage);
+      const result = await generateConversationReply(session, conversationId, latestMessage, previewInstruction ?? undefined);
       if (!section.isConnected) return;
       currentDraft = result;
       lifecycle = markDraftGenerated(lifecycle, result.text);
@@ -195,8 +262,8 @@ async function mountInlineEditor(): Promise<void> {
       const sources = result.provenance.overriddenFields.length
         ? `Chat overrides: ${result.provenance.overriddenFields.join(", ")}. `
         : "Global defaults only. ";
-      generationProvenance.textContent = `${sources}Persistent instruction: ${result.provenance.hasPersistentInstruction ? "yes" : "no"}; temporary instruction: ${result.provenance.hasTemporaryInstruction ? "yes" : "no"}. Model: ${result.model}.`;
-      generationStatus.textContent = "Draft ready";
+      generationProvenance.textContent = `${sources}Persistent instruction: ${result.provenance.hasPersistentInstruction ? "yes" : "no"}; temporary instruction: ${result.provenance.hasTemporaryInstruction ? "yes" : "no"}; preview steering: ${result.provenance.hasPreviewInstruction ? "yes" : "no"}. Model: ${result.model}.`;
+      generationStatus.textContent = regenerate && previewInstruction ? "Draft regenerated with preview feedback" : "Draft ready";
     } catch (error) {
       generationStatus.textContent = error instanceof Error ? error.message : "Unable to generate draft.";
     } finally {
@@ -207,8 +274,8 @@ async function mountInlineEditor(): Promise<void> {
     }
   };
 
-  generationButton.addEventListener("click", () => { void generateDraft(); });
-  regenerateButton.addEventListener("click", () => { void generateDraft(); });
+  generationButton.addEventListener("click", () => { void generateDraft(false); });
+  regenerateButton.addEventListener("click", () => { void generateDraft(true); });
   copyButton.addEventListener("click", async () => {
     if (!currentDraft?.text) return;
     try {
