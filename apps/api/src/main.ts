@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { hashSessionToken } from "./auth.js";
 import { authenticateSession, listAccountSessions, loginWithPassword, registerAccount, revokeAccountSession, revokeSession } from "./auth-service.js";
 import { handleConversationGenerationRequest } from "./conversation-generation-controller.js";
+import { handleOutgoingConfirmationRequest } from "./conversation-outgoing-confirmation-controller.js";
 import { clearConversationOverrides, getConversationOverrides, replaceConversationOverrides } from "./conversation-overrides-service.js";
 import { clearConversationTemporaryInstruction, getConversation, listConversations, setConversationTemporaryInstruction, syncConversation, updateConversationStatus, type TemporaryInstructionScope } from "./conversation-service.js";
 import { isConversationStatus, validateConversationSyncRequest } from "./conversation-sync-contract.js";
@@ -81,7 +82,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-status-control", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "human-actions", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-status-control", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "human-actions", "security-baseline"]
       });
       return;
     }
@@ -254,6 +255,18 @@ const server = createServer(async (request, response) => {
         return;
       }
       const result = await handleConversationGenerationRequest(session.user.id, generationConversationId, await readJsonBody(request));
+      sendJson(response, result.status, result.body);
+      return;
+    }
+
+    const outgoingConfirmationConversationId = conversationSubresourceId(url.pathname, "/outgoing/confirm");
+    if (outgoingConfirmationConversationId && request.method === "POST") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const result = await handleOutgoingConfirmationRequest(session.user.id, outgoingConfirmationConversationId, await readJsonBody(request));
       sendJson(response, result.status, result.body);
       return;
     }
