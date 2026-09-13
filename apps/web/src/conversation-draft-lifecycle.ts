@@ -1,3 +1,12 @@
+import {
+  emptyConversationPreviewFeedback,
+  setConversationPreviewPreset,
+  toggleConversationPreviewFeedbackTag,
+  type ConversationPreviewFeedbackState,
+  type ConversationPreviewFeedbackTag,
+  type ConversationPreviewPresetId
+} from "./conversation-preview-feedback";
+
 export type ConversationDraftPhase = "empty" | "generated" | "approved" | "confirmed-sent";
 
 export interface ConversationDraftLifecycle {
@@ -7,6 +16,7 @@ export interface ConversationDraftLifecycle {
   approvedAt: string | null;
   confirmedSentAt: string | null;
   externalMessageId: string | null;
+  feedback: ConversationPreviewFeedbackState;
 }
 
 export function emptyConversationDraftLifecycle(): ConversationDraftLifecycle {
@@ -16,7 +26,8 @@ export function emptyConversationDraftLifecycle(): ConversationDraftLifecycle {
     generatedAt: null,
     approvedAt: null,
     confirmedSentAt: null,
-    externalMessageId: null
+    externalMessageId: null,
+    feedback: emptyConversationPreviewFeedback()
   };
 }
 
@@ -36,6 +47,22 @@ export function markDraftGenerated(
     confirmedSentAt: null,
     externalMessageId: null
   };
+}
+
+export function setDraftPreviewPreset(
+  previous: ConversationDraftLifecycle,
+  presetId: ConversationPreviewPresetId | null
+): ConversationDraftLifecycle {
+  if (previous.phase === "empty") throw new Error("generated_draft_required");
+  return { ...previous, feedback: setConversationPreviewPreset(previous.feedback, presetId) };
+}
+
+export function toggleDraftFeedbackTag(
+  previous: ConversationDraftLifecycle,
+  tag: ConversationPreviewFeedbackTag
+): ConversationDraftLifecycle {
+  if (previous.phase === "empty") throw new Error("generated_draft_required");
+  return { ...previous, feedback: toggleConversationPreviewFeedbackTag(previous.feedback, tag) };
 }
 
 export function markDraftApproved(
