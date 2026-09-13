@@ -3,9 +3,14 @@ import type { AuthSession } from "./auth-client";
 const apiBase = (import.meta.env.VITE_TNND_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "http://127.0.0.1:4000";
 
 export interface ConversationGeneration {
-  reply: string;
+  conversationId: string;
+  text: string;
   model: string;
-  context: unknown;
+  provenance: {
+    overriddenFields: string[];
+    hasPersistentInstruction: boolean;
+    hasTemporaryInstruction: boolean;
+  };
 }
 
 export async function generateConversationReply(
