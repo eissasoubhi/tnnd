@@ -1,3 +1,4 @@
+import { resolveTinderBackendSyncDecision, type TinderBackendSyncDecision } from "./tinder-backend-management";
 import { executeBoundedTinderRead, type TinderBoundedReadResult } from "./tinder-bounded-read-handlers";
 import { loadTinderMessageCursor, saveTinderMessageCursor } from "./tinder-message-cursor-store";
 import { planTinderMessageDelta } from "./tinder-message-delta";
@@ -11,6 +12,11 @@ export interface TinderUnreadExecutorHooks {
   navigate(path: string): void | Promise<void>;
   loadMessageCursor?(conversationRef: string): Promise<string | null>;
   saveMessageCursor?(conversationRef: string, cursor: string): Promise<void>;
+  resolveBackendSyncDecision?(
+    conversationRef: string,
+    read: TinderBoundedReadResult,
+    persistedCursor: string | null
+  ): Promise<TinderBackendSyncDecision>;
 }
 
 export interface TinderMessageCursorUpdate {
@@ -29,6 +35,7 @@ export interface TinderUnreadExecutorResult {
   discoveredJobs: TinderScheduledJob[];
   unreadCompletionPersisted: boolean;
   messageCursor: TinderMessageCursorUpdate | null;
+  backendSyncDecision: TinderBackendSyncDecision | null;
 }
 
 function observedIncomingCursor(read: TinderBoundedReadResult | null): string | null {
@@ -56,6 +63,7 @@ export async function executeUnreadAwareTinderStep(
   const conversationRef = job.kind === "process-thread" ? job.conversationRef ?? null : null;
   const loadCursor = hooks.loadMessageCursor ?? loadTinderMessageCursor;
   const saveCursor = hooks.saveMessageCursor ?? saveTinderMessageCursor;
+  const resolveBackendDecision = hooks.resolveBackendSyncDecision ?? resolveTinderBackendSyncDecision;
   const previousCursor = conversationRef ? await loadCursor(conversationRef) : null;
   let read: TinderBoundedReadResult | null = null;
 
@@ -101,11 +109,21 @@ export async function executeUnreadAwareTinderStep(
     }
   }
 
+  let backendSyncDecision: TinderBackendSyncDecision | null = null;
+  if (execution.completed && conversationRef && read) {
+    try {
+      backendSyncDecision = await resolveBackendDecision(conversationRef, read, previousCursor);
+    } catch (error) {
+      console.debug("TNND backend takeover gate failed closed", error);
+    }
+  }
+
   return {
     execution,
     read,
     discoveredJobs: cycle?.jobs ?? [],
     unreadCompletionPersisted,
-    messageCursor
+    messageCursor,
+    backendSyncDecision
   };
 }
