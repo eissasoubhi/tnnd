@@ -10,6 +10,15 @@ export const CONVERSATION_STATUSES = [
   "archived",
 ] as const;
 
+export const CONVERSATION_SYNC_LIMITS = {
+  maxMessages: 40,
+  maxThreadIdLength: 512,
+  maxConversationIdLength: 128,
+  maxCursorLength: 512,
+  maxExternalMessageIdLength: 256,
+  maxMessageTextLength: 4000,
+} as const;
+
 export type ConversationStatus = (typeof CONVERSATION_STATUSES)[number];
 
 export interface ConversationMessageDelta {
@@ -39,38 +48,62 @@ export function isConversationStatus(value: unknown): value is ConversationStatu
   return typeof value === "string" && (CONVERSATION_STATUSES as readonly string[]).includes(value);
 }
 
+function requireBoundedString(value: unknown, field: string, maxLength: number, allowEmpty = false): string {
+  if (typeof value !== "string") throw new Error(`${field} must be a string`);
+  const normalized = value.trim();
+  if (!allowEmpty && !normalized) throw new Error(`${field} is required`);
+  if (value.length > maxLength) throw new Error(`${field} exceeds ${maxLength} characters`);
+  return allowEmpty ? value : normalized;
+}
+
 export function validateConversationSyncRequest(value: unknown): ConversationSyncRequest {
   if (!value || typeof value !== "object") throw new Error("Sync payload must be an object");
   const input = value as Record<string, unknown>;
-  if (typeof input.externalThreadId !== "string" || !input.externalThreadId.trim()) {
-    throw new Error("externalThreadId is required");
+  const externalThreadId = requireBoundedString(
+    input.externalThreadId,
+    "externalThreadId",
+    CONVERSATION_SYNC_LIMITS.maxThreadIdLength
+  );
+
+  if (input.knownConversationId !== undefined) {
+    requireBoundedString(input.knownConversationId, "knownConversationId", CONVERSATION_SYNC_LIMITS.maxConversationIdLength);
   }
-  if (input.knownConversationId !== undefined && typeof input.knownConversationId !== "string") {
-    throw new Error("knownConversationId must be a string");
-  }
-  if (input.cursor !== undefined && typeof input.cursor !== "string") {
-    throw new Error("cursor must be a string");
+  if (input.cursor !== undefined) {
+    requireBoundedString(input.cursor, "cursor", CONVERSATION_SYNC_LIMITS.maxCursorLength, true);
   }
   if (input.status !== undefined && !isConversationStatus(input.status)) {
     throw new Error("status is invalid");
   }
   if (!Array.isArray(input.messages)) throw new Error("messages must be an array");
+  if (input.messages.length > CONVERSATION_SYNC_LIMITS.maxMessages) {
+    throw new Error(`messages exceeds ${CONVERSATION_SYNC_LIMITS.maxMessages} items`);
+  }
 
+  const seenMessageIds = new Set<string>();
   const messages = input.messages.map((message, index): ConversationMessageDelta => {
     if (!message || typeof message !== "object") throw new Error(`messages[${index}] must be an object`);
     const item = message as Record<string, unknown>;
-    if (typeof item.externalMessageId !== "string" || !item.externalMessageId.trim()) {
-      throw new Error(`messages[${index}].externalMessageId is required`);
+    const externalMessageId = requireBoundedString(
+      item.externalMessageId,
+      `messages[${index}].externalMessageId`,
+      CONVERSATION_SYNC_LIMITS.maxExternalMessageIdLength
+    );
+    if (seenMessageIds.has(externalMessageId)) {
+      throw new Error(`messages[${index}].externalMessageId is duplicated`);
     }
+    seenMessageIds.add(externalMessageId);
     if (item.direction !== "incoming" && item.direction !== "outgoing") {
       throw new Error(`messages[${index}].direction is invalid`);
     }
     if (typeof item.text !== "string") throw new Error(`messages[${index}].text must be a string`);
+    if (item.text.length > CONVERSATION_SYNC_LIMITS.maxMessageTextLength) {
+      throw new Error(`messages[${index}].text exceeds ${CONVERSATION_SYNC_LIMITS.maxMessageTextLength} characters`);
+    }
     if (typeof item.sentAt !== "string" || Number.isNaN(Date.parse(item.sentAt))) {
       throw new Error(`messages[${index}].sentAt must be an ISO date`);
     }
     return {
-      externalMessageId: item.externalMessageId,
+      externalMessageId,
       direction: item.direction,
       text: item.text,
       sentAt: item.sentAt,
@@ -78,8 +111,8 @@ export function validateConversationSyncRequest(value: unknown): ConversationSyn
   });
 
   return {
-    externalThreadId: input.externalThreadId,
-    ...(typeof input.knownConversationId === "string" ? { knownConversationId: input.knownConversationId } : {}),
+    externalThreadId,
+    ...(typeof input.knownConversationId === "string" ? { knownConversationId: input.knownConversationId.trim() } : {}),
     ...(typeof input.cursor === "string" ? { cursor: input.cursor } : {}),
     ...(isConversationStatus(input.status) ? { status: input.status } : {}),
     messages,
