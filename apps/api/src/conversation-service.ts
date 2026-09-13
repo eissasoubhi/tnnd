@@ -1,8 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { getPool } from "./db-client.js";
+import { tryAcquireConversationThreadLock } from "./conversation-thread-lock-service.js";
 import type { ConversationSyncRequest, ConversationSyncResponse, ConversationStatus } from "./conversation-sync-contract.js";
 
 export type TemporaryInstructionScope = "next-message" | "next-n-replies" | "until-cleared";
+
+export class ConversationThreadBusyError extends Error {
+  readonly code = "conversation_thread_busy";
+
+  constructor() {
+    super("conversation_thread_busy");
+    this.name = "ConversationThreadBusyError";
+  }
+}
 
 export interface TemporaryInstruction {
   text: string;
@@ -36,6 +46,11 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
+    const lockAcquired = await tryAcquireConversationThreadLock(client, userId, input.externalThreadId);
+    if (!lockAcquired) {
+      throw new ConversationThreadBusyError();
+    }
+
     const existing = await client.query<{ id: string; status: ConversationStatus }>(
       `SELECT id, status FROM conversations
        WHERE user_id = $1 AND external_thread_id = $2
