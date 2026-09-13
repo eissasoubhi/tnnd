@@ -14,16 +14,16 @@ export function executeBoundedTinderRead(
   state: TinderUiStateSnapshot
 ): TinderBoundedReadResult {
   if (job.kind === "sync-only") {
-    return { completed: true, kind: job.kind, observation: { state: state.route.state, path: state.path } };
+    return { completed: true, kind: job.kind, observation: { state: state.state, path: state.path } };
   }
 
   if (job.kind === "scan-inbox") {
     const diagnostics = adapter.diagnose();
     return {
-      completed: state.route.state === "inbox",
+      completed: state.state === "inbox",
       kind: job.kind,
       observation: {
-        state: state.route.state,
+        state: state.state,
         sidebarState: diagnostics.sidebarState,
         visibleCandidateCount: diagnostics.visibleCandidateCount,
         viewConfidence: diagnostics.viewConfidence,
@@ -35,7 +35,7 @@ export function executeBoundedTinderRead(
   if (job.kind === "process-thread") {
     const snapshot = adapter.read();
     return {
-      completed: state.route.state === "conversation" && Boolean(snapshot),
+      completed: state.state === "conversation" && Boolean(snapshot),
       kind: job.kind,
       observation: snapshot
         ? {
