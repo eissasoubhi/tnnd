@@ -4,6 +4,12 @@ import {
   normalizeTinderConversationManagement,
   type TinderConversationManagement
 } from "./tinder-ai-takeover-policy";
+import type { TinderBoundedReadResult } from "./tinder-bounded-read-handlers";
+import {
+  readAiManagedTinderThreadSyncCandidate,
+  shouldSyncAiManagedTinderThreadCandidate,
+  type TinderThreadSyncCandidate
+} from "./tinder-thread-sync-gate";
 
 const API_BASE = "http://127.0.0.1:4000";
 
@@ -20,6 +26,11 @@ interface ThreadLookupPayload {
 export interface TinderBackendConversationManagement {
   conversationId: string | null;
   management: TinderConversationManagement;
+}
+
+export interface TinderBackendSyncDecision extends TinderBackendConversationManagement {
+  candidate: TinderThreadSyncCandidate | null;
+  shouldSync: boolean;
 }
 
 export async function loadTinderConversationManagement(
@@ -62,4 +73,17 @@ export async function loadTinderConversationManagement(
   });
 
   return { conversationId, management };
+}
+
+export async function resolveTinderBackendSyncDecision(
+  externalThreadId: string,
+  readResult: TinderBoundedReadResult,
+  persistedCursor: string | null
+): Promise<TinderBackendSyncDecision> {
+  const backend = await loadTinderConversationManagement(externalThreadId);
+  const candidate = readAiManagedTinderThreadSyncCandidate(readResult, backend.management);
+  const shouldSync = candidate
+    ? shouldSyncAiManagedTinderThreadCandidate(candidate, persistedCursor, backend.management)
+    : false;
+  return { ...backend, candidate, shouldSync };
 }
