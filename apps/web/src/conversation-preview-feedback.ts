@@ -32,10 +32,11 @@ export const CONVERSATION_PREVIEW_PRESETS: readonly ConversationPreviewPreset[] 
 export interface ConversationPreviewFeedbackState {
   presetId: ConversationPreviewPresetId | null;
   tags: ConversationPreviewFeedbackTag[];
+  note: string | null;
 }
 
 export function emptyConversationPreviewFeedback(): ConversationPreviewFeedbackState {
-  return { presetId: null, tags: [] };
+  return { presetId: null, tags: [], note: null };
 }
 
 export function setConversationPreviewPreset(
@@ -56,10 +57,19 @@ export function toggleConversationPreviewFeedbackTag(
   };
 }
 
+export function setConversationPreviewFeedbackNote(
+  state: ConversationPreviewFeedbackState,
+  note: string | null
+): ConversationPreviewFeedbackState {
+  const normalized = note?.trim().replace(/\s+/g, " ").slice(0, 500) || null;
+  return { ...state, note: normalized };
+}
+
 export function previewFeedbackInstruction(state: ConversationPreviewFeedbackState): string | null {
   const parts: string[] = [];
   const preset = CONVERSATION_PREVIEW_PRESETS.find((item) => item.id === state.presetId);
   if (preset) parts.push(preset.instruction);
   if (state.tags.length) parts.push(`User feedback tags: ${state.tags.join(", ")}.`);
+  if (state.note) parts.push(`User preview feedback: ${state.note}`);
   return parts.length ? parts.join(" ") : null;
 }
