@@ -33,6 +33,7 @@ export interface ConversationGenerationResult extends GeminiGenerationResult {
     overriddenFields: string[];
     hasPersistentInstruction: boolean;
     hasTemporaryInstruction: boolean;
+    hasPreviewInstruction: boolean;
   };
 }
 
@@ -40,10 +41,13 @@ export async function generateConversationReply(
   userId: string,
   conversationId: string,
   latestMessage: string,
-  provider: GeminiConversationProvider = callGeminiConversationProvider
+  provider: GeminiConversationProvider = callGeminiConversationProvider,
+  previewInstruction?: string
 ): Promise<ConversationGenerationResult | null> {
   const normalizedMessage = latestMessage.trim();
   if (!normalizedMessage || normalizedMessage.length > 4000) throw new Error("invalid_generation_message");
+  const normalizedPreviewInstruction = previewInstruction?.trim() ?? "";
+  if (normalizedPreviewInstruction.length > 1000) throw new Error("invalid_preview_instruction");
 
   const [conversation, defaults] = await Promise.all([
     getConversation(userId, conversationId),
@@ -60,14 +64,19 @@ export async function generateConversationReply(
     : null;
   const context = await loadGeminiConversationPayload(userId, conversationId, defaults, temporaryInstruction);
   if (!context) return null;
-  const generated = await provider({ context, latestMessage: normalizedMessage });
+  const generated = await provider({
+    context,
+    latestMessage: normalizedMessage,
+    ...(normalizedPreviewInstruction ? { previewInstruction: normalizedPreviewInstruction } : {})
+  });
   return {
     conversationId,
     ...generated,
     provenance: {
       overriddenFields: context.provenance.overriddenFields.map(String),
       hasPersistentInstruction: context.provenance.hasPersistentInstruction,
-      hasTemporaryInstruction: context.provenance.hasTemporaryInstruction
+      hasTemporaryInstruction: context.provenance.hasTemporaryInstruction,
+      hasPreviewInstruction: Boolean(normalizedPreviewInstruction)
     }
   };
 }
