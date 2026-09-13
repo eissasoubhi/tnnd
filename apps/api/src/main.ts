@@ -11,6 +11,7 @@ import { handleConversationThreadLookupRequest } from "./conversation-thread-loo
 import { getPool } from "./db-client.js";
 import { createHumanAction, listHumanActions, updateHumanActionStatus, type HumanActionSeverity, type HumanActionStatus } from "./human-action-service.js";
 import { profileSchemaVersion, publicProfileSchema, validateProfileEnvelope } from "./profile-schema.js";
+import { handleTextingStyleAnalysisRequest } from "./texting-style-analysis-controller.js";
 
 const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? "127.0.0.1";
@@ -84,7 +85,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "human-actions", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "texting-style-analysis", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "human-actions", "security-baseline"]
       });
       return;
     }
@@ -209,6 +210,17 @@ const server = createServer(async (request, response) => {
         [session.user.id, profileSchemaVersion, JSON.stringify(validated.profile)]
       );
       sendJson(response, 200, { profile: validated.profile, updatedAt: result.rows[0]?.updated_at.toISOString() ?? new Date().toISOString() });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/v1/profile/texting-style/analyze") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const result = await handleTextingStyleAnalysisRequest(await readJsonBody(request));
+      sendJson(response, result.status, result.body);
       return;
     }
 
