@@ -1,5 +1,6 @@
 import { readSession } from "./auth-client";
-import { listConversations, type ConversationListItem } from "./conversation-client";
+import { listConversations } from "./conversation-client";
+import type { ConversationListItem } from "./conversation-contract";
 
 export type ConversationTakeoverChoice =
   | "unmanaged"
