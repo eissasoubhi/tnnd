@@ -77,6 +77,10 @@ app.innerHTML = `
           <label>Emoji frequency<select id="emoji-frequency"><option value="none">none</option><option value="low">low</option><option value="medium">medium</option></select></label>
           <label>Abbreviations<select id="abbreviations"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
           <label>Message length<select id="message-length"><option value="very-short">very-short</option><option value="short">short</option><option value="medium">medium</option></select></label>
+          <label>Punctuation<select id="punctuation-density"><option value="none">none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
+          <label>Slang level<select id="slang-level"><option value="none">none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
+          <label>Directness<select id="directness"><option value="soft">soft</option><option value="balanced">balanced</option><option value="direct">direct</option><option value="very-direct">very-direct</option></select></label>
+          <label>Question frequency<select id="question-frequency"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
         </div>
         <button id="preferences-save" type="button">Save preferences</button>
         <p class="subtle">Signed-in profiles are stored in the backend. Browser storage is only a disconnected fallback.</p>
@@ -108,6 +112,10 @@ const textFormality = document.querySelector<HTMLSelectElement>("#text-formality
 const emojiFrequency = document.querySelector<HTMLSelectElement>("#emoji-frequency");
 const abbreviations = document.querySelector<HTMLSelectElement>("#abbreviations");
 const messageLength = document.querySelector<HTMLSelectElement>("#message-length");
+const punctuationDensity = document.querySelector<HTMLSelectElement>("#punctuation-density");
+const slangLevel = document.querySelector<HTMLSelectElement>("#slang-level");
+const directness = document.querySelector<HTMLSelectElement>("#directness");
+const questionFrequency = document.querySelector<HTMLSelectElement>("#question-frequency");
 const actionCenter = document.querySelector<HTMLElement>("#action-center");
 const actionCount = document.querySelector<HTMLElement>("#action-count");
 const humanActionMetric = document.querySelector<HTMLElement>('[data-metric-state="Action required"]');
@@ -147,7 +155,7 @@ async function refreshProfile(): Promise<void> {
 }
 
 function refreshPreferences(profile: ImportedProfile | null): void {
-  const controls = [datingGoal, disclosureStrategy, textFormality, emojiFrequency, abbreviations, messageLength, preferencesSave];
+  const controls = [datingGoal, disclosureStrategy, textFormality, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, directness, questionFrequency, preferencesSave];
   controls.forEach((control) => { if (control) control.disabled = !profile; });
   if (!profile) {
     if (preferencesStatus) preferencesStatus.textContent = "Import a profile first";
@@ -161,6 +169,10 @@ function refreshPreferences(profile: ImportedProfile | null): void {
   if (emojiFrequency) emojiFrequency.value = preferences.emojiFrequency;
   if (abbreviations) abbreviations.value = preferences.abbreviations;
   if (messageLength) messageLength.value = preferences.messageLength;
+  if (punctuationDensity) punctuationDensity.value = preferences.punctuationDensity;
+  if (slangLevel) slangLevel.value = preferences.slangLevel;
+  if (directness) directness.value = preferences.directness;
+  if (questionFrequency) questionFrequency.value = preferences.questionFrequency;
   if (preferencesStatus) preferencesStatus.textContent = readSession() ? "Synced" : "Local fallback";
 }
 
@@ -217,14 +229,18 @@ exportButton?.addEventListener("click", () => {
 });
 
 preferencesSave?.addEventListener("click", async () => {
-  if (!currentProfile || !datingGoal || !disclosureStrategy || !textFormality || !emojiFrequency || !abbreviations || !messageLength) return;
+  if (!currentProfile || !datingGoal || !disclosureStrategy || !textFormality || !emojiFrequency || !abbreviations || !messageLength || !punctuationDensity || !slangLevel || !directness || !questionFrequency) return;
   const updated = writeEditablePreferences(currentProfile, {
     datingGoal: datingGoal.value,
     disclosureStrategy: disclosureStrategy.value,
     formality: textFormality.value,
     emojiFrequency: emojiFrequency.value,
     abbreviations: abbreviations.value,
-    messageLength: messageLength.value
+    messageLength: messageLength.value,
+    punctuationDensity: punctuationDensity.value,
+    slangLevel: slangLevel.value,
+    directness: directness.value,
+    questionFrequency: questionFrequency.value
   });
   try {
     await persistProfile(updated);
