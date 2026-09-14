@@ -115,7 +115,8 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
     await client.query("UPDATE conversations SET updated_at = now() WHERE id = $1", [conversationId]);
     await client.query("COMMIT");
     const serverTime = new Date().toISOString();
-    return { conversationId, status, acceptedMessageIds, nextCursor: serverTime, serverTime };
+    const nextCursor = input.nextCursor ?? input.cursor ?? serverTime;
+    return { conversationId, status, acceptedMessageIds, nextCursor, serverTime };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
