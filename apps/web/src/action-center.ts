@@ -100,6 +100,11 @@ export function filterPendingHumanActions(
   return filter === "all" ? pending : pending.filter((item) => item.severity === filter);
 }
 
+export function humanActionPausesConversation(item: HumanActionItem): boolean {
+  return Boolean(item.conversationRef)
+    && (item.severity === "urgent" || item.severity === "decision-required" || item.severity === "action-required");
+}
+
 function renderActionSummary(items: HumanActionItem[]): string {
   const counts = items.reduce<Record<HumanActionSeverity, number>>((accumulator, item) => {
     accumulator[item.severity] += 1;
@@ -147,6 +152,7 @@ export function renderActionCenter(container: HTMLElement, items = readHumanActi
         <small>${escapeHtml(item.conversationLabel)}</small>
       </div>
       <p>${escapeHtml(item.detail)}</p>
+      ${humanActionPausesConversation(item) ? '<p class="subtle"><strong>Conversation paused.</strong> Automation stays blocked while this human action is pending. Resolving the final blocking action allows the conversation to resume.</p>' : ""}
       <div class="action-item__buttons">
         <button type="button" data-action="complete">Complete</button>
         <button type="button" data-action="ignore" class="button-muted">Ignore</button>
