@@ -3,6 +3,7 @@ export type TinderContextMessageDirection = "me" | "them";
 export interface TinderNormalizedMessageKey {
   key: string;
   direction: TinderContextMessageDirection;
+  text: string;
 }
 
 function simpleHash(value: string): string {
@@ -39,6 +40,7 @@ export function buildNormalizedMessageKeys(
 
     result.push({
       direction,
+      text,
       key: simpleHash(`${threadKeyHash}|${identity}|${occurrence}`)
     });
   }
