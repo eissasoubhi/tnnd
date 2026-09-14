@@ -12,10 +12,17 @@ export const conversationManagementStates = [
 
 export type ConversationManagementState = (typeof conversationManagementStates)[number];
 export type ConversationSyncHealthState = "never-synced" | "synced";
+export type HumanActionBlockSeverity = "action-required" | "decision-required" | "urgent";
 
 export interface ConversationSyncHealth {
   state: ConversationSyncHealthState;
   lastSyncedAt?: string;
+}
+
+export interface HumanActionBlockSummary {
+  blocked: boolean;
+  pendingCount: number;
+  highestSeverity: HumanActionBlockSeverity | null;
 }
 
 export interface ConversationManagementRecord {
@@ -25,6 +32,7 @@ export interface ConversationManagementRecord {
   explicitlySelected: boolean;
   selectedAt?: string;
   syncHealth: ConversationSyncHealth;
+  humanActionBlock?: HumanActionBlockSummary;
   updatedAt: string;
 }
 
@@ -54,6 +62,18 @@ function normalizeSyncHealth(value: unknown): ConversationSyncHealth {
   };
 }
 
+function normalizeHumanActionBlock(value: unknown): HumanActionBlockSummary | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const input = value as Record<string, unknown>;
+  const pendingCount = typeof input.pendingCount === "number" && Number.isInteger(input.pendingCount) && input.pendingCount >= 0
+    ? input.pendingCount
+    : 0;
+  const highestSeverity = input.highestSeverity === "action-required" || input.highestSeverity === "decision-required" || input.highestSeverity === "urgent"
+    ? input.highestSeverity
+    : null;
+  return { blocked: input.blocked === true && pendingCount > 0, pendingCount, highestSeverity };
+}
+
 function normalizeRecord(value: unknown): ConversationManagementRecord {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Conversation management record is invalid.");
   const input = value as Record<string, unknown>;
@@ -69,6 +89,7 @@ function normalizeRecord(value: unknown): ConversationManagementRecord {
     explicitlySelected: input.explicitlySelected,
     ...(typeof input.selectedAt === "string" && input.selectedAt ? { selectedAt: input.selectedAt } : {}),
     syncHealth: normalizeSyncHealth(input.syncHealth),
+    ...(normalizeHumanActionBlock(input.humanActionBlock) ? { humanActionBlock: normalizeHumanActionBlock(input.humanActionBlock) } : {}),
     updatedAt: input.updatedAt
   };
 }
