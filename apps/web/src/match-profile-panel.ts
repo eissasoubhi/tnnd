@@ -1,10 +1,11 @@
-import { getConversationMatchProfile, MatchProfileApiError } from "./match-profile-client.js";
+import { getConversationMatchProfile, MatchProfileApiError, promoteMatchProfile } from "./match-profile-client.js";
 import { buildMatchProfileViewModel, type MatchProfileRecord } from "./match-profile-view-model.js";
 
 export type MatchProfilePanelOptions = {
   apiBase: string;
   token: string;
   conversationId: string;
+  temporaryProfile?: MatchProfileRecord | null;
 };
 
 export type MatchProfilePanel = {
@@ -38,11 +39,7 @@ function refreshButton(onReload: () => Promise<void>): HTMLButtonElement {
   button.title = "Reload the latest MatchProfile already stored by TNND. This does not capture Tinder again.";
   button.addEventListener("click", async () => {
     button.disabled = true;
-    try {
-      await onReload();
-    } finally {
-      if (button.isConnected) button.disabled = false;
-    }
+    try { await onReload(); } finally { if (button.isConnected) button.disabled = false; }
   });
   return button;
 }
@@ -50,32 +47,18 @@ function refreshButton(onReload: () => Promise<void>): HTMLButtonElement {
 function renderRecord(root: HTMLElement, record: MatchProfileRecord, onReload: () => Promise<void>): void {
   const model = buildMatchProfileViewModel(record);
   root.replaceChildren();
-
   const header = document.createElement("header");
-  header.append(
-    text("h3", model.title),
-    text("p", model.freshnessLabel, `match-profile-freshness match-profile-freshness-${model.freshnessState}`),
-    text("p", model.retentionLabel, "match-profile-retention"),
-    refreshButton(onReload)
-  );
-
+  header.append(text("h3", model.title), text("p", model.freshnessLabel, `match-profile-freshness match-profile-freshness-${model.freshnessState}`), text("p", model.retentionLabel, "match-profile-retention"), refreshButton(onReload));
   const normalized = document.createElement("section");
   normalized.append(text("h4", "Normalized profile"));
   normalized.append(model.fields.length ? fieldList(model.fields) : text("p", "No normalized fields available yet."));
-
   const source = document.createElement("details");
   source.append(text("summary", model.sourceLabel));
   source.append(model.sourceFields.length ? fieldList(model.sourceFields) : text("p", "No visible source fields available."));
-
   root.append(header, normalized, source);
 }
 
-function renderState(
-  root: HTMLElement,
-  message: string,
-  state: "loading" | "empty" | "error",
-  onReload?: () => Promise<void>
-): void {
+function renderState(root: HTMLElement, message: string, state: "loading" | "empty" | "error", onReload?: () => Promise<void>): void {
   root.replaceChildren(text("p", message, `match-profile-state match-profile-state-${state}`));
   if (onReload && state !== "loading") root.append(refreshButton(onReload));
 }
@@ -91,19 +74,31 @@ export function createMatchProfilePanel(options: MatchProfilePanelOptions): Matc
       renderState(root, "Loading MatchProfile…", "loading");
       try {
         const record = await getConversationMatchProfile(options.apiBase, options.token, options.conversationId);
-        if (!record) {
-          renderState(root, "No captured Tinder profile is linked to this conversation yet.", "empty", panel.load);
+        if (record) { renderRecord(root, record, panel.load); return; }
+        const temporary = options.temporaryProfile;
+        if (temporary && temporary.normalizedProfile.retention.mode === "temporary" && !temporary.conversationId) {
+          root.replaceChildren(text("p", "A temporary Tinder capture is available. Link it only if it belongs to this conversation.", "match-profile-state"));
+          const promote = document.createElement("button");
+          promote.type = "button";
+          promote.textContent = "Link profile to this conversation";
+          promote.addEventListener("click", async () => {
+            if (!window.confirm("Link this temporary Tinder profile to the selected conversation? This makes its retention durable.")) return;
+            promote.disabled = true;
+            try {
+              const linked = await promoteMatchProfile(options.apiBase, options.token, temporary.id, options.conversationId);
+              renderRecord(root, linked, panel.load);
+            } catch (error) {
+              renderState(root, error instanceof MatchProfileApiError ? `Unable to link MatchProfile (${error.status}).` : "Unable to link MatchProfile.", "error", panel.load);
+            }
+          });
+          root.append(promote, refreshButton(panel.load));
           return;
         }
-        renderRecord(root, record, panel.load);
+        renderState(root, "No captured Tinder profile is linked to this conversation yet.", "empty", panel.load);
       } catch (error) {
-        const message = error instanceof MatchProfileApiError
-          ? `Unable to load MatchProfile (${error.status}).`
-          : "Unable to load MatchProfile.";
-        renderState(root, message, "error", panel.load);
+        renderState(root, error instanceof MatchProfileApiError ? `Unable to load MatchProfile (${error.status}).` : "Unable to load MatchProfile.", "error", panel.load);
       }
     }
   };
-
   return panel;
 }
