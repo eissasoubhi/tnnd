@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildReadOnlyProfileCapture, buildReadOnlyProfileSource, normalizeProfileCaptureSource } from "../src/tinder-match-profile-capture.ts";
+import { buildReadOnlyProfileCapture, buildReadOnlyProfileSource, hasMeaningfulVisibleProfileFields, normalizeProfileCaptureSource } from "../src/tinder-match-profile-capture.ts";
 
 const capturedAt = "2026-01-01T12:00:00.000Z";
 const input = {
@@ -24,6 +24,7 @@ assert.equal(source.visibleFields.firstName, "Sam");
 assert.equal(source.visibleFields.age, 29);
 assert.equal(source.visibleFields.bio, "Loves hiking and coffee.");
 assert.deepEqual(source.visibleFields.interests, ["Hiking", "Coffee", "Hiking"]);
+assert.equal(hasMeaningfulVisibleProfileFields(source), true);
 
 assert.equal(capture.schemaVersion, 1);
 assert.equal(capture.source, "tinder-visible-profile");
@@ -46,5 +47,18 @@ assert.equal(invalid.fields.age, undefined);
 assert.equal(invalid.fields.bio?.length, 500);
 assert.equal(invalid.fields.interests?.length, 20);
 assert.equal(invalid.sourceSnapshot.captureMode, "read-only");
+
+const emptySource = buildReadOnlyProfileSource({ route: "/app/recs/empty", firstName: "   ", interests: ["", "   "] }, capturedAt);
+assert.equal(hasMeaningfulVisibleProfileFields(emptySource), false);
+assert.deepEqual(emptySource.visibleFields, {
+  firstName: undefined,
+  age: undefined,
+  bio: undefined,
+  job: undefined,
+  education: undefined,
+  location: undefined,
+  interests: undefined,
+  relationshipGoal: undefined
+});
 
 console.log("Match profile capture contract checks passed.");
