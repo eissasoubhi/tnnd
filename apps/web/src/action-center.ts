@@ -2,6 +2,7 @@ import { fetchHumanActions, setHumanActionStatus } from "./human-action-client";
 
 export type HumanActionSeverity = "info" | "action-required" | "decision-required" | "urgent";
 export type HumanActionStatus = "pending" | "completed" | "ignored";
+export type HumanActionSeverityFilter = "all" | HumanActionSeverity;
 
 export interface HumanActionItem {
   id: string;
@@ -21,6 +22,14 @@ const severityPriority: Record<HumanActionSeverity, number> = {
   "action-required": 2,
   info: 1
 };
+
+const severityFilters: Array<{ value: HumanActionSeverityFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "urgent", label: "Urgent" },
+  { value: "decision-required", label: "Decisions" },
+  { value: "action-required", label: "Actions" },
+  { value: "info", label: "Info" }
+];
 
 export function readHumanActions(): HumanActionItem[] {
   const raw = localStorage.getItem(storageKey);
@@ -83,6 +92,14 @@ export function sortPendingHumanActions(items: HumanActionItem[]): HumanActionIt
     });
 }
 
+export function filterPendingHumanActions(
+  items: HumanActionItem[],
+  filter: HumanActionSeverityFilter
+): HumanActionItem[] {
+  const pending = sortPendingHumanActions(items);
+  return filter === "all" ? pending : pending.filter((item) => item.severity === filter);
+}
+
 function renderActionSummary(items: HumanActionItem[]): string {
   const counts = items.reduce<Record<HumanActionSeverity, number>>((accumulator, item) => {
     accumulator[item.severity] += 1;
@@ -94,7 +111,19 @@ function renderActionSummary(items: HumanActionItem[]): string {
     <span>${counts.urgent} urgent</span>
     <span>${counts["decision-required"]} decisions</span>
     <span>${counts["action-required"]} actions</span>
+    <span>${counts.info} info</span>
   </div>`;
+}
+
+function renderSeverityFilters(activeFilter: HumanActionSeverityFilter): string {
+  return `<div class="action-filters" aria-label="Filter pending human actions by severity">
+    ${severityFilters.map(({ value, label }) => `<button type="button" data-action-filter="${value}" aria-pressed="${value === activeFilter ? "true" : "false"}">${label}</button>`).join("")}
+  </div>`;
+}
+
+function readActiveFilter(container: HTMLElement): HumanActionSeverityFilter {
+  const value = container.dataset.actionSeverityFilter;
+  return severityFilters.some((filter) => filter.value === value) ? value as HumanActionSeverityFilter : "all";
 }
 
 export function renderActionCenter(container: HTMLElement, items = readHumanActions()): void {
@@ -104,7 +133,11 @@ export function renderActionCenter(container: HTMLElement, items = readHumanActi
     return;
   }
 
-  container.innerHTML = `${renderActionSummary(pending)}${pending.map((item) => `
+  const activeFilter = readActiveFilter(container);
+  const visible = filterPendingHumanActions(items, activeFilter);
+  const emptyFiltered = `<div class="action-empty"><strong>No ${escapeHtml(activeFilter)} actions</strong><p>Choose another filter to review the rest of the queue.</p></div>`;
+
+  container.innerHTML = `${renderActionSummary(pending)}${renderSeverityFilters(activeFilter)}${visible.length === 0 ? emptyFiltered : visible.map((item) => `
     <article class="action-item" data-action-id="${escapeHtml(item.id)}">
       <div class="action-item__heading">
         <div>
@@ -125,6 +158,13 @@ export function renderActionCenter(container: HTMLElement, items = readHumanActi
 export function bindActionCenter(container: HTMLElement, onChange: (items: HumanActionItem[]) => void): void {
   container.addEventListener("click", (event) => {
     const target = event.target as HTMLElement;
+    const filter = target.dataset.actionFilter;
+    if (filter && severityFilters.some((option) => option.value === filter)) {
+      container.dataset.actionSeverityFilter = filter;
+      renderActionCenter(container);
+      return;
+    }
+
     const action = target.dataset.action;
     if (action !== "complete" && action !== "ignore") return;
     const item = target.closest<HTMLElement>("[data-action-id]");
