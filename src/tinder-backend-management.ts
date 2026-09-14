@@ -2,6 +2,15 @@ import { getBackendSession, getSyncState, saveSyncState } from "./storage";
 import { getConversationRef, type ConversationStatus } from "./conversation-sync";
 import { classifySyncReconciliation } from "./sync-status";
 import {
+  conversationStatusAllowsTinderAutomation,
+  reconcileAutomationPauseMessage
+} from "./tinder-conversation-automation-status";
+export {
+  conversationStatusAllowsTinderAutomation,
+  describeConversationAutomationPause,
+  reconcileAutomationPauseMessage
+} from "./tinder-conversation-automation-status";
+import {
   DEFAULT_TINDER_CONVERSATION_MANAGEMENT,
   normalizeTinderConversationManagement,
   type TinderConversationManagement
@@ -58,23 +67,6 @@ function reconcileCursor(localCursor: string | null, backendCursor: string | nul
 
 function normalizeConversationStatus(value: unknown): ConversationStatus | null {
   return typeof value === "string" && conversationStatuses.has(value as ConversationStatus) ? value as ConversationStatus : null;
-}
-
-export function conversationStatusAllowsTinderAutomation(status: ConversationStatus | null): boolean {
-  return status !== "action-required" && status !== "paused" && status !== "disabled" && status !== "archived" && status !== "moved-off-tinder";
-}
-
-export function describeConversationAutomationPause(status: ConversationStatus | null): string | null {
-  if (status === "action-required") return "Human action required · Tinder automation paused until the action is resolved in TNND.";
-  if (!conversationStatusAllowsTinderAutomation(status)) return `Conversation automation paused by server status: ${status}.`;
-  return null;
-}
-
-export function reconcileAutomationPauseMessage(currentMessage: string | null, status: ConversationStatus | null): string | null {
-  const nextPause = describeConversationAutomationPause(status);
-  if (nextPause) return nextPause;
-  if (currentMessage?.startsWith("Human action required ·") || currentMessage?.startsWith("Conversation automation paused by server status:")) return null;
-  return currentMessage;
 }
 
 export async function loadTinderConversationManagement(externalThreadId: string): Promise<TinderBackendConversationManagement> {
