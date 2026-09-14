@@ -39,6 +39,10 @@ function rowToStored(row: MatchProfileRow): StoredMatchProfile {
   };
 }
 
+export function isPromotableTemporaryMatchProfile(expiresAt: Date | null, now = new Date()): boolean {
+  return expiresAt === null || expiresAt.getTime() > now.getTime();
+}
+
 async function assertConversationOwnership(userId: string, conversationId: string): Promise<boolean> {
   const result = await getPool().query(
     "SELECT 1 FROM conversations WHERE id = $1 AND user_id = $2 LIMIT 1",
@@ -115,7 +119,7 @@ export async function promoteMatchProfileCapture(
     [profileId, userId]
   );
   const row = existing.rows[0];
-  if (!row) return null;
+  if (!row || !isPromotableTemporaryMatchProfile(row.expires_at)) return null;
 
   const sourceCapture = parseMatchProfileSourceCapture(row.source_capture);
   const normalizedProfile = normalizeMatchProfile(sourceCapture, { conversationRef: conversationId });
@@ -125,7 +129,10 @@ export async function promoteMatchProfileCapture(
          normalized_profile = $2::jsonb,
          expires_at = NULL,
          updated_at = now()
-     WHERE id = $3 AND user_id = $4 AND conversation_id IS NULL
+     WHERE id = $3
+       AND user_id = $4
+       AND conversation_id IS NULL
+       AND (expires_at IS NULL OR expires_at > now())
      RETURNING id, conversation_id, source_capture, normalized_profile, captured_at, expires_at, updated_at`,
     [conversationId, JSON.stringify(normalizedProfile), profileId, userId]
   );
