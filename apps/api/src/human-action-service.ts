@@ -108,7 +108,7 @@ export async function createHumanAction(userId: string, input: CreateHumanAction
         `UPDATE conversations
             SET status = 'action-required', updated_at = now()
           WHERE id::text = $1 AND user_id = $2
-            AND status NOT IN ('disabled', 'archived', 'moved-off-tinder')`,
+            AND status NOT IN ('paused', 'disabled', 'archived', 'moved-off-tinder')`,
         [conversationRef, userId]
       );
     }
@@ -149,7 +149,7 @@ export async function updateHumanActionStatus(userId: string, actionId: string, 
           `UPDATE conversations
               SET status = 'action-required', updated_at = now()
             WHERE id::text = $1 AND user_id = $2
-              AND status NOT IN ('disabled', 'archived', 'moved-off-tinder')`,
+              AND status NOT IN ('paused', 'disabled', 'archived', 'moved-off-tinder')`,
           [row.conversation_ref, userId]
         );
       } else {
