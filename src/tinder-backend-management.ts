@@ -3,7 +3,7 @@ import { getConversationRef, type ConversationStatus } from "./conversation-sync
 import { classifySyncReconciliation } from "./sync-status";
 import {
   conversationStatusAllowsTinderAutomation,
-  reconcileAutomationPauseMessage
+  describeConversationAutomationPause
 } from "./tinder-conversation-automation-status";
 export {
   conversationStatusAllowsTinderAutomation,
@@ -12,6 +12,7 @@ export {
 } from "./tinder-conversation-automation-status";
 import {
   DEFAULT_TINDER_CONVERSATION_MANAGEMENT,
+  describeTinderManagementPause,
   normalizeTinderConversationManagement,
   type TinderConversationManagement
 } from "./tinder-ai-takeover-policy";
@@ -69,6 +70,27 @@ function normalizeConversationStatus(value: unknown): ConversationStatus | null 
   return typeof value === "string" && conversationStatuses.has(value as ConversationStatus) ? value as ConversationStatus : null;
 }
 
+export function reconcileTinderAutomationGateMessage(
+  currentMessage: string | null,
+  status: ConversationStatus | null,
+  management: Partial<TinderConversationManagement> | null | undefined
+): string | null {
+  const statusPause = describeConversationAutomationPause(status);
+  if (statusPause) return statusPause;
+  const managementPause = describeTinderManagementPause(management);
+  if (managementPause) return managementPause;
+  if (
+    currentMessage?.startsWith("Human action required ·")
+    || currentMessage?.startsWith("Conversation automation paused by server status:")
+    || currentMessage?.startsWith("Manual takeover ·")
+    || currentMessage?.startsWith("Moved off Tinder ·")
+    || currentMessage?.startsWith("Archived conversation ·")
+    || currentMessage?.startsWith("AI management not confirmed ·")
+    || currentMessage?.startsWith("Unmanaged conversation ·")
+  ) return null;
+  return currentMessage;
+}
+
 export async function loadTinderConversationManagement(externalThreadId: string): Promise<TinderBackendConversationManagement> {
   const threadId = externalThreadId.trim();
   if (!threadId) return { conversationId: null, conversationStatus: null, management: { ...DEFAULT_TINDER_CONVERSATION_MANAGEMENT }, syncCursor: null, syncCursorUpdatedAt: null };
@@ -108,7 +130,7 @@ export async function resolveTinderBackendSyncDecision(externalThreadId: string,
   await saveSyncState({
     ...currentSyncState,
     reconciliationState: classifySyncReconciliation(persistedCursor, backend.syncCursor),
-    message: reconcileAutomationPauseMessage(currentSyncState.message, backend.conversationStatus)
+    message: reconcileTinderAutomationGateMessage(currentSyncState.message, backend.conversationStatus, backend.management)
   });
 
   return { ...backend, candidate, shouldSync, statusAllowsAutomation, reconciliation, cursorReconciliation, effectiveCursor };
