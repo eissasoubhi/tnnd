@@ -54,3 +54,15 @@ export function mustKeepTinderAutomationDisabled(
 ): boolean {
   return !mayAiTakeOverTinderConversation(value);
 }
+
+export function describeTinderManagementPause(
+  value: Partial<TinderConversationManagement> | null | undefined
+): string | null {
+  const management = normalizeTinderConversationManagement(value);
+  if (management.state === "ai-managed" && management.explicitlySelected) return null;
+  if (management.state === "manual") return "Manual takeover · TNND automation stays disabled until AI management is explicitly restored.";
+  if (management.state === "moved-off-tinder") return "Moved off Tinder · TNND will not automate this Tinder thread.";
+  if (management.state === "archived") return "Archived conversation · TNND automation is disabled.";
+  if (management.state === "ai-managed") return "AI management not confirmed · explicitly select this conversation before automation can run.";
+  return "Unmanaged conversation · TNND automation is disabled until AI management is explicitly selected.";
+}
