@@ -48,6 +48,10 @@ function mapRow(row: HumanActionRow): HumanAction {
   };
 }
 
+export function humanActionBlocksConversation(severity: HumanActionSeverity): boolean {
+  return severity === "action-required" || severity === "decision-required" || severity === "urgent";
+}
+
 export async function listHumanActions(userId: string, status?: HumanActionStatus): Promise<HumanAction[]> {
   const values: unknown[] = [userId];
   const statusClause = status ? " AND status = $2" : "";
@@ -75,38 +79,108 @@ export interface CreateHumanActionInput {
 }
 
 export async function createHumanAction(userId: string, input: CreateHumanActionInput): Promise<HumanAction> {
-  const result = await getPool().query<HumanActionRow>(
-    `INSERT INTO human_actions (
-       id, user_id, conversation_ref, conversation_label, title, detail, severity, context_json
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
-     RETURNING id, conversation_ref, conversation_label, title, detail, severity, status,
-               context_json, created_at, updated_at, resolved_at`,
-    [
-      randomUUID(),
-      userId,
-      input.conversationRef?.trim() || null,
-      input.conversationLabel?.trim() ?? "",
-      input.title.trim(),
-      input.detail.trim(),
-      input.severity,
-      JSON.stringify(input.context ?? {})
-    ]
-  );
-  const row = result.rows[0];
-  if (!row) throw new Error("human_action_insert_failed");
-  return mapRow(row);
+  const client = await getPool().connect();
+  const conversationRef = input.conversationRef?.trim() || null;
+  try {
+    await client.query("BEGIN");
+    const result = await client.query<HumanActionRow>(
+      `INSERT INTO human_actions (
+         id, user_id, conversation_ref, conversation_label, title, detail, severity, context_json
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+       RETURNING id, conversation_ref, conversation_label, title, detail, severity, status,
+                 context_json, created_at, updated_at, resolved_at`,
+      [
+        randomUUID(),
+        userId,
+        conversationRef,
+        input.conversationLabel?.trim() ?? "",
+        input.title.trim(),
+        input.detail.trim(),
+        input.severity,
+        JSON.stringify(input.context ?? {})
+      ]
+    );
+    const row = result.rows[0];
+    if (!row) throw new Error("human_action_insert_failed");
+
+    if (conversationRef && humanActionBlocksConversation(input.severity)) {
+      await client.query(
+        `UPDATE conversations
+            SET status = 'action-required', updated_at = now()
+          WHERE id::text = $1 AND user_id = $2
+            AND status NOT IN ('paused', 'disabled', 'archived', 'moved-off-tinder')`,
+        [conversationRef, userId]
+      );
+    }
+
+    await client.query("COMMIT");
+    return mapRow(row);
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function updateHumanActionStatus(userId: string, actionId: string, status: HumanActionStatus): Promise<HumanAction | null> {
-  const result = await getPool().query<HumanActionRow>(
-    `UPDATE human_actions
-        SET status = $3,
-            updated_at = now(),
-            resolved_at = CASE WHEN $3 = 'pending' THEN NULL ELSE now() END
-      WHERE id = $1 AND user_id = $2
-      RETURNING id, conversation_ref, conversation_label, title, detail, severity, status,
-                context_json, created_at, updated_at, resolved_at`,
-    [actionId, userId, status]
-  );
-  return result.rows[0] ? mapRow(result.rows[0]) : null;
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query<HumanActionRow>(
+      `UPDATE human_actions
+          SET status = $3,
+              updated_at = now(),
+              resolved_at = CASE WHEN $3 = 'pending' THEN NULL ELSE now() END
+        WHERE id = $1 AND user_id = $2
+        RETURNING id, conversation_ref, conversation_label, title, detail, severity, status,
+                  context_json, created_at, updated_at, resolved_at`,
+      [actionId, userId, status]
+    );
+    const row = result.rows[0];
+    if (!row) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    if (row.conversation_ref && humanActionBlocksConversation(row.severity)) {
+      if (status === "pending") {
+        await client.query(
+          `UPDATE conversations
+              SET status = 'action-required', updated_at = now()
+            WHERE id::text = $1 AND user_id = $2
+              AND status NOT IN ('paused', 'disabled', 'archived', 'moved-off-tinder')`,
+          [row.conversation_ref, userId]
+        );
+      } else {
+        const pending = await client.query<{ exists: boolean }>(
+          `SELECT EXISTS (
+             SELECT 1
+               FROM human_actions
+              WHERE user_id = $1
+                AND conversation_ref = $2
+                AND status = 'pending'
+                AND severity IN ('action-required', 'decision-required', 'urgent')
+           ) AS exists`,
+          [userId, row.conversation_ref]
+        );
+        if (pending.rows[0]?.exists === false) {
+          await client.query(
+            `UPDATE conversations
+                SET status = 'active', updated_at = now()
+              WHERE id::text = $1 AND user_id = $2 AND status = 'action-required'`,
+            [row.conversation_ref, userId]
+          );
+        }
+      }
+    }
+
+    await client.query("COMMIT");
+    return mapRow(row);
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
