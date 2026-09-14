@@ -12,7 +12,7 @@ export type TinderAutomationConversationStatus =
 export type TinderAutomationDisposition = {
   allowed: boolean;
   status: TinderAutomationConversationStatus | null;
-  reason: "human-action" | "server-paused" | "server-disabled" | "archived" | "moved-off-tinder" | null;
+  reason: "human-action" | "waiting-for-user" | "server-paused" | "server-disabled" | "archived" | "moved-off-tinder" | null;
   message: string | null;
 };
 
@@ -25,6 +25,15 @@ export function getConversationAutomationDisposition(
       status,
       reason: "human-action",
       message: "Human action required · Tinder automation paused until the action is resolved in TNND."
+    };
+  }
+
+  if (status === "waiting-for-user") {
+    return {
+      allowed: false,
+      status,
+      reason: "waiting-for-user",
+      message: "Waiting for you · Tinder automation stays paused until TNND receives your input or the conversation status changes."
     };
   }
 
@@ -66,6 +75,7 @@ export function reconcileAutomationPauseMessage(
   if (nextPause) return nextPause;
   if (
     currentMessage?.startsWith("Human action required ·")
+    || currentMessage?.startsWith("Waiting for you ·")
     || currentMessage?.startsWith("Conversation automation paused by server status:")
   ) {
     return null;
