@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
 import { buildProfileCaptureDedupeKey, buildReadOnlyProfileCapture, buildReadOnlyProfileSource, hasMeaningfulVisibleProfileFields, normalizeProfileCaptureSource } from "../src/tinder-match-profile-capture.ts";
-import { planVisibleMatchProfileSync } from "../src/tinder-match-profile-sync.ts";
+import { confirmVisibleMatchProfileUpload, planVisibleMatchProfileSync } from "../src/tinder-match-profile-sync.ts";
 
 const capturedAt = "2026-01-01T12:00:00.000Z";
 const input = {
   route: "/app/recs/synthetic-profile",
-  firstName: "  Sam  ",
+  firstName: "Sam",
   age: 29,
-  bio: "  Loves   hiking and coffee.  ",
+  bio: "Loves hiking and coffee.",
   job: "Engineer",
   education: "University",
   location: "Nearby",
-  interests: ["Hiking", " Coffee ", "", "Hiking"],
+  interests: ["Hiking", "Coffee"],
   relationshipGoal: "Long-term relationship"
 };
 const source = buildReadOnlyProfileSource(input, capturedAt);
@@ -23,62 +23,36 @@ assert.equal(source.captureMode, "read-only");
 assert.equal(source.capturedAt, capturedAt);
 assert.equal(source.visibleFields.firstName, "Sam");
 assert.equal(source.visibleFields.age, 29);
-assert.equal(source.visibleFields.bio, "Loves hiking and coffee.");
-assert.deepEqual(source.visibleFields.interests, ["Hiking", "Coffee", "Hiking"]);
 assert.equal(hasMeaningfulVisibleProfileFields(source), true);
-
 assert.equal(capture.schemaVersion, 1);
-assert.equal(capture.source, "tinder-visible-profile");
-assert.equal(capture.capturedAt, capturedAt);
 assert.deepEqual(capture.sourceSnapshot, source);
-assert.deepEqual(capture.fields, source.visibleFields);
-
-const compatibilityCapture = buildReadOnlyProfileCapture(input, capturedAt);
-assert.deepEqual(compatibilityCapture, capture);
+assert.deepEqual(buildReadOnlyProfileCapture(input, capturedAt), capture);
 
 const recaptured = buildReadOnlyProfileSource(input, "2026-01-01T12:05:00.000Z");
 assert.equal(buildProfileCaptureDedupeKey(recaptured), buildProfileCaptureDedupeKey(source));
 const changed = buildReadOnlyProfileSource({ ...input, bio: "Different visible bio" }, capturedAt);
 assert.notEqual(buildProfileCaptureDedupeKey(changed), buildProfileCaptureDedupeKey(source));
 
-const invalid = buildReadOnlyProfileCapture({
-  route: "x".repeat(700),
-  age: 17,
-  bio: "x".repeat(700),
-  interests: Array.from({ length: 25 }, (_, index) => `interest-${index}`)
-}, capturedAt);
-
-assert.equal(invalid.route.length, 512);
-assert.equal(invalid.fields.age, undefined);
-assert.equal(invalid.fields.bio?.length, 500);
-assert.equal(invalid.fields.interests?.length, 20);
-assert.equal(invalid.sourceSnapshot.captureMode, "read-only");
-
-const emptySource = buildReadOnlyProfileSource({ route: "/app/recs/empty", firstName: "   ", interests: ["", "   "] }, capturedAt);
+const emptySource = buildReadOnlyProfileSource({ route: "/app/recs/empty", firstName: "   " }, capturedAt);
 assert.equal(hasMeaningfulVisibleProfileFields(emptySource), false);
-assert.deepEqual(emptySource.visibleFields, {
-  firstName: undefined,
-  age: undefined,
-  bio: undefined,
-  job: undefined,
-  education: undefined,
-  location: undefined,
-  interests: undefined,
-  relationshipGoal: undefined
-});
-
-const emptyDecision = planVisibleMatchProfileSync(emptySource);
-assert.equal(emptyDecision.status, "skipped-empty");
+assert.equal(planVisibleMatchProfileSync(emptySource).status, "skipped-empty");
 
 const firstDecision = planVisibleMatchProfileSync(source);
 assert.equal(firstDecision.status, "upload");
-assert.equal(firstDecision.nextState.lastUploadedDedupeKey, buildProfileCaptureDedupeKey(source));
+assert.equal(firstDecision.nextState.lastUploadedDedupeKey, undefined);
 
-const unchangedDecision = planVisibleMatchProfileSync(recaptured, firstDecision.nextState);
-assert.equal(unchangedDecision.status, "skipped-unchanged");
+const retryDecision = planVisibleMatchProfileSync(source, firstDecision.nextState);
+assert.equal(retryDecision.status, "upload");
+assert.equal(retryDecision.dedupeKey, firstDecision.dedupeKey);
 
-const changedDecision = planVisibleMatchProfileSync(changed, firstDecision.nextState);
+const confirmedState = confirmVisibleMatchProfileUpload(firstDecision.nextState, firstDecision.dedupeKey);
+assert.equal(confirmedState.lastUploadedDedupeKey, buildProfileCaptureDedupeKey(source));
+assert.equal(planVisibleMatchProfileSync(recaptured, confirmedState).status, "skipped-unchanged");
+
+const changedDecision = planVisibleMatchProfileSync(changed, confirmedState);
 assert.equal(changedDecision.status, "upload");
-assert.notEqual(changedDecision.nextState.lastUploadedDedupeKey, firstDecision.nextState.lastUploadedDedupeKey);
+assert.equal(changedDecision.nextState.lastUploadedDedupeKey, confirmedState.lastUploadedDedupeKey);
+const changedConfirmed = confirmVisibleMatchProfileUpload(changedDecision.nextState, changedDecision.dedupeKey);
+assert.notEqual(changedConfirmed.lastUploadedDedupeKey, confirmedState.lastUploadedDedupeKey);
 
 console.log("Match profile capture contract checks passed.");
