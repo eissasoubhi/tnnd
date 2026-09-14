@@ -1,4 +1,5 @@
 import { getBackendSession } from "./storage";
+import { getConversationRef } from "./conversation-sync";
 import {
   DEFAULT_TINDER_CONVERSATION_MANAGEMENT,
   normalizeTinderConversationManagement,
@@ -28,9 +29,25 @@ export interface TinderBackendConversationManagement {
   management: TinderConversationManagement;
 }
 
+export type TinderConversationRefReconciliation =
+  | "no-local-ref"
+  | "backend-unmapped"
+  | "matching-ref"
+  | "conversation-mismatch";
+
 export interface TinderBackendSyncDecision extends TinderBackendConversationManagement {
   candidate: TinderThreadSyncCandidate | null;
   shouldSync: boolean;
+  reconciliation: TinderConversationRefReconciliation;
+}
+
+function reconcileConversationRef(
+  localConversationId: string | null,
+  backendConversationId: string | null
+): TinderConversationRefReconciliation {
+  if (!localConversationId) return "no-local-ref";
+  if (!backendConversationId) return "backend-unmapped";
+  return localConversationId === backendConversationId ? "matching-ref" : "conversation-mismatch";
 }
 
 export async function loadTinderConversationManagement(
@@ -81,9 +98,12 @@ export async function resolveTinderBackendSyncDecision(
   persistedCursor: string | null
 ): Promise<TinderBackendSyncDecision> {
   const backend = await loadTinderConversationManagement(externalThreadId);
+  const localRef = await getConversationRef(externalThreadId);
+  const reconciliation = reconcileConversationRef(localRef?.conversationId ?? null, backend.conversationId);
   const candidate = readAiManagedTinderThreadSyncCandidate(readResult, backend.management);
-  const shouldSync = candidate
+  const identitySafe = reconciliation !== "conversation-mismatch" && reconciliation !== "backend-unmapped";
+  const shouldSync = identitySafe && candidate
     ? shouldSyncAiManagedTinderThreadCandidate(candidate, persistedCursor, backend.management)
     : false;
-  return { ...backend, candidate, shouldSync };
+  return { ...backend, candidate, shouldSync, reconciliation };
 }
