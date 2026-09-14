@@ -78,6 +78,20 @@ export function buildReadOnlyProfileSource(
   };
 }
 
+export function hasMeaningfulVisibleProfileFields(source: TinderVisibleProfileSource): boolean {
+  const fields = source.visibleFields;
+  return Boolean(
+    fields.firstName
+    || fields.age
+    || fields.bio
+    || fields.job
+    || fields.education
+    || fields.location
+    || fields.relationshipGoal
+    || fields.interests?.length
+  );
+}
+
 export function normalizeProfileCaptureSource(sourceSnapshot: TinderVisibleProfileSource): TinderProfileCapture {
   return {
     schemaVersion: sourceSnapshot.schemaVersion,
