@@ -31,7 +31,22 @@ function fieldList(items: Array<{ label: string; value: string }>): HTMLElement 
   return list;
 }
 
-function renderRecord(root: HTMLElement, record: MatchProfileRecord): void {
+function refreshButton(onReload: () => Promise<void>): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = "Reload stored profile";
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    try {
+      await onReload();
+    } finally {
+      if (button.isConnected) button.disabled = false;
+    }
+  });
+  return button;
+}
+
+function renderRecord(root: HTMLElement, record: MatchProfileRecord, onReload: () => Promise<void>): void {
   const model = buildMatchProfileViewModel(record);
   root.replaceChildren();
 
@@ -39,7 +54,8 @@ function renderRecord(root: HTMLElement, record: MatchProfileRecord): void {
   header.append(
     text("h3", model.title),
     text("p", model.freshnessLabel, "match-profile-freshness"),
-    text("p", model.retentionLabel, "match-profile-retention")
+    text("p", model.retentionLabel, "match-profile-retention"),
+    refreshButton(onReload)
   );
 
   const normalized = document.createElement("section");
@@ -53,8 +69,14 @@ function renderRecord(root: HTMLElement, record: MatchProfileRecord): void {
   root.append(header, normalized, source);
 }
 
-function renderState(root: HTMLElement, message: string, state: "loading" | "empty" | "error"): void {
+function renderState(
+  root: HTMLElement,
+  message: string,
+  state: "loading" | "empty" | "error",
+  onReload?: () => Promise<void>
+): void {
   root.replaceChildren(text("p", message, `match-profile-state match-profile-state-${state}`));
+  if (onReload && state !== "loading") root.append(refreshButton(onReload));
 }
 
 export function createMatchProfilePanel(options: MatchProfilePanelOptions): MatchProfilePanel {
@@ -62,23 +84,25 @@ export function createMatchProfilePanel(options: MatchProfilePanelOptions): Matc
   root.className = "match-profile-panel";
   root.setAttribute("aria-live", "polite");
 
-  return {
+  const panel: MatchProfilePanel = {
     element: root,
     async load() {
       renderState(root, "Loading MatchProfile…", "loading");
       try {
         const record = await getConversationMatchProfile(options.apiBase, options.token, options.conversationId);
         if (!record) {
-          renderState(root, "No captured Tinder profile is linked to this conversation yet.", "empty");
+          renderState(root, "No captured Tinder profile is linked to this conversation yet.", "empty", panel.load);
           return;
         }
-        renderRecord(root, record);
+        renderRecord(root, record, panel.load);
       } catch (error) {
         const message = error instanceof MatchProfileApiError
           ? `Unable to load MatchProfile (${error.status}).`
           : "Unable to load MatchProfile.";
-        renderState(root, message, "error");
+        renderState(root, message, "error", panel.load);
       }
     }
   };
+
+  return panel;
 }
