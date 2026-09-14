@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildReadOnlyProfileCapture, buildReadOnlyProfileSource, hasMeaningfulVisibleProfileFields, normalizeProfileCaptureSource } from "../src/tinder-match-profile-capture.ts";
+import { buildProfileCaptureDedupeKey, buildReadOnlyProfileCapture, buildReadOnlyProfileSource, hasMeaningfulVisibleProfileFields, normalizeProfileCaptureSource } from "../src/tinder-match-profile-capture.ts";
 
 const capturedAt = "2026-01-01T12:00:00.000Z";
 const input = {
@@ -34,6 +34,11 @@ assert.deepEqual(capture.fields, source.visibleFields);
 
 const compatibilityCapture = buildReadOnlyProfileCapture(input, capturedAt);
 assert.deepEqual(compatibilityCapture, capture);
+
+const recaptured = buildReadOnlyProfileSource(input, "2026-01-01T12:05:00.000Z");
+assert.equal(buildProfileCaptureDedupeKey(recaptured), buildProfileCaptureDedupeKey(source));
+const changed = buildReadOnlyProfileSource({ ...input, bio: "Different visible bio" }, capturedAt);
+assert.notEqual(buildProfileCaptureDedupeKey(changed), buildProfileCaptureDedupeKey(source));
 
 const invalid = buildReadOnlyProfileCapture({
   route: "x".repeat(700),
