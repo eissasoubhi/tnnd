@@ -1,32 +1,22 @@
-import type { BackendSession } from "./storage";
-import { uploadVisibleMatchProfileCapture, type MatchProfileUploadResult } from "./tinder-match-profile-backend";
 import {
   buildProfileCaptureDedupeKey,
   hasMeaningfulVisibleProfileFields,
   type TinderVisibleProfileSource
-} from "./tinder-match-profile-capture";
+} from "./tinder-match-profile-capture.ts";
 
 export type MatchProfileSyncState = {
   lastUploadedDedupeKey?: string;
 };
 
-export type MatchProfileSyncResult =
+export type MatchProfileSyncDecision =
   | { status: "skipped-empty"; nextState: MatchProfileSyncState }
   | { status: "skipped-unchanged"; nextState: MatchProfileSyncState }
-  | { status: "uploaded"; profile: MatchProfileUploadResult; nextState: MatchProfileSyncState };
+  | { status: "upload"; dedupeKey: string; nextState: MatchProfileSyncState };
 
-export type MatchProfileUploader = typeof uploadVisibleMatchProfileCapture;
-
-export async function syncVisibleMatchProfileCapture(
-  session: BackendSession,
+export function planVisibleMatchProfileSync(
   capture: TinderVisibleProfileSource,
-  state: MatchProfileSyncState = {},
-  options: {
-    conversationId?: string | null;
-    apiBase?: string;
-    upload?: MatchProfileUploader;
-  } = {}
-): Promise<MatchProfileSyncResult> {
+  state: MatchProfileSyncState = {}
+): MatchProfileSyncDecision {
   if (!hasMeaningfulVisibleProfileFields(capture)) {
     return { status: "skipped-empty", nextState: state };
   }
@@ -36,15 +26,9 @@ export async function syncVisibleMatchProfileCapture(
     return { status: "skipped-unchanged", nextState: state };
   }
 
-  const upload = options.upload ?? uploadVisibleMatchProfileCapture;
-  const profile = await upload(session, capture, {
-    conversationId: options.conversationId,
-    apiBase: options.apiBase
-  });
-
   return {
-    status: "uploaded",
-    profile,
+    status: "upload",
+    dedupeKey,
     nextState: { lastUploadedDedupeKey: dedupeKey }
   };
 }
