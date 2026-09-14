@@ -38,8 +38,9 @@ export async function confirmConversationOutgoingMessage(
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let response: Response;
     try {
-      const response = await fetch(`${apiBase}/api/v1/conversations/${encodeURIComponent(conversationId)}/outgoing/confirm`, {
+      response = await fetch(`${apiBase}/api/v1/conversations/${encodeURIComponent(conversationId)}/outgoing/confirm`, {
         method: "POST",
         headers: {
           authorization: `Bearer ${session.token}`,
@@ -47,18 +48,20 @@ export async function confirmConversationOutgoingMessage(
         },
         body: JSON.stringify(input)
       });
-      const payload = await response.json().catch(() => null) as { confirmation?: OutgoingConfirmation; error?: string } | null;
-      if (response.ok && payload?.confirmation) return payload.confirmation;
-
-      const error = new Error(payload?.error ?? "Unable to confirm the outgoing message.");
-      if (!shouldRetryStatus(response.status) || attempt === maxAttempts) throw error;
-      lastError = error;
     } catch (error) {
       const normalized = error instanceof Error ? error : new Error("Unable to confirm the outgoing message.");
       if (attempt === maxAttempts) throw normalized;
       lastError = normalized;
+      await wait(baseDelayMs * 2 ** (attempt - 1));
+      continue;
     }
 
+    const payload = await response.json().catch(() => null) as { confirmation?: OutgoingConfirmation; error?: string } | null;
+    if (response.ok && payload?.confirmation) return payload.confirmation;
+
+    const error = new Error(payload?.error ?? "Unable to confirm the outgoing message.");
+    if (!shouldRetryStatus(response.status) || attempt === maxAttempts) throw error;
+    lastError = error;
     await wait(baseDelayMs * 2 ** (attempt - 1));
   }
 
