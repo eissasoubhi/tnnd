@@ -52,6 +52,10 @@ export function humanActionBlocksConversation(severity: HumanActionSeverity): bo
   return severity === "action-required" || severity === "decision-required" || severity === "urgent";
 }
 
+export function shouldReleaseHumanActionPause(hasPendingBlockingAction: boolean): boolean {
+  return !hasPendingBlockingAction;
+}
+
 async function lockConversationHumanActions(
   client: { query: (text: string, values?: readonly unknown[]) => Promise<unknown> },
   userId: string,
@@ -191,7 +195,7 @@ export async function updateHumanActionStatus(userId: string, actionId: string, 
            ) AS exists`,
           [userId, row.conversation_ref]
         );
-        if (pending.rows[0]?.exists === false) {
+        if (shouldReleaseHumanActionPause(pending.rows[0]?.exists ?? true)) {
           await client.query(
             `UPDATE conversations
                 SET status = 'active', updated_at = now()
