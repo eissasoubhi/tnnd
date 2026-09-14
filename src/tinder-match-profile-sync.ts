@@ -29,6 +29,16 @@ export function planVisibleMatchProfileSync(
   return {
     status: "upload",
     dedupeKey,
-    nextState: { lastUploadedDedupeKey: dedupeKey }
+    nextState: state
+  };
+}
+
+export function confirmVisibleMatchProfileUpload(
+  state: MatchProfileSyncState,
+  dedupeKey: string
+): MatchProfileSyncState {
+  return {
+    ...state,
+    lastUploadedDedupeKey: dedupeKey
   };
 }
