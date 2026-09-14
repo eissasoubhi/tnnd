@@ -38,6 +38,13 @@ export function normalizePersonalMemoryOriginalText(value: unknown): string {
   return text;
 }
 
+export function normalizePersonalMemoryUsageIds(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 10) throw new Error("invalid_personal_memory_usage_ids");
+  const ids = value.map((item) => typeof item === "string" ? item.trim() : "");
+  if (ids.some((id) => !id)) throw new Error("invalid_personal_memory_usage_ids");
+  return [...new Set(ids)];
+}
+
 export function canApprovePersonalMemory(analysis: PersonalMemoryStructuredAnalysis): boolean {
   return analysis.immutableFacts.length > 0 && Boolean(analysis.summary.trim()) && Boolean(analysis.title.trim());
 }
@@ -133,6 +140,28 @@ export async function approvePersonalMemory(userId: string, memoryId: string): P
     [memoryId, userId]
   );
   return result.rows[0] ? rowToStored(result.rows[0]) : null;
+}
+
+export async function markPersonalMemoriesUsed(
+  userId: string,
+  memoryIdsValue: unknown,
+  usedAt = new Date()
+): Promise<StoredPersonalMemory[]> {
+  const memoryIds = normalizePersonalMemoryUsageIds(memoryIdsValue);
+  const result = await getPool().query<PersonalMemoryRow>(
+    `UPDATE personal_memories
+        SET usage_count = usage_count + 1,
+            last_used_at = $3,
+            updated_at = now()
+      WHERE user_id = $1
+        AND id = ANY($2::uuid[])
+        AND review_status = 'approved'
+        AND structured_analysis->>'allowedForChat' = 'true'
+      RETURNING ${returningColumns}`,
+    [userId, memoryIds, usedAt]
+  );
+  const byId = new Map(result.rows.map((row) => [row.id, rowToStored(row)]));
+  return memoryIds.flatMap((id) => byId.get(id) ?? []);
 }
 
 export async function deletePersonalMemory(userId: string, memoryId: string): Promise<boolean> {
