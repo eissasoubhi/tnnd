@@ -15,6 +15,12 @@ export interface HumanActionItem {
 }
 
 const storageKey = "tnnd:web:human-actions";
+const severityPriority: Record<HumanActionSeverity, number> = {
+  urgent: 4,
+  "decision-required": 3,
+  "action-required": 2,
+  info: 1
+};
 
 export function readHumanActions(): HumanActionItem[] {
   const raw = localStorage.getItem(storageKey);
@@ -65,14 +71,40 @@ function isHumanActionItem(value: unknown): value is HumanActionItem {
     && typeof item.createdAt === "string";
 }
 
+export function sortPendingHumanActions(items: HumanActionItem[]): HumanActionItem[] {
+  return items
+    .filter((item) => item.status === "pending")
+    .sort((left, right) => {
+      const severityDelta = severityPriority[right.severity] - severityPriority[left.severity];
+      if (severityDelta !== 0) return severityDelta;
+      const rightTime = Date.parse(right.createdAt);
+      const leftTime = Date.parse(left.createdAt);
+      return (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0);
+    });
+}
+
+function renderActionSummary(items: HumanActionItem[]): string {
+  const counts = items.reduce<Record<HumanActionSeverity, number>>((accumulator, item) => {
+    accumulator[item.severity] += 1;
+    return accumulator;
+  }, { info: 0, "action-required": 0, "decision-required": 0, urgent: 0 });
+
+  return `<div class="action-summary" aria-label="Pending human actions summary">
+    <strong>${items.length} pending</strong>
+    <span>${counts.urgent} urgent</span>
+    <span>${counts["decision-required"]} decisions</span>
+    <span>${counts["action-required"]} actions</span>
+  </div>`;
+}
+
 export function renderActionCenter(container: HTMLElement, items = readHumanActions()): void {
-  const pending = items.filter((item) => item.status === "pending");
+  const pending = sortPendingHumanActions(items);
   if (pending.length === 0) {
     container.innerHTML = `<div class="action-empty"><strong>No human action needed</strong><p>Items that need your confirmation or a manual step will appear here.</p></div>`;
     return;
   }
 
-  container.innerHTML = pending.map((item) => `
+  container.innerHTML = `${renderActionSummary(pending)}${pending.map((item) => `
     <article class="action-item" data-action-id="${escapeHtml(item.id)}">
       <div class="action-item__heading">
         <div>
@@ -87,7 +119,7 @@ export function renderActionCenter(container: HTMLElement, items = readHumanActi
         <button type="button" data-action="ignore" class="button-muted">Ignore</button>
       </div>
     </article>
-  `).join("");
+  `).join("")}`;
 }
 
 export function bindActionCenter(container: HTMLElement, onChange: (items: HumanActionItem[]) => void): void {
