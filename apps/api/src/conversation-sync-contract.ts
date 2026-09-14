@@ -32,6 +32,7 @@ export interface ConversationSyncRequest {
   externalThreadId: string;
   knownConversationId?: string;
   cursor?: string;
+  nextCursor?: string;
   status?: ConversationStatus;
   messages: ConversationMessageDelta[];
 }
@@ -70,6 +71,9 @@ export function validateConversationSyncRequest(value: unknown): ConversationSyn
   }
   if (input.cursor !== undefined) {
     requireBoundedString(input.cursor, "cursor", CONVERSATION_SYNC_LIMITS.maxCursorLength, true);
+  }
+  if (input.nextCursor !== undefined) {
+    requireBoundedString(input.nextCursor, "nextCursor", CONVERSATION_SYNC_LIMITS.maxCursorLength);
   }
   if (input.status !== undefined && !isConversationStatus(input.status)) {
     throw new Error("status is invalid");
@@ -114,6 +118,7 @@ export function validateConversationSyncRequest(value: unknown): ConversationSyn
     externalThreadId,
     ...(typeof input.knownConversationId === "string" ? { knownConversationId: input.knownConversationId.trim() } : {}),
     ...(typeof input.cursor === "string" ? { cursor: input.cursor } : {}),
+    ...(typeof input.nextCursor === "string" ? { nextCursor: input.nextCursor.trim() } : {}),
     ...(isConversationStatus(input.status) ? { status: input.status } : {}),
     messages,
   };
