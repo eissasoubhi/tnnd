@@ -33,9 +33,11 @@ export interface TinderUnreadExecutorHooks {
 
 export interface TinderMessageCursorUpdate {
   previousCursor: string | null;
+  baselineCursor: string | null;
   nextCursor: string;
   changed: boolean;
   persisted: boolean;
+  restoredFromBackend: boolean;
   deferredForBackendSync: boolean;
   cursorFound: boolean;
   deltaCount: number;
@@ -76,6 +78,13 @@ function observedMessageKeys(read: TinderBoundedReadResult | null): string[] {
   const value = read?.observation.messageKeys;
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map((item) => item.trim());
+}
+
+function decisionBlocksCursorAdvance(decision: TinderBackendSyncDecision | null): boolean {
+  if (!decision) return true;
+  return decision.reconciliation === "conversation-mismatch"
+    || decision.reconciliation === "backend-unmapped"
+    || decision.cursorReconciliation === "cursor-mismatch";
 }
 
 export async function executeUnreadAwareTinderStep(
@@ -120,6 +129,18 @@ export async function executeUnreadAwareTinderStep(
     }
   }
 
+  const baselineCursor = backendSyncDecision?.effectiveCursor ?? previousCursor;
+  let restoredFromBackend = false;
+  if (
+    conversationRef
+    && !previousCursor
+    && backendSyncDecision?.cursorReconciliation === "local-missing"
+    && backendSyncDecision.effectiveCursor
+  ) {
+    await saveCursor(conversationRef, backendSyncDecision.effectiveCursor);
+    restoredFromBackend = true;
+  }
+
   let messageCursor: TinderMessageCursorUpdate | null = null;
   let backendSyncSucceeded = false;
   if (execution.completed && conversationRef) {
@@ -127,15 +148,15 @@ export async function executeUnreadAwareTinderStep(
     const keys = messages.length ? messages.map((message) => message.key) : observedMessageKeys(read);
     const delta = planTinderMessageDelta(
       keys.map((key) => ({ key, value: messages.find((message) => message.key === key) ?? null })),
-      previousCursor,
+      baselineCursor,
       { maxItems: 40 }
     );
     const nextCursor = delta.nextCursor ?? observedIncomingCursor(read);
 
     if (nextCursor) {
-      const changed = previousCursor !== nextCursor;
+      const changed = baselineCursor !== nextCursor;
       const deferredForBackendSync = changed && backendSyncDecision?.shouldSync === true;
-      let persisted = false;
+      let persisted = restoredFromBackend;
 
       if (changed && backendSyncDecision?.shouldSync === true && delta.items.length) {
         const syncMessages = delta.items.flatMap(({ value }) => {
@@ -160,16 +181,18 @@ export async function executeUnreadAwareTinderStep(
             console.debug("TNND bounded Tinder delta sync failed; cursor retained", error);
           }
         }
-      } else if (changed && backendSyncDecision && !backendSyncDecision.shouldSync) {
+      } else if (changed && backendSyncDecision && !backendSyncDecision.shouldSync && !decisionBlocksCursorAdvance(backendSyncDecision)) {
         await saveCursor(conversationRef, nextCursor);
         persisted = true;
       }
 
       messageCursor = {
         previousCursor,
+        baselineCursor,
         nextCursor,
         changed,
         persisted,
+        restoredFromBackend,
         deferredForBackendSync: deferredForBackendSync && !backendSyncSucceeded,
         cursorFound: delta.cursorFound,
         deltaCount: delta.items.length,
