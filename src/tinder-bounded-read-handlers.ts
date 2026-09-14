@@ -4,6 +4,8 @@ import type { TinderScheduledJob } from "./tinder-scheduler";
 import type { TinderUiStateSnapshot } from "./tinder-state-machine";
 import { buildUnreadProcessThreadJobs, discoverUnreadThreadCandidates } from "./tinder-unread-queue";
 
+const MAX_SYNC_MESSAGE_TEXT = 4000;
+
 export interface TinderBoundedReadResult {
   completed: boolean;
   kind: TinderScheduledJob["kind"];
@@ -65,6 +67,11 @@ export function executeBoundedTinderRead(
         threadKeyHash,
         latestIncomingKey,
         messageKeys: normalizedMessages.map((message) => message.key),
+        messages: normalizedMessages.map((message) => ({
+          key: message.key,
+          direction: message.direction,
+          text: message.text.slice(0, MAX_SYNC_MESSAGE_TEXT)
+        })),
         hasConversationContext: Boolean(snapshot.context)
       }
     };
