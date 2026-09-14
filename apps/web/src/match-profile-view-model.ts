@@ -31,11 +31,14 @@ export type MatchProfileRecord = {
   };
 };
 
+export type MatchProfileFreshnessState = "fresh" | "recent" | "stale" | "unknown";
+
 export type MatchProfileViewModel = {
   title: string;
   sourceLabel: string;
   retentionLabel: string;
   freshnessLabel: string;
+  freshnessState: MatchProfileFreshnessState;
   fields: Array<{ label: string; value: string }>;
   sourceFields: Array<{ label: string; value: string }>;
 };
@@ -61,6 +64,13 @@ function entries(fields: MatchProfileVisibleFields): Array<{ label: string; valu
     .map(([label, value]) => ({ label, value: Array.isArray(value) ? value.join(", ") : String(value) }));
 }
 
+function freshness(ageHours: number | null): { state: MatchProfileFreshnessState; label: string } {
+  if (ageHours === null) return { state: "unknown", label: "Capture time unknown" };
+  if (ageHours < 1) return { state: "fresh", label: "Fresh capture · less than 1 hour old" };
+  if (ageHours < 24) return { state: "recent", label: `Recent capture · ${ageHours}h old` };
+  return { state: "stale", label: `Stale capture · ${ageHours}h old · refresh from Tinder when appropriate` };
+}
+
 export function buildMatchProfileViewModel(record: MatchProfileRecord, now = new Date()): MatchProfileViewModel {
   const normalized = record.normalizedProfile.fields;
   const source = record.sourceCapture.visibleFields;
@@ -68,6 +78,7 @@ export function buildMatchProfileViewModel(record: MatchProfileRecord, now = new
   const capturedAt = new Date(record.capturedAt);
   const ageMs = Number.isNaN(capturedAt.getTime()) ? null : Math.max(0, now.getTime() - capturedAt.getTime());
   const ageHours = ageMs === null ? null : Math.floor(ageMs / 3_600_000);
+  const captureFreshness = freshness(ageHours);
 
   return {
     title: normalized.firstName ? `${normalized.firstName}${normalized.age ? `, ${normalized.age}` : ""}` : "Captured Tinder profile",
@@ -75,7 +86,8 @@ export function buildMatchProfileViewModel(record: MatchProfileRecord, now = new
     retentionLabel: retention.mode === "durable"
       ? "Durable · linked to conversation"
       : `Temporary · expires ${retention.expiresAt ? formatDate(retention.expiresAt) : "automatically"}`,
-    freshnessLabel: ageHours === null ? "Capture time unknown" : ageHours < 1 ? "Captured less than 1 hour ago" : `Captured ${ageHours}h ago`,
+    freshnessLabel: captureFreshness.label,
+    freshnessState: captureFreshness.state,
     fields: entries(normalized),
     sourceFields: entries(source)
   };
