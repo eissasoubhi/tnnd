@@ -1,4 +1,4 @@
-import { syncConversationDelta, type ConversationMessageDelta } from "./conversation-sync";
+import { syncConversationDelta, type ConversationMessageDelta, type ConversationSyncResult } from "./conversation-sync";
 import { resolveTinderBackendSyncDecision, type TinderBackendSyncDecision } from "./tinder-backend-management";
 import { executeBoundedTinderRead, type TinderBoundedReadResult } from "./tinder-bounded-read-handlers";
 import { loadTinderMessageCursor, saveTinderMessageCursor } from "./tinder-message-cursor-store";
@@ -26,8 +26,9 @@ export interface TinderUnreadExecutorHooks {
   ): Promise<TinderBackendSyncDecision>;
   syncConversationDelta?(
     conversationRef: string,
-    messages: ConversationMessageDelta[]
-  ): Promise<unknown>;
+    messages: ConversationMessageDelta[],
+    nextCursor: string
+  ): Promise<ConversationSyncResult>;
 }
 
 export interface TinderMessageCursorUpdate {
@@ -92,7 +93,8 @@ export async function executeUnreadAwareTinderStep(
   const loadCursor = hooks.loadMessageCursor ?? loadTinderMessageCursor;
   const saveCursor = hooks.saveMessageCursor ?? saveTinderMessageCursor;
   const resolveBackendDecision = hooks.resolveBackendSyncDecision ?? resolveTinderBackendSyncDecision;
-  const syncDelta = hooks.syncConversationDelta ?? syncConversationDelta;
+  const syncDelta = hooks.syncConversationDelta
+    ?? ((ref: string, messages: ConversationMessageDelta[], nextCursor: string) => syncConversationDelta(ref, messages, undefined, nextCursor));
   const previousCursor = conversationRef ? await loadCursor(conversationRef) : null;
   let read: TinderBoundedReadResult | null = null;
 
@@ -147,7 +149,10 @@ export async function executeUnreadAwareTinderStep(
         });
         if (syncMessages.length) {
           try {
-            await syncDelta(conversationRef, syncMessages);
+            const syncResult = await syncDelta(conversationRef, syncMessages, nextCursor);
+            if (syncResult.nextCursor !== nextCursor) {
+              throw new Error("TNND backend did not acknowledge the expected message cursor.");
+            }
             await saveCursor(conversationRef, nextCursor);
             persisted = true;
             backendSyncSucceeded = true;
