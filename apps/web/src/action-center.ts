@@ -1,6 +1,7 @@
 import { readSession } from "./auth-client";
 import { updateConversationStatus } from "./conversation-client";
-import { fetchHumanActions, setHumanActionStatus } from "./human-action-client";
+import { fetchHumanActions, setHumanActionStatus, submitHumanActionManualAnswer } from "./human-action-client";
+import { createManualAnswerDraft, reviewManualAnswer, updateManualAnswer, type ManualAnswerDraft } from "./human-action-manual-answer";
 
 export type HumanActionSeverity = "info" | "action-required" | "decision-required" | "urgent";
 export type HumanActionStatus = "pending" | "completed" | "ignored";
@@ -18,6 +19,7 @@ export interface HumanActionItem {
 }
 
 const storageKey = "tnnd:web:human-actions";
+const manualAnswerDrafts = new Map<string, ManualAnswerDraft>();
 const severityPriority: Record<HumanActionSeverity, number> = {
   urgent: 4,
   "decision-required": 3,
@@ -133,6 +135,42 @@ function readActiveFilter(container: HTMLElement): HumanActionSeverityFilter {
   return severityFilters.some((filter) => filter.value === value) ? value as HumanActionSeverityFilter : "all";
 }
 
+function renderManualAnswerEditor(draft: ManualAnswerDraft): string {
+  if (draft.stage === "review") {
+    return `<div class="manual-answer-editor" data-manual-answer-editor="${escapeHtml(draft.actionId)}">
+      <p class="subtle"><strong>Review before saving.</strong> This stores your answer in TNND only. It does not send anything to Tinder or mark the action complete.</p>
+      <p class="manual-answer-review">${escapeHtml(draft.answer)}</p>
+      <div class="action-item__buttons">
+        <button type="button" data-action="edit-manual-answer" class="button-muted">Edit</button>
+        <button type="button" data-action="save-manual-answer">Save answer</button>
+        <button type="button" data-action="cancel-manual-answer" class="button-muted">Cancel</button>
+      </div>
+    </div>`;
+  }
+
+  return `<div class="manual-answer-editor" data-manual-answer-editor="${escapeHtml(draft.actionId)}">
+    <label><strong>Your answer</strong>
+      <textarea data-manual-answer-input maxlength="2000" rows="4" placeholder="Write the fact or answer TNND should use naturally in the conversation.">${escapeHtml(draft.answer)}</textarea>
+    </label>
+    <p class="subtle">Saved answers stay pending and are marked not sent until a separate delivery step is explicitly confirmed.</p>
+    <div class="action-item__buttons">
+      <button type="button" data-action="review-manual-answer">Review</button>
+      <button type="button" data-action="cancel-manual-answer" class="button-muted">Cancel</button>
+    </div>
+  </div>`;
+}
+
+function renderManualAnswerIntoItem(item: HTMLElement, actionId: string): void {
+  const existing = item.querySelector<HTMLElement>("[data-manual-answer-editor]");
+  const draft = manualAnswerDrafts.get(actionId);
+  if (!draft) {
+    existing?.remove();
+    return;
+  }
+  if (existing) existing.outerHTML = renderManualAnswerEditor(draft);
+  else item.insertAdjacentHTML("beforeend", renderManualAnswerEditor(draft));
+}
+
 export function renderActionCenter(container: HTMLElement, items = readHumanActions()): void {
   const pending = sortPendingHumanActions(items);
   if (pending.length === 0) {
@@ -157,14 +195,26 @@ export function renderActionCenter(container: HTMLElement, items = readHumanActi
       ${humanActionPausesConversation(item) ? '<p class="subtle"><strong>Conversation paused.</strong> Automation stays blocked while this human action is pending. Resolving the final blocking action allows the conversation to resume.</p>' : ""}
       <div class="action-item__buttons">
         ${item.conversationRef ? '<button type="button" data-action="open-conversation" class="button-muted">Open conversation</button><button type="button" data-action="pause-conversation" class="button-muted">Keep paused</button>' : ""}
+        <button type="button" data-action="answer-manually" class="button-muted">Answer manually</button>
         <button type="button" data-action="complete">Complete</button>
         <button type="button" data-action="ignore" class="button-muted">Ignore</button>
       </div>
+      ${manualAnswerDrafts.has(item.id) ? renderManualAnswerEditor(manualAnswerDrafts.get(item.id)!) : ""}
     </article>
   `).join("")}`;
 }
 
 export function bindActionCenter(container: HTMLElement, onChange: (items: HumanActionItem[]) => void): void {
+  container.addEventListener("input", (event) => {
+    const target = event.target as HTMLTextAreaElement;
+    if (!target.matches("[data-manual-answer-input]")) return;
+    const item = target.closest<HTMLElement>("[data-action-id]");
+    const actionId = item?.dataset.actionId;
+    const draft = actionId ? manualAnswerDrafts.get(actionId) : undefined;
+    if (!actionId || !draft) return;
+    manualAnswerDrafts.set(actionId, updateManualAnswer(draft, target.value));
+  });
+
   container.addEventListener("click", (event) => {
     const target = event.target as HTMLElement;
     const filter = target.dataset.actionFilter;
@@ -176,6 +226,60 @@ export function bindActionCenter(container: HTMLElement, onChange: (items: Human
 
     const action = target.dataset.action;
     const item = target.closest<HTMLElement>("[data-action-id]");
+    const actionId = item?.dataset.actionId;
+
+    if (action === "answer-manually" && item && actionId) {
+      if (!manualAnswerDrafts.has(actionId)) manualAnswerDrafts.set(actionId, createManualAnswerDraft(actionId));
+      renderManualAnswerIntoItem(item, actionId);
+      item.querySelector<HTMLTextAreaElement>("[data-manual-answer-input]")?.focus();
+      return;
+    }
+
+    if (action === "cancel-manual-answer" && item && actionId) {
+      manualAnswerDrafts.delete(actionId);
+      renderManualAnswerIntoItem(item, actionId);
+      return;
+    }
+
+    if (action === "review-manual-answer" && item && actionId) {
+      const draft = manualAnswerDrafts.get(actionId);
+      if (!draft) return;
+      try {
+        manualAnswerDrafts.set(actionId, reviewManualAnswer(draft));
+        renderManualAnswerIntoItem(item, actionId);
+      } catch (error) {
+        console.error("Unable to review TNND manual answer", error);
+      }
+      return;
+    }
+
+    if (action === "edit-manual-answer" && item && actionId) {
+      const draft = manualAnswerDrafts.get(actionId);
+      if (!draft) return;
+      manualAnswerDrafts.set(actionId, { ...draft, stage: "editing" });
+      renderManualAnswerIntoItem(item, actionId);
+      item.querySelector<HTMLTextAreaElement>("[data-manual-answer-input]")?.focus();
+      return;
+    }
+
+    if (action === "save-manual-answer" && item && actionId) {
+      const draft = manualAnswerDrafts.get(actionId);
+      if (!draft) return;
+      target.setAttribute("disabled", "true");
+      void submitHumanActionManualAnswer(draft)
+        .then(() => {
+          manualAnswerDrafts.delete(actionId);
+          const editor = item.querySelector<HTMLElement>("[data-manual-answer-editor]");
+          if (editor) editor.innerHTML = '<p class="subtle"><strong>Saved, not sent.</strong> The action remains pending and automation stays blocked until you explicitly resolve or confirm the real-world/message step.</p>';
+          window.dispatchEvent(new CustomEvent("tnnd:human-action-updated", { detail: { actionId, manualAnswerSaved: true } }));
+        })
+        .catch((error) => {
+          target.removeAttribute("disabled");
+          console.error("Unable to save TNND manual answer", error);
+        });
+      return;
+    }
+
     if (action === "open-conversation") {
       const conversationRef = item?.dataset.conversationRef;
       if (conversationRef) {
@@ -207,6 +311,7 @@ export function bindActionCenter(container: HTMLElement, onChange: (items: Human
     target.setAttribute("disabled", "true");
     void updateHumanActionStatusSynced(id, action === "complete" ? "completed" : "ignored")
       .then((next) => {
+        manualAnswerDrafts.delete(id);
         renderActionCenter(container, next);
         onChange(next);
         window.dispatchEvent(new CustomEvent("tnnd:human-action-updated", { detail: { actionId: id } }));
