@@ -10,6 +10,7 @@ import { isConversationStatus, validateConversationSyncRequest } from "./convers
 import { conversationSyncErrorResponse } from "./conversation-sync-error-response.js";
 import { handleConversationThreadLookupRequest } from "./conversation-thread-lookup-controller.js";
 import { getPool } from "./db-client.js";
+import { handleHumanActionManualAnswerRequest } from "./human-action-manual-answer-controller.js";
 import { createHumanAction, listHumanActions, updateHumanActionStatus, type HumanActionSeverity, type HumanActionStatus } from "./human-action-service.js";
 import { profileSchemaVersion, publicProfileSchema, validateProfileEnvelope } from "./profile-schema.js";
 import { handleTextingStyleAnalysisRequest } from "./texting-style-analysis-controller.js";
@@ -74,6 +75,13 @@ function conversationSubresourceId(pathname: string, suffix: string): string | n
   return encoded ? decodeURIComponent(encoded) : null;
 }
 
+function humanActionSubresourceId(pathname: string, suffix: string): string | null {
+  const prefix = "/api/v1/human-actions/";
+  if (!pathname.startsWith(prefix) || !pathname.endsWith(suffix)) return null;
+  const encoded = pathname.slice(prefix.length, -suffix.length);
+  return encoded ? decodeURIComponent(encoded) : null;
+}
+
 function parseConversationManagementUpdates(value: unknown): ConversationManagementUpdate[] | null {
   if (!Array.isArray(value) || value.length < 1 || value.length > 100) return null;
   const updates: ConversationManagementUpdate[] = [];
@@ -101,7 +109,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "texting-style-analysis", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-management", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "human-actions", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "texting-style-analysis", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-management", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "human-actions", "human-action-manual-answer", "security-baseline"]
       });
       return;
     }
@@ -503,6 +511,18 @@ const server = createServer(async (request, response) => {
         context
       });
       sendJson(response, 201, { action });
+      return;
+    }
+
+    const manualAnswerActionId = humanActionSubresourceId(url.pathname, "/manual-answer");
+    if (manualAnswerActionId && request.method === "POST") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const result = await handleHumanActionManualAnswerRequest(session.user.id, manualAnswerActionId, await readJsonBody(request));
+      sendJson(response, result.status, result.body);
       return;
     }
 
