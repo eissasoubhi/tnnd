@@ -92,6 +92,25 @@ export function hasMeaningfulVisibleProfileFields(source: TinderVisibleProfileSo
   );
 }
 
+export function buildProfileCaptureDedupeKey(source: TinderVisibleProfileSource): string {
+  const fields = source.visibleFields;
+  return JSON.stringify({
+    schemaVersion: source.schemaVersion,
+    source: source.source,
+    route: source.route,
+    fields: {
+      firstName: fields.firstName ?? null,
+      age: fields.age ?? null,
+      bio: fields.bio ?? null,
+      job: fields.job ?? null,
+      education: fields.education ?? null,
+      location: fields.location ?? null,
+      interests: fields.interests ?? [],
+      relationshipGoal: fields.relationshipGoal ?? null
+    }
+  });
+}
+
 export function normalizeProfileCaptureSource(sourceSnapshot: TinderVisibleProfileSource): TinderProfileCapture {
   return {
     schemaVersion: sourceSnapshot.schemaVersion,
