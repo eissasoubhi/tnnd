@@ -17,9 +17,7 @@ export async function syncObservedMatchProfile(
   const state = await loadMatchProfileSyncState(scopeKey);
   const decision = planVisibleMatchProfileSync(capture, state);
   if (decision.status !== "upload") return { status: decision.status };
-
   const profile = await uploadVisibleMatchProfileCapture(session, capture, options);
-  const confirmed = confirmVisibleMatchProfileUpload(state, decision.dedupeKey);
-  await saveMatchProfileSyncState(scopeKey, confirmed);
+  await saveMatchProfileSyncState(scopeKey, confirmVisibleMatchProfileUpload(state, decision.dedupeKey));
   return { status: "uploaded", profile };
 }
