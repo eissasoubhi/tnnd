@@ -4,7 +4,8 @@ import {
   listConversationManagement,
   saveConversationManagement,
   type ConversationManagementRecord,
-  type ConversationManagementState
+  type ConversationManagementState,
+  type HumanActionBlockSeverity
 } from "./conversation-management-client";
 
 function escapeHtml(value: string): string {
@@ -27,10 +28,26 @@ function labelForState(state: ConversationManagementState): string {
   }
 }
 
+function labelForBlockSeverity(severity: HumanActionBlockSeverity | null): string {
+  switch (severity) {
+    case "urgent": return "Urgent";
+    case "decision-required": return "Decision required";
+    case "action-required": return "Action required";
+    default: return "Human action";
+  }
+}
+
 function renderOptions(selected: ConversationManagementState): string {
   return conversationManagementStates.map((state) => (
     `<option value="${state}"${state === selected ? " selected" : ""}>${escapeHtml(labelForState(state))}</option>`
   )).join("");
+}
+
+function renderHumanActionBlock(record: ConversationManagementRecord): string {
+  const block = record.humanActionBlock;
+  if (!block?.blocked) return "";
+  const count = `${block.pendingCount} pending blocker${block.pendingCount === 1 ? "" : "s"}`;
+  return `<span class="management-action-block" data-severity="${block.highestSeverity ?? "action-required"}">${escapeHtml(labelForBlockSeverity(block.highestSeverity))} · ${escapeHtml(count)}</span>`;
 }
 
 function installStyles(): void {
@@ -38,7 +55,7 @@ function installStyles(): void {
   const style = document.createElement("style");
   style.id = "tnnd-management-panel-styles";
   style.textContent = `
-    .management-list{display:grid;gap:8px;margin-top:12px}.management-row{display:grid;grid-template-columns:minmax(0,1fr) 190px auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--border,#d4d4d8);border-radius:10px}.management-row-main{display:grid;gap:3px;min-width:0}.management-row-main strong,.management-row-main small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.management-row small{opacity:.65}.management-row select{width:100%}.management-row button{width:auto;padding:7px 10px}.management-badge{font-size:10px;opacity:.72}.management-note{margin-top:9px}.management-status{min-height:18px}.management-row[data-management-state="moved-off-tinder"]{border-style:dashed}.management-row[data-management-state="ai-managed"]{outline:1px solid currentColor;outline-offset:1px}.management-row[data-action-focus="true"]{box-shadow:0 0 0 3px rgba(99,102,241,.3)}@media(max-width:760px){.management-row{grid-template-columns:1fr}}
+    .management-list{display:grid;gap:8px;margin-top:12px}.management-row{display:grid;grid-template-columns:minmax(0,1fr) 190px auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--border,#d4d4d8);border-radius:10px}.management-row-main{display:grid;gap:3px;min-width:0}.management-row-main strong,.management-row-main small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.management-row small{opacity:.65}.management-row select{width:100%}.management-row button{width:auto;padding:7px 10px}.management-badge{font-size:10px;opacity:.72}.management-action-block{display:inline-flex;width:max-content;max-width:100%;font-size:11px;font-weight:700;padding:3px 7px;border-radius:999px;background:rgba(245,158,11,.14)}.management-action-block[data-severity="urgent"]{background:rgba(239,68,68,.16)}.management-note{margin-top:9px}.management-status{min-height:18px}.management-row[data-management-state="moved-off-tinder"]{border-style:dashed}.management-row[data-management-state="ai-managed"]{outline:1px solid currentColor;outline-offset:1px}.management-row[data-action-focus="true"]{box-shadow:0 0 0 3px rgba(99,102,241,.3)}@media(max-width:760px){.management-row{grid-template-columns:1fr}}
   `;
   document.head.append(style);
 }
@@ -80,6 +97,7 @@ function render(): void {
       <div class="management-row-main">
         <strong>${escapeHtml(record.externalThreadId)}</strong>
         <small>${record.explicitlySelected ? "Explicitly selected" : "Not selected for AI takeover"} · Updated ${escapeHtml(new Date(record.updatedAt).toLocaleString())}</small>
+        ${renderHumanActionBlock(record)}
       </div>
       <label>
         <span class="management-badge">Management state</span>
