@@ -1,4 +1,5 @@
 import { getPool } from "./db-client.js";
+import { buildConversationSyncHealth, type ConversationSyncHealth } from "./conversation-sync-health.js";
 
 export const conversationManagementStates = [
   "unmanaged",
@@ -16,6 +17,7 @@ export interface ConversationManagementRecord {
   managementState: ConversationManagementState;
   explicitlySelected: boolean;
   selectedAt?: string;
+  syncHealth: ConversationSyncHealth;
   updatedAt: string;
 }
 
@@ -28,19 +30,23 @@ export function isConversationManagementState(value: unknown): value is Conversa
   return typeof value === "string" && conversationManagementStates.includes(value as ConversationManagementState);
 }
 
-function managementRecord(row: {
+interface ConversationManagementRow {
   id: string;
   external_thread_id: string;
   management_state: ConversationManagementState;
   management_selected_at: Date | null;
+  sync_cursor_updated_at: Date | null;
   updated_at: Date;
-}): ConversationManagementRecord {
+}
+
+function managementRecord(row: ConversationManagementRow): ConversationManagementRecord {
   return {
     conversationId: row.id,
     externalThreadId: row.external_thread_id,
     managementState: row.management_state,
     explicitlySelected: row.management_selected_at !== null,
     ...(row.management_selected_at ? { selectedAt: row.management_selected_at.toISOString() } : {}),
+    syncHealth: buildConversationSyncHealth(row.sync_cursor_updated_at),
     updatedAt: row.updated_at.toISOString()
   };
 }
@@ -48,14 +54,9 @@ function managementRecord(row: {
 export async function listConversationManagement(
   userId: string
 ): Promise<ConversationManagementRecord[]> {
-  const result = await getPool().query<{
-    id: string;
-    external_thread_id: string;
-    management_state: ConversationManagementState;
-    management_selected_at: Date | null;
-    updated_at: Date;
-  }>(
-    `SELECT id, external_thread_id, management_state, management_selected_at, updated_at
+  const result = await getPool().query<ConversationManagementRow>(
+    `SELECT id, external_thread_id, management_state, management_selected_at,
+            sync_cursor_updated_at, updated_at
      FROM conversations
      WHERE user_id = $1
      ORDER BY updated_at DESC`,
@@ -70,19 +71,14 @@ export async function updateConversationManagement(
   conversationId: string,
   managementState: ConversationManagementState
 ): Promise<ConversationManagementRecord | null> {
-  const result = await getPool().query<{
-    id: string;
-    external_thread_id: string;
-    management_state: ConversationManagementState;
-    management_selected_at: Date | null;
-    updated_at: Date;
-  }>(
+  const result = await getPool().query<ConversationManagementRow>(
     `UPDATE conversations
      SET management_state = $1,
          management_selected_at = now(),
          updated_at = now()
      WHERE id = $2 AND user_id = $3
-     RETURNING id, external_thread_id, management_state, management_selected_at, updated_at`,
+     RETURNING id, external_thread_id, management_state, management_selected_at,
+               sync_cursor_updated_at, updated_at`,
     [managementState, conversationId, userId]
   );
 
@@ -104,19 +100,14 @@ export async function bulkUpdateConversationManagement(
     const records: ConversationManagementRecord[] = [];
 
     for (const update of updates) {
-      const result = await client.query<{
-        id: string;
-        external_thread_id: string;
-        management_state: ConversationManagementState;
-        management_selected_at: Date | null;
-        updated_at: Date;
-      }>(
+      const result = await client.query<ConversationManagementRow>(
         `UPDATE conversations
          SET management_state = $1,
              management_selected_at = now(),
              updated_at = now()
          WHERE id = $2 AND user_id = $3
-         RETURNING id, external_thread_id, management_state, management_selected_at, updated_at`,
+         RETURNING id, external_thread_id, management_state, management_selected_at,
+                   sync_cursor_updated_at, updated_at`,
         [update.managementState, update.conversationId, userId]
       );
 
