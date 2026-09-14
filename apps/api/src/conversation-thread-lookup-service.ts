@@ -2,6 +2,13 @@ import { getPool } from "./db-client.js";
 import type { ConversationManagementState } from "./conversation-management-service.js";
 import type { ConversationStatus } from "./conversation-sync-contract.js";
 
+export type ConversationSyncHealthState = "never-synced" | "synced";
+
+export interface ConversationSyncHealth {
+  state: ConversationSyncHealthState;
+  lastSyncedAt?: string;
+}
+
 export interface ConversationThreadLookup {
   id: string;
   externalThreadId: string;
@@ -10,6 +17,7 @@ export interface ConversationThreadLookup {
   explicitlySelected: boolean;
   syncCursor?: string;
   syncCursorUpdatedAt?: string;
+  syncHealth: ConversationSyncHealth;
   updatedAt: string;
 }
 
@@ -36,6 +44,12 @@ export async function findConversationByExternalThreadId(
   );
   const row = result.rows[0];
   if (!row) return null;
+
+  const syncCursorUpdatedAt = row.sync_cursor_updated_at?.toISOString();
+  const syncHealth: ConversationSyncHealth = syncCursorUpdatedAt
+    ? { state: "synced", lastSyncedAt: syncCursorUpdatedAt }
+    : { state: "never-synced" };
+
   return {
     id: row.id,
     externalThreadId: row.external_thread_id,
@@ -43,7 +57,8 @@ export async function findConversationByExternalThreadId(
     managementState: row.management_state,
     explicitlySelected: row.management_selected_at !== null,
     ...(row.sync_cursor ? { syncCursor: row.sync_cursor } : {}),
-    ...(row.sync_cursor_updated_at ? { syncCursorUpdatedAt: row.sync_cursor_updated_at.toISOString() } : {}),
+    ...(syncCursorUpdatedAt ? { syncCursorUpdatedAt } : {}),
+    syncHealth,
     updatedAt: row.updated_at.toISOString()
   };
 }
