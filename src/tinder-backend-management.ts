@@ -20,6 +20,8 @@ interface ThreadLookupPayload {
     externalThreadId?: unknown;
     managementState?: unknown;
     explicitlySelected?: unknown;
+    syncCursor?: unknown;
+    syncCursorUpdatedAt?: unknown;
   };
   error?: unknown;
 }
@@ -27,6 +29,8 @@ interface ThreadLookupPayload {
 export interface TinderBackendConversationManagement {
   conversationId: string | null;
   management: TinderConversationManagement;
+  syncCursor: string | null;
+  syncCursorUpdatedAt: string | null;
 }
 
 export type TinderConversationRefReconciliation =
@@ -35,10 +39,18 @@ export type TinderConversationRefReconciliation =
   | "matching-ref"
   | "conversation-mismatch";
 
+export type TinderCursorReconciliation =
+  | "no-backend-cursor"
+  | "local-missing"
+  | "matching-cursor"
+  | "cursor-mismatch";
+
 export interface TinderBackendSyncDecision extends TinderBackendConversationManagement {
   candidate: TinderThreadSyncCandidate | null;
   shouldSync: boolean;
   reconciliation: TinderConversationRefReconciliation;
+  cursorReconciliation: TinderCursorReconciliation;
+  effectiveCursor: string | null;
 }
 
 function reconcileConversationRef(
@@ -50,17 +62,33 @@ function reconcileConversationRef(
   return localConversationId === backendConversationId ? "matching-ref" : "conversation-mismatch";
 }
 
+function reconcileCursor(localCursor: string | null, backendCursor: string | null): TinderCursorReconciliation {
+  if (!backendCursor) return "no-backend-cursor";
+  if (!localCursor) return "local-missing";
+  return localCursor === backendCursor ? "matching-cursor" : "cursor-mismatch";
+}
+
 export async function loadTinderConversationManagement(
   externalThreadId: string
 ): Promise<TinderBackendConversationManagement> {
   const threadId = externalThreadId.trim();
   if (!threadId) {
-    return { conversationId: null, management: { ...DEFAULT_TINDER_CONVERSATION_MANAGEMENT } };
+    return {
+      conversationId: null,
+      management: { ...DEFAULT_TINDER_CONVERSATION_MANAGEMENT },
+      syncCursor: null,
+      syncCursorUpdatedAt: null
+    };
   }
 
   const session = await getBackendSession();
   if (!session) {
-    return { conversationId: null, management: { ...DEFAULT_TINDER_CONVERSATION_MANAGEMENT } };
+    return {
+      conversationId: null,
+      management: { ...DEFAULT_TINDER_CONVERSATION_MANAGEMENT },
+      syncCursor: null,
+      syncCursorUpdatedAt: null
+    };
   }
 
   const response = await fetch(
@@ -69,7 +97,12 @@ export async function loadTinderConversationManagement(
   );
 
   if (response.status === 404) {
-    return { conversationId: null, management: { ...DEFAULT_TINDER_CONVERSATION_MANAGEMENT } };
+    return {
+      conversationId: null,
+      management: { ...DEFAULT_TINDER_CONVERSATION_MANAGEMENT },
+      syncCursor: null,
+      syncCursorUpdatedAt: null
+    };
   }
 
   if (!response.ok) {
@@ -89,7 +122,14 @@ export async function loadTinderConversationManagement(
     explicitlySelected: conversation?.explicitlySelected === true
   });
 
-  return { conversationId, management };
+  const syncCursor = typeof conversation?.syncCursor === "string" && conversation.syncCursor.trim()
+    ? conversation.syncCursor.trim()
+    : null;
+  const syncCursorUpdatedAt = typeof conversation?.syncCursorUpdatedAt === "string" && conversation.syncCursorUpdatedAt.trim()
+    ? conversation.syncCursorUpdatedAt.trim()
+    : null;
+
+  return { conversationId, management, syncCursor, syncCursorUpdatedAt };
 }
 
 export async function resolveTinderBackendSyncDecision(
@@ -100,10 +140,20 @@ export async function resolveTinderBackendSyncDecision(
   const backend = await loadTinderConversationManagement(externalThreadId);
   const localRef = await getConversationRef(externalThreadId);
   const reconciliation = reconcileConversationRef(localRef?.conversationId ?? null, backend.conversationId);
+  const cursorReconciliation = reconcileCursor(persistedCursor, backend.syncCursor);
+  const effectiveCursor = cursorReconciliation === "local-missing" ? backend.syncCursor : persistedCursor;
   const candidate = readAiManagedTinderThreadSyncCandidate(readResult, backend.management);
   const identitySafe = reconciliation !== "conversation-mismatch" && reconciliation !== "backend-unmapped";
-  const shouldSync = identitySafe && candidate
-    ? shouldSyncAiManagedTinderThreadCandidate(candidate, persistedCursor, backend.management)
+  const cursorSafe = cursorReconciliation !== "cursor-mismatch";
+  const shouldSync = identitySafe && cursorSafe && candidate
+    ? shouldSyncAiManagedTinderThreadCandidate(candidate, effectiveCursor, backend.management)
     : false;
-  return { ...backend, candidate, shouldSync, reconciliation };
+  return {
+    ...backend,
+    candidate,
+    shouldSync,
+    reconciliation,
+    cursorReconciliation,
+    effectiveCursor
+  };
 }
