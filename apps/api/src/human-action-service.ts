@@ -52,6 +52,12 @@ export function humanActionBlocksConversation(severity: HumanActionSeverity): bo
   return severity === "action-required" || severity === "decision-required" || severity === "urgent";
 }
 
+export function normalizeHumanActionManualAnswer(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const answer = value.trim();
+  return answer.length >= 1 && answer.length <= 2000 ? answer : null;
+}
+
 async function lockConversationHumanActions(
   client: { query: (text: string, values?: readonly unknown[]) => Promise<unknown> },
   userId: string,
@@ -137,8 +143,18 @@ export async function createHumanAction(userId: string, input: CreateHumanAction
   }
 }
 
-export async function updateHumanActionStatus(userId: string, actionId: string, status: HumanActionStatus): Promise<HumanAction | null> {
+export interface HumanActionResolutionInput {
+  manualAnswer?: string;
+}
+
+export async function updateHumanActionStatus(
+  userId: string,
+  actionId: string,
+  status: HumanActionStatus,
+  resolution?: HumanActionResolutionInput
+): Promise<HumanAction | null> {
   const client = await getPool().connect();
+  const manualAnswer = resolution?.manualAnswer;
   try {
     await client.query("BEGIN");
     const current = await client.query<Pick<HumanActionRow, "conversation_ref" | "severity">>(
@@ -160,12 +176,16 @@ export async function updateHumanActionStatus(userId: string, actionId: string, 
     const result = await client.query<HumanActionRow>(
       `UPDATE human_actions
           SET status = $3,
+              context_json = CASE
+                WHEN $4::text IS NULL THEN context_json
+                ELSE jsonb_set(COALESCE(context_json, '{}'::jsonb), '{manualAnswer}', to_jsonb($4::text), true)
+              END,
               updated_at = now(),
               resolved_at = CASE WHEN $3 = 'pending' THEN NULL ELSE now() END
         WHERE id = $1 AND user_id = $2
         RETURNING id, conversation_ref, conversation_label, title, detail, severity, status,
                   context_json, created_at, updated_at, resolved_at`,
-      [actionId, userId, status]
+      [actionId, userId, status, manualAnswer ?? null]
     );
     const row = result.rows[0];
     if (!row) throw new Error("human_action_update_failed");
