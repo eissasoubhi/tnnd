@@ -10,6 +10,13 @@ export const conversationManagementStates = [
 ] as const;
 
 export type ConversationManagementState = (typeof conversationManagementStates)[number];
+export type HumanActionBlockSeverity = "action-required" | "decision-required" | "urgent";
+
+export interface HumanActionBlockSummary {
+  blocked: boolean;
+  pendingCount: number;
+  highestSeverity: HumanActionBlockSeverity | null;
+}
 
 export interface ConversationManagementRecord {
   conversationId: string;
@@ -18,6 +25,7 @@ export interface ConversationManagementRecord {
   explicitlySelected: boolean;
   selectedAt?: string;
   syncHealth: ConversationSyncHealth;
+  humanActionBlock?: HumanActionBlockSummary;
   updatedAt: string;
 }
 
@@ -36,10 +44,13 @@ interface ConversationManagementRow {
   management_state: ConversationManagementState;
   management_selected_at: Date | null;
   sync_cursor_updated_at: Date | null;
+  blocking_action_count?: number;
+  highest_blocking_action_severity?: HumanActionBlockSeverity | null;
   updated_at: Date;
 }
 
 function managementRecord(row: ConversationManagementRow): ConversationManagementRecord {
+  const pendingCount = row.blocking_action_count;
   return {
     conversationId: row.id,
     externalThreadId: row.external_thread_id,
@@ -47,6 +58,13 @@ function managementRecord(row: ConversationManagementRow): ConversationManagemen
     explicitlySelected: row.management_selected_at !== null,
     ...(row.management_selected_at ? { selectedAt: row.management_selected_at.toISOString() } : {}),
     syncHealth: buildConversationSyncHealth(row.sync_cursor_updated_at),
+    ...(typeof pendingCount === "number" ? {
+      humanActionBlock: {
+        blocked: pendingCount > 0,
+        pendingCount,
+        highestSeverity: row.highest_blocking_action_severity ?? null
+      }
+    } : {}),
     updatedAt: row.updated_at.toISOString()
   };
 }
@@ -55,11 +73,34 @@ export async function listConversationManagement(
   userId: string
 ): Promise<ConversationManagementRecord[]> {
   const result = await getPool().query<ConversationManagementRow>(
-    `SELECT id, external_thread_id, management_state, management_selected_at,
-            sync_cursor_updated_at, updated_at
-     FROM conversations
-     WHERE user_id = $1
-     ORDER BY updated_at DESC`,
+    `SELECT c.id, c.external_thread_id, c.management_state, c.management_selected_at,
+            c.sync_cursor_updated_at, c.updated_at,
+            (
+              SELECT COUNT(*)::int
+                FROM human_actions ha
+               WHERE ha.user_id = c.user_id
+                 AND ha.conversation_ref = c.id::text
+                 AND ha.status = 'pending'
+                 AND ha.severity IN ('action-required', 'decision-required', 'urgent')
+            ) AS blocking_action_count,
+            (
+              SELECT ha.severity
+                FROM human_actions ha
+               WHERE ha.user_id = c.user_id
+                 AND ha.conversation_ref = c.id::text
+                 AND ha.status = 'pending'
+                 AND ha.severity IN ('action-required', 'decision-required', 'urgent')
+               ORDER BY CASE ha.severity
+                 WHEN 'urgent' THEN 0
+                 WHEN 'decision-required' THEN 1
+                 ELSE 2
+               END,
+               ha.created_at DESC
+               LIMIT 1
+            ) AS highest_blocking_action_severity
+       FROM conversations c
+      WHERE c.user_id = $1
+      ORDER BY c.updated_at DESC`,
     [userId]
   );
 
