@@ -35,6 +35,7 @@ function refreshButton(onReload: () => Promise<void>): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
   button.textContent = "Reload stored profile";
+  button.title = "Reload the latest MatchProfile already stored by TNND. This does not capture Tinder again.";
   button.addEventListener("click", async () => {
     button.disabled = true;
     try {
@@ -53,7 +54,7 @@ function renderRecord(root: HTMLElement, record: MatchProfileRecord, onReload: (
   const header = document.createElement("header");
   header.append(
     text("h3", model.title),
-    text("p", model.freshnessLabel, "match-profile-freshness"),
+    text("p", model.freshnessLabel, `match-profile-freshness match-profile-freshness-${model.freshnessState}`),
     text("p", model.retentionLabel, "match-profile-retention"),
     refreshButton(onReload)
   );
