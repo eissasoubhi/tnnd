@@ -4,12 +4,12 @@ import { rankPersonalMemories } from "./personal-memory-retrieval.js";
 import type { StoredPersonalMemory } from "./personal-memory-service.js";
 
 function memory(overrides: Partial<StoredPersonalMemory> & { id: string; topics?: string[] }): StoredPersonalMemory {
-  const { topics = ["travel"], ...rest } = overrides;
+  const { id, topics = ["travel"], ...rest } = overrides;
   return {
-    id: overrides.id,
+    id,
     originalText: "source",
     structuredAnalysis: {
-      title: overrides.id,
+      title: id,
       category: "story",
       summary: "summary",
       immutableFacts: ["fact"],
