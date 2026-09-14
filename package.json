@@ -11,12 +11,6 @@
     "test:human-action-resume": "node --experimental-strip-types scripts/check-human-action-resume.mjs",
     "test:match-profile-capture": "node --experimental-strip-types scripts/check-match-profile-capture.mjs"
   },
-  "dependencies": {
-    "fflate": "^0.8.2"
-  },
-  "devDependencies": {
-    "@types/chrome": "^0.0.320",
-    "typescript": "^5.8.0",
-    "vite": "^7.0.0"
-  }
+  "dependencies": { "fflate": "^0.8.2" },
+  "devDependencies": { "@types/chrome": "^0.0.320", "typescript": "^5.8.0", "vite": "^7.0.0" }
 }
