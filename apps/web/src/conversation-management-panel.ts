@@ -38,7 +38,7 @@ function installStyles(): void {
   const style = document.createElement("style");
   style.id = "tnnd-management-panel-styles";
   style.textContent = `
-    .management-list{display:grid;gap:8px;margin-top:12px}.management-row{display:grid;grid-template-columns:minmax(0,1fr) 190px auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--border,#d4d4d8);border-radius:10px}.management-row-main{display:grid;gap:3px;min-width:0}.management-row-main strong,.management-row-main small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.management-row small{opacity:.65}.management-row select{width:100%}.management-row button{width:auto;padding:7px 10px}.management-badge{font-size:10px;opacity:.72}.management-note{margin-top:9px}.management-status{min-height:18px}.management-row[data-management-state="moved-off-tinder"]{border-style:dashed}.management-row[data-management-state="ai-managed"]{outline:1px solid currentColor;outline-offset:1px}@media(max-width:760px){.management-row{grid-template-columns:1fr}}
+    .management-list{display:grid;gap:8px;margin-top:12px}.management-row{display:grid;grid-template-columns:minmax(0,1fr) 190px auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--border,#d4d4d8);border-radius:10px}.management-row-main{display:grid;gap:3px;min-width:0}.management-row-main strong,.management-row-main small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.management-row small{opacity:.65}.management-row select{width:100%}.management-row button{width:auto;padding:7px 10px}.management-badge{font-size:10px;opacity:.72}.management-note{margin-top:9px}.management-status{min-height:18px}.management-row[data-management-state="moved-off-tinder"]{border-style:dashed}.management-row[data-management-state="ai-managed"]{outline:1px solid currentColor;outline-offset:1px}.management-row[data-action-focus="true"]{box-shadow:0 0 0 3px rgba(99,102,241,.3)}@media(max-width:760px){.management-row{grid-template-columns:1fr}}
   `;
   document.head.append(style);
 }
@@ -153,5 +153,19 @@ async function refresh(): Promise<void> {
   }
 }
 
+function focusConversation(conversationRef: string): void {
+  const row = elements?.list.querySelector<HTMLElement>(`[data-management-row="${CSS.escape(conversationRef)}"]`);
+  if (!row) return;
+  elements?.list.querySelectorAll<HTMLElement>("[data-action-focus]").forEach((item) => delete item.dataset.actionFocus);
+  row.dataset.actionFocus = "true";
+  row.scrollIntoView({ behavior: "smooth", block: "center" });
+  window.setTimeout(() => delete row.dataset.actionFocus, 2400);
+}
+
 window.addEventListener("tnnd:auth-session-changed", () => void refresh());
+window.addEventListener("tnnd:human-action-updated", () => void refresh());
+window.addEventListener("tnnd:open-conversation", (event) => {
+  const conversationRef = (event as CustomEvent<{ conversationRef?: string }>).detail?.conversationRef;
+  if (conversationRef) focusConversation(conversationRef);
+});
 void refresh();

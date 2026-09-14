@@ -143,7 +143,7 @@ export function renderActionCenter(container: HTMLElement, items = readHumanActi
   const emptyFiltered = `<div class="action-empty"><strong>No ${escapeHtml(activeFilter)} actions</strong><p>Choose another filter to review the rest of the queue.</p></div>`;
 
   container.innerHTML = `${renderActionSummary(pending)}${renderSeverityFilters(activeFilter)}${visible.length === 0 ? emptyFiltered : visible.map((item) => `
-    <article class="action-item" data-action-id="${escapeHtml(item.id)}">
+    <article class="action-item" data-action-id="${escapeHtml(item.id)}"${item.conversationRef ? ` data-conversation-ref="${escapeHtml(item.conversationRef)}"` : ""}>
       <div class="action-item__heading">
         <div>
           <span class="action-severity">${escapeHtml(item.severity)}</span>
@@ -154,6 +154,7 @@ export function renderActionCenter(container: HTMLElement, items = readHumanActi
       <p>${escapeHtml(item.detail)}</p>
       ${humanActionPausesConversation(item) ? '<p class="subtle"><strong>Conversation paused.</strong> Automation stays blocked while this human action is pending. Resolving the final blocking action allows the conversation to resume.</p>' : ""}
       <div class="action-item__buttons">
+        ${item.conversationRef ? '<button type="button" data-action="open-conversation" class="button-muted">Open conversation</button>' : ""}
         <button type="button" data-action="complete">Complete</button>
         <button type="button" data-action="ignore" class="button-muted">Ignore</button>
       </div>
@@ -172,8 +173,16 @@ export function bindActionCenter(container: HTMLElement, onChange: (items: Human
     }
 
     const action = target.dataset.action;
-    if (action !== "complete" && action !== "ignore") return;
     const item = target.closest<HTMLElement>("[data-action-id]");
+    if (action === "open-conversation") {
+      const conversationRef = item?.dataset.conversationRef;
+      if (conversationRef) {
+        window.dispatchEvent(new CustomEvent("tnnd:open-conversation", { detail: { conversationRef } }));
+      }
+      return;
+    }
+
+    if (action !== "complete" && action !== "ignore") return;
     const id = item?.dataset.actionId;
     if (!id) return;
     target.setAttribute("disabled", "true");
@@ -181,6 +190,7 @@ export function bindActionCenter(container: HTMLElement, onChange: (items: Human
       .then((next) => {
         renderActionCenter(container, next);
         onChange(next);
+        window.dispatchEvent(new CustomEvent("tnnd:human-action-updated", { detail: { actionId: id } }));
       })
       .catch((error) => {
         target.removeAttribute("disabled");
