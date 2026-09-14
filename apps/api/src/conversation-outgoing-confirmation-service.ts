@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
 import { getPool } from "./db-client.js";
 
 export type TemporaryInstructionScope = "next-message" | "next-n-replies" | "until-cleared";
@@ -16,6 +17,63 @@ export interface ConfirmOutgoingMessageResult {
   temporaryInstructionConsumed: boolean;
   temporaryInstructionScope: TemporaryInstructionScope | null;
   temporaryInstructionRemaining: number | null;
+  humanActionResolved: boolean;
+}
+
+async function resolveDeliveredManualAnswer(
+  client: PoolClient,
+  userId: string,
+  conversationId: string,
+  text: string
+): Promise<boolean> {
+  const resolved = await client.query<{ id: string }>(
+    `WITH target AS (
+       SELECT id
+         FROM human_actions
+        WHERE user_id = $1
+          AND conversation_ref = $2
+          AND status = 'pending'
+          AND context_json->'manualAnswer'->>'deliveryState' = 'not-sent'
+          AND context_json->'manualAnswer'->>'answer' = $3
+        ORDER BY updated_at DESC
+        LIMIT 1
+        FOR UPDATE
+     )
+     UPDATE human_actions AS action
+        SET status = 'completed',
+            context_json = jsonb_set(action.context_json, '{manualAnswer,deliveryState}', '"sent"'::jsonb, true),
+            updated_at = now(),
+            resolved_at = now()
+       FROM target
+      WHERE action.id = target.id
+      RETURNING action.id`,
+    [userId, conversationId, text]
+  );
+
+  if (!resolved.rows[0]) return false;
+
+  const pending = await client.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+         FROM human_actions
+        WHERE user_id = $1
+          AND conversation_ref = $2
+          AND status = 'pending'
+          AND severity IN ('action-required', 'decision-required', 'urgent')
+     ) AS exists`,
+    [userId, conversationId]
+  );
+
+  if (!(pending.rows[0]?.exists ?? true)) {
+    await client.query(
+      `UPDATE conversations
+          SET status = 'active', updated_at = now()
+        WHERE id = $1 AND user_id = $2 AND status = 'action-required'`,
+      [conversationId, userId]
+    );
+  }
+
+  return true;
 }
 
 export async function confirmOutgoingMessage(
@@ -55,6 +113,11 @@ export async function confirmOutgoingMessage(
     let temporaryInstructionConsumed = false;
     let temporaryInstructionScope = row.temporary_instruction_scope;
     let temporaryInstructionRemaining = row.temporary_instruction_remaining;
+    let humanActionResolved = false;
+
+    if (accepted) {
+      humanActionResolved = await resolveDeliveredManualAnswer(client, userId, conversationId, input.text);
+    }
 
     if (accepted && row.temporary_instruction_scope === "next-message") {
       await client.query(
@@ -106,7 +169,8 @@ export async function confirmOutgoingMessage(
       externalMessageId: input.externalMessageId,
       temporaryInstructionConsumed,
       temporaryInstructionScope,
-      temporaryInstructionRemaining
+      temporaryInstructionRemaining,
+      humanActionResolved
     };
   } catch (error) {
     await client.query("ROLLBACK");
