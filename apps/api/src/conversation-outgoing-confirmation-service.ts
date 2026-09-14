@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
 import { getPool } from "./db-client.js";
 
 export type TemporaryInstructionScope = "next-message" | "next-n-replies" | "until-cleared";
@@ -20,7 +21,7 @@ export interface ConfirmOutgoingMessageResult {
 }
 
 async function resolveDeliveredManualAnswer(
-  client: { query: <T = unknown>(text: string, values?: readonly unknown[]) => Promise<{ rows: T[]; rowCount?: number | null }> },
+  client: PoolClient,
   userId: string,
   conversationId: string,
   text: string
