@@ -11,6 +11,12 @@ export const conversationManagementStates = [
 ] as const;
 
 export type ConversationManagementState = (typeof conversationManagementStates)[number];
+export type ConversationSyncHealthState = "never-synced" | "synced";
+
+export interface ConversationSyncHealth {
+  state: ConversationSyncHealthState;
+  lastSyncedAt?: string;
+}
 
 export interface ConversationManagementRecord {
   conversationId: string;
@@ -18,6 +24,7 @@ export interface ConversationManagementRecord {
   managementState: ConversationManagementState;
   explicitlySelected: boolean;
   selectedAt?: string;
+  syncHealth: ConversationSyncHealth;
   updatedAt: string;
 }
 
@@ -37,6 +44,16 @@ function isManagementState(value: unknown): value is ConversationManagementState
   return typeof value === "string" && conversationManagementStates.includes(value as ConversationManagementState);
 }
 
+function normalizeSyncHealth(value: unknown): ConversationSyncHealth {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { state: "never-synced" };
+  const input = value as Record<string, unknown>;
+  if (input.state !== "synced") return { state: "never-synced" };
+  return {
+    state: "synced",
+    ...(typeof input.lastSyncedAt === "string" && input.lastSyncedAt ? { lastSyncedAt: input.lastSyncedAt } : {})
+  };
+}
+
 function normalizeRecord(value: unknown): ConversationManagementRecord {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Conversation management record is invalid.");
   const input = value as Record<string, unknown>;
@@ -51,6 +68,7 @@ function normalizeRecord(value: unknown): ConversationManagementRecord {
     managementState: input.managementState,
     explicitlySelected: input.explicitlySelected,
     ...(typeof input.selectedAt === "string" && input.selectedAt ? { selectedAt: input.selectedAt } : {}),
+    syncHealth: normalizeSyncHealth(input.syncHealth),
     updatedAt: input.updatedAt
   };
 }

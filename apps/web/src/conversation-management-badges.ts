@@ -19,14 +19,20 @@ function labelForState(state: ConversationManagementState): string {
   }
 }
 
+function syncLabel(record: ConversationManagementRecord): string {
+  if (record.syncHealth.state !== "synced") return "Never synced";
+  return record.syncHealth.lastSyncedAt ? `Synced ${new Date(record.syncHealth.lastSyncedAt).toLocaleString()}` : "Synced";
+}
+
 function installStyles(): void {
   if (document.querySelector("#tnnd-management-badge-styles")) return;
   const style = document.createElement("style");
   style.id = "tnnd-management-badge-styles";
   style.textContent = `
-    .conversation-management-inline{font-size:10px;line-height:1;padding:4px 6px;border:1px solid currentColor;border-radius:999px;opacity:.72;white-space:nowrap}
+    .conversation-management-inline,.conversation-sync-inline{font-size:10px;line-height:1;padding:4px 6px;border:1px solid currentColor;border-radius:999px;opacity:.72;white-space:nowrap}
     .conversation-management-inline[data-state="ai-managed"]{opacity:1;font-weight:700}
     .conversation-management-inline[data-state="moved-off-tinder"],.conversation-management-inline[data-state="archived"]{border-style:dashed}
+    .conversation-sync-inline[data-state="never-synced"]{border-style:dashed;opacity:.55}
     .conversation-detail-management{display:inline-flex;align-items:center;gap:5px;margin-left:6px}
     .conversation-management-filter{display:flex;align-items:center;gap:7px;font-size:12px}.conversation-management-filter select{width:auto;min-width:150px}
     .conversation-management-filter-summary{opacity:.7;min-width:44px;text-align:right}
@@ -90,6 +96,16 @@ function applyManagementFilter(): void {
   if (reset) reset.disabled = activeManagementFilter === "all";
 }
 
+function appendSyncBadge(container: HTMLElement, record: ConversationManagementRecord, detail = false): void {
+  const badge = document.createElement("span");
+  badge.className = `conversation-sync-inline${detail ? " conversation-detail-management" : ""}`;
+  badge.dataset.syncInline = "true";
+  badge.dataset.state = record.syncHealth.state;
+  badge.textContent = record.syncHealth.state === "synced" ? "Synced" : "Never synced";
+  badge.title = syncLabel(record);
+  container.append(badge);
+}
+
 function renderBadges(): void {
   installStyles();
   ensureFilterControl();
@@ -98,6 +114,7 @@ function renderBadges(): void {
     if (!conversationId) return;
     const record = records.get(conversationId);
     row.querySelector("[data-management-inline]")?.remove();
+    row.querySelector("[data-sync-inline]")?.remove();
     if (!record) return;
     const meta = row.querySelector<HTMLElement>(".conversation-row-meta") ?? row;
     const badge = document.createElement("span");
@@ -109,12 +126,14 @@ function renderBadges(): void {
       ? "This conversation has an explicit management choice."
       : "This conversation has not been explicitly selected for AI takeover.";
     meta.prepend(badge);
+    appendSyncBadge(meta, record);
   });
   applyManagementFilter();
 
   const selected = document.querySelector<HTMLElement>("[data-conversation-id].selected")?.dataset.conversationId;
   const heading = document.querySelector<HTMLElement>("#conversation-detail .conversation-detail-heading");
   heading?.querySelector("[data-detail-management]")?.remove();
+  heading?.querySelector("[data-sync-inline]")?.remove();
   if (!selected || !heading) return;
   const record = records.get(selected);
   if (!record) return;
@@ -127,6 +146,7 @@ function renderBadges(): void {
     ? "Explicitly selected management state"
     : "Not explicitly selected for AI takeover";
   heading.append(badge);
+  appendSyncBadge(heading, record, true);
 }
 
 async function refresh(): Promise<void> {
