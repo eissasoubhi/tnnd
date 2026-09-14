@@ -45,7 +45,7 @@ test("capture returns created profile and forwards conversation binding", async 
   let seenConversationId: string | null | undefined;
   const result = await handleMatchProfileCaptureRequest("user-1", { capture: stored.sourceCapture, conversationId: " conversation-1 " }, deps({
     save: async (_userId, _capture, options) => {
-      seenConversationId = options.conversationId;
+      seenConversationId = options?.conversationId;
       return { ...stored, conversationId: "conversation-1", expiresAt: null };
     }
   }));
