@@ -1,3 +1,5 @@
+import { readSession } from "./auth-client";
+import { updateConversationStatus } from "./conversation-client";
 import { fetchHumanActions, setHumanActionStatus } from "./human-action-client";
 
 export type HumanActionSeverity = "info" | "action-required" | "decision-required" | "urgent";
@@ -154,7 +156,7 @@ export function renderActionCenter(container: HTMLElement, items = readHumanActi
       <p>${escapeHtml(item.detail)}</p>
       ${humanActionPausesConversation(item) ? '<p class="subtle"><strong>Conversation paused.</strong> Automation stays blocked while this human action is pending. Resolving the final blocking action allows the conversation to resume.</p>' : ""}
       <div class="action-item__buttons">
-        ${item.conversationRef ? '<button type="button" data-action="open-conversation" class="button-muted">Open conversation</button>' : ""}
+        ${item.conversationRef ? '<button type="button" data-action="open-conversation" class="button-muted">Open conversation</button><button type="button" data-action="pause-conversation" class="button-muted">Keep paused</button>' : ""}
         <button type="button" data-action="complete">Complete</button>
         <button type="button" data-action="ignore" class="button-muted">Ignore</button>
       </div>
@@ -179,6 +181,23 @@ export function bindActionCenter(container: HTMLElement, onChange: (items: Human
       if (conversationRef) {
         window.dispatchEvent(new CustomEvent("tnnd:open-conversation", { detail: { conversationRef } }));
       }
+      return;
+    }
+
+    if (action === "pause-conversation") {
+      const conversationRef = item?.dataset.conversationRef;
+      const session = readSession();
+      if (!conversationRef || !session) return;
+      target.setAttribute("disabled", "true");
+      void updateConversationStatus(session, conversationRef, "paused")
+        .then(() => {
+          target.textContent = "Paused";
+          window.dispatchEvent(new CustomEvent("tnnd:human-action-updated", { detail: { conversationRef } }));
+        })
+        .catch((error) => {
+          target.removeAttribute("disabled");
+          console.error("Unable to pause TNND conversation", error);
+        });
       return;
     }
 
