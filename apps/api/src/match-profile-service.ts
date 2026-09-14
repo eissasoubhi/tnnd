@@ -39,6 +39,22 @@ function rowToStored(row: MatchProfileRow): StoredMatchProfile {
   };
 }
 
+function stableCaptureContent(capture: MatchProfileSourceCapture): string {
+  return JSON.stringify({
+    source: capture.source,
+    captureMode: capture.captureMode,
+    route: capture.route,
+    visibleFields: capture.visibleFields
+  });
+}
+
+export function sameMatchProfileCaptureContent(
+  left: MatchProfileSourceCapture,
+  right: MatchProfileSourceCapture
+): boolean {
+  return stableCaptureContent(left) === stableCaptureContent(right);
+}
+
 export function isPromotableTemporaryMatchProfile(expiresAt: Date | null, now = new Date()): boolean {
   return expiresAt === null || expiresAt.getTime() > now.getTime();
 }
@@ -51,6 +67,28 @@ async function assertConversationOwnership(userId: string, conversationId: strin
   return Boolean(result.rowCount);
 }
 
+async function findEquivalentTemporaryCapture(
+  userId: string,
+  sourceCapture: MatchProfileSourceCapture,
+  now: Date
+): Promise<StoredMatchProfile | null> {
+  const candidates = await getPool().query<MatchProfileRow>(
+    `SELECT id, conversation_id, source_capture, normalized_profile, captured_at, expires_at, updated_at
+     FROM match_profiles
+     WHERE user_id = $1
+       AND conversation_id IS NULL
+       AND source = $2
+       AND (expires_at IS NULL OR expires_at > $3)
+     ORDER BY captured_at DESC
+     LIMIT 20`,
+    [userId, sourceCapture.source, now.toISOString()]
+  );
+  const row = candidates.rows.find((candidate) =>
+    sameMatchProfileCaptureContent(parseMatchProfileSourceCapture(candidate.source_capture), sourceCapture)
+  );
+  return row ? rowToStored(row) : null;
+}
+
 export async function saveMatchProfileCapture(
   userId: string,
   value: unknown,
@@ -58,11 +96,17 @@ export async function saveMatchProfileCapture(
 ): Promise<StoredMatchProfile | null> {
   const sourceCapture = parseMatchProfileSourceCapture(value);
   const conversationId = options.conversationId?.trim() || null;
+  const now = options.now ?? new Date();
   if (conversationId && !(await assertConversationOwnership(userId, conversationId))) return null;
+
+  if (!conversationId) {
+    const duplicate = await findEquivalentTemporaryCapture(userId, sourceCapture, now);
+    if (duplicate) return duplicate;
+  }
 
   const normalizedProfile = normalizeMatchProfile(sourceCapture, {
     conversationRef: conversationId,
-    now: options.now
+    now
   });
   const id = randomUUID();
   const result = await getPool().query<MatchProfileRow>(
