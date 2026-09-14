@@ -29,6 +29,10 @@ function installStyles(): void {
     .conversation-management-inline[data-state="moved-off-tinder"],.conversation-management-inline[data-state="archived"]{border-style:dashed}
     .conversation-detail-management{display:inline-flex;align-items:center;gap:5px;margin-left:6px}
     .conversation-management-filter{display:flex;align-items:center;gap:7px;font-size:12px}.conversation-management-filter select{width:auto;min-width:150px}
+    .conversation-management-filter-summary{opacity:.7;min-width:44px;text-align:right}
+    .conversation-management-filter-reset{font:inherit;padding:4px 7px;border:1px solid currentColor;border-radius:6px;background:transparent;cursor:pointer}
+    .conversation-management-filter-reset:disabled{opacity:.4;cursor:default}
+    .conversation-management-filtered-out{display:none!important}
   `;
   document.head.append(style);
 }
@@ -46,27 +50,44 @@ function ensureFilterControl(): void {
       <option value="moved-off-tinder">Off Tinder</option>
       <option value="archived">Archived</option>
       <option value="unmanaged">Unmanaged</option>
-    </select>`;
+    </select>
+    <span class="conversation-management-filter-summary" data-management-filter-summary aria-live="polite"></span>
+    <button class="conversation-management-filter-reset" type="button" data-management-filter-reset>Reset</button>`;
   const select = label.querySelector<HTMLSelectElement>("select")!;
+  const reset = label.querySelector<HTMLButtonElement>("[data-management-filter-reset]")!;
   select.value = activeManagementFilter;
   select.addEventListener("change", () => {
     const value = select.value as ConversationManagementState | "all";
     activeManagementFilter = value;
     renderBadges();
   });
+  reset.addEventListener("click", () => {
+    activeManagementFilter = "all";
+    select.value = "all";
+    renderBadges();
+  });
   toolbar.prepend(label);
 }
 
 function applyManagementFilter(): void {
-  document.querySelectorAll<HTMLElement>("[data-conversation-id]").forEach((row) => {
-    if (activeManagementFilter === "all") {
-      row.hidden = false;
-      return;
-    }
+  const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-conversation-id]"));
+  let eligible = 0;
+  let visible = 0;
+  for (const row of rows) {
     const conversationId = row.dataset.conversationId;
     const record = conversationId ? records.get(conversationId) : undefined;
-    row.hidden = record?.managementState !== activeManagementFilter;
-  });
+    const filteredOut = activeManagementFilter !== "all" && record?.managementState !== activeManagementFilter;
+    row.classList.toggle("conversation-management-filtered-out", filteredOut);
+    if (!row.hidden) {
+      eligible += 1;
+      if (!filteredOut) visible += 1;
+    }
+  }
+
+  const summary = document.querySelector<HTMLElement>("[data-management-filter-summary]");
+  if (summary) summary.textContent = `${visible}/${eligible}`;
+  const reset = document.querySelector<HTMLButtonElement>("[data-management-filter-reset]");
+  if (reset) reset.disabled = activeManagementFilter === "all";
 }
 
 function renderBadges(): void {
