@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { planBoundedTinderJob } from "../src/tinder-orchestrator.ts";
 import { completeTinderSchedulerStep, canResumeCheckpoint, planTinderSchedulerStep } from "../src/tinder-scheduler.ts";
+import { classifySyncReconciliation, describeSyncReconciliation } from "../src/sync-status.ts";
 import { classifyTinderPath, composeTinderUiState, isObservedV1Transition, planNavigation } from "../src/tinder-state-machine.ts";
 
 const fixtureUrl = new URL("../fixtures/tinder-state-regression.json", import.meta.url);
@@ -87,5 +88,11 @@ const completed = completeTinderSchedulerStep(schedulerNavigate.checkpoint, "/ap
 assert.equal(completed.phase, "completed");
 assert.equal(completed.lastPath, "/app/matches");
 assert.equal(completed.navigationTarget, null);
+
+assert.equal(classifySyncReconciliation(null, null), "unknown");
+assert.equal(classifySyncReconciliation(null, "server-cursor"), "restored");
+assert.equal(classifySyncReconciliation("same", "same"), "matching");
+assert.equal(classifySyncReconciliation("local", "server"), "mismatch");
+assert.equal(describeSyncReconciliation("mismatch"), "checkpoint mismatch · sync paused");
 
 console.log(`Tinder state regression fixtures passed (${fixture.routes.length} routes, ${fixture.uiObservations.length} UI observations).`);
