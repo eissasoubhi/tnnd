@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { buildProfileCaptureDedupeKey, buildReadOnlyProfileCapture, buildReadOnlyProfileSource, hasMeaningfulVisibleProfileFields, normalizeProfileCaptureSource } from "../src/tinder-match-profile-capture.ts";
+import { syncVisibleMatchProfileCapture } from "../src/tinder-match-profile-sync.ts";
 
 const capturedAt = "2026-01-01T12:00:00.000Z";
 const input = {
@@ -65,5 +66,41 @@ assert.deepEqual(emptySource.visibleFields, {
   interests: undefined,
   relationshipGoal: undefined
 });
+
+const session = {
+  token: "synthetic-token",
+  expiresAt: "2026-01-02T12:00:00.000Z",
+  user: { id: "synthetic-user", email: "synthetic@example.invalid" }
+};
+let uploads = 0;
+const upload = async (_session, uploadedCapture, options) => {
+  uploads += 1;
+  assert.deepEqual(uploadedCapture, source);
+  assert.equal(options.conversationId, "synthetic-conversation");
+  return {
+    id: "synthetic-profile",
+    conversationId: "synthetic-conversation",
+    capturedAt,
+    expiresAt: null
+  };
+};
+
+const emptySync = await syncVisibleMatchProfileCapture(session, emptySource, {}, { upload });
+assert.equal(emptySync.status, "skipped-empty");
+assert.equal(uploads, 0);
+
+const firstSync = await syncVisibleMatchProfileCapture(session, source, {}, {
+  conversationId: "synthetic-conversation",
+  upload
+});
+assert.equal(firstSync.status, "uploaded");
+assert.equal(uploads, 1);
+
+const unchangedSync = await syncVisibleMatchProfileCapture(session, recaptured, firstSync.nextState, {
+  conversationId: "synthetic-conversation",
+  upload
+});
+assert.equal(unchangedSync.status, "skipped-unchanged");
+assert.equal(uploads, 1);
 
 console.log("Match profile capture contract checks passed.");
