@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getPool } from "./db-client.js";
+import type { ManualAnswerPayload } from "./human-action-manual-answer.js";
 
 export type HumanActionSeverity = "info" | "action-required" | "decision-required" | "urgent";
 export type HumanActionStatus = "pending" | "completed" | "ignored";
@@ -54,6 +55,22 @@ export function humanActionBlocksConversation(severity: HumanActionSeverity): bo
 
 export function shouldReleaseHumanActionPause(hasPendingBlockingAction: boolean): boolean {
   return !hasPendingBlockingAction;
+}
+
+export function mergeManualAnswerContext(
+  context: Record<string, unknown>,
+  payload: ManualAnswerPayload,
+  providedAt: string
+): Record<string, unknown> {
+  return {
+    ...context,
+    manualAnswer: {
+      answer: payload.answer,
+      source: payload.source,
+      providedAt,
+      deliveryState: "not-sent"
+    }
+  };
 }
 
 async function lockConversationHumanActions(
@@ -131,6 +148,54 @@ export async function createHumanAction(userId: string, input: CreateHumanAction
       );
     }
 
+    await client.query("COMMIT");
+    return mapRow(row);
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function saveHumanActionManualAnswer(
+  userId: string,
+  payload: ManualAnswerPayload
+): Promise<HumanAction | null> {
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    const current = await client.query<HumanActionRow>(
+      `SELECT id, conversation_ref, conversation_label, title, detail, severity, status,
+              context_json, created_at, updated_at, resolved_at
+         FROM human_actions
+        WHERE id = $1 AND user_id = $2
+        FOR UPDATE`,
+      [payload.actionId, userId]
+    );
+    const currentRow = current.rows[0];
+    if (!currentRow) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+    if (currentRow.status !== "pending") {
+      await client.query("ROLLBACK");
+      throw new Error("human_action_not_pending");
+    }
+
+    const providedAt = new Date().toISOString();
+    const context = mergeManualAnswerContext(currentRow.context_json ?? {}, payload, providedAt);
+    const result = await client.query<HumanActionRow>(
+      `UPDATE human_actions
+          SET context_json = $3::jsonb,
+              updated_at = now()
+        WHERE id = $1 AND user_id = $2
+        RETURNING id, conversation_ref, conversation_label, title, detail, severity, status,
+                  context_json, created_at, updated_at, resolved_at`,
+      [payload.actionId, userId, JSON.stringify(context)]
+    );
+    const row = result.rows[0];
+    if (!row) throw new Error("human_action_manual_answer_update_failed");
     await client.query("COMMIT");
     return mapRow(row);
   } catch (error) {
