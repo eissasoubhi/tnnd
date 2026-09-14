@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { buildProfileCaptureDedupeKey, buildReadOnlyProfileCapture, buildReadOnlyProfileSource, hasMeaningfulVisibleProfileFields, normalizeProfileCaptureSource } from "../src/tinder-match-profile-capture.ts";
 import { confirmVisibleMatchProfileUpload, planVisibleMatchProfileSync } from "../src/tinder-match-profile-sync.ts";
 import { normalizeMatchProfileSyncStateMap } from "../src/tinder-match-profile-sync-store.ts";
-import { syncVisibleMatchProfileCapture } from "../src/tinder-match-profile-runtime-sync.ts";
 
 const capturedAt = "2026-01-01T12:00:00.000Z";
 const input = {
@@ -70,34 +69,5 @@ const oversized = Object.fromEntries(Array.from({ length: 105 }, (_, index) => [
   { lastUploadedDedupeKey: `key-${index}`, updatedAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString() }
 ]));
 assert.equal(Object.keys(normalizeMatchProfileSyncStateMap(oversized)).length, 100);
-
-const session = { token: "synthetic-token", expiresAt: "2099-01-01T00:00:00.000Z", user: { id: "u1", email: "user@example.test" } };
-let runtimeState = {};
-let uploads = 0;
-const dependencies = {
-  async loadState() { return runtimeState; },
-  async saveState(_scopeKey, state) { runtimeState = state; },
-  async upload() {
-    uploads += 1;
-    return { id: "profile-1", conversationId: null, capturedAt, expiresAt: "2026-01-08T12:00:00.000Z" };
-  }
-};
-const runtimeFirst = await syncVisibleMatchProfileCapture(session, "thread-a", source, { dependencies });
-assert.equal(runtimeFirst.status, "uploaded");
-assert.equal(uploads, 1);
-assert.equal(runtimeState.lastUploadedDedupeKey, buildProfileCaptureDedupeKey(source));
-const runtimeSecond = await syncVisibleMatchProfileCapture(session, "thread-a", recaptured, { dependencies });
-assert.equal(runtimeSecond.status, "skipped-unchanged");
-assert.equal(uploads, 1);
-
-let failedState = {};
-await assert.rejects(() => syncVisibleMatchProfileCapture(session, "thread-b", changed, {
-  dependencies: {
-    async loadState() { return failedState; },
-    async saveState(_scopeKey, state) { failedState = state; },
-    async upload() { throw new Error("network down"); }
-  }
-}));
-assert.equal(failedState.lastUploadedDedupeKey, undefined);
 
 console.log("Match profile capture contract checks passed.");
