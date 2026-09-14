@@ -3,7 +3,7 @@ import {
   conversationStatusAllowsTinderAutomation,
   describeConversationAutomationPause,
   reconcileAutomationPauseMessage
-} from "../src/tinder-backend-management.ts";
+} from "../src/tinder-conversation-automation-status.ts";
 
 assert.equal(conversationStatusAllowsTinderAutomation("action-required"), false);
 assert.equal(conversationStatusAllowsTinderAutomation("active"), true);
