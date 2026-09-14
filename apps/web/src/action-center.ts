@@ -15,8 +15,16 @@ export interface HumanActionItem {
   detail: string;
   severity: HumanActionSeverity;
   status: HumanActionStatus;
+  context?: Record<string, unknown>;
   createdAt: string;
 }
+
+export type PersistedManualAnswer = {
+  answer: string;
+  source: "user-manual-answer";
+  providedAt: string;
+  deliveryState: "not-sent";
+};
 
 const storageKey = "tnnd:web:human-actions";
 const manualAnswerDrafts = new Map<string, ManualAnswerDraft>();
@@ -81,7 +89,23 @@ function isHumanActionItem(value: unknown): value is HumanActionItem {
     && typeof item.detail === "string"
     && ["info", "action-required", "decision-required", "urgent"].includes(item.severity ?? "")
     && ["pending", "completed", "ignored"].includes(item.status ?? "")
+    && (item.context === undefined || (typeof item.context === "object" && item.context !== null && !Array.isArray(item.context)))
     && typeof item.createdAt === "string";
+}
+
+export function getPersistedManualAnswer(item: HumanActionItem): PersistedManualAnswer | null {
+  const value = item.context?.manualAnswer;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const answer = value as Record<string, unknown>;
+  if (typeof answer.answer !== "string" || !answer.answer.trim()) return null;
+  if (answer.source !== "user-manual-answer" || answer.deliveryState !== "not-sent") return null;
+  if (typeof answer.providedAt !== "string" || Number.isNaN(Date.parse(answer.providedAt))) return null;
+  return {
+    answer: answer.answer,
+    source: "user-manual-answer",
+    providedAt: answer.providedAt,
+    deliveryState: "not-sent"
+  };
 }
 
 export function sortPendingHumanActions(items: HumanActionItem[]): HumanActionItem[] {
@@ -171,6 +195,12 @@ function renderManualAnswerIntoItem(item: HTMLElement, actionId: string): void {
   else item.insertAdjacentHTML("beforeend", renderManualAnswerEditor(draft));
 }
 
+function renderPersistedManualAnswer(item: HumanActionItem): string {
+  const answer = getPersistedManualAnswer(item);
+  if (!answer || manualAnswerDrafts.has(item.id)) return "";
+  return `<p class="subtle" data-manual-answer-saved><strong>Saved, not sent.</strong> Your reviewed answer is stored in TNND. The action stays pending until the real-world/message step is explicitly resolved.</p>`;
+}
+
 export function renderActionCenter(container: HTMLElement, items = readHumanActions()): void {
   const pending = sortPendingHumanActions(items);
   if (pending.length === 0) {
@@ -193,9 +223,10 @@ export function renderActionCenter(container: HTMLElement, items = readHumanActi
       </div>
       <p>${escapeHtml(item.detail)}</p>
       ${humanActionPausesConversation(item) ? '<p class="subtle"><strong>Conversation paused.</strong> Automation stays blocked while this human action is pending. Resolving the final blocking action allows the conversation to resume.</p>' : ""}
+      ${renderPersistedManualAnswer(item)}
       <div class="action-item__buttons">
         ${item.conversationRef ? '<button type="button" data-action="open-conversation" class="button-muted">Open conversation</button><button type="button" data-action="pause-conversation" class="button-muted">Keep paused</button>' : ""}
-        <button type="button" data-action="answer-manually" class="button-muted">Answer manually</button>
+        <button type="button" data-action="answer-manually" class="button-muted">${getPersistedManualAnswer(item) ? "Edit manual answer" : "Answer manually"}</button>
         <button type="button" data-action="complete">Complete</button>
         <button type="button" data-action="ignore" class="button-muted">Ignore</button>
       </div>
@@ -267,10 +298,11 @@ export function bindActionCenter(container: HTMLElement, onChange: (items: Human
       if (!draft) return;
       target.setAttribute("disabled", "true");
       void submitHumanActionManualAnswer(draft)
-        .then(() => {
+        .then(() => loadHumanActions())
+        .then((next) => {
           manualAnswerDrafts.delete(actionId);
-          const editor = item.querySelector<HTMLElement>("[data-manual-answer-editor]");
-          if (editor) editor.innerHTML = '<p class="subtle"><strong>Saved, not sent.</strong> The action remains pending and automation stays blocked until you explicitly resolve or confirm the real-world/message step.</p>';
+          renderActionCenter(container, next);
+          onChange(next);
           window.dispatchEvent(new CustomEvent("tnnd:human-action-updated", { detail: { actionId, manualAnswerSaved: true } }));
         })
         .catch((error) => {
@@ -324,5 +356,5 @@ export function bindActionCenter(container: HTMLElement, onChange: (items: Human
 }
 
 function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[char] ?? char);
+  return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;", "'": "&#039;" })[char] ?? char);
 }
