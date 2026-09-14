@@ -1,5 +1,5 @@
 import { getBackendSession, getSyncState, saveSyncState } from "./storage";
-import { getConversationRef } from "./conversation-sync";
+import { getConversationRef, type ConversationStatus } from "./conversation-sync";
 import { classifySyncReconciliation } from "./sync-status";
 import {
   DEFAULT_TINDER_CONVERSATION_MANAGEMENT,
@@ -15,10 +15,23 @@ import {
 
 const API_BASE = "http://127.0.0.1:4000";
 
+const conversationStatuses = new Set<ConversationStatus>([
+  "active",
+  "paused",
+  "disabled",
+  "waiting-for-them",
+  "waiting-for-user",
+  "action-required",
+  "moved-off-tinder",
+  "stale",
+  "archived"
+]);
+
 interface ThreadLookupPayload {
   conversation?: {
     id?: unknown;
     externalThreadId?: unknown;
+    status?: unknown;
     managementState?: unknown;
     explicitlySelected?: unknown;
     syncCursor?: unknown;
@@ -29,6 +42,7 @@ interface ThreadLookupPayload {
 
 export interface TinderBackendConversationManagement {
   conversationId: string | null;
+  conversationStatus: ConversationStatus | null;
   management: TinderConversationManagement;
   syncCursor: string | null;
   syncCursorUpdatedAt: string | null;
@@ -49,6 +63,7 @@ export type TinderCursorReconciliation =
 export interface TinderBackendSyncDecision extends TinderBackendConversationManagement {
   candidate: TinderThreadSyncCandidate | null;
   shouldSync: boolean;
+  statusAllowsAutomation: boolean;
   reconciliation: TinderConversationRefReconciliation;
   cursorReconciliation: TinderCursorReconciliation;
   effectiveCursor: string | null;
@@ -69,6 +84,20 @@ function reconcileCursor(localCursor: string | null, backendCursor: string | nul
   return localCursor === backendCursor ? "matching-cursor" : "cursor-mismatch";
 }
 
+function normalizeConversationStatus(value: unknown): ConversationStatus | null {
+  return typeof value === "string" && conversationStatuses.has(value as ConversationStatus)
+    ? value as ConversationStatus
+    : null;
+}
+
+export function conversationStatusAllowsTinderAutomation(status: ConversationStatus | null): boolean {
+  return status !== "action-required"
+    && status !== "paused"
+    && status !== "disabled"
+    && status !== "archived"
+    && status !== "moved-off-tinder";
+}
+
 export async function loadTinderConversationManagement(
   externalThreadId: string
 ): Promise<TinderBackendConversationManagement> {
@@ -76,6 +105,7 @@ export async function loadTinderConversationManagement(
   if (!threadId) {
     return {
       conversationId: null,
+      conversationStatus: null,
       management: { ...DEFAULT_TINDER_CONVERSATION_MANAGEMENT },
       syncCursor: null,
       syncCursorUpdatedAt: null
@@ -86,6 +116,7 @@ export async function loadTinderConversationManagement(
   if (!session) {
     return {
       conversationId: null,
+      conversationStatus: null,
       management: { ...DEFAULT_TINDER_CONVERSATION_MANAGEMENT },
       syncCursor: null,
       syncCursorUpdatedAt: null
@@ -100,6 +131,7 @@ export async function loadTinderConversationManagement(
   if (response.status === 404) {
     return {
       conversationId: null,
+      conversationStatus: null,
       management: { ...DEFAULT_TINDER_CONVERSATION_MANAGEMENT },
       syncCursor: null,
       syncCursorUpdatedAt: null
@@ -115,6 +147,7 @@ export async function loadTinderConversationManagement(
   const conversationId = typeof conversation?.id === "string" && conversation.id.trim()
     ? conversation.id.trim()
     : null;
+  const conversationStatus = normalizeConversationStatus(conversation?.status);
 
   const management = normalizeTinderConversationManagement({
     state: typeof conversation?.managementState === "string"
@@ -130,7 +163,7 @@ export async function loadTinderConversationManagement(
     ? conversation.syncCursorUpdatedAt.trim()
     : null;
 
-  return { conversationId, management, syncCursor, syncCursorUpdatedAt };
+  return { conversationId, conversationStatus, management, syncCursor, syncCursorUpdatedAt };
 }
 
 export async function resolveTinderBackendSyncDecision(
@@ -146,20 +179,23 @@ export async function resolveTinderBackendSyncDecision(
   const candidate = readAiManagedTinderThreadSyncCandidate(readResult, backend.management);
   const identitySafe = reconciliation !== "conversation-mismatch" && reconciliation !== "backend-unmapped";
   const cursorSafe = cursorReconciliation !== "cursor-mismatch";
-  const shouldSync = identitySafe && cursorSafe && candidate
+  const statusAllowsAutomation = conversationStatusAllowsTinderAutomation(backend.conversationStatus);
+  const shouldSync = identitySafe && cursorSafe && statusAllowsAutomation && candidate
     ? shouldSyncAiManagedTinderThreadCandidate(candidate, effectiveCursor, backend.management)
     : false;
 
   const currentSyncState = await getSyncState();
   await saveSyncState({
     ...currentSyncState,
-    reconciliationState: classifySyncReconciliation(persistedCursor, backend.syncCursor)
+    reconciliationState: classifySyncReconciliation(persistedCursor, backend.syncCursor),
+    ...(statusAllowsAutomation ? {} : { message: `Conversation automation paused by server status: ${backend.conversationStatus}.` })
   });
 
   return {
     ...backend,
     candidate,
     shouldSync,
+    statusAllowsAutomation,
     reconciliation,
     cursorReconciliation,
     effectiveCursor
