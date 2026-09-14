@@ -1,5 +1,6 @@
-import { getBackendSession } from "./storage";
+import { getBackendSession, getSyncState, saveSyncState } from "./storage";
 import { getConversationRef } from "./conversation-sync";
+import { classifySyncReconciliation } from "./sync-status";
 import {
   DEFAULT_TINDER_CONVERSATION_MANAGEMENT,
   normalizeTinderConversationManagement,
@@ -148,6 +149,13 @@ export async function resolveTinderBackendSyncDecision(
   const shouldSync = identitySafe && cursorSafe && candidate
     ? shouldSyncAiManagedTinderThreadCandidate(candidate, effectiveCursor, backend.management)
     : false;
+
+  const currentSyncState = await getSyncState();
+  await saveSyncState({
+    ...currentSyncState,
+    reconciliationState: classifySyncReconciliation(persistedCursor, backend.syncCursor)
+  });
+
   return {
     ...backend,
     candidate,
