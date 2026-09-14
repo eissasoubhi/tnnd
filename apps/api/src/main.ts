@@ -12,6 +12,7 @@ import { handleConversationThreadLookupRequest } from "./conversation-thread-loo
 import { getPool } from "./db-client.js";
 import { handleHumanActionManualAnswerRequest } from "./human-action-manual-answer-controller.js";
 import { createHumanAction, listHumanActions, updateHumanActionStatus, type HumanActionSeverity, type HumanActionStatus } from "./human-action-service.js";
+import { handleConversationMatchProfileRequest, handleMatchProfileCaptureRequest, handleMatchProfilePromoteRequest } from "./match-profile-controller.js";
 import { profileSchemaVersion, publicProfileSchema, validateProfileEnvelope } from "./profile-schema.js";
 import { handleTextingStyleAnalysisRequest } from "./texting-style-analysis-controller.js";
 
@@ -82,6 +83,13 @@ function humanActionSubresourceId(pathname: string, suffix: string): string | nu
   return encoded ? decodeURIComponent(encoded) : null;
 }
 
+function matchProfileSubresourceId(pathname: string, suffix: string): string | null {
+  const prefix = "/api/v1/match-profiles/";
+  if (!pathname.startsWith(prefix) || !pathname.endsWith(suffix)) return null;
+  const encoded = pathname.slice(prefix.length, -suffix.length);
+  return encoded ? decodeURIComponent(encoded) : null;
+}
+
 function parseConversationManagementUpdates(value: unknown): ConversationManagementUpdate[] | null {
   if (!Array.isArray(value) || value.length < 1 || value.length > 100) return null;
   const updates: ConversationManagementUpdate[] = [];
@@ -109,7 +117,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "texting-style-analysis", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-management", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "human-actions", "human-action-manual-answer", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "texting-style-analysis", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-management", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "match-profiles", "human-actions", "human-action-manual-answer", "security-baseline"]
       });
       return;
     }
@@ -248,6 +256,29 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/v1/match-profiles/capture") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const result = await handleMatchProfileCaptureRequest(session.user.id, await readJsonBody(request));
+      sendJson(response, result.status, result.body);
+      return;
+    }
+
+    const promoteMatchProfileId = matchProfileSubresourceId(url.pathname, "/promote");
+    if (promoteMatchProfileId && request.method === "POST") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const result = await handleMatchProfilePromoteRequest(session.user.id, promoteMatchProfileId, await readJsonBody(request));
+      sendJson(response, result.status, result.body);
+      return;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/v1/conversations/sync") {
       const session = await authenticatedUser(request);
       if (!session) {
@@ -315,6 +346,18 @@ const server = createServer(async (request, response) => {
         return;
       }
       const result = await handleConversationThreadLookupRequest(session.user.id, url.searchParams.get("externalThreadId"));
+      sendJson(response, result.status, result.body);
+      return;
+    }
+
+    const matchProfileConversationId = conversationSubresourceId(url.pathname, "/match-profile");
+    if (matchProfileConversationId && request.method === "GET") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const result = await handleConversationMatchProfileRequest(session.user.id, matchProfileConversationId);
       sendJson(response, result.status, result.body);
       return;
     }
