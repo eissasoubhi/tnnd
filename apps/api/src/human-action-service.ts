@@ -52,6 +52,17 @@ export function humanActionBlocksConversation(severity: HumanActionSeverity): bo
   return severity === "action-required" || severity === "decision-required" || severity === "urgent";
 }
 
+async function lockConversationHumanActions(
+  client: { query: (text: string, values?: readonly unknown[]) => Promise<unknown> },
+  userId: string,
+  conversationRef: string
+): Promise<void> {
+  await client.query(
+    "SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))",
+    [userId, conversationRef]
+  );
+}
+
 export async function listHumanActions(userId: string, status?: HumanActionStatus): Promise<HumanAction[]> {
   const values: unknown[] = [userId];
   const statusClause = status ? " AND status = $2" : "";
@@ -83,6 +94,9 @@ export async function createHumanAction(userId: string, input: CreateHumanAction
   const conversationRef = input.conversationRef?.trim() || null;
   try {
     await client.query("BEGIN");
+    if (conversationRef && humanActionBlocksConversation(input.severity)) {
+      await lockConversationHumanActions(client, userId, conversationRef);
+    }
     const result = await client.query<HumanActionRow>(
       `INSERT INTO human_actions (
          id, user_id, conversation_ref, conversation_label, title, detail, severity, context_json
@@ -127,6 +141,22 @@ export async function updateHumanActionStatus(userId: string, actionId: string, 
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
+    const current = await client.query<Pick<HumanActionRow, "conversation_ref" | "severity">>(
+      `SELECT conversation_ref, severity
+         FROM human_actions
+        WHERE id = $1 AND user_id = $2
+        FOR UPDATE`,
+      [actionId, userId]
+    );
+    const currentRow = current.rows[0];
+    if (!currentRow) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+    if (currentRow.conversation_ref && humanActionBlocksConversation(currentRow.severity)) {
+      await lockConversationHumanActions(client, userId, currentRow.conversation_ref);
+    }
+
     const result = await client.query<HumanActionRow>(
       `UPDATE human_actions
           SET status = $3,
@@ -138,10 +168,7 @@ export async function updateHumanActionStatus(userId: string, actionId: string, 
       [actionId, userId, status]
     );
     const row = result.rows[0];
-    if (!row) {
-      await client.query("ROLLBACK");
-      return null;
-    }
+    if (!row) throw new Error("human_action_update_failed");
 
     if (row.conversation_ref && humanActionBlocksConversation(row.severity)) {
       if (status === "pending") {
