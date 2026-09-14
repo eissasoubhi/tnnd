@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { buildReadOnlyProfileCapture } from "../src/tinder-match-profile-capture.ts";
+import { buildReadOnlyProfileCapture, buildReadOnlyProfileSource, normalizeProfileCaptureSource } from "../src/tinder-match-profile-capture.ts";
 
 const capturedAt = "2026-01-01T12:00:00.000Z";
-const capture = buildReadOnlyProfileCapture({
+const input = {
   route: "/app/recs/synthetic-profile",
   firstName: "  Sam  ",
   age: 29,
@@ -12,15 +12,27 @@ const capture = buildReadOnlyProfileCapture({
   location: "Nearby",
   interests: ["Hiking", " Coffee ", "", "Hiking"],
   relationshipGoal: "Long-term relationship"
-}, capturedAt);
+};
+const source = buildReadOnlyProfileSource(input, capturedAt);
+const capture = normalizeProfileCaptureSource(source);
+
+assert.equal(source.schemaVersion, 1);
+assert.equal(source.source, "tinder-visible-profile");
+assert.equal(source.captureMode, "read-only");
+assert.equal(source.capturedAt, capturedAt);
+assert.equal(source.visibleFields.firstName, "Sam");
+assert.equal(source.visibleFields.age, 29);
+assert.equal(source.visibleFields.bio, "Loves hiking and coffee.");
+assert.deepEqual(source.visibleFields.interests, ["Hiking", "Coffee", "Hiking"]);
 
 assert.equal(capture.schemaVersion, 1);
 assert.equal(capture.source, "tinder-visible-profile");
 assert.equal(capture.capturedAt, capturedAt);
-assert.equal(capture.fields.firstName, "Sam");
-assert.equal(capture.fields.age, 29);
-assert.equal(capture.fields.bio, "Loves hiking and coffee.");
-assert.deepEqual(capture.fields.interests, ["Hiking", "Coffee", "Hiking"]);
+assert.deepEqual(capture.sourceSnapshot, source);
+assert.deepEqual(capture.fields, source.visibleFields);
+
+const compatibilityCapture = buildReadOnlyProfileCapture(input, capturedAt);
+assert.deepEqual(compatibilityCapture, capture);
 
 const invalid = buildReadOnlyProfileCapture({
   route: "x".repeat(700),
@@ -33,5 +45,6 @@ assert.equal(invalid.route.length, 512);
 assert.equal(invalid.fields.age, undefined);
 assert.equal(invalid.fields.bio?.length, 500);
 assert.equal(invalid.fields.interests?.length, 20);
+assert.equal(invalid.sourceSnapshot.captureMode, "read-only");
 
 console.log("Match profile capture contract checks passed.");
