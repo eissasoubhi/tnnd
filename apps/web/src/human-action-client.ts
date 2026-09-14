@@ -1,5 +1,6 @@
 import { readSession } from "./auth-client";
 import type { HumanActionItem, HumanActionStatus } from "./action-center";
+import { toManualAnswerRequest, type ManualAnswerDraft } from "./human-action-manual-answer";
 
 const apiBase = (import.meta.env.VITE_TNND_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "http://127.0.0.1:4000";
 
@@ -28,5 +29,21 @@ export async function setHumanActionStatus(id: string, status: HumanActionStatus
   });
   const payload = await parseJson<{ action?: HumanActionItem; error?: string }>(response);
   if (!response.ok || !payload?.action) throw new Error(payload?.error ?? "Unable to update action.");
+  return payload.action;
+}
+
+export async function submitHumanActionManualAnswer(draft: ManualAnswerDraft): Promise<HumanActionItem | null> {
+  const session = readSession();
+  if (!session) return null;
+  const request = toManualAnswerRequest(draft);
+  const response = await fetch(`${apiBase}/api/v1/human-actions/${encodeURIComponent(request.actionId)}/manual-answer`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${session.token}`, "content-type": "application/json" },
+    body: JSON.stringify({ answer: request.answer })
+  });
+  const payload = await parseJson<{ action?: HumanActionItem; error?: string; details?: string }>(response);
+  if (!response.ok || !payload?.action) {
+    throw new Error(payload?.details ?? payload?.error ?? "Unable to save manual answer.");
+  }
   return payload.action;
 }
