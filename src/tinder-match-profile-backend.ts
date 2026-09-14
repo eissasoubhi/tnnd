@@ -1,5 +1,5 @@
 import type { BackendSession } from "./storage";
-import type { TinderMatchProfileSourceCapture } from "./tinder-match-profile-capture";
+import type { TinderVisibleProfileSource } from "./tinder-match-profile-capture";
 
 const DEFAULT_API_BASE = "http://127.0.0.1:4000";
 
@@ -19,7 +19,7 @@ export class MatchProfileUploadError extends Error {
 
 export async function uploadVisibleMatchProfileCapture(
   session: BackendSession,
-  capture: TinderMatchProfileSourceCapture,
+  capture: TinderVisibleProfileSource,
   options: { conversationId?: string | null; apiBase?: string } = {}
 ): Promise<MatchProfileUploadResult> {
   const apiBase = options.apiBase ?? DEFAULT_API_BASE;
