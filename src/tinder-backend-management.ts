@@ -98,6 +98,16 @@ export function conversationStatusAllowsTinderAutomation(status: ConversationSta
     && status !== "moved-off-tinder";
 }
 
+export function describeConversationAutomationPause(status: ConversationStatus | null): string | null {
+  if (status === "action-required") {
+    return "Human action required · Tinder automation paused until the action is resolved in TNND.";
+  }
+  if (!conversationStatusAllowsTinderAutomation(status)) {
+    return `Conversation automation paused by server status: ${status}.`;
+  }
+  return null;
+}
+
 export async function loadTinderConversationManagement(
   externalThreadId: string
 ): Promise<TinderBackendConversationManagement> {
@@ -185,10 +195,11 @@ export async function resolveTinderBackendSyncDecision(
     : false;
 
   const currentSyncState = await getSyncState();
+  const pauseMessage = describeConversationAutomationPause(backend.conversationStatus);
   await saveSyncState({
     ...currentSyncState,
     reconciliationState: classifySyncReconciliation(persistedCursor, backend.syncCursor),
-    ...(statusAllowsAutomation ? {} : { message: `Conversation automation paused by server status: ${backend.conversationStatus}.` })
+    ...(pauseMessage ? { message: pauseMessage } : {})
   });
 
   return {
