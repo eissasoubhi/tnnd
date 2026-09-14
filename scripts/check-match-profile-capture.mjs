@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { buildProfileCaptureDedupeKey, buildReadOnlyProfileCapture, buildReadOnlyProfileSource, hasMeaningfulVisibleProfileFields, normalizeProfileCaptureSource } from "../src/tinder-match-profile-capture.ts";
 import { confirmVisibleMatchProfileUpload, planVisibleMatchProfileSync } from "../src/tinder-match-profile-sync.ts";
+import { normalizeMatchProfileSyncStateMap } from "../src/tinder-match-profile-sync-store.ts";
 
 const capturedAt = "2026-01-01T12:00:00.000Z";
 const input = {
@@ -54,5 +55,19 @@ assert.equal(changedDecision.status, "upload");
 assert.equal(changedDecision.nextState.lastUploadedDedupeKey, confirmedState.lastUploadedDedupeKey);
 const changedConfirmed = confirmVisibleMatchProfileUpload(changedDecision.nextState, changedDecision.dedupeKey);
 assert.notEqual(changedConfirmed.lastUploadedDedupeKey, confirmedState.lastUploadedDedupeKey);
+
+const persisted = normalizeMatchProfileSyncStateMap({
+  " thread-a ": { lastUploadedDedupeKey: " key-a ", updatedAt: "2026-01-01T12:00:00.000Z" },
+  broken: { lastUploadedDedupeKey: "", updatedAt: "not-a-date" }
+});
+assert.deepEqual(persisted, {
+  "thread-a": { lastUploadedDedupeKey: "key-a", updatedAt: "2026-01-01T12:00:00.000Z" }
+});
+
+const oversized = Object.fromEntries(Array.from({ length: 105 }, (_, index) => [
+  `scope-${index}`,
+  { lastUploadedDedupeKey: `key-${index}`, updatedAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString() }
+]));
+assert.equal(Object.keys(normalizeMatchProfileSyncStateMap(oversized)).length, 100);
 
 console.log("Match profile capture contract checks passed.");
