@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { buildProfileCaptureDedupeKey, buildReadOnlyProfileCapture, buildReadOnlyProfileSource, hasMeaningfulVisibleProfileFields, normalizeProfileCaptureSource } from "../src/tinder-match-profile-capture.ts";
+import { planVisibleMatchProfileSync } from "../src/tinder-match-profile-sync.ts";
 
 const capturedAt = "2026-01-01T12:00:00.000Z";
 const input = {
@@ -65,5 +66,19 @@ assert.deepEqual(emptySource.visibleFields, {
   interests: undefined,
   relationshipGoal: undefined
 });
+
+const emptyDecision = planVisibleMatchProfileSync(emptySource);
+assert.equal(emptyDecision.status, "skipped-empty");
+
+const firstDecision = planVisibleMatchProfileSync(source);
+assert.equal(firstDecision.status, "upload");
+assert.equal(firstDecision.nextState.lastUploadedDedupeKey, buildProfileCaptureDedupeKey(source));
+
+const unchangedDecision = planVisibleMatchProfileSync(recaptured, firstDecision.nextState);
+assert.equal(unchangedDecision.status, "skipped-unchanged");
+
+const changedDecision = planVisibleMatchProfileSync(changed, firstDecision.nextState);
+assert.equal(changedDecision.status, "upload");
+assert.notEqual(changedDecision.nextState.lastUploadedDedupeKey, firstDecision.nextState.lastUploadedDedupeKey);
 
 console.log("Match profile capture contract checks passed.");
