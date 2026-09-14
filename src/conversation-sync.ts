@@ -25,6 +25,7 @@ export interface ConversationSyncInput {
   externalThreadId: string;
   knownConversationId?: string;
   cursor?: string;
+  nextCursor?: string;
   status?: ConversationStatus;
   messages: ConversationMessageDelta[];
 }
@@ -72,7 +73,8 @@ export async function getConversationRef(externalThreadId: string): Promise<{ co
 export async function syncConversationDelta(
   externalThreadId: string,
   messages: ConversationMessageDelta[],
-  requestedStatus?: ConversationStatus
+  requestedStatus?: ConversationStatus,
+  nextCursor?: string
 ): Promise<ConversationSyncResult> {
   const session = await getBackendSession();
   if (!session) throw new Error("TNND account is not connected.");
@@ -83,6 +85,7 @@ export async function syncConversationDelta(
     externalThreadId,
     ...(previous?.conversationId ? { knownConversationId: previous.conversationId } : {}),
     ...(previous?.cursor ? { cursor: previous.cursor } : {}),
+    ...(nextCursor ? { nextCursor } : {}),
     ...(status ? { status } : {}),
     messages
   } satisfies ConversationSyncInput;
@@ -112,6 +115,10 @@ export async function syncConversationDelta(
     }
 
     if (response.ok && payload?.conversationId && payload.nextCursor) {
+      if (nextCursor && payload.nextCursor !== nextCursor) {
+        lastMessage = "Conversation sync cursor acknowledgement mismatch.";
+        break;
+      }
       refs[externalThreadId] = { conversationId: payload.conversationId, cursor: payload.nextCursor };
       await chrome.storage.local.set({ [threadRefsKey]: refs });
       await saveSyncState({ status: "connected", pendingItems: 0, lastSyncedAt: payload.serverTime, message: null });
