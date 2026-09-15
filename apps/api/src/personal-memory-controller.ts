@@ -1,3 +1,4 @@
+import { analyzePersonalMemoryWithGemini } from "./personal-memory-analysis-provider.js";
 import {
   approvePersonalMemory,
   createPersonalMemory,
@@ -27,10 +28,18 @@ export async function handlePersonalMemoryGetRequest(userId: string, idValue: un
 
 export async function handlePersonalMemoryCreateRequest(userId: string, body: Record<string, unknown>): Promise<PersonalMemoryControllerResult> {
   try {
-    const memory = await createPersonalMemory(userId, body.originalText, body.structuredAnalysis);
-    return { status: 201, body: { memory } };
+    const generated = body.structuredAnalysis
+      ? { analysis: body.structuredAnalysis, model: "user-supplied" }
+      : await analyzePersonalMemoryWithGemini(body.originalText);
+    const memory = await createPersonalMemory(userId, body.originalText, generated.analysis);
+    return { status: 201, body: { memory, analysisModel: generated.model } };
   } catch (error) {
-    return { status: 400, body: { error: error instanceof Error ? error.message : "invalid_personal_memory" } };
+    const code = error instanceof Error ? error.message : "invalid_personal_memory";
+    if (code === "gemini_not_configured") return { status: 503, body: { error: code } };
+    if (code.startsWith("gemini_provider_error:") || code === "gemini_empty_response" || code === "gemini_invalid_json" || code.startsWith("gemini_invalid_personal_memory:")) {
+      return { status: 502, body: { error: code } };
+    }
+    return { status: 400, body: { error: code } };
   }
 }
 
