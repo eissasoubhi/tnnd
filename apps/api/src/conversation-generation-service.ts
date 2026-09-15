@@ -67,7 +67,7 @@ export async function generateConversationReply(
   const context = await loadGeminiConversationPayload(userId, conversationId, defaults, temporaryInstruction);
   if (!context) return null;
   const rankedMemories = await retrievePersonalMemories(userId, {
-    context: `${normalizedMessage}\n${conversation.subject ?? ""}\n${conversation.goal ?? ""}`,
+    context: `${normalizedMessage}\n${conversation.currentTopic ?? ""}`,
     limit: 3
   });
   const personalMemories = rankedMemories.map(({ memory }) => ({
