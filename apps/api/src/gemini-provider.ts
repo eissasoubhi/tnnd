@@ -1,9 +1,18 @@
 import type { PersistedGeminiConversationPayload } from "./effective-conversation-context-service.js";
 
+export interface GeminiPersonalMemoryContext {
+  id: string;
+  title: string;
+  summary: string;
+  immutableFacts: string[];
+  conversationHooks: string[];
+}
+
 export interface GeminiGenerationInput {
   context: PersistedGeminiConversationPayload;
   latestMessage: string;
   previewInstruction?: string;
+  personalMemories?: GeminiPersonalMemoryContext[];
 }
 
 export interface GeminiGenerationResult {
@@ -47,6 +56,12 @@ export const callGeminiConversationProvider: GeminiConversationProvider = async 
     `Effective context JSON: ${JSON.stringify(input.context)}`,
     `Latest incoming message: ${input.latestMessage}`
   ];
+  if (input.personalMemories?.length) {
+    promptParts.push(
+      "Relevant approved Personal Memories follow. They are optional context, not mandatory content. Use at most one only when it fits naturally. Never invent or alter immutable facts, and do not force an anecdote into the reply.",
+      `Personal Memories JSON: ${JSON.stringify(input.personalMemories)}`
+    );
+  }
   if (input.previewInstruction?.trim()) {
     promptParts.push(
       "Preview-only regeneration instruction follows. Apply it only to this generated draft; it does not change durable conversation settings.",
