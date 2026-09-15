@@ -31,6 +31,20 @@ type PersonalMemoryRow = {
   updated_at: Date;
 };
 
+export type PersonalMemoryRetrievalOptions = {
+  context: string;
+  limit?: number;
+  now?: Date;
+};
+
+export type RankedPersonalMemory = {
+  memory: StoredPersonalMemory;
+  score: number;
+};
+
+const MAX_RETRIEVAL_LIMIT = 5;
+const RECENT_USE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
 export function normalizePersonalMemoryOriginalText(value: unknown): string {
   if (typeof value !== "string") throw new Error("invalid_original_text");
   const text = value.trim();
@@ -61,6 +75,61 @@ function rowToStored(row: PersonalMemoryRow): StoredPersonalMemory {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString()
   };
+}
+
+function normalizeRetrievalTerms(value: string): Set<string> {
+  return new Set(
+    value
+      .toLocaleLowerCase()
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .split(/[^\p{L}\p{N}]+/u)
+      .map((term) => term.trim())
+      .filter((term) => term.length >= 3)
+  );
+}
+
+function retrievalOverlapScore(contextTerms: Set<string>, values: string[]): number {
+  let score = 0;
+  for (const value of values) {
+    for (const term of normalizeRetrievalTerms(value)) {
+      if (contextTerms.has(term)) score += 1;
+    }
+  }
+  return score;
+}
+
+export function scorePersonalMemory(memory: StoredPersonalMemory, context: string, now = new Date()): number {
+  if (memory.reviewStatus !== "approved" || !memory.structuredAnalysis.allowedForChat) return Number.NEGATIVE_INFINITY;
+  const contextTerms = normalizeRetrievalTerms(context);
+  if (contextTerms.size === 0) return Number.NEGATIVE_INFINITY;
+
+  const analysis = memory.structuredAnalysis;
+  let score = retrievalOverlapScore(contextTerms, analysis.topics) * 4;
+  score += retrievalOverlapScore(contextTerms, analysis.conversationHooks) * 3;
+  score += retrievalOverlapScore(contextTerms, [analysis.title, analysis.summary]) * 2;
+  score += retrievalOverlapScore(contextTerms, analysis.immutableFacts);
+  if (score <= 0) return Number.NEGATIVE_INFINITY;
+
+  score -= Math.min(memory.usageCount, 10) * 0.35;
+  if (memory.lastUsedAt) {
+    const elapsed = now.getTime() - new Date(memory.lastUsedAt).getTime();
+    if (elapsed >= 0 && elapsed < RECENT_USE_WINDOW_MS) score -= 2 * (1 - elapsed / RECENT_USE_WINDOW_MS);
+  }
+  return score;
+}
+
+export function rankPersonalMemories(
+  memories: StoredPersonalMemory[],
+  options: PersonalMemoryRetrievalOptions
+): RankedPersonalMemory[] {
+  const limit = Math.max(1, Math.min(Math.trunc(options.limit ?? 3), MAX_RETRIEVAL_LIMIT));
+  const now = options.now ?? new Date();
+  return memories
+    .map((memory) => ({ memory, score: scorePersonalMemory(memory, options.context, now) }))
+    .filter((item) => Number.isFinite(item.score) && item.score > 0)
+    .sort((a, b) => b.score - a.score || a.memory.usageCount - b.memory.usageCount)
+    .slice(0, limit);
 }
 
 const returningColumns = `id, original_text, structured_analysis, review_status, approved_at,
@@ -94,6 +163,13 @@ export async function listPersonalMemories(userId: string): Promise<StoredPerson
     [userId]
   );
   return result.rows.map(rowToStored);
+}
+
+export async function retrievePersonalMemories(
+  userId: string,
+  options: PersonalMemoryRetrievalOptions
+): Promise<RankedPersonalMemory[]> {
+  return rankPersonalMemories(await listPersonalMemories(userId), options);
 }
 
 export async function getPersonalMemory(userId: string, memoryId: string): Promise<StoredPersonalMemory | null> {
