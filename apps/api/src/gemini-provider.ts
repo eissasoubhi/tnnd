@@ -18,6 +18,7 @@ export interface GeminiGenerationInput {
 export interface GeminiGenerationResult {
   text: string;
   model: string;
+  usedPersonalMemoryId?: string;
 }
 
 export type GeminiConversationProvider = (input: GeminiGenerationInput) => Promise<GeminiGenerationResult>;
@@ -45,6 +46,22 @@ function responseText(value: unknown): string {
   return "";
 }
 
+function parseGenerationOutput(raw: string, personalMemoryIds: string[]): { text: string; usedPersonalMemoryId?: string } {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid");
+    const text = (parsed as { text?: unknown }).text;
+    const used = (parsed as { usedPersonalMemoryId?: unknown }).usedPersonalMemoryId;
+    if (typeof text !== "string" || !text.trim()) throw new Error("invalid");
+    return {
+      text: text.trim(),
+      ...(typeof used === "string" && personalMemoryIds.includes(used) ? { usedPersonalMemoryId: used } : {})
+    };
+  } catch {
+    return { text: raw };
+  }
+}
+
 export const callGeminiConversationProvider: GeminiConversationProvider = async (input) => {
   const apiKey = (process.env.GEMINI_API_KEY ?? "").trim();
   if (!apiKey) throw new Error("gemini_not_configured");
@@ -68,7 +85,9 @@ export const callGeminiConversationProvider: GeminiConversationProvider = async 
       input.previewInstruction.trim()
     );
   }
-  promptParts.push("Return only the reply text.");
+  promptParts.push(
+    "Return JSON only with shape {\"text\":\"reply\",\"usedPersonalMemoryId\":null}. Set usedPersonalMemoryId to the exact supplied memory id only when that memory materially influenced the reply; otherwise null."
+  );
   const prompt = promptParts.join("\n\n");
 
   const response = await fetch(endpoint, {
@@ -79,12 +98,13 @@ export const callGeminiConversationProvider: GeminiConversationProvider = async 
     },
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.8, maxOutputTokens: 220 }
+      generationConfig: { temperature: 0.8, maxOutputTokens: 220, responseMimeType: "application/json" }
     })
   });
   if (!response.ok) throw new Error(`gemini_provider_error:${response.status}`);
   const payload: unknown = await response.json();
-  const text = responseText(payload);
-  if (!text) throw new Error("gemini_empty_response");
-  return { text: text.slice(0, 4000), model };
+  const raw = responseText(payload);
+  if (!raw) throw new Error("gemini_empty_response");
+  const generated = parseGenerationOutput(raw, input.personalMemories?.map((memory) => memory.id) ?? []);
+  return { text: generated.text.slice(0, 4000), model, ...(generated.usedPersonalMemoryId ? { usedPersonalMemoryId: generated.usedPersonalMemoryId } : {}) };
 };
