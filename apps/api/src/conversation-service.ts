@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getPool } from "./db-client.js";
 import { tryAcquireConversationThreadLock } from "./conversation-thread-lock-service.js";
-import { refreshConversationTopics } from "./topic-analysis-orchestration-service.js";
+import { analyzeAndRecordConversationTopics } from "./conversation-topic-orchestration-service.js";
 import type { ConversationSyncRequest, ConversationSyncResponse, ConversationStatus } from "./conversation-sync-contract.js";
 
 export type TemporaryInstructionScope = "next-message" | "next-n-replies" | "until-cleared";
@@ -45,14 +45,11 @@ export interface ConversationDetailRecord extends ConversationSummary {
 
 export async function syncConversation(userId: string, input: ConversationSyncRequest): Promise<ConversationSyncResponse> {
   const client = await getPool().connect();
-  let committedConversationId: string | undefined;
-  let shouldRefreshTopics = false;
+  let committed = false;
   try {
     await client.query("BEGIN");
     const lockAcquired = await tryAcquireConversationThreadLock(client, userId, input.externalThreadId);
-    if (!lockAcquired) {
-      throw new ConversationThreadBusyError();
-    }
+    if (!lockAcquired) throw new ConversationThreadBusyError();
 
     const existing = await client.query<{ id: string; status: ConversationStatus }>(
       `SELECT id, status FROM conversations
@@ -126,18 +123,17 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
       [nextCursor, conversationId, userId]
     );
     await client.query("COMMIT");
-    committedConversationId = conversationId;
-    shouldRefreshTopics = acceptedMessageIds.length > 0;
-    if (shouldRefreshTopics) {
+    committed = true;
+    if (acceptedMessageIds.length > 0) {
       try {
-        await refreshConversationTopics(userId, conversationId);
+        await analyzeAndRecordConversationTopics(userId, conversationId);
       } catch {
         // Topic analysis is enrichment: durable message sync must remain successful if Gemini is unavailable.
       }
     }
     return { conversationId, status, acceptedMessageIds, nextCursor, serverTime };
   } catch (error) {
-    if (!committedConversationId) await client.query("ROLLBACK");
+    if (!committed) await client.query("ROLLBACK");
     throw error;
   } finally {
     client.release();
@@ -145,184 +141,46 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
 }
 
 export async function listConversations(userId: string): Promise<ConversationSummary[]> {
-  const result = await getPool().query<{
-    id: string;
-    external_thread_id: string;
-    status: ConversationStatus;
-    current_topic: string | null;
-    last_message_at: Date | null;
-    pending_human_actions: string | number;
-    updated_at: Date;
-  }>(
+  const result = await getPool().query<{ id: string; external_thread_id: string; status: ConversationStatus; current_topic: string | null; last_message_at: Date | null; pending_human_actions: string | number; updated_at: Date }>(
     `SELECT c.id, c.external_thread_id, c.status, c.current_topic, c.updated_at,
             MAX(m.sent_at) AS last_message_at,
-            (
-              SELECT COUNT(*)
-              FROM human_actions h
-              WHERE h.user_id = c.user_id
-                AND h.status = 'pending'
-                AND (h.conversation_ref = c.id::text OR h.conversation_ref = c.external_thread_id)
-            ) AS pending_human_actions
-     FROM conversations c
-     LEFT JOIN conversation_messages m ON m.conversation_id = c.id
-     WHERE c.user_id = $1
-     GROUP BY c.id
-     ORDER BY COALESCE(MAX(m.sent_at), c.updated_at) DESC`,
-    [userId]
-  );
-  return result.rows.map((row) => ({
-    id: row.id,
-    externalThreadId: row.external_thread_id,
-    status: row.status,
-    ...(row.current_topic ? { currentTopic: row.current_topic } : {}),
-    ...(row.last_message_at ? { lastMessageAt: row.last_message_at.toISOString() } : {}),
-    pendingHumanActions: Number(row.pending_human_actions) || 0,
-    updatedAt: row.updated_at.toISOString()
-  }));
+            (SELECT COUNT(*) FROM human_actions h WHERE h.user_id = c.user_id AND h.status = 'pending' AND (h.conversation_ref = c.id::text OR h.conversation_ref = c.external_thread_id)) AS pending_human_actions
+     FROM conversations c LEFT JOIN conversation_messages m ON m.conversation_id = c.id
+     WHERE c.user_id = $1 GROUP BY c.id ORDER BY COALESCE(MAX(m.sent_at), c.updated_at) DESC`, [userId]);
+  return result.rows.map((row) => ({ id: row.id, externalThreadId: row.external_thread_id, status: row.status, ...(row.current_topic ? { currentTopic: row.current_topic } : {}), ...(row.last_message_at ? { lastMessageAt: row.last_message_at.toISOString() } : {}), pendingHumanActions: Number(row.pending_human_actions) || 0, updatedAt: row.updated_at.toISOString() }));
 }
 
 export async function getConversation(userId: string, conversationId: string): Promise<ConversationDetailRecord | null> {
-  const conversationResult = await getPool().query<{
-    id: string;
-    external_thread_id: string;
-    status: ConversationStatus;
-    current_topic: string | null;
-    temporary_instruction: string | null;
-    temporary_instruction_scope: TemporaryInstructionScope | null;
-    temporary_instruction_remaining: number | null;
-    pending_human_actions: string | number;
-    updated_at: Date;
-  }>(
-    `SELECT c.id, c.external_thread_id, c.status, c.current_topic,
-            c.temporary_instruction, c.temporary_instruction_scope, c.temporary_instruction_remaining,
-            c.updated_at,
-            (
-              SELECT COUNT(*)
-              FROM human_actions h
-              WHERE h.user_id = c.user_id
-                AND h.status = 'pending'
-                AND (h.conversation_ref = c.id::text OR h.conversation_ref = c.external_thread_id)
-            ) AS pending_human_actions
-     FROM conversations c
-     WHERE c.user_id = $1 AND c.id = $2
-     LIMIT 1`,
-    [userId, conversationId]
-  );
+  const conversationResult = await getPool().query<{ id: string; external_thread_id: string; status: ConversationStatus; current_topic: string | null; temporary_instruction: string | null; temporary_instruction_scope: TemporaryInstructionScope | null; temporary_instruction_remaining: number | null; pending_human_actions: string | number; updated_at: Date }>(
+    `SELECT c.id, c.external_thread_id, c.status, c.current_topic, c.temporary_instruction, c.temporary_instruction_scope, c.temporary_instruction_remaining, c.updated_at,
+            (SELECT COUNT(*) FROM human_actions h WHERE h.user_id = c.user_id AND h.status = 'pending' AND (h.conversation_ref = c.id::text OR h.conversation_ref = c.external_thread_id)) AS pending_human_actions
+     FROM conversations c WHERE c.user_id = $1 AND c.id = $2 LIMIT 1`, [userId, conversationId]);
   const conversation = conversationResult.rows[0];
   if (!conversation) return null;
-
-  const messagesResult = await getPool().query<{
-    id: string;
-    direction: "incoming" | "outgoing";
-    body: string;
-    sent_at: Date;
-  }>(
-    `SELECT id, direction, body, sent_at
-     FROM conversation_messages
-     WHERE conversation_id = $1
-     ORDER BY sent_at ASC, created_at ASC`,
-    [conversationId]
-  );
-
-  const messages = messagesResult.rows.map((row) => ({
-    id: row.id,
-    direction: row.direction,
-    text: row.body,
-    sentAt: row.sent_at.toISOString()
-  }));
-
-  const temporaryInstruction = conversation.temporary_instruction && conversation.temporary_instruction_scope
-    ? {
-        text: conversation.temporary_instruction,
-        scope: conversation.temporary_instruction_scope,
-        ...(conversation.temporary_instruction_remaining
-          ? { remainingReplies: conversation.temporary_instruction_remaining }
-          : {})
-      }
-    : undefined;
-
-  return {
-    id: conversation.id,
-    externalThreadId: conversation.external_thread_id,
-    status: conversation.status,
-    ...(conversation.current_topic ? { currentTopic: conversation.current_topic } : {}),
-    ...(messages.length ? { lastMessageAt: messages[messages.length - 1].sentAt } : {}),
-    pendingHumanActions: Number(conversation.pending_human_actions) || 0,
-    updatedAt: conversation.updated_at.toISOString(),
-    messages,
-    ...(temporaryInstruction ? { temporaryInstruction } : {})
-  };
+  const messagesResult = await getPool().query<{ id: string; direction: "incoming" | "outgoing"; body: string; sent_at: Date }>(
+    `SELECT id, direction, body, sent_at FROM conversation_messages WHERE conversation_id = $1 ORDER BY sent_at ASC, created_at ASC`, [conversationId]);
+  const messages = messagesResult.rows.map((row) => ({ id: row.id, direction: row.direction, text: row.body, sentAt: row.sent_at.toISOString() }));
+  const temporaryInstruction = conversation.temporary_instruction && conversation.temporary_instruction_scope ? { text: conversation.temporary_instruction, scope: conversation.temporary_instruction_scope, ...(conversation.temporary_instruction_remaining ? { remainingReplies: conversation.temporary_instruction_remaining } : {}) } : undefined;
+  return { id: conversation.id, externalThreadId: conversation.external_thread_id, status: conversation.status, ...(conversation.current_topic ? { currentTopic: conversation.current_topic } : {}), ...(messages.length ? { lastMessageAt: messages[messages.length - 1].sentAt } : {}), pendingHumanActions: Number(conversation.pending_human_actions) || 0, updatedAt: conversation.updated_at.toISOString(), messages, ...(temporaryInstruction ? { temporaryInstruction } : {}) };
 }
 
-export async function updateConversationStatus(
-  userId: string,
-  conversationId: string,
-  status: ConversationStatus
-): Promise<ConversationSummary | null> {
-  const result = await getPool().query<{
-    id: string;
-    external_thread_id: string;
-    status: ConversationStatus;
-    current_topic: string | null;
-    updated_at: Date;
-  }>(
-    `UPDATE conversations
-     SET status = $1, updated_at = now()
-     WHERE id = $2 AND user_id = $3
-     RETURNING id, external_thread_id, status, current_topic, updated_at`,
-    [status, conversationId, userId]
-  );
+export async function updateConversationStatus(userId: string, conversationId: string, status: ConversationStatus): Promise<ConversationSummary | null> {
+  const result = await getPool().query<{ id: string; external_thread_id: string; status: ConversationStatus; current_topic: string | null; updated_at: Date }>(
+    `UPDATE conversations SET status = $1, updated_at = now() WHERE id = $2 AND user_id = $3 RETURNING id, external_thread_id, status, current_topic, updated_at`, [status, conversationId, userId]);
   const row = result.rows[0];
   if (!row) return null;
-  return {
-    id: row.id,
-    externalThreadId: row.external_thread_id,
-    status: row.status,
-    ...(row.current_topic ? { currentTopic: row.current_topic } : {}),
-    updatedAt: row.updated_at.toISOString()
-  };
+  return { id: row.id, externalThreadId: row.external_thread_id, status: row.status, ...(row.current_topic ? { currentTopic: row.current_topic } : {}), updatedAt: row.updated_at.toISOString() };
 }
 
-export async function setConversationTemporaryInstruction(
-  userId: string,
-  conversationId: string,
-  instruction: TemporaryInstruction
-): Promise<TemporaryInstruction | null> {
-  const remainingReplies = instruction.scope === "next-message"
-    ? 1
-    : instruction.scope === "next-n-replies"
-      ? instruction.remainingReplies
-      : null;
+export async function setConversationTemporaryInstruction(userId: string, conversationId: string, instruction: TemporaryInstruction): Promise<TemporaryInstruction | null> {
+  const remainingReplies = instruction.scope === "next-message" ? 1 : instruction.scope === "next-n-replies" ? instruction.remainingReplies : null;
   const result = await getPool().query<{ id: string }>(
-    `UPDATE conversations
-     SET temporary_instruction = $1,
-         temporary_instruction_scope = $2,
-         temporary_instruction_remaining = $3,
-         updated_at = now()
-     WHERE id = $4 AND user_id = $5
-     RETURNING id`,
-    [instruction.text, instruction.scope, remainingReplies ?? null, conversationId, userId]
-  );
+    `UPDATE conversations SET temporary_instruction = $1, temporary_instruction_scope = $2, temporary_instruction_remaining = $3, updated_at = now() WHERE id = $4 AND user_id = $5 RETURNING id`, [instruction.text, instruction.scope, remainingReplies ?? null, conversationId, userId]);
   if (!result.rows[0]) return null;
-  return {
-    text: instruction.text,
-    scope: instruction.scope,
-    ...(remainingReplies ? { remainingReplies } : {})
-  };
+  return { text: instruction.text, scope: instruction.scope, ...(remainingReplies ? { remainingReplies } : {}) };
 }
 
-export async function clearConversationTemporaryInstruction(
-  userId: string,
-  conversationId: string
-): Promise<boolean> {
-  const result = await getPool().query(
-    `UPDATE conversations
-     SET temporary_instruction = NULL,
-         temporary_instruction_scope = NULL,
-         temporary_instruction_remaining = NULL,
-         updated_at = now()
-     WHERE id = $1 AND user_id = $2`,
-    [conversationId, userId]
-  );
+export async function clearConversationTemporaryInstruction(userId: string, conversationId: string): Promise<boolean> {
+  const result = await getPool().query(`UPDATE conversations SET temporary_instruction = NULL, temporary_instruction_scope = NULL, temporary_instruction_remaining = NULL, updated_at = now() WHERE id = $1 AND user_id = $2`, [conversationId, userId]);
   return Boolean(result.rowCount);
 }
