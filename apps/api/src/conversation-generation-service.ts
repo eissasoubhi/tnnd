@@ -7,6 +7,7 @@ import {
   type GeminiConversationProvider,
   type GeminiGenerationResult
 } from "./gemini-provider.js";
+import { retrievePersonalMemories } from "./personal-memory-service.js";
 
 function safeGlobalDefaults(value: unknown): ConversationOverrides {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -34,6 +35,7 @@ export interface ConversationGenerationResult extends GeminiGenerationResult {
     hasPersistentInstruction: boolean;
     hasTemporaryInstruction: boolean;
     hasPreviewInstruction: boolean;
+    personalMemoryCandidateIds: string[];
   };
 }
 
@@ -64,9 +66,21 @@ export async function generateConversationReply(
     : null;
   const context = await loadGeminiConversationPayload(userId, conversationId, defaults, temporaryInstruction);
   if (!context) return null;
+  const rankedMemories = await retrievePersonalMemories(userId, {
+    context: `${normalizedMessage}\n${conversation.currentTopic ?? ""}`,
+    limit: 3
+  });
+  const personalMemories = rankedMemories.map(({ memory }) => ({
+    id: memory.id,
+    title: memory.structuredAnalysis.title,
+    summary: memory.structuredAnalysis.summary,
+    immutableFacts: memory.structuredAnalysis.immutableFacts,
+    conversationHooks: memory.structuredAnalysis.conversationHooks
+  }));
   const generated = await provider({
     context,
     latestMessage: normalizedMessage,
+    ...(personalMemories.length ? { personalMemories } : {}),
     ...(normalizedPreviewInstruction ? { previewInstruction: normalizedPreviewInstruction } : {})
   });
   return {
@@ -76,7 +90,8 @@ export async function generateConversationReply(
       overriddenFields: context.provenance.overriddenFields.map(String),
       hasPersistentInstruction: context.provenance.hasPersistentInstruction,
       hasTemporaryInstruction: context.provenance.hasTemporaryInstruction,
-      hasPreviewInstruction: Boolean(normalizedPreviewInstruction)
+      hasPreviewInstruction: Boolean(normalizedPreviewInstruction),
+      personalMemoryCandidateIds: personalMemories.map((memory) => memory.id)
     }
   };
 }
