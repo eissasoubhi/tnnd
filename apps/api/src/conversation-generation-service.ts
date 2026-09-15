@@ -7,7 +7,7 @@ import {
   type GeminiConversationProvider,
   type GeminiGenerationResult
 } from "./gemini-provider.js";
-import { retrievePersonalMemories } from "./personal-memory-service.js";
+import { markPersonalMemoriesUsed, retrievePersonalMemories } from "./personal-memory-service.js";
 
 function safeGlobalDefaults(value: unknown): ConversationOverrides {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -36,6 +36,7 @@ export interface ConversationGenerationResult extends GeminiGenerationResult {
     hasTemporaryInstruction: boolean;
     hasPreviewInstruction: boolean;
     personalMemoryCandidateIds: string[];
+    usedPersonalMemoryId: string | null;
   };
 }
 
@@ -83,15 +84,22 @@ export async function generateConversationReply(
     ...(personalMemories.length ? { personalMemories } : {}),
     ...(normalizedPreviewInstruction ? { previewInstruction: normalizedPreviewInstruction } : {})
   });
+  const candidateIds = personalMemories.map((memory) => memory.id);
+  const usedId = generated.usedPersonalMemoryId && candidateIds.includes(generated.usedPersonalMemoryId)
+    ? generated.usedPersonalMemoryId
+    : null;
+  if (usedId) await markPersonalMemoriesUsed(userId, [usedId]);
   return {
     conversationId,
     ...generated,
+    ...(usedId ? { usedPersonalMemoryId: usedId } : {}),
     provenance: {
       overriddenFields: context.provenance.overriddenFields.map(String),
       hasPersistentInstruction: context.provenance.hasPersistentInstruction,
       hasTemporaryInstruction: context.provenance.hasTemporaryInstruction,
       hasPreviewInstruction: Boolean(normalizedPreviewInstruction),
-      personalMemoryCandidateIds: personalMemories.map((memory) => memory.id)
+      personalMemoryCandidateIds: candidateIds,
+      usedPersonalMemoryId: usedId
     }
   };
 }
