@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getPool } from "./db-client.js";
 import { tryAcquireConversationThreadLock } from "./conversation-thread-lock-service.js";
+import { refreshConversationTopics } from "./topic-analysis-orchestration-service.js";
 import type { ConversationSyncRequest, ConversationSyncResponse, ConversationStatus } from "./conversation-sync-contract.js";
 
 export type TemporaryInstructionScope = "next-message" | "next-n-replies" | "until-cleared";
@@ -44,6 +45,8 @@ export interface ConversationDetailRecord extends ConversationSummary {
 
 export async function syncConversation(userId: string, input: ConversationSyncRequest): Promise<ConversationSyncResponse> {
   const client = await getPool().connect();
+  let committedConversationId: string | undefined;
+  let shouldRefreshTopics = false;
   try {
     await client.query("BEGIN");
     const lockAcquired = await tryAcquireConversationThreadLock(client, userId, input.externalThreadId);
@@ -123,9 +126,18 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
       [nextCursor, conversationId, userId]
     );
     await client.query("COMMIT");
+    committedConversationId = conversationId;
+    shouldRefreshTopics = acceptedMessageIds.length > 0;
+    if (shouldRefreshTopics) {
+      try {
+        await refreshConversationTopics(userId, conversationId);
+      } catch {
+        // Topic analysis is enrichment: durable message sync must remain successful if Gemini is unavailable.
+      }
+    }
     return { conversationId, status, acceptedMessageIds, nextCursor, serverTime };
   } catch (error) {
-    await client.query("ROLLBACK");
+    if (!committedConversationId) await client.query("ROLLBACK");
     throw error;
   } finally {
     client.release();
