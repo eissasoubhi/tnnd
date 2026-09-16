@@ -3,6 +3,7 @@ import type {
   GenerationHumanActionContext,
   GenerationMatchProfileContext
 } from "./generation-supplemental-context.js";
+import type { GenerationUserProfileContext } from "./generation-user-profile-context.js";
 
 export interface GeminiPersonalMemoryContext {
   id: string;
@@ -33,6 +34,7 @@ export interface GeminiGenerationInput {
   recentMessages?: GeminiRecentMessageContext[];
   matchProfile?: GenerationMatchProfileContext;
   humanActions?: GenerationHumanActionContext[];
+  userProfile?: GenerationUserProfileContext;
 }
 
 export interface GeminiGenerationResult {
@@ -93,6 +95,12 @@ export const callGeminiConversationProvider: GeminiConversationProvider = async 
     `Effective context JSON: ${JSON.stringify(input.context)}`,
     `Latest incoming message: ${input.latestMessage}`
   ];
+  if (input.userProfile) {
+    promptParts.push(
+      "The user's compact profile follows. Treat identity and dating intent as user-provided context, and use texting/language preferences to make the reply sound like the user. Do not reveal private profile details unless the conversation naturally calls for them.",
+      `User profile JSON: ${JSON.stringify(input.userProfile)}`
+    );
+  }
   if (input.conversationSummary?.trim()) {
     promptParts.push(
       "A durable summary of the older conversation history follows. Use it for long-term continuity and facts already established in the chat. Prefer recent messages when they conflict with or supersede older summary context.",
