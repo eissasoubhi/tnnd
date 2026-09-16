@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getPool } from "./db-client.js";
 import { tryAcquireConversationThreadLock } from "./conversation-thread-lock-service.js";
+import { analyzeAndRecordConversationTopics } from "./conversation-topic-orchestration-service.js";
 import type { ConversationSyncRequest, ConversationSyncResponse, ConversationStatus } from "./conversation-sync-contract.js";
 
 export type TemporaryInstructionScope = "next-message" | "next-n-replies" | "until-cleared";
@@ -44,6 +45,8 @@ export interface ConversationDetailRecord extends ConversationSummary {
 
 export async function syncConversation(userId: string, input: ConversationSyncRequest): Promise<ConversationSyncResponse> {
   const client = await getPool().connect();
+  let committed = false;
+  let result: ConversationSyncResponse | undefined;
   try {
     await client.query("BEGIN");
     const lockAcquired = await tryAcquireConversationThreadLock(client, userId, input.externalThreadId);
@@ -76,14 +79,14 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
     const acceptedMessageIds: string[] = [];
     let acceptedOutgoingCount = 0;
     for (const message of input.messages) {
-      const result = await client.query(
+      const insertResult = await client.query(
         `INSERT INTO conversation_messages (id, conversation_id, external_message_id, direction, body, sent_at)
          VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (conversation_id, external_message_id) DO NOTHING
          RETURNING external_message_id`,
         [randomUUID(), conversationId, message.externalMessageId, message.direction, message.text, message.sentAt]
       );
-      if (result.rowCount) {
+      if (insertResult.rowCount) {
         acceptedMessageIds.push(message.externalMessageId);
         if (message.direction === "outgoing") acceptedOutgoingCount += 1;
       }
@@ -123,13 +126,19 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
       [nextCursor, conversationId, userId]
     );
     await client.query("COMMIT");
-    return { conversationId, status, acceptedMessageIds, nextCursor, serverTime };
+    committed = true;
+    result = { conversationId, status, acceptedMessageIds, nextCursor, serverTime };
   } catch (error) {
-    await client.query("ROLLBACK");
+    if (!committed) await client.query("ROLLBACK");
     throw error;
   } finally {
     client.release();
   }
+  if (!result) throw new Error("conversation_sync_failed");
+  if (result.acceptedMessageIds.length > 0) {
+    void analyzeAndRecordConversationTopics(userId, result.conversationId).catch(() => undefined);
+  }
+  return result;
 }
 
 export async function listConversations(userId: string): Promise<ConversationSummary[]> {
@@ -279,9 +288,9 @@ export async function setConversationTemporaryInstruction(
   const remainingReplies = instruction.scope === "next-message"
     ? 1
     : instruction.scope === "next-n-replies"
-      ? instruction.remainingReplies
+      ? instruction.remainingReplies ?? null
       : null;
-  const result = await getPool().query<{ id: string }>(
+  const result = await getPool().query(
     `UPDATE conversations
      SET temporary_instruction = $1,
          temporary_instruction_scope = $2,
@@ -289,9 +298,9 @@ export async function setConversationTemporaryInstruction(
          updated_at = now()
      WHERE id = $4 AND user_id = $5
      RETURNING id`,
-    [instruction.text, instruction.scope, remainingReplies ?? null, conversationId, userId]
+    [instruction.text, instruction.scope, remainingReplies, conversationId, userId]
   );
-  if (!result.rows[0]) return null;
+  if (!result.rowCount) return null;
   return {
     text: instruction.text,
     scope: instruction.scope,
@@ -299,10 +308,7 @@ export async function setConversationTemporaryInstruction(
   };
 }
 
-export async function clearConversationTemporaryInstruction(
-  userId: string,
-  conversationId: string
-): Promise<boolean> {
+export async function clearConversationTemporaryInstruction(userId: string, conversationId: string): Promise<boolean> {
   const result = await getPool().query(
     `UPDATE conversations
      SET temporary_instruction = NULL,
