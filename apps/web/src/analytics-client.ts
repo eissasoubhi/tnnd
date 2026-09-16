@@ -1,0 +1,53 @@
+import type { AuthSession } from "./auth-client";
+
+const apiBase = (import.meta.env.VITE_TNND_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "http://127.0.0.1:4000";
+
+export interface OperationalAnalytics {
+  active: number;
+  waitingForThem: number;
+  waitingForUser: number;
+  actionRequired: number;
+  paused: number;
+  disabled: number;
+  movedOffTinder: number;
+  stale: number;
+  archived: number;
+}
+
+export interface TopicAnalyticsRow {
+  topic: string;
+  conversationCount: number;
+  messageCount: number;
+  lastDiscussedAt: string;
+}
+
+export interface MemoryCoverageRow extends TopicAnalyticsRow {
+  approvedMemoryCount: number;
+  memoryUsageCount: number;
+  coverageScore: number;
+  gap: "none" | "low" | "covered";
+}
+
+export interface AnalyticsSnapshot {
+  generatedAt: string;
+  operational: OperationalAnalytics;
+  topics: TopicAnalyticsRow[];
+  memoryCoverage: MemoryCoverageRow[];
+}
+
+export async function loadAnalytics(session: AuthSession): Promise<AnalyticsSnapshot> {
+  const response = await fetch(`${apiBase}/api/v1/analytics`, {
+    headers: { authorization: `Bearer ${session.token}` }
+  });
+  const payload = await response.json().catch(() => null) as AnalyticsSnapshot | { error?: string } | null;
+  if (!response.ok || !payload || "error" in payload) {
+    throw new Error(payload && "error" in payload ? payload.error ?? "Unable to load analytics." : "Unable to load analytics.");
+  }
+  return payload;
+}
+
+export function analyticsContentGaps(snapshot: AnalyticsSnapshot): MemoryCoverageRow[] {
+  return snapshot.memoryCoverage
+    .filter((row) => row.gap !== "covered")
+    .sort((left, right) => right.messageCount - left.messageCount || right.conversationCount - left.conversationCount);
+}
