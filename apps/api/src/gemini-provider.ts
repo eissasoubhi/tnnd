@@ -25,6 +25,7 @@ export interface GeminiGenerationInput {
   previewInstruction?: string;
   personalMemories?: GeminiPersonalMemoryContext[];
   topics?: GeminiTopicContext;
+  conversationSummary?: string;
   recentMessages?: GeminiRecentMessageContext[];
 }
 
@@ -86,6 +87,12 @@ export const callGeminiConversationProvider: GeminiConversationProvider = async 
     `Effective context JSON: ${JSON.stringify(input.context)}`,
     `Latest incoming message: ${input.latestMessage}`
   ];
+  if (input.conversationSummary?.trim()) {
+    promptParts.push(
+      "A durable summary of the older conversation history follows. Use it for long-term continuity and facts already established in the chat. Prefer recent messages when they conflict with or supersede older summary context.",
+      `Conversation summary: ${input.conversationSummary.trim()}`
+    );
+  }
   if (input.recentMessages?.length) {
     promptParts.push(
       "Recent durable conversation messages follow in chronological order. Use them for local continuity and pronoun/reference resolution; do not repeat an outgoing message merely because it appears here.",
