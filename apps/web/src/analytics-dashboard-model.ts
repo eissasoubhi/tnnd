@@ -1,5 +1,5 @@
 import type { AnalyticsSnapshot, OperationalAnalytics, TopicAnalyticsRow } from "./analytics-client";
-import { analyticsSuggestions, type AnalyticsSuggestion } from "./analytics-suggestions";
+import { buildAnalyticsSuggestions, type AnalyticsSuggestion } from "./analytics-suggestions";
 
 export interface OperationalMetric {
   key: keyof OperationalAnalytics;
@@ -44,7 +44,7 @@ export function buildAnalyticsDashboardModel(snapshot: AnalyticsSnapshot): Analy
     topTopics: [...snapshot.topics]
       .sort((left, right) => right.messageCount - left.messageCount || right.conversationCount - left.conversationCount)
       .slice(0, 5),
-    suggestions: analyticsSuggestions(snapshot).slice(0, 5),
+    suggestions: buildAnalyticsSuggestions(snapshot, 5),
     totalConversationsNeedingAttention:
       snapshot.operational.waitingForUser + snapshot.operational.actionRequired + snapshot.operational.stale
   };
