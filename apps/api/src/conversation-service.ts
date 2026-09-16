@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { getPool } from "./db-client.js";
 import { tryAcquireConversationThreadLock } from "./conversation-thread-lock-service.js";
 import { analyzeAndRecordConversationTopics } from "./conversation-topic-orchestration-service.js";
+import { summarizeConversationIfNeeded } from "./conversation-summary-orchestration-service.js";
 import type { ConversationSyncRequest, ConversationSyncResponse, ConversationStatus } from "./conversation-sync-contract.js";
 
 export type TemporaryInstructionScope = "next-message" | "next-n-replies" | "until-cleared";
@@ -137,6 +138,7 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
   if (!result) throw new Error("conversation_sync_failed");
   if (result.acceptedMessageIds.length > 0) {
     void analyzeAndRecordConversationTopics(userId, result.conversationId).catch(() => undefined);
+    void summarizeConversationIfNeeded(userId, result.conversationId).catch(() => undefined);
   }
   return result;
 }
