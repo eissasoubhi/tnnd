@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { analyzeAndRecordConversationFacts } from "./conversation-fact-orchestration-service.js";
 import { getPool } from "./db-client.js";
 import { tryAcquireConversationThreadLock } from "./conversation-thread-lock-service.js";
 import { analyzeAndRecordConversationTopics } from "./conversation-topic-orchestration-service.js";
@@ -141,6 +142,7 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
   if (result.acceptedMessageIds.length > 0) {
     void analyzeAndRecordConversationTopics(userId, result.conversationId).catch(() => undefined);
     void summarizeConversationIfNeeded(userId, result.conversationId).catch(() => undefined);
+    void analyzeAndRecordConversationFacts(userId, result.conversationId).catch(() => undefined);
   }
   return result;
 }
