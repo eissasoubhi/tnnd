@@ -96,10 +96,14 @@ export async function generateConversationReply(
     secondaryTopics: topicState.secondaryTopics.slice(0, 5).map(toTopic),
     recentTopics: topicState.recentTopics.slice(0, 5).map(toTopic)
   };
+  const recentMessages = conversation.messages
+    .slice(-12)
+    .map((message) => ({ direction: message.direction, text: message.text.slice(0, 1000) }));
   const generated = await provider({
     context,
     latestMessage: normalizedMessage,
     topics,
+    ...(recentMessages.length ? { recentMessages } : {}),
     ...(personalMemories.length ? { personalMemories } : {}),
     ...(normalizedPreviewInstruction ? { previewInstruction: normalizedPreviewInstruction } : {})
   });
