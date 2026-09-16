@@ -1,6 +1,6 @@
+import { listConversationFacts } from "./conversation-fact-service.js";
 import { getConversation } from "./conversation-service.js";
 import { getConversationSummary } from "./conversation-summary-service.js";
-import { getConversationTopicState } from "./conversation-topic-service.js";
 import { loadGeminiConversationPayload } from "./effective-conversation-context-service.js";
 import {
   callGeminiConversationProvider,
@@ -35,13 +35,14 @@ export async function generateConversationReply(
   const normalizedPreviewInstruction = previewInstruction?.trim() ?? "";
   if (normalizedPreviewInstruction.length > 1000) throw new Error("invalid_preview_instruction");
 
-  const [conversation, generationProfile, topicState, conversationSummary] = await Promise.all([
+  const [conversation, generationProfile, conversationSummary, durableFacts] = await Promise.all([
     getConversation(userId, conversationId),
     loadGenerationProfile(userId),
-    getConversationTopicState(conversationId),
-    getConversationSummary(conversationId)
+    getConversationSummary(conversationId),
+    listConversationFacts(conversationId, 20)
   ]);
   if (!conversation) return null;
+  const topicState = conversation.topicState;
 
   const temporaryInstruction = conversation.temporaryInstruction
     ? {
@@ -85,6 +86,12 @@ export async function generateConversationReply(
   const recentMessages = conversation.messages
     .slice(-12)
     .map((message) => ({ direction: message.direction, text: message.text.slice(0, 1000) }));
+  const conversationFacts = durableFacts.map((fact) => ({
+    subject: fact.subject,
+    key: fact.key,
+    value: fact.value,
+    confidence: fact.confidence
+  }));
   const generated = await provider({
     context,
     latestMessage: normalizedMessage,
@@ -92,6 +99,7 @@ export async function generateConversationReply(
     ...(generationProfile.userProfile ? { userProfile: generationProfile.userProfile } : {}),
     ...(conversationSummary ? { conversationSummary: conversationSummary.summary } : {}),
     ...(recentMessages.length ? { recentMessages } : {}),
+    ...(conversationFacts.length ? { conversationFacts } : {}),
     ...(supplementalContext.matchProfile ? { matchProfile: supplementalContext.matchProfile } : {}),
     ...(supplementalContext.humanActions.length ? { humanActions: supplementalContext.humanActions } : {}),
     ...(personalMemories.length ? { personalMemories } : {}),
