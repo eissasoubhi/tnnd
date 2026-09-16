@@ -35,13 +35,24 @@ export interface AnalyticsSnapshot {
   memoryCoverage: MemoryCoverageRow[];
 }
 
+interface AnalyticsErrorPayload {
+  error?: string;
+}
+
+function isAnalyticsError(payload: AnalyticsSnapshot | AnalyticsErrorPayload): payload is AnalyticsErrorPayload {
+  return "error" in payload;
+}
+
 export async function loadAnalytics(session: AuthSession): Promise<AnalyticsSnapshot> {
   const response = await fetch(`${apiBase}/api/v1/analytics`, {
     headers: { authorization: `Bearer ${session.token}` }
   });
-  const payload = await response.json().catch(() => null) as AnalyticsSnapshot | { error?: string } | null;
-  if (!response.ok || !payload || "error" in payload) {
-    throw new Error(payload && "error" in payload ? payload.error ?? "Unable to load analytics." : "Unable to load analytics.");
+  const payload = await response.json().catch(() => null) as AnalyticsSnapshot | AnalyticsErrorPayload | null;
+  if (!response.ok || !payload) {
+    throw new Error("Unable to load analytics.");
+  }
+  if (isAnalyticsError(payload)) {
+    throw new Error(payload.error ?? "Unable to load analytics.");
   }
   return payload;
 }
