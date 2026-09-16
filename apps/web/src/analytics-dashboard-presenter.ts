@@ -19,8 +19,8 @@ export interface AnalyticsDashboardPresentation {
   suggestions: AnalyticsDashboardSection<{
     topic: string;
     title: string;
-    reason: string;
-    priority: number;
+    detail: string;
+    priority: "high" | "medium";
   }>;
 }
 
@@ -49,7 +49,7 @@ export function presentAnalyticsDashboard(model: AnalyticsDashboardModel): Analy
       items: model.suggestions.map((suggestion) => ({
         topic: suggestion.topic,
         title: suggestion.title,
-        reason: suggestion.reason,
+        detail: suggestion.detail,
         priority: suggestion.priority
       }))
     }
