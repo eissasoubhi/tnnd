@@ -1,5 +1,6 @@
 import { getConversation } from "./conversation-service.js";
 import { validateConversationOverrides, type ConversationOverrides } from "./conversation-overrides.js";
+import { getConversationSummary } from "./conversation-summary-service.js";
 import { getConversationTopicState } from "./conversation-topic-service.js";
 import { getPool } from "./db-client.js";
 import { loadGeminiConversationPayload } from "./effective-conversation-context-service.js";
@@ -53,10 +54,11 @@ export async function generateConversationReply(
   const normalizedPreviewInstruction = previewInstruction?.trim() ?? "";
   if (normalizedPreviewInstruction.length > 1000) throw new Error("invalid_preview_instruction");
 
-  const [conversation, defaults, topicState] = await Promise.all([
+  const [conversation, defaults, topicState, conversationSummary] = await Promise.all([
     getConversation(userId, conversationId),
     loadGlobalDefaults(userId),
-    getConversationTopicState(conversationId)
+    getConversationTopicState(conversationId),
+    getConversationSummary(conversationId)
   ]);
   if (!conversation) return null;
 
@@ -103,6 +105,7 @@ export async function generateConversationReply(
     context,
     latestMessage: normalizedMessage,
     topics,
+    ...(conversationSummary ? { conversationSummary: conversationSummary.summary } : {}),
     ...(recentMessages.length ? { recentMessages } : {}),
     ...(personalMemories.length ? { personalMemories } : {}),
     ...(normalizedPreviewInstruction ? { previewInstruction: normalizedPreviewInstruction } : {})
