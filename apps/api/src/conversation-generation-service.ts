@@ -86,9 +86,25 @@ export async function generateConversationReply(
     immutableFacts: memory.structuredAnalysis.immutableFacts,
     conversationHooks: memory.structuredAnalysis.conversationHooks
   }));
+  const topics = {
+    primaryTopic: topicState.primaryTopic
+      ? { topic: topicState.primaryTopic.topic, subtopic: topicState.primaryTopic.subtopic, confidence: topicState.primaryTopic.confidence }
+      : null,
+    secondaryTopics: topicState.secondaryTopics.slice(0, 5).map((topic) => ({
+      topic: topic.topic,
+      subtopic: topic.subtopic,
+      confidence: topic.confidence
+    })),
+    recentTopics: topicState.recentTopics.slice(0, 5).map((topic) => ({
+      topic: topic.topic,
+      subtopic: topic.subtopic,
+      confidence: topic.confidence
+    }))
+  };
   const generated = await provider({
     context,
     latestMessage: normalizedMessage,
+    topics,
     ...(personalMemories.length ? { personalMemories } : {}),
     ...(normalizedPreviewInstruction ? { previewInstruction: normalizedPreviewInstruction } : {})
   });
