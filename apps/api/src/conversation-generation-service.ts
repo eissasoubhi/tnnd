@@ -1,35 +1,15 @@
 import { getConversation } from "./conversation-service.js";
-import { validateConversationOverrides, type ConversationOverrides } from "./conversation-overrides.js";
 import { getConversationSummary } from "./conversation-summary-service.js";
 import { getConversationTopicState } from "./conversation-topic-service.js";
-import { getPool } from "./db-client.js";
 import { loadGeminiConversationPayload } from "./effective-conversation-context-service.js";
 import {
   callGeminiConversationProvider,
   type GeminiConversationProvider,
   type GeminiGenerationResult
 } from "./gemini-provider.js";
+import { loadGenerationProfile } from "./generation-user-profile-context.js";
 import { loadGenerationSupplementalContext } from "./generation-supplemental-context.js";
 import { markPersonalMemoriesUsed, retrievePersonalMemories } from "./personal-memory-service.js";
-
-function safeGlobalDefaults(value: unknown): ConversationOverrides {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const conversationDefaults = (value as { conversationDefaults?: unknown }).conversationDefaults;
-  if (!conversationDefaults) return {};
-  try {
-    return validateConversationOverrides(conversationDefaults);
-  } catch {
-    return {};
-  }
-}
-
-async function loadGlobalDefaults(userId: string): Promise<ConversationOverrides> {
-  const result = await getPool().query<{ profile_json: unknown }>(
-    "SELECT profile_json FROM user_profiles WHERE user_id = $1 LIMIT 1",
-    [userId]
-  );
-  return safeGlobalDefaults(result.rows[0]?.profile_json);
-}
 
 export interface ConversationGenerationResult extends GeminiGenerationResult {
   conversationId: string;
@@ -55,9 +35,9 @@ export async function generateConversationReply(
   const normalizedPreviewInstruction = previewInstruction?.trim() ?? "";
   if (normalizedPreviewInstruction.length > 1000) throw new Error("invalid_preview_instruction");
 
-  const [conversation, defaults, topicState, conversationSummary] = await Promise.all([
+  const [conversation, generationProfile, topicState, conversationSummary] = await Promise.all([
     getConversation(userId, conversationId),
-    loadGlobalDefaults(userId),
+    loadGenerationProfile(userId),
     getConversationTopicState(conversationId),
     getConversationSummary(conversationId)
   ]);
@@ -71,7 +51,7 @@ export async function generateConversationReply(
       }
     : null;
   const [context, supplementalContext] = await Promise.all([
-    loadGeminiConversationPayload(userId, conversationId, defaults, temporaryInstruction),
+    loadGeminiConversationPayload(userId, conversationId, generationProfile.defaults, temporaryInstruction),
     loadGenerationSupplementalContext(userId, conversationId, conversation.externalThreadId)
   ]);
   if (!context) return null;
@@ -109,6 +89,7 @@ export async function generateConversationReply(
     context,
     latestMessage: normalizedMessage,
     topics,
+    ...(generationProfile.userProfile ? { userProfile: generationProfile.userProfile } : {}),
     ...(conversationSummary ? { conversationSummary: conversationSummary.summary } : {}),
     ...(recentMessages.length ? { recentMessages } : {}),
     ...(supplementalContext.matchProfile ? { matchProfile: supplementalContext.matchProfile } : {}),
