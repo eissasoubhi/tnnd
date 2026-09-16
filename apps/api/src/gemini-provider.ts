@@ -24,6 +24,13 @@ export interface GeminiRecentMessageContext {
   text: string;
 }
 
+export interface GeminiConversationFactContext {
+  subject: "match" | "user" | "shared";
+  key: string;
+  value: string;
+  confidence: number;
+}
+
 export interface GeminiGenerationInput {
   context: PersistedGeminiConversationPayload;
   latestMessage: string;
@@ -32,6 +39,7 @@ export interface GeminiGenerationInput {
   topics?: GeminiTopicContext;
   conversationSummary?: string;
   recentMessages?: GeminiRecentMessageContext[];
+  conversationFacts?: GeminiConversationFactContext[];
   matchProfile?: GenerationMatchProfileContext;
   humanActions?: GenerationHumanActionContext[];
   userProfile?: GenerationUserProfileContext;
@@ -111,6 +119,12 @@ export const callGeminiConversationProvider: GeminiConversationProvider = async 
     promptParts.push(
       "Recent durable conversation messages follow in chronological order. Use them for local continuity and pronoun/reference resolution; do not repeat an outgoing message merely because it appears here.",
       `Recent messages JSON: ${JSON.stringify(input.recentMessages)}`
+    );
+  }
+  if (input.conversationFacts?.length) {
+    promptParts.push(
+      "Grounded durable conversation facts follow. Use them only when relevant to continuity. Higher confidence is stronger evidence, but recent messages override stale facts. Do not expose a fact merely because it is stored and never embellish it beyond the supplied value.",
+      `Conversation facts JSON: ${JSON.stringify(input.conversationFacts)}`
     );
   }
   if (input.topics) {
