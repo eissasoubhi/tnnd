@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { getPool } from "./db-client.js";
 import { tryAcquireConversationThreadLock } from "./conversation-thread-lock-service.js";
 import { analyzeAndRecordConversationTopics } from "./conversation-topic-orchestration-service.js";
+import { getConversationTopicState, type ConversationTopicState } from "./conversation-topic-service.js";
 import { summarizeConversationIfNeeded } from "./conversation-summary-orchestration-service.js";
 import type { ConversationSyncRequest, ConversationSyncResponse, ConversationStatus } from "./conversation-sync-contract.js";
 
@@ -42,6 +43,7 @@ export interface ConversationMessageRecord {
 export interface ConversationDetailRecord extends ConversationSummary {
   messages: ConversationMessageRecord[];
   temporaryInstruction?: TemporaryInstruction;
+  topicState: ConversationTopicState;
 }
 
 export async function syncConversation(userId: string, input: ConversationSyncRequest): Promise<ConversationSyncResponse> {
@@ -210,18 +212,21 @@ export async function getConversation(userId: string, conversationId: string): P
   const conversation = conversationResult.rows[0];
   if (!conversation) return null;
 
-  const messagesResult = await getPool().query<{
-    id: string;
-    direction: "incoming" | "outgoing";
-    body: string;
-    sent_at: Date;
-  }>(
-    `SELECT id, direction, body, sent_at
-     FROM conversation_messages
-     WHERE conversation_id = $1
-     ORDER BY sent_at ASC, created_at ASC`,
-    [conversationId]
-  );
+  const [messagesResult, topicState] = await Promise.all([
+    getPool().query<{
+      id: string;
+      direction: "incoming" | "outgoing";
+      body: string;
+      sent_at: Date;
+    }>(
+      `SELECT id, direction, body, sent_at
+       FROM conversation_messages
+       WHERE conversation_id = $1
+       ORDER BY sent_at ASC, created_at ASC`,
+      [conversationId]
+    ),
+    getConversationTopicState(conversationId)
+  ]);
 
   const messages = messagesResult.rows.map((row) => ({
     id: row.id,
@@ -249,6 +254,7 @@ export async function getConversation(userId: string, conversationId: string): P
     pendingHumanActions: Number(conversation.pending_human_actions) || 0,
     updatedAt: conversation.updated_at.toISOString(),
     messages,
+    topicState,
     ...(temporaryInstruction ? { temporaryInstruction } : {})
   };
 }

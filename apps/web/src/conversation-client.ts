@@ -32,6 +32,19 @@ export interface ConversationMessage {
   sentAt: string;
 }
 
+export interface ConversationTopic {
+  topic: string;
+  subtopic?: string;
+  confidence: number;
+  messageCount?: number;
+}
+
+export interface ConversationTopicState {
+  primaryTopic?: ConversationTopic;
+  secondaryTopics: ConversationTopic[];
+  recentTopics: ConversationTopic[];
+}
+
 export type TemporaryInstructionScope = "next-message" | "next-n-replies" | "until-cleared";
 
 export interface TemporaryInstruction {
@@ -45,6 +58,7 @@ export interface ConversationDetail {
   displayName: string;
   status: ConversationStatus;
   currentTopic: string | null;
+  topicState: ConversationTopicState;
   pendingHumanActions?: number;
   temporaryInstruction?: TemporaryInstruction | null;
   messages: ConversationMessage[];
@@ -81,6 +95,36 @@ function normalizeMessage(value: unknown): ConversationMessage {
   return { id: input.id, direction: input.direction, text: input.text, sentAt: input.sentAt };
 }
 
+function normalizeTopic(value: unknown): ConversationTopic {
+  if (!value || typeof value !== "object") throw new Error("Conversation topic must be an object");
+  const input = value as Record<string, unknown>;
+  if (typeof input.topic !== "string" || !input.topic.trim()) throw new Error("Conversation topic is required");
+  const confidence = typeof input.confidence === "number" && Number.isFinite(input.confidence)
+    ? Math.max(0, Math.min(1, input.confidence))
+    : 0;
+  const messageCount = typeof input.messageCount === "number" && Number.isFinite(input.messageCount)
+    ? Math.max(0, Math.floor(input.messageCount))
+    : undefined;
+  return {
+    topic: input.topic.trim(),
+    ...(typeof input.subtopic === "string" && input.subtopic.trim() ? { subtopic: input.subtopic.trim() } : {}),
+    confidence,
+    ...(messageCount !== undefined ? { messageCount } : {})
+  };
+}
+
+function normalizeTopicState(value: unknown): ConversationTopicState {
+  if (!value || typeof value !== "object") return { secondaryTopics: [], recentTopics: [] };
+  const input = value as Record<string, unknown>;
+  const secondaryTopics = Array.isArray(input.secondaryTopics) ? input.secondaryTopics.map(normalizeTopic) : [];
+  const recentTopics = Array.isArray(input.recentTopics) ? input.recentTopics.map(normalizeTopic) : [];
+  return {
+    ...(input.primaryTopic ? { primaryTopic: normalizeTopic(input.primaryTopic) } : {}),
+    secondaryTopics,
+    recentTopics
+  };
+}
+
 function normalizeConversationDetail(value: unknown): ConversationDetail {
   if (!value || typeof value !== "object") throw new Error("Conversation detail must be an object");
   const input = value as Record<string, unknown>;
@@ -96,6 +140,7 @@ function normalizeConversationDetail(value: unknown): ConversationDetail {
     displayName: input.displayName,
     status: input.status,
     currentTopic: typeof input.currentTopic === "string" ? input.currentTopic : null,
+    topicState: normalizeTopicState(input.topicState),
     pendingHumanActions,
     temporaryInstruction: normalizeTemporaryInstruction(input.temporaryInstruction),
     messages: input.messages.map(normalizeMessage)
