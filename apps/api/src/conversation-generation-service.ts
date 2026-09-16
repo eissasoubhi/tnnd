@@ -1,5 +1,6 @@
 import { getConversation } from "./conversation-service.js";
 import { validateConversationOverrides, type ConversationOverrides } from "./conversation-overrides.js";
+import { getConversationTopicState } from "./conversation-topic-service.js";
 import { getPool } from "./db-client.js";
 import { loadGeminiConversationPayload } from "./effective-conversation-context-service.js";
 import {
@@ -52,9 +53,10 @@ export async function generateConversationReply(
   const normalizedPreviewInstruction = previewInstruction?.trim() ?? "";
   if (normalizedPreviewInstruction.length > 1000) throw new Error("invalid_preview_instruction");
 
-  const [conversation, defaults] = await Promise.all([
+  const [conversation, defaults, topicState] = await Promise.all([
     getConversation(userId, conversationId),
-    loadGlobalDefaults(userId)
+    loadGlobalDefaults(userId),
+    getConversationTopicState(conversationId)
   ]);
   if (!conversation) return null;
 
@@ -67,8 +69,14 @@ export async function generateConversationReply(
     : null;
   const context = await loadGeminiConversationPayload(userId, conversationId, defaults, temporaryInstruction);
   if (!context) return null;
+  const topicTerms = [
+    topicState.primaryTopic?.topic,
+    topicState.primaryTopic?.subtopic,
+    ...topicState.secondaryTopics.flatMap((topic) => [topic.topic, topic.subtopic]),
+    ...topicState.recentTopics.slice(0, 5).flatMap((topic) => [topic.topic, topic.subtopic])
+  ].filter((value): value is string => Boolean(value));
   const rankedMemories = await retrievePersonalMemories(userId, {
-    context: `${normalizedMessage}\n${conversation.currentTopic ?? ""}`,
+    context: [normalizedMessage, ...new Set(topicTerms)].join("\n"),
     limit: 3
   });
   const personalMemories = rankedMemories.map(({ memory }) => ({
