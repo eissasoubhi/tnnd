@@ -14,12 +14,18 @@ export interface GeminiTopicContext {
   recentTopics: Array<{ topic: string; subtopic: string | null; confidence: number }>;
 }
 
+export interface GeminiRecentMessageContext {
+  direction: "incoming" | "outgoing";
+  text: string;
+}
+
 export interface GeminiGenerationInput {
   context: PersistedGeminiConversationPayload;
   latestMessage: string;
   previewInstruction?: string;
   personalMemories?: GeminiPersonalMemoryContext[];
   topics?: GeminiTopicContext;
+  recentMessages?: GeminiRecentMessageContext[];
 }
 
 export interface GeminiGenerationResult {
@@ -80,6 +86,12 @@ export const callGeminiConversationProvider: GeminiConversationProvider = async 
     `Effective context JSON: ${JSON.stringify(input.context)}`,
     `Latest incoming message: ${input.latestMessage}`
   ];
+  if (input.recentMessages?.length) {
+    promptParts.push(
+      "Recent durable conversation messages follow in chronological order. Use them for local continuity and pronoun/reference resolution; do not repeat an outgoing message merely because it appears here.",
+      `Recent messages JSON: ${JSON.stringify(input.recentMessages)}`
+    );
+  }
   if (input.topics) {
     promptParts.push(
       "Conversation Topic Engine state follows. Use it to maintain continuity, avoid unnecessary repetition, and make natural subject transitions. Treat confidence as uncertain context rather than fact.",
