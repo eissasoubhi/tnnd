@@ -1,4 +1,8 @@
 import type { PersistedGeminiConversationPayload } from "./effective-conversation-context-service.js";
+import type {
+  GenerationHumanActionContext,
+  GenerationMatchProfileContext
+} from "./generation-supplemental-context.js";
 
 export interface GeminiPersonalMemoryContext {
   id: string;
@@ -27,6 +31,8 @@ export interface GeminiGenerationInput {
   topics?: GeminiTopicContext;
   conversationSummary?: string;
   recentMessages?: GeminiRecentMessageContext[];
+  matchProfile?: GenerationMatchProfileContext;
+  humanActions?: GenerationHumanActionContext[];
 }
 
 export interface GeminiGenerationResult {
@@ -103,6 +109,18 @@ export const callGeminiConversationProvider: GeminiConversationProvider = async 
     promptParts.push(
       "Conversation Topic Engine state follows. Use it to maintain continuity, avoid unnecessary repetition, and make natural subject transitions. Treat confidence as uncertain context rather than fact.",
       `Topic state JSON: ${JSON.stringify(input.topics)}`
+    );
+  }
+  if (input.matchProfile) {
+    promptParts.push(
+      "Visible match-profile context follows. Use it only when relevant and naturally. Do not claim the match stated these profile facts in chat, and avoid repeatedly mentioning profile details.",
+      `Match profile JSON: ${JSON.stringify(input.matchProfile)}`
+    );
+  }
+  if (input.humanActions?.length) {
+    promptParts.push(
+      "Human-action state follows. Pending actions represent real-world or manual constraints: never claim they happened and do not work around them. Completed manual answers are user-provided facts that may be phrased naturally when relevant. Ignored actions are not included.",
+      `Human actions JSON: ${JSON.stringify(input.humanActions)}`
     );
   }
   if (input.personalMemories?.length) {

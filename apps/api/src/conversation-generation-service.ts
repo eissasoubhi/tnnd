@@ -9,6 +9,7 @@ import {
   type GeminiConversationProvider,
   type GeminiGenerationResult
 } from "./gemini-provider.js";
+import { loadGenerationSupplementalContext } from "./generation-supplemental-context.js";
 import { markPersonalMemoriesUsed, retrievePersonalMemories } from "./personal-memory-service.js";
 
 function safeGlobalDefaults(value: unknown): ConversationOverrides {
@@ -69,7 +70,10 @@ export async function generateConversationReply(
         remainingReplies: conversation.temporaryInstruction.remainingReplies ?? null
       }
     : null;
-  const context = await loadGeminiConversationPayload(userId, conversationId, defaults, temporaryInstruction);
+  const [context, supplementalContext] = await Promise.all([
+    loadGeminiConversationPayload(userId, conversationId, defaults, temporaryInstruction),
+    loadGenerationSupplementalContext(userId, conversationId, conversation.externalThreadId)
+  ]);
   if (!context) return null;
   const topicTerms = [
     topicState.primaryTopic?.topic,
@@ -107,6 +111,8 @@ export async function generateConversationReply(
     topics,
     ...(conversationSummary ? { conversationSummary: conversationSummary.summary } : {}),
     ...(recentMessages.length ? { recentMessages } : {}),
+    ...(supplementalContext.matchProfile ? { matchProfile: supplementalContext.matchProfile } : {}),
+    ...(supplementalContext.humanActions.length ? { humanActions: supplementalContext.humanActions } : {}),
     ...(personalMemories.length ? { personalMemories } : {}),
     ...(normalizedPreviewInstruction ? { previewInstruction: normalizedPreviewInstruction } : {})
   });
