@@ -90,6 +90,45 @@ function renderTemporaryInstruction(detail: ConversationDetail): string {
   `;
 }
 
+function topicLabel(topic: { topic: string; subtopic?: string }): string {
+  return topic.subtopic ? `${topic.topic} / ${topic.subtopic}` : topic.topic;
+}
+
+function renderTopicState(detail: ConversationDetail): string {
+  const { primaryTopic, secondaryTopics, recentTopics } = detail.topicState;
+  if (!primaryTopic && !secondaryTopics.length && !recentTopics.length) {
+    return `
+      <section class="conversation-topic-panel" aria-label="Topic Engine state">
+        <div class="conversation-topic-heading"><strong>Topic Engine</strong><span class="pill">Waiting</span></div>
+        <p class="subtle">Structured topics will appear after enough conversation context is synchronized.</p>
+      </section>
+    `;
+  }
+  const secondary = secondaryTopics.length
+    ? secondaryTopics.map((topic) => `<span class="conversation-topic-chip">${escapeHtml(topicLabel(topic))}</span>`).join("")
+    : '<span class="subtle">No secondary topics.</span>';
+  const recent = recentTopics.slice(0, 5).map((topic) => escapeHtml(topicLabel(topic))).join(" · ");
+  const confidence = primaryTopic ? `${Math.round(primaryTopic.confidence * 100)}% confidence` : "No primary topic";
+  return `
+    <section class="conversation-topic-panel" aria-label="Topic Engine state">
+      <div class="conversation-topic-heading">
+        <div><strong>Topic Engine</strong><small>Live structured conversation context</small></div>
+        <span class="pill">${escapeHtml(confidence)}</span>
+      </div>
+      <div class="conversation-topic-primary">
+        <small>Primary topic</small>
+        <strong>${primaryTopic ? escapeHtml(topicLabel(primaryTopic)) : "Not established"}</strong>
+        ${primaryTopic?.messageCount ? `<small>${primaryTopic.messageCount} observed messages</small>` : ""}
+      </div>
+      <div>
+        <small>Secondary topics</small>
+        <div class="conversation-topic-chips">${secondary}</div>
+      </div>
+      ${recent ? `<p class="conversation-topic-recent"><small>Recent: ${recent}</small></p>` : ""}
+    </section>
+  `;
+}
+
 function renderDetail(detail: ConversationDetail): string {
   const messages = detail.messages.length
     ? detail.messages.map((message) => `
@@ -112,6 +151,7 @@ function renderDetail(detail: ConversationDetail): string {
     <div class="conversation-status-actions" aria-label="Conversation controls">
       ${renderStatusActions(detail)}
     </div>
+    ${renderTopicState(detail)}
     ${renderTemporaryInstruction(detail)}
     <div class="conversation-messages">${messages}</div>
   `;
@@ -150,6 +190,7 @@ function installStyles(): void {
     .conversation-row:hover{border-color:currentColor}.conversation-row.selected{outline:2px solid currentColor;outline-offset:1px}.conversation-row-main,.conversation-row-meta{display:grid;gap:4px}.conversation-row-meta{text-align:right;justify-items:end}.conversation-row small,.conversation-detail small,.conversation-message small{opacity:.65}
     .conversation-detail{min-height:180px;border:1px solid var(--border,#d4d4d8);border-radius:12px;padding:12px}.conversation-detail-heading{display:flex;justify-content:space-between;gap:12px;margin-bottom:10px}.conversation-detail-heading>div{display:grid;gap:4px}
     .conversation-status-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.conversation-status-action{width:auto;padding:7px 10px;border:1px solid var(--border,#d4d4d8);border-radius:8px;background:transparent;color:inherit;cursor:pointer}.conversation-status-action:hover{border-color:currentColor}.conversation-status-action.danger{border-style:dashed}.conversation-status-action:disabled{opacity:.55;cursor:wait}
+    .conversation-topic-panel{display:grid;gap:9px;padding:11px;margin-bottom:12px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:rgba(127,127,127,.04)}.conversation-topic-heading{display:flex;align-items:start;justify-content:space-between;gap:10px}.conversation-topic-heading>div,.conversation-topic-primary{display:grid;gap:3px}.conversation-topic-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}.conversation-topic-chip{display:inline-flex;padding:4px 7px;border:1px solid var(--border,#d4d4d8);border-radius:999px;font-size:11px}.conversation-topic-recent{margin:0}
     .temporary-instruction-panel{display:grid;gap:9px;padding:11px;margin-bottom:12px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:rgba(127,127,127,.04)}.temporary-instruction-heading{display:flex;align-items:start;justify-content:space-between;gap:10px}.temporary-instruction-heading>div{display:grid;gap:3px}.temporary-instruction-panel textarea{width:100%;min-height:74px;resize:vertical}.temporary-instruction-controls{display:grid;grid-template-columns:1fr 110px;gap:8px}.temporary-instruction-controls label{display:grid;gap:4px;font-size:11px}.temporary-instruction-controls select,.temporary-instruction-controls input{width:100%}.temporary-instruction-actions{display:flex;gap:8px}.temporary-instruction-actions button{width:auto;padding:7px 10px;border:1px solid var(--border,#d4d4d8);border-radius:8px;background:transparent;color:inherit;cursor:pointer}.temporary-instruction-actions .danger{border-style:dashed}.temporary-instruction-actions button:disabled{opacity:.55;cursor:wait}
     .conversation-messages{display:grid;gap:8px;max-height:340px;overflow:auto}.conversation-message{max-width:86%;padding:9px 10px;border-radius:10px;background:rgba(127,127,127,.12)}.conversation-message.outgoing{justify-self:end}.conversation-message.incoming{justify-self:start}.conversation-message span{font-size:10px;font-weight:700;opacity:.7}.conversation-message p{margin:3px 0 4px;white-space:pre-wrap}
     @media(max-width:760px){.conversation-layout{grid-template-columns:1fr}.conversation-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.temporary-instruction-controls{grid-template-columns:1fr}}
