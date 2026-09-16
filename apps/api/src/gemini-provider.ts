@@ -8,11 +8,18 @@ export interface GeminiPersonalMemoryContext {
   conversationHooks: string[];
 }
 
+export interface GeminiTopicContext {
+  primaryTopic: { topic: string; subtopic: string | null; confidence: number } | null;
+  secondaryTopics: Array<{ topic: string; subtopic: string | null; confidence: number }>;
+  recentTopics: Array<{ topic: string; subtopic: string | null; confidence: number }>;
+}
+
 export interface GeminiGenerationInput {
   context: PersistedGeminiConversationPayload;
   latestMessage: string;
   previewInstruction?: string;
   personalMemories?: GeminiPersonalMemoryContext[];
+  topics?: GeminiTopicContext;
 }
 
 export interface GeminiGenerationResult {
@@ -73,6 +80,12 @@ export const callGeminiConversationProvider: GeminiConversationProvider = async 
     `Effective context JSON: ${JSON.stringify(input.context)}`,
     `Latest incoming message: ${input.latestMessage}`
   ];
+  if (input.topics) {
+    promptParts.push(
+      "Conversation Topic Engine state follows. Use it to maintain continuity, avoid unnecessary repetition, and make natural subject transitions. Treat confidence as uncertain context rather than fact.",
+      `Topic state JSON: ${JSON.stringify(input.topics)}`
+    );
+  }
   if (input.personalMemories?.length) {
     promptParts.push(
       "Relevant approved Personal Memories follow. They are optional context, not mandatory content. Use at most one only when it fits naturally. Never invent or alter immutable facts, and do not force an anecdote into the reply.",
