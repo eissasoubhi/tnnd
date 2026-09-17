@@ -1,10 +1,17 @@
 import { handleAnalyticsRequest, type AnalyticsControllerResult, type AnalyticsSnapshotLoader } from "./analytics-controller.js";
 
+export const analyticsRoutePath = "/api/v1/analytics";
+export const analyticsCapability = "analytics";
+
 export interface AnalyticsRouteSession {
   user: { id: string };
 }
 
 export type AnalyticsRouteAuthenticator = () => Promise<AnalyticsRouteSession | null>;
+
+export function isAnalyticsRoute(method: string | undefined, pathname: string): boolean {
+  return method === "GET" && pathname === analyticsRoutePath;
+}
 
 export async function handleAuthenticatedAnalyticsRoute(
   authenticate: AnalyticsRouteAuthenticator,

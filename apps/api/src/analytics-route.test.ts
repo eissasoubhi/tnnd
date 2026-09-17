@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { handleAuthenticatedAnalyticsRoute } from "./analytics-route.js";
+import { analyticsCapability, analyticsRoutePath, handleAuthenticatedAnalyticsRoute, isAnalyticsRoute } from "./analytics-route.js";
 import type { AnalyticsSnapshot } from "./analytics-service.js";
 
 const snapshot: AnalyticsSnapshot = {
@@ -19,6 +19,14 @@ const snapshot: AnalyticsSnapshot = {
   topics: [],
   memoryCoverage: []
 };
+
+test("analytics HTTP contract exposes one versioned GET route", () => {
+  assert.equal(analyticsRoutePath, "/api/v1/analytics");
+  assert.equal(analyticsCapability, "analytics");
+  assert.equal(isAnalyticsRoute("GET", "/api/v1/analytics"), true);
+  assert.equal(isAnalyticsRoute("POST", "/api/v1/analytics"), false);
+  assert.equal(isAnalyticsRoute("GET", "/api/v1/analytics/other"), false);
+});
 
 test("analytics route requires an authenticated session", async () => {
   const result = await handleAuthenticatedAnalyticsRoute(async () => null, async () => snapshot);
