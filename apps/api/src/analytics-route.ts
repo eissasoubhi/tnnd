@@ -24,3 +24,13 @@ export async function handleAuthenticatedAnalyticsRoute(
 
   return handleAnalyticsRequest(session.user.id, loadSnapshot);
 }
+
+export async function dispatchAnalyticsRoute(
+  method: string | undefined,
+  pathname: string,
+  authenticate: AnalyticsRouteAuthenticator,
+  loadSnapshot?: AnalyticsSnapshotLoader
+): Promise<AnalyticsControllerResult | null> {
+  if (!isAnalyticsRoute(method, pathname)) return null;
+  return handleAuthenticatedAnalyticsRoute(authenticate, loadSnapshot);
+}

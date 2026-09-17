@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { analyticsCapability, analyticsRoutePath, handleAuthenticatedAnalyticsRoute, isAnalyticsRoute } from "./analytics-route.js";
+import { analyticsCapability, analyticsRoutePath, dispatchAnalyticsRoute, handleAuthenticatedAnalyticsRoute, isAnalyticsRoute } from "./analytics-route.js";
 import type { AnalyticsSnapshot } from "./analytics-service.js";
 
 const snapshot: AnalyticsSnapshot = {
@@ -26,6 +26,26 @@ test("analytics HTTP contract exposes one versioned GET route", () => {
   assert.equal(isAnalyticsRoute("GET", "/api/v1/analytics"), true);
   assert.equal(isAnalyticsRoute("POST", "/api/v1/analytics"), false);
   assert.equal(isAnalyticsRoute("GET", "/api/v1/analytics/other"), false);
+});
+
+test("analytics dispatcher ignores unrelated routes", async () => {
+  let authenticated = false;
+  const result = await dispatchAnalyticsRoute("GET", "/api/v1/profile", async () => {
+    authenticated = true;
+    return { user: { id: "user-123" } };
+  });
+  assert.equal(result, null);
+  assert.equal(authenticated, false);
+});
+
+test("analytics dispatcher handles the canonical route", async () => {
+  const result = await dispatchAnalyticsRoute(
+    "GET",
+    analyticsRoutePath,
+    async () => ({ user: { id: "user-123" } }),
+    async () => snapshot
+  );
+  assert.deepEqual(result, { status: 200, body: snapshot });
 });
 
 test("analytics route requires an authenticated session", async () => {
