@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { renderAnalyticsDashboard } from "./analytics-dashboard-renderer";
+import type { AnalyticsDashboardPresentation } from "./analytics-dashboard-presenter";
 
-const base = {
+const base: AnalyticsDashboardPresentation = {
   headline: "Conversation intelligence",
   attentionSummary: "2 conversations need your attention.",
   generatedAt: "2026-09-17T00:00:00.000Z",
-  operational: [{ key: "active", label: "Active conversations", value: 3 }],
+  operational: [{ key: "active", label: "Active conversations", value: 3, attention: false }],
   topics: {
     title: "What comes up most",
     emptyMessage: "No topics yet.",
@@ -14,7 +15,7 @@ const base = {
   suggestions: {
     title: "What should I tell TNND about myself?",
     emptyMessage: "No gaps.",
-    items: [{ topic: "Travel", title: "Add a travel story", detail: "Travel comes up often.", priority: "high" as const }]
+    items: [{ topic: "Travel", title: "Add a travel story", detail: "Travel comes up often.", priority: "high" }]
   }
 };
 
