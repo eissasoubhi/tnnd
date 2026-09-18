@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run typecheck && npm run test:tinder-state && npm run test:human-action-resume && npm run test:match-profile-capture && node scripts/build.mjs",
+    "build": "npm run typecheck && npm run test:readme && npm run test:tinder-state && npm run test:human-action-resume && npm run test:match-profile-capture && node scripts/build.mjs",
     "dev": "node scripts/build.mjs --watch",
     "typecheck": "tsc --noEmit",
+    "test:readme": "node scripts/check-public-readme.mjs",
     "test:tinder-state": "node --experimental-strip-types scripts/check-tinder-state-machine.mjs",
     "test:human-action-resume": "node --experimental-strip-types scripts/check-human-action-resume.mjs",
     "test:match-profile-capture": "node --experimental-strip-types scripts/check-match-profile-capture.mjs"
