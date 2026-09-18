@@ -40,8 +40,18 @@ interface AnalyticsErrorPayload {
   error?: string;
 }
 
-function isAnalyticsError(payload: AnalyticsSnapshot | AnalyticsErrorPayload): payload is AnalyticsErrorPayload {
-  return "error" in payload;
+function isAnalyticsError(payload: unknown): payload is AnalyticsErrorPayload {
+  return typeof payload === "object" && payload !== null && "error" in payload;
+}
+
+function isAnalyticsSnapshot(payload: unknown): payload is AnalyticsSnapshot {
+  if (typeof payload !== "object" || payload === null) return false;
+  const candidate = payload as Partial<AnalyticsSnapshot>;
+  return typeof candidate.generatedAt === "string"
+    && typeof candidate.operational === "object"
+    && candidate.operational !== null
+    && Array.isArray(candidate.topics)
+    && Array.isArray(candidate.memoryCoverage);
 }
 
 function isAbortError(error: unknown): boolean {
@@ -57,12 +67,15 @@ export async function loadAnalytics(session: AuthSession): Promise<AnalyticsSnap
       headers: { authorization: `Bearer ${session.token}` },
       signal: controller.signal
     });
-    const payload = await response.json().catch(() => null) as AnalyticsSnapshot | AnalyticsErrorPayload | null;
+    const payload: unknown = await response.json().catch(() => null);
     if (!response.ok || !payload) {
       throw new Error("Unable to load analytics.");
     }
     if (isAnalyticsError(payload)) {
       throw new Error(payload.error ?? "Unable to load analytics.");
+    }
+    if (!isAnalyticsSnapshot(payload)) {
+      throw new Error("Analytics response is invalid.");
     }
     return payload;
   } catch (error) {
