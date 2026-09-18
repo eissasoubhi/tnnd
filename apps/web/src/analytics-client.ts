@@ -1,6 +1,7 @@
 import type { AuthSession } from "./auth-client";
 
 const apiBase = (import.meta.env.VITE_TNND_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "http://127.0.0.1:4000";
+const analyticsRequestTimeoutMs = 10_000;
 
 export interface OperationalAnalytics {
   active: number;
@@ -44,17 +45,30 @@ function isAnalyticsError(payload: AnalyticsSnapshot | AnalyticsErrorPayload): p
 }
 
 export async function loadAnalytics(session: AuthSession): Promise<AnalyticsSnapshot> {
-  const response = await fetch(`${apiBase}/api/v1/analytics`, {
-    headers: { authorization: `Bearer ${session.token}` }
-  });
-  const payload = await response.json().catch(() => null) as AnalyticsSnapshot | AnalyticsErrorPayload | null;
-  if (!response.ok || !payload) {
-    throw new Error("Unable to load analytics.");
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), analyticsRequestTimeoutMs);
+
+  try {
+    const response = await fetch(`${apiBase}/api/v1/analytics`, {
+      headers: { authorization: `Bearer ${session.token}` },
+      signal: controller.signal
+    });
+    const payload = await response.json().catch(() => null) as AnalyticsSnapshot | AnalyticsErrorPayload | null;
+    if (!response.ok || !payload) {
+      throw new Error("Unable to load analytics.");
+    }
+    if (isAnalyticsError(payload)) {
+      throw new Error(payload.error ?? "Unable to load analytics.");
+    }
+    return payload;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Analytics request timed out.");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
   }
-  if (isAnalyticsError(payload)) {
-    throw new Error(payload.error ?? "Unable to load analytics.");
-  }
-  return payload;
 }
 
 export function analyticsContentGaps(snapshot: AnalyticsSnapshot): MemoryCoverageRow[] {
