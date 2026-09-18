@@ -44,9 +44,13 @@ function isAnalyticsError(payload: AnalyticsSnapshot | AnalyticsErrorPayload): p
   return "error" in payload;
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 export async function loadAnalytics(session: AuthSession): Promise<AnalyticsSnapshot> {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), analyticsRequestTimeoutMs);
+  const timeout = globalThis.setTimeout(() => controller.abort(), analyticsRequestTimeoutMs);
 
   try {
     const response = await fetch(`${apiBase}/api/v1/analytics`, {
@@ -62,12 +66,12 @@ export async function loadAnalytics(session: AuthSession): Promise<AnalyticsSnap
     }
     return payload;
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
+    if (isAbortError(error)) {
       throw new Error("Analytics request timed out.");
     }
     throw error;
   } finally {
-    window.clearTimeout(timeout);
+    globalThis.clearTimeout(timeout);
   }
 }
 
