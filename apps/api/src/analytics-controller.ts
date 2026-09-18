@@ -18,8 +18,10 @@ export async function handleAnalyticsRequest(
 
   try {
     return { status: 200, body: await loadSnapshot(normalizedUserId) };
-  } catch (error) {
-    console.error("Unable to load TNND analytics", error);
+  } catch {
+    // Keep production logs useful without serializing database/provider errors that
+    // may contain query parameters or other user-scoped context.
+    console.error("Unable to load TNND analytics");
     return { status: 500, body: { error: "analytics_unavailable" } };
   }
 }
