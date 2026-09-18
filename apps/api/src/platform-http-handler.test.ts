@@ -57,3 +57,25 @@ test("platform HTTP handler leaves unrelated routes to the legacy router without
   assert.equal(authenticationCalls, 0);
   assert.equal(sent, false);
 });
+
+test("platform HTTP handler does not intercept unsupported methods", async () => {
+  let sent = false;
+  let authenticationCalls = 0;
+
+  for (const pathname of ["/api/v1/meta", "/api/v1/analytics"]) {
+    const handled = await handlePlatformHttpRoute(
+      "POST",
+      pathname,
+      async () => {
+        authenticationCalls += 1;
+        return null;
+      },
+      () => { sent = true; }
+    );
+
+    assert.equal(handled, false, `${pathname} should remain unhandled for POST`);
+  }
+
+  assert.equal(authenticationCalls, 0);
+  assert.equal(sent, false);
+});
