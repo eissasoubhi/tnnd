@@ -48,13 +48,17 @@ function isNonNegativeNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
+function isTimestamp(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0 && Number.isFinite(Date.parse(value));
+}
+
 function isTopicAnalyticsRow(value: unknown): value is TopicAnalyticsRow {
   if (typeof value !== "object" || value === null) return false;
   const row = value as Partial<TopicAnalyticsRow>;
   return typeof row.topic === "string"
     && isNonNegativeNumber(row.conversationCount)
     && isNonNegativeNumber(row.messageCount)
-    && typeof row.lastDiscussedAt === "string";
+    && isTimestamp(row.lastDiscussedAt);
 }
 
 function isMemoryCoverageRow(value: unknown): value is MemoryCoverageRow {
@@ -83,7 +87,7 @@ function isOperationalAnalytics(value: unknown): value is OperationalAnalytics {
 function isAnalyticsSnapshot(payload: unknown): payload is AnalyticsSnapshot {
   if (typeof payload !== "object" || payload === null) return false;
   const candidate = payload as Partial<AnalyticsSnapshot>;
-  return typeof candidate.generatedAt === "string"
+  return isTimestamp(candidate.generatedAt)
     && isOperationalAnalytics(candidate.operational)
     && Array.isArray(candidate.topics)
     && candidate.topics.every(isTopicAnalyticsRow)
