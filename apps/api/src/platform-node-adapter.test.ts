@@ -32,16 +32,18 @@ test("node platform adapter forwards authenticated analytics responses", async (
   let loadedUserId = "";
   const snapshot: AnalyticsSnapshot = {
     generatedAt: "2026-01-01T00:00:00.000Z",
-    active: 1,
-    paused: 0,
-    disabled: 0,
-    waitingForThem: 0,
-    waitingForUser: 0,
-    actionRequired: 0,
-    movedOffTinder: 0,
-    stale: 0,
-    archived: 0,
-    pendingHumanActions: 0,
+    operational: {
+      active: 1,
+      paused: 0,
+      disabled: 0,
+      waitingForThem: 0,
+      waitingForUser: 0,
+      actionRequired: 0,
+      movedOffTinder: 0,
+      stale: 0,
+      archived: 0
+    },
+    topics: [],
     memoryCoverage: []
   };
 
