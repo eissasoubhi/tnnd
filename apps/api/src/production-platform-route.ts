@@ -27,7 +27,7 @@ export async function handleProductionPlatformRequest(
       const token = bearerToken(request);
       if (!token) return null;
       const session = await authenticateSession(await hashSessionToken(token));
-      return session ? { userId: session.user.id } : null;
+      return session ? { user: { id: session.user.id } } : null;
     },
     sendJson
   );
