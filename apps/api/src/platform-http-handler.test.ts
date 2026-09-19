@@ -40,6 +40,31 @@ test("platform HTTP handler preserves analytics authentication", async () => {
   assert.deepEqual(responses, [{ status: 401, body: { error: "invalid_or_expired_session" } }]);
 });
 
+test("platform HTTP handler forwards authenticated analytics snapshots", async () => {
+  const responses: Array<{ status: number; body: unknown }> = [];
+  let loadedForUserId = "";
+  const snapshot = {
+    operational: { active: 1, waitingForThem: 0, waitingForUser: 0, actionRequired: 0, paused: 0, stale: 0, movedOffTinder: 0 },
+    topics: [],
+    contentGaps: []
+  };
+
+  const handled = await handlePlatformHttpRoute(
+    "GET",
+    "/api/v1/analytics",
+    async () => ({ user: { id: "user-123" } }),
+    (status, body) => responses.push({ status, body }),
+    async (userId) => {
+      loadedForUserId = userId;
+      return snapshot;
+    }
+  );
+
+  assert.equal(handled, true);
+  assert.equal(loadedForUserId, "user-123");
+  assert.deepEqual(responses, [{ status: 200, body: snapshot }]);
+});
+
 test("platform HTTP handler leaves unrelated routes to the legacy router without authenticating", async () => {
   let sent = false;
   let authenticationCalls = 0;
