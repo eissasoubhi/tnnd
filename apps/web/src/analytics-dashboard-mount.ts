@@ -15,10 +15,12 @@ export interface AnalyticsDashboardMountResult {
 export async function mountAnalyticsDashboard(container: HTMLElement): Promise<AnalyticsDashboardMountResult> {
   const session = readSession();
   if (!session) {
+    delete container.dataset.analyticsLoadedAt;
     container.innerHTML = '<p class="subtle">Sign in to load conversation analytics.</p>';
     return { mounted: false, reason: "missing-session" };
   }
 
+  delete container.dataset.analyticsLoadedAt;
   container.setAttribute("aria-busy", "true");
   container.innerHTML = '<p class="subtle">Loading conversation analytics…</p>';
 
