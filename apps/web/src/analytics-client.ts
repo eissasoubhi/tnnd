@@ -44,14 +44,51 @@ function isAnalyticsError(payload: unknown): payload is AnalyticsErrorPayload {
   return typeof payload === "object" && payload !== null && "error" in payload;
 }
 
+function isNonNegativeNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function isTopicAnalyticsRow(value: unknown): value is TopicAnalyticsRow {
+  if (typeof value !== "object" || value === null) return false;
+  const row = value as Partial<TopicAnalyticsRow>;
+  return typeof row.topic === "string"
+    && isNonNegativeNumber(row.conversationCount)
+    && isNonNegativeNumber(row.messageCount)
+    && typeof row.lastDiscussedAt === "string";
+}
+
+function isMemoryCoverageRow(value: unknown): value is MemoryCoverageRow {
+  if (!isTopicAnalyticsRow(value)) return false;
+  const row = value as Partial<MemoryCoverageRow>;
+  return isNonNegativeNumber(row.approvedMemoryCount)
+    && isNonNegativeNumber(row.memoryUsageCount)
+    && isNonNegativeNumber(row.coverageScore)
+    && (row.gap === "none" || row.gap === "low" || row.gap === "covered");
+}
+
+function isOperationalAnalytics(value: unknown): value is OperationalAnalytics {
+  if (typeof value !== "object" || value === null) return false;
+  const operational = value as Partial<OperationalAnalytics>;
+  return isNonNegativeNumber(operational.active)
+    && isNonNegativeNumber(operational.waitingForThem)
+    && isNonNegativeNumber(operational.waitingForUser)
+    && isNonNegativeNumber(operational.actionRequired)
+    && isNonNegativeNumber(operational.paused)
+    && isNonNegativeNumber(operational.disabled)
+    && isNonNegativeNumber(operational.movedOffTinder)
+    && isNonNegativeNumber(operational.stale)
+    && isNonNegativeNumber(operational.archived);
+}
+
 function isAnalyticsSnapshot(payload: unknown): payload is AnalyticsSnapshot {
   if (typeof payload !== "object" || payload === null) return false;
   const candidate = payload as Partial<AnalyticsSnapshot>;
   return typeof candidate.generatedAt === "string"
-    && typeof candidate.operational === "object"
-    && candidate.operational !== null
+    && isOperationalAnalytics(candidate.operational)
     && Array.isArray(candidate.topics)
-    && Array.isArray(candidate.memoryCoverage);
+    && candidate.topics.every(isTopicAnalyticsRow)
+    && Array.isArray(candidate.memoryCoverage)
+    && candidate.memoryCoverage.every(isMemoryCoverageRow);
 }
 
 function isAbortError(error: unknown): boolean {
