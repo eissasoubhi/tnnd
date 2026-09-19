@@ -56,6 +56,7 @@ function isTopicAnalyticsRow(value: unknown): value is TopicAnalyticsRow {
   if (typeof value !== "object" || value === null) return false;
   const row = value as Partial<TopicAnalyticsRow>;
   return typeof row.topic === "string"
+    && row.topic.trim().length > 0
     && isNonNegativeNumber(row.conversationCount)
     && isNonNegativeNumber(row.messageCount)
     && isTimestamp(row.lastDiscussedAt);
@@ -64,10 +65,17 @@ function isTopicAnalyticsRow(value: unknown): value is TopicAnalyticsRow {
 function isMemoryCoverageRow(value: unknown): value is MemoryCoverageRow {
   if (!isTopicAnalyticsRow(value)) return false;
   const row = value as Partial<MemoryCoverageRow>;
-  return isNonNegativeNumber(row.approvedMemoryCount)
-    && isNonNegativeNumber(row.memoryUsageCount)
-    && isNonNegativeNumber(row.coverageScore)
-    && (row.gap === "none" || row.gap === "low" || row.gap === "covered");
+  if (!isNonNegativeNumber(row.approvedMemoryCount)
+    || !isNonNegativeNumber(row.memoryUsageCount)
+    || !isNonNegativeNumber(row.coverageScore)
+    || row.coverageScore > 1
+    || (row.gap !== "none" && row.gap !== "low" && row.gap !== "covered")) {
+    return false;
+  }
+
+  if (row.approvedMemoryCount === 0) return row.gap === "none" && row.coverageScore === 0;
+  if (row.coverageScore < 0.5) return row.gap === "low";
+  return row.gap === "covered";
 }
 
 function isOperationalAnalytics(value: unknown): value is OperationalAnalytics {
