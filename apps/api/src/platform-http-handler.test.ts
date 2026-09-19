@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { AnalyticsSnapshot } from "./analytics-service.js";
 import { handlePlatformHttpRoute } from "./platform-http-handler.js";
 
 test("platform HTTP handler sends metadata responses without authenticating", async () => {
@@ -43,10 +44,21 @@ test("platform HTTP handler preserves analytics authentication", async () => {
 test("platform HTTP handler forwards authenticated analytics snapshots", async () => {
   const responses: Array<{ status: number; body: unknown }> = [];
   let loadedForUserId = "";
-  const snapshot = {
-    operational: { active: 1, waitingForThem: 0, waitingForUser: 0, actionRequired: 0, paused: 0, stale: 0, movedOffTinder: 0 },
+  const snapshot: AnalyticsSnapshot = {
+    generatedAt: "2026-09-19T00:00:00.000Z",
+    operational: {
+      active: 1,
+      waitingForThem: 0,
+      waitingForUser: 0,
+      actionRequired: 0,
+      paused: 0,
+      disabled: 0,
+      movedOffTinder: 0,
+      stale: 0,
+      archived: 0
+    },
     topics: [],
-    contentGaps: []
+    memoryCoverage: []
   };
 
   const handled = await handlePlatformHttpRoute(
