@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { AnalyticsSnapshot } from "./analytics-service.js";
 import { handlePlatformHttpRoute } from "./platform-http-handler.js";
 
 test("platform HTTP handler sends metadata responses without authenticating", async () => {
@@ -38,6 +39,42 @@ test("platform HTTP handler preserves analytics authentication", async () => {
   assert.equal(handled, true);
   assert.equal(authenticationCalls, 1);
   assert.deepEqual(responses, [{ status: 401, body: { error: "invalid_or_expired_session" } }]);
+});
+
+test("platform HTTP handler forwards authenticated analytics snapshots", async () => {
+  const responses: Array<{ status: number; body: unknown }> = [];
+  let loadedForUserId = "";
+  const snapshot: AnalyticsSnapshot = {
+    generatedAt: "2026-09-19T00:00:00.000Z",
+    operational: {
+      active: 1,
+      waitingForThem: 0,
+      waitingForUser: 0,
+      actionRequired: 0,
+      paused: 0,
+      disabled: 0,
+      movedOffTinder: 0,
+      stale: 0,
+      archived: 0
+    },
+    topics: [],
+    memoryCoverage: []
+  };
+
+  const handled = await handlePlatformHttpRoute(
+    "GET",
+    "/api/v1/analytics",
+    async () => ({ user: { id: "user-123" } }),
+    (status, body) => responses.push({ status, body }),
+    async (userId) => {
+      loadedForUserId = userId;
+      return snapshot;
+    }
+  );
+
+  assert.equal(handled, true);
+  assert.equal(loadedForUserId, "user-123");
+  assert.deepEqual(responses, [{ status: 200, body: snapshot }]);
 });
 
 test("platform HTTP handler leaves unrelated routes to the legacy router without authenticating", async () => {

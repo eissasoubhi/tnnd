@@ -1,4 +1,5 @@
 import { dispatchPlatformRoute } from "./platform-route-dispatcher.js";
+import type { AnalyticsSnapshotLoader } from "./analytics-controller.js";
 import type { AnalyticsRouteAuthenticator } from "./analytics-route.js";
 
 export type PlatformJsonSender = (status: number, body: unknown) => void;
@@ -12,9 +13,13 @@ export async function handlePlatformHttpRoute(
   method: string | undefined,
   pathname: string,
   authenticate: AnalyticsRouteAuthenticator,
-  sendJson: PlatformJsonSender
+  sendJson: PlatformJsonSender,
+  loadAnalyticsSnapshot?: AnalyticsSnapshotLoader
 ): Promise<boolean> {
-  const result = await dispatchPlatformRoute(method, pathname, { authenticate });
+  const result = await dispatchPlatformRoute(method, pathname, {
+    authenticate,
+    loadAnalyticsSnapshot
+  });
   if (!result) return false;
 
   sendJson(result.status, result.body);
