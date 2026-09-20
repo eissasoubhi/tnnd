@@ -3,9 +3,11 @@ import test from "node:test";
 import { analyticsCapability } from "./analytics-route.js";
 import { apiCapabilities, apiMeta, apiVersion } from "./api-meta.js";
 
-test("API metadata advertises the versioned analytics capability", () => {
+test("API metadata advertises versioned platform capabilities", () => {
   assert.equal(apiVersion, "v1");
   assert.equal(apiCapabilities.includes(analyticsCapability), true);
+  assert.equal(apiCapabilities.includes("ai-provider-settings"), true);
+  assert.equal(apiCapabilities.includes("ai-provider-connection-test"), true);
   assert.deepEqual(apiMeta(), { apiVersion: "v1", capabilities: [...apiCapabilities] });
 });
 

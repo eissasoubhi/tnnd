@@ -26,6 +26,8 @@ export const apiCapabilities = [
   "match-profiles",
   "human-actions",
   "human-action-manual-answer",
+  "ai-provider-settings",
+  "ai-provider-connection-test",
   analyticsCapability,
   "security-baseline"
 ] as const;
