@@ -16,6 +16,18 @@ test("ignores non-AI paths without consuming the request body", async () => {
   assert.equal(bodyReads, 0);
 });
 
+test("reads the provider settings body exactly once for PUT", async () => {
+  let bodyReads = 0;
+  const request = { method: "PUT", headers: {} } as IncomingMessage;
+
+  await handleProductionAiHttpRequest(request, "/api/v1/ai/provider-settings", async () => {
+    bodyReads += 1;
+    return { provider: "gemini", model: "gemini-2.5-flash", apiKey: "test-only-key" };
+  });
+
+  assert.equal(bodyReads, 1);
+});
+
 test("does not consume a body for the Gemini connection test route", async () => {
   let bodyReads = 0;
   const request = { method: "POST", headers: {} } as IncomingMessage;
