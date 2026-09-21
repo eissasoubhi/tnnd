@@ -31,6 +31,10 @@ test("production AI handler works across a real Node HTTP boundary", async () =>
     assert.equal(aiResponse.status, 401);
     assert.deepEqual(await aiResponse.json(), { error: "invalid_or_expired_session" });
 
+    const settingsResponse = await fetch(`${base}/api/v1/ai/provider-settings`);
+    assert.equal(settingsResponse.status, 401);
+    assert.deepEqual(await settingsResponse.json(), { error: "invalid_or_expired_session" });
+
     const foreignResponse = await fetch(`${base}/health`);
     assert.equal(foreignResponse.status, 404);
     assert.deepEqual(await foreignResponse.json(), { error: "not_found" });
