@@ -9,6 +9,13 @@ export interface AiProviderSettingsResult {
   configured: true;
 }
 
+export interface AiProviderSettingsSummary {
+  provider: "gemini";
+  model: string | null;
+  configured: boolean;
+  updatedAt: string | null;
+}
+
 export interface AiConnectionTestResult {
   provider: "gemini";
   model: string;
@@ -53,6 +60,10 @@ export function createAiProviderClient(token: string, options: AiProviderClientO
   }
 
   return {
+    getSettings(): Promise<AiProviderSettingsSummary> {
+      return request("/api/v1/ai/provider-settings", { method: "GET" });
+    },
+
     saveSettings(input: AiProviderSettingsInput): Promise<AiProviderSettingsResult> {
       return request("/api/v1/ai/provider-settings", {
         method: "PUT",
