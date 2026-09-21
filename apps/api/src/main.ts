@@ -14,6 +14,7 @@ import { handleHumanActionManualAnswerRequest } from "./human-action-manual-answ
 import { createHumanAction, listHumanActions, updateHumanActionStatus, type HumanActionSeverity, type HumanActionStatus } from "./human-action-service.js";
 import { handleConversationMatchProfileRequest, handleMatchProfileCaptureRequest, handleMatchProfilePromoteRequest } from "./match-profile-controller.js";
 import { profileSchemaVersion, publicProfileSchema, validateProfileEnvelope } from "./profile-schema.js";
+import { handleProductionAiHttp } from "./production-ai-http-handler.js";
 import { handleTextingStyleAnalysisRequest } from "./texting-style-analysis-controller.js";
 
 const port = Number(process.env.PORT ?? 4000);
@@ -109,6 +110,8 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${host}:${port}`}`);
 
   try {
+    if (await handleProductionAiHttp(request, response, url.pathname, readJsonBody, sendJson)) return;
+
     if (request.method === "GET" && url.pathname === "/health") {
       sendJson(response, 200, { ok: true, service: "tnnd-api", version: "0.1.0", now: new Date().toISOString() });
       return;
