@@ -39,3 +39,20 @@ test("handles unauthenticated AI connection tests at the HTTP boundary", async (
   assert.equal(sent?.status, 401);
   assert.deepEqual(sent?.payload, { error: "invalid_or_expired_session" });
 });
+
+test("handles unauthenticated AI provider settings reads without consuming a body", async () => {
+  let reads = 0;
+  let sent: { status: number; payload: unknown } | undefined;
+  const handled = await handleProductionAiHttp(
+    request("GET", "/api/v1/ai/provider-settings"),
+    {} as ServerResponse,
+    "/api/v1/ai/provider-settings",
+    async () => { reads += 1; return {}; },
+    (_response, status, payload) => { sent = { status, payload }; }
+  );
+
+  assert.equal(handled, true);
+  assert.equal(reads, 0);
+  assert.equal(sent?.status, 401);
+  assert.deepEqual(sent?.payload, { error: "invalid_or_expired_session" });
+});
