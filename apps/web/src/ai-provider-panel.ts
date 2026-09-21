@@ -34,15 +34,39 @@ const save = panel.querySelector<HTMLButtonElement>("#ai-provider-save");
 const test = panel.querySelector<HTMLButtonElement>("#ai-provider-test");
 const status = panel.querySelector<HTMLElement>("#ai-provider-status");
 const message = panel.querySelector<HTMLElement>("#ai-provider-message");
+let refreshGeneration = 0;
 
-function refresh(): void {
-  const signedIn = Boolean(readSession());
+async function refresh(): Promise<void> {
+  const generation = ++refreshGeneration;
+  const session = readSession();
+  const signedIn = Boolean(session);
   if (model) model.disabled = !signedIn;
   if (apiKey) apiKey.disabled = !signedIn;
   if (save) save.disabled = !signedIn;
   if (test) test.disabled = !signedIn;
-  if (status && !signedIn) status.textContent = "Sign in required";
-  if (message && !signedIn) message.textContent = "Sign in to configure Gemini.";
+  if (!session) {
+    if (status) status.textContent = "Sign in required";
+    if (message) message.textContent = "Sign in to configure Gemini.";
+    return;
+  }
+
+  if (status) status.textContent = "Loading…";
+  if (message) message.textContent = "Loading Gemini configuration…";
+  try {
+    const settings = await createAiProviderClient(session.token).getSettings();
+    if (generation !== refreshGeneration || readSession()?.token !== session.token) return;
+    if (settings.model && model) model.value = settings.model;
+    if (status) status.textContent = settings.configured
+      ? `${settings.model ?? "Gemini"} · configured`
+      : "Not configured";
+    if (message) message.textContent = settings.configured
+      ? "Gemini configuration is stored securely on the backend. Enter a new API key only to replace it."
+      : "Add a Gemini model and API key to enable backend AI features.";
+  } catch (error) {
+    if (generation !== refreshGeneration || readSession()?.token !== session.token) return;
+    if (status) status.textContent = "Unable to load";
+    if (message) message.textContent = error instanceof Error ? error.message : "Unable to load Gemini configuration.";
+  }
 }
 
 form?.addEventListener("submit", async (event) => {
@@ -81,5 +105,5 @@ test?.addEventListener("click", async () => {
   }
 });
 
-window.addEventListener("tnnd:auth-session-changed", refresh);
-refresh();
+window.addEventListener("tnnd:auth-session-changed", () => { void refresh(); });
+void refresh();
