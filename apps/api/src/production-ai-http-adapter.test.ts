@@ -40,14 +40,15 @@ test("does not consume a body for the Gemini connection test route", async () =>
   assert.equal(bodyReads, 0);
 });
 
-test("does not consume a body for unsupported methods on provider settings", async () => {
+test("routes provider settings GET without consuming a request body", async () => {
   let bodyReads = 0;
   const request = { method: "GET", headers: {} } as IncomingMessage;
 
-  await handleProductionAiHttpRequest(request, "/api/v1/ai/provider-settings", async () => {
+  const result = await handleProductionAiHttpRequest(request, "/api/v1/ai/provider-settings", async () => {
     bodyReads += 1;
     return { apiKey: "must-not-be-read" };
   });
 
   assert.equal(bodyReads, 0);
+  assert.deepEqual(result, { status: 401, body: { error: "invalid_or_expired_session" } });
 });
