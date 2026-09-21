@@ -49,6 +49,19 @@ export async function saveAiProviderSettings(
   return { provider: "gemini", model: row.model, configured: true, updatedAt: row.updated_at.toISOString() };
 }
 
+export async function loadAiProviderSettingsSummary(userId: string): Promise<AiProviderSettingsSummary | null> {
+  const normalizedUserId = required(userId, "user_id_required");
+  const result = await getPool().query<{ model: string; updated_at: Date }>(
+    `SELECT model, updated_at
+       FROM ai_provider_settings
+      WHERE user_id = $1 AND provider = 'gemini'`,
+    [normalizedUserId]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return { provider: "gemini", model: row.model, configured: true, updatedAt: row.updated_at.toISOString() };
+}
+
 export async function loadAiProviderSettings(userId: string): Promise<AiProviderSettings | null> {
   const normalizedUserId = required(userId, "user_id_required");
   const result = await getPool().query<{ model: string; encrypted_api_key: string }>(

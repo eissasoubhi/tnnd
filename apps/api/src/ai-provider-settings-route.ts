@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import { hashSessionToken } from "./auth.js";
 import { authenticateSession } from "./auth-service.js";
-import { handleSaveAiProviderSettingsRequest } from "./ai-provider-settings-controller.js";
+import { handleGetAiProviderSettingsRequest, handleSaveAiProviderSettingsRequest } from "./ai-provider-settings-controller.js";
 
 export interface AiProviderSettingsRouteResult {
   status: number;
@@ -21,7 +21,7 @@ export async function handleAiProviderSettingsRoute(
   body: Record<string, unknown>,
   authenticate: AiProviderSettingsRouteAuthenticator = authenticateSession
 ): Promise<AiProviderSettingsRouteResult | null> {
-  if (pathname !== "/api/v1/ai/provider-settings" || request.method !== "PUT") return null;
+  if (pathname !== "/api/v1/ai/provider-settings" || (request.method !== "GET" && request.method !== "PUT")) return null;
 
   const token = bearerToken(request);
   if (!token) return { status: 401, body: { error: "invalid_or_expired_session" } };
@@ -29,5 +29,6 @@ export async function handleAiProviderSettingsRoute(
   const session = await authenticate(await hashSessionToken(token));
   if (!session) return { status: 401, body: { error: "invalid_or_expired_session" } };
 
+  if (request.method === "GET") return handleGetAiProviderSettingsRequest(session.user.id);
   return handleSaveAiProviderSettingsRequest(session.user.id, body);
 }
