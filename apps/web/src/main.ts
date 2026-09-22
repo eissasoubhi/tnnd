@@ -296,3 +296,4 @@ if (actionCenter) bindActionCenter(actionCenter, refreshActionCounts);
 void refreshActionCenter();
 void refreshProfile();
 void import("./auth-panel");
+void import("./ai-provider-panel");
