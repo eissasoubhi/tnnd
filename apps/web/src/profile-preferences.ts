@@ -15,6 +15,7 @@ export const disclosureStrategies = ["subtle", "progressive", "clear", "very-dir
 
 export interface EditablePreferences {
   datingGoal: string;
+  datingGoalDetails: string;
   disclosureStrategy: string;
   formality: string;
   capitalization: string;
@@ -43,12 +44,17 @@ function stringValue(value: unknown, fallback: string): string {
   return typeof value === "string" && value.length > 0 ? value : fallback;
 }
 
+function optionalStringValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
 export function readEditablePreferences(profile: ImportedProfile): EditablePreferences {
   const datingIntent = objectValue(profile.datingIntent);
   const textingStyle = objectValue(profile.textingStyle);
   const languageBehavior = objectValue(textingStyle.languageBehavior);
   return {
     datingGoal: stringValue(datingIntent.defaultGoal, "open-to-see"),
+    datingGoalDetails: optionalStringValue(datingIntent.datingGoalDetails),
     disclosureStrategy: stringValue(datingIntent.defaultDisclosureStrategy, "progressive"),
     formality: stringValue(textingStyle.formality, "very-casual"),
     capitalization: stringValue(textingStyle.capitalization, "relaxed"),
@@ -73,11 +79,13 @@ export function readEditablePreferences(profile: ImportedProfile): EditablePrefe
 export function writeEditablePreferences(profile: ImportedProfile, preferences: EditablePreferences): ImportedProfile {
   const datingIntent = objectValue(profile.datingIntent);
   const textingStyle = objectValue(profile.textingStyle);
+  const datingGoalDetails = preferences.datingGoalDetails.trim();
   return {
     ...profile,
     datingIntent: {
       ...datingIntent,
       defaultGoal: preferences.datingGoal,
+      ...(datingGoalDetails ? { datingGoalDetails } : { datingGoalDetails: undefined }),
       defaultDisclosureStrategy: preferences.disclosureStrategy,
       needsReview: false
     },
