@@ -15,7 +15,7 @@ export const disclosureStrategies = ["subtle", "progressive", "clear", "very-dir
 
 export interface EditablePreferences {
   datingGoal: string;
-  datingGoalDetails: string;
+  datingGoalDetails?: string;
   disclosureStrategy: string;
   formality: string;
   capitalization: string;
@@ -79,13 +79,15 @@ export function readEditablePreferences(profile: ImportedProfile): EditablePrefe
 export function writeEditablePreferences(profile: ImportedProfile, preferences: EditablePreferences): ImportedProfile {
   const datingIntent = objectValue(profile.datingIntent);
   const textingStyle = objectValue(profile.textingStyle);
-  const datingGoalDetails = preferences.datingGoalDetails.trim();
+  const datingGoalDetails = preferences.datingGoalDetails === undefined
+    ? datingIntent.datingGoalDetails
+    : preferences.datingGoalDetails.trim() || undefined;
   return {
     ...profile,
     datingIntent: {
       ...datingIntent,
       defaultGoal: preferences.datingGoal,
-      ...(datingGoalDetails ? { datingGoalDetails } : { datingGoalDetails: undefined }),
+      datingGoalDetails,
       defaultDisclosureStrategy: preferences.disclosureStrategy,
       needsReview: false
     },
