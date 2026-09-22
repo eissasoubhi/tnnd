@@ -5,6 +5,12 @@ import { fetchProfile, saveProfile } from "./profile-client";
 import { downloadProfile, parseImportedProfile, type ImportedProfile } from "./profile-import";
 import { datingGoals, disclosureStrategies, readEditablePreferences, writeEditablePreferences } from "./profile-preferences";
 
+// Bootstrap independent dashboard panels from the shell rather than chaining
+// panel side effects together. Each panel remains independently deployable.
+void import("./auth-panel");
+void import("./ai-provider-panel");
+void import("./analytics-panel");
+
 type ConversationState = "Active" | "Waiting for them" | "Action required" | "Paused";
 
 interface DashboardCard {
@@ -295,5 +301,3 @@ window.addEventListener("tnnd:auth-session-changed", () => {
 if (actionCenter) bindActionCenter(actionCenter, refreshActionCounts);
 void refreshActionCenter();
 void refreshProfile();
-void import("./auth-panel");
-void import("./ai-provider-panel");
