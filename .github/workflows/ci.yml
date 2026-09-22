@@ -16,6 +16,12 @@ jobs:
       - run: npm install
       - name: Guard intentionally empty public README
         run: test ! -s README.md
+      - name: Reject committed local environment files
+        run: |
+          if git ls-files | grep -E '(^|/)\.env($|\.)' | grep -vE '(^|/)\.env\.example$'; then
+            echo 'Local environment files must not be committed; keep only .env.example templates.' >&2
+            exit 1
+          fi
       - name: Verify extension version consistency
         run: node -e "const p=require('./package.json');const m=require('./public/manifest.json');if(p.version!==m.version){console.error('Version mismatch',p.version,m.version);process.exit(1)}"
       - run: npm run build
