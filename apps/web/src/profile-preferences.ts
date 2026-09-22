@@ -79,9 +79,10 @@ export function readEditablePreferences(profile: ImportedProfile): EditablePrefe
 export function writeEditablePreferences(profile: ImportedProfile, preferences: EditablePreferences): ImportedProfile {
   const datingIntent = objectValue(profile.datingIntent);
   const textingStyle = objectValue(profile.textingStyle);
-  const datingGoalDetails = preferences.datingGoalDetails === undefined
+  const requestedDatingGoalDetails = preferences.datingGoalDetails;
+  const datingGoalDetails = requestedDatingGoalDetails === undefined
     ? datingIntent.datingGoalDetails
-    : preferences.datingGoalDetails.trim() || undefined;
+    : requestedDatingGoalDetails.trim() || undefined;
   return {
     ...profile,
     datingIntent: {
