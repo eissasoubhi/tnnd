@@ -107,3 +107,4 @@ test?.addEventListener("click", async () => {
 
 window.addEventListener("tnnd:auth-session-changed", () => { void refresh(); });
 void refresh();
+void import("./analytics-panel");
