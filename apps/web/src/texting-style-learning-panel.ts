@@ -104,7 +104,7 @@ function renderAnalysis(): void {
     label.textContent = field.label;
     const input = document.createElement("input");
     input.type = "text";
-    input.value = draft.analysis[field.key];
+    input.value = draft.analysis[field.key] ?? "";
     input.dataset.styleField = field.key;
     input.addEventListener("input", () => {
       draft = editStyleAnalysis(draft, { [field.key]: input.value } as Partial<EditablePreferences>);
