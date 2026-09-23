@@ -5,6 +5,7 @@ import { readEditablePreferences, writeEditablePreferences } from "./profile-pre
 
 function profile(datingGoalDetails?: string): ImportedProfile {
   return {
+    kind: "tnnd-user-profile",
     schemaVersion: 1,
     datingIntent: {
       defaultGoal: "open-to-see",
@@ -12,7 +13,7 @@ function profile(datingGoalDetails?: string): ImportedProfile {
       ...(datingGoalDetails === undefined ? {} : { datingGoalDetails })
     },
     textingStyle: {}
-  } as ImportedProfile;
+  };
 }
 
 describe("dating goal details preferences", () => {
