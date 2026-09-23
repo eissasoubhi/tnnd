@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import type { ImportedProfile } from "./profile-import";
 import { readEditablePreferences, writeEditablePreferences } from "./profile-preferences";
 
@@ -16,7 +17,7 @@ function profile(datingGoalDetails?: string): ImportedProfile {
 
 describe("dating goal details preferences", () => {
   it("reads an existing optional detail", () => {
-    expect(readEditablePreferences(profile("Take things slowly")).datingGoalDetails).toBe("Take things slowly");
+    assert.equal(readEditablePreferences(profile("Take things slowly")).datingGoalDetails, "Take things slowly");
   });
 
   it("preserves an existing detail for legacy callers that omit the field", () => {
@@ -26,7 +27,7 @@ describe("dating goal details preferences", () => {
 
     const updated = writeEditablePreferences(current, preferences);
 
-    expect((updated.datingIntent as Record<string, unknown>).datingGoalDetails).toBe("Keep it light");
+    assert.equal((updated.datingIntent as Record<string, unknown>).datingGoalDetails, "Keep it light");
   });
 
   it("trims a supplied detail and clears whitespace-only values", () => {
@@ -37,12 +38,12 @@ describe("dating goal details preferences", () => {
       ...preferences,
       datingGoalDetails: "  New detail  "
     });
-    expect((updated.datingIntent as Record<string, unknown>).datingGoalDetails).toBe("New detail");
+    assert.equal((updated.datingIntent as Record<string, unknown>).datingGoalDetails, "New detail");
 
     const cleared = writeEditablePreferences(updated, {
       ...preferences,
       datingGoalDetails: "   "
     });
-    expect((cleared.datingIntent as Record<string, unknown>).datingGoalDetails).toBeUndefined();
+    assert.equal((cleared.datingIntent as Record<string, unknown>).datingGoalDetails, undefined);
   });
 });
