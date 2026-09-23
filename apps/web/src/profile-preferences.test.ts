@@ -48,3 +48,116 @@ describe("dating goal details preferences", () => {
     assert.equal((cleared.datingIntent as Record<string, unknown>).datingGoalDetails, undefined);
   });
 });
+
+describe("structured texting preferences", () => {
+  it("provides natural texting defaults for an empty profile", () => {
+    const preferences = readEditablePreferences(profile());
+
+    assert.deepEqual(
+      {
+        formality: preferences.formality,
+        capitalization: preferences.capitalization,
+        punctuationDensity: preferences.punctuationDensity,
+        emojiFrequency: preferences.emojiFrequency,
+        abbreviations: preferences.abbreviations,
+        slangLevel: preferences.slangLevel,
+        messageLength: preferences.messageLength,
+        fragmentStyle: preferences.fragmentStyle,
+        grammarStyle: preferences.grammarStyle,
+        questionFrequency: preferences.questionFrequency,
+        teasingStyle: preferences.teasingStyle,
+        humorStyle: preferences.humorStyle,
+        directness: preferences.directness,
+        doubleTexting: preferences.doubleTexting,
+        frenchStyle: preferences.frenchStyle,
+        darijaStyle: preferences.darijaStyle,
+        englishStyle: preferences.englishStyle
+      },
+      {
+        formality: "very-casual",
+        capitalization: "relaxed",
+        punctuationDensity: "low",
+        emojiFrequency: "low",
+        abbreviations: "medium",
+        slangLevel: "medium",
+        messageLength: "short",
+        fragmentStyle: "mixed",
+        grammarStyle: "casual",
+        questionFrequency: "medium",
+        teasingStyle: "light",
+        humorStyle: "playful",
+        directness: "balanced",
+        doubleTexting: "sometimes",
+        frenchStyle: "casual",
+        darijaStyle: "natural",
+        englishStyle: "casual"
+      }
+    );
+  });
+
+  it("round-trips every structured texting and language control", () => {
+    const current = profile();
+    const updated = writeEditablePreferences(current, {
+      ...readEditablePreferences(current),
+      formality: "neutral",
+      capitalization: "lowercase-heavy",
+      punctuationDensity: "none",
+      emojiFrequency: "none",
+      abbreviations: "high",
+      slangLevel: "high",
+      messageLength: "very-short",
+      fragmentStyle: "fragment-heavy",
+      grammarStyle: "very-casual",
+      questionFrequency: "low",
+      teasingStyle: "bold",
+      humorStyle: "dry",
+      directness: "very-direct",
+      doubleTexting: "comfortable",
+      frenchStyle: "very-casual",
+      darijaStyle: "darija-heavy",
+      englishStyle: "neutral"
+    });
+
+    const roundTripped = readEditablePreferences(updated);
+    assert.deepEqual(
+      {
+        formality: roundTripped.formality,
+        capitalization: roundTripped.capitalization,
+        punctuationDensity: roundTripped.punctuationDensity,
+        emojiFrequency: roundTripped.emojiFrequency,
+        abbreviations: roundTripped.abbreviations,
+        slangLevel: roundTripped.slangLevel,
+        messageLength: roundTripped.messageLength,
+        fragmentStyle: roundTripped.fragmentStyle,
+        grammarStyle: roundTripped.grammarStyle,
+        questionFrequency: roundTripped.questionFrequency,
+        teasingStyle: roundTripped.teasingStyle,
+        humorStyle: roundTripped.humorStyle,
+        directness: roundTripped.directness,
+        doubleTexting: roundTripped.doubleTexting,
+        frenchStyle: roundTripped.frenchStyle,
+        darijaStyle: roundTripped.darijaStyle,
+        englishStyle: roundTripped.englishStyle
+      },
+      {
+        formality: "neutral",
+        capitalization: "lowercase-heavy",
+        punctuationDensity: "none",
+        emojiFrequency: "none",
+        abbreviations: "high",
+        slangLevel: "high",
+        messageLength: "very-short",
+        fragmentStyle: "fragment-heavy",
+        grammarStyle: "very-casual",
+        questionFrequency: "low",
+        teasingStyle: "bold",
+        humorStyle: "dry",
+        directness: "very-direct",
+        doubleTexting: "comfortable",
+        frenchStyle: "very-casual",
+        darijaStyle: "darija-heavy",
+        englishStyle: "neutral"
+      }
+    );
+  });
+});
