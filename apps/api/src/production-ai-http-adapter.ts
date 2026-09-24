@@ -5,22 +5,23 @@ export type ReadJsonBody = (request: IncomingMessage) => Promise<Record<string, 
 
 const aiSettingsPath = "/api/v1/ai/provider-settings";
 const aiConnectionTestPath = "/api/v1/ai/test-connection";
+const textingStyleAnalyzePath = "/api/v1/profile/texting-style/analyze";
+const textingStyleSourcesPath = "/api/v1/profile/texting-style/source-examples";
 
 /**
  * HTTP-facing adapter for the production AI surface.
- * It deliberately reads a request body only for the settings write route so
- * connection tests cannot accidentally consume or depend on request payloads.
+ * Request bodies are consumed only by write routes that explicitly need them.
  */
 export async function handleProductionAiHttpRequest(
   request: IncomingMessage,
   pathname: string,
   readJsonBody: ReadJsonBody
 ): Promise<ProductionAiRouteResult | null> {
-  if (pathname !== aiSettingsPath && pathname !== aiConnectionTestPath) return null;
+  if (![aiSettingsPath, aiConnectionTestPath, textingStyleAnalyzePath, textingStyleSourcesPath].includes(pathname)) return null;
 
-  const body = request.method === "PUT" && pathname === aiSettingsPath
-    ? await readJsonBody(request)
-    : {};
+  const needsBody = (request.method === "PUT" && pathname === aiSettingsPath)
+    || (request.method === "POST" && pathname === textingStyleAnalyzePath);
+  const body = needsBody ? await readJsonBody(request) : {};
 
   return handleProductionAiRequest(request, pathname, body);
 }

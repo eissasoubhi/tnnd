@@ -1,5 +1,6 @@
 import { analyzeTextingStyleWithGemini } from "./texting-style-analysis-provider.js";
 import { validateTextingStyleAnalysisRequest } from "./texting-style-analysis.js";
+import { retainTextingStyleSourceExamples } from "./texting-style-source-examples-service.js";
 
 export interface TextingStyleAnalysisHttpResult {
   status: number;
@@ -7,8 +8,11 @@ export interface TextingStyleAnalysisHttpResult {
 }
 
 export async function handleTextingStyleAnalysisRequest(
-  body: Record<string, unknown>
+  userIdOrBody: string | Record<string, unknown>,
+  requestBody?: Record<string, unknown>
 ): Promise<TextingStyleAnalysisHttpResult> {
+  const userId = typeof userIdOrBody === "string" ? userIdOrBody : null;
+  const body = typeof userIdOrBody === "string" ? (requestBody ?? {}) : userIdOrBody;
   const validated = validateTextingStyleAnalysisRequest(body);
   if (!validated.ok) {
     return { status: 400, body: { error: validated.error } };
@@ -16,16 +20,20 @@ export async function handleTextingStyleAnalysisRequest(
 
   try {
     const result = await analyzeTextingStyleWithGemini(validated.value.examples);
+    if (validated.value.retainSourceExamples) {
+      if (!userId) throw new Error("texting_style_source_retention_requires_user");
+      await retainTextingStyleSourceExamples(userId, validated.value.examples);
+    }
     return {
       status: 200,
       body: {
         analysis: result.analysis,
         model: result.model,
-        retainedSourceExamples: false,
+        retainedSourceExamples: validated.value.retainSourceExamples,
         sourceExamplesRetention: {
           requested: validated.value.retainSourceExamples,
-          persisted: false,
-          reason: validated.value.retainSourceExamples ? "retention_not_implemented" : "not_requested"
+          persisted: validated.value.retainSourceExamples,
+          reason: validated.value.retainSourceExamples ? "retained_by_user_opt_in" : "not_requested"
         }
       }
     };
