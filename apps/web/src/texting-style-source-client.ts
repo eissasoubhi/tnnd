@@ -1,7 +1,6 @@
 import { readSession } from "./auth-client";
 
-const apiBase = (import.meta.env.VITE_TNND_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "http://127.0.0.1:4000";
-const endpoint = `${apiBase}/api/v1/profile/texting-style/source-examples`;
+const defaultApiBase = (import.meta.env.VITE_TNND_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "http://127.0.0.1:4000";
 
 export interface RetainedTextingStyleSourceExamples {
   sourceExamples: string;
@@ -15,12 +14,6 @@ export class TextingStyleSourceApiError extends Error {
   }
 }
 
-function token(): string {
-  const session = readSession();
-  if (!session) throw new TextingStyleSourceApiError("authentication_required", 401);
-  return session.token;
-}
-
 async function errorFrom(response: Response, fallback: string): Promise<TextingStyleSourceApiError> {
   const payload: unknown = await response.json().catch(() => null);
   const error = payload && typeof payload === "object" && !Array.isArray(payload)
@@ -29,23 +22,35 @@ async function errorFrom(response: Response, fallback: string): Promise<TextingS
   return new TextingStyleSourceApiError(typeof error === "string" && error ? error : fallback, response.status);
 }
 
-export async function fetchRetainedTextingStyleSourceExamples(): Promise<RetainedTextingStyleSourceExamples | null> {
-  const response = await fetch(endpoint, { headers: { authorization: `Bearer ${token()}` } });
-  if (response.status === 404) return null;
-  if (!response.ok) throw await errorFrom(response, "texting_style_source_examples_fetch_failed");
-  const payload = await response.json() as Partial<RetainedTextingStyleSourceExamples>;
-  if (typeof payload.sourceExamples !== "string" || typeof payload.updatedAt !== "string") {
-    throw new TextingStyleSourceApiError("invalid_texting_style_source_examples_response", 502);
-  }
-  return { sourceExamples: payload.sourceExamples, updatedAt: payload.updatedAt };
+export function createTextingStyleSourceClient(sessionToken: string, options: { baseUrl?: string; fetchImpl?: typeof fetch } = {}) {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const endpoint = `${(options.baseUrl ?? defaultApiBase).replace(/\/$/, "")}/api/v1/profile/texting-style/source-examples`;
+  const headers = { authorization: `Bearer ${sessionToken}` };
+  return {
+    async get(): Promise<RetainedTextingStyleSourceExamples | null> {
+      const response = await fetchImpl(endpoint, { headers });
+      if (response.status === 404) return null;
+      if (!response.ok) throw await errorFrom(response, "texting_style_source_examples_fetch_failed");
+      const payload = await response.json() as Partial<RetainedTextingStyleSourceExamples>;
+      if (typeof payload.sourceExamples !== "string" || typeof payload.updatedAt !== "string") {
+        throw new TextingStyleSourceApiError("invalid_texting_style_source_examples_response", 502);
+      }
+      return { sourceExamples: payload.sourceExamples, updatedAt: payload.updatedAt };
+    },
+    async delete(): Promise<boolean> {
+      const response = await fetchImpl(endpoint, { method: "DELETE", headers });
+      if (!response.ok) throw await errorFrom(response, "texting_style_source_examples_delete_failed");
+      const payload = await response.json() as { deleted?: unknown };
+      return payload.deleted === true;
+    }
+  };
 }
 
-export async function deleteRetainedTextingStyleSourceExamples(): Promise<boolean> {
-  const response = await fetch(endpoint, {
-    method: "DELETE",
-    headers: { authorization: `Bearer ${token()}` }
-  });
-  if (!response.ok) throw await errorFrom(response, "texting_style_source_examples_delete_failed");
-  const payload = await response.json() as { deleted?: unknown };
-  return payload.deleted === true;
+function authenticatedClient() {
+  const session = readSession();
+  if (!session) throw new TextingStyleSourceApiError("authentication_required", 401);
+  return createTextingStyleSourceClient(session.token);
 }
+
+export const fetchRetainedTextingStyleSourceExamples = () => authenticatedClient().get();
+export const deleteRetainedTextingStyleSourceExamples = () => authenticatedClient().delete();
