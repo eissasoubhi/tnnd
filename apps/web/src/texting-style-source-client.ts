@@ -1,6 +1,4 @@
-import { readSession } from "./auth-client";
-
-const defaultApiBase = (import.meta.env.VITE_TNND_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "http://127.0.0.1:4000";
+const defaultApiBase = (import.meta.env?.VITE_TNND_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "http://127.0.0.1:4000";
 
 export interface RetainedTextingStyleSourceExamples {
   sourceExamples: string;
@@ -46,11 +44,12 @@ export function createTextingStyleSourceClient(sessionToken: string, options: { 
   };
 }
 
-function authenticatedClient() {
+async function authenticatedClient() {
+  const { readSession } = await import("./auth-client");
   const session = readSession();
   if (!session) throw new TextingStyleSourceApiError("authentication_required", 401);
   return createTextingStyleSourceClient(session.token);
 }
 
-export const fetchRetainedTextingStyleSourceExamples = () => authenticatedClient().get();
-export const deleteRetainedTextingStyleSourceExamples = () => authenticatedClient().delete();
+export const fetchRetainedTextingStyleSourceExamples = async () => (await authenticatedClient()).get();
+export const deleteRetainedTextingStyleSourceExamples = async () => (await authenticatedClient()).delete();
