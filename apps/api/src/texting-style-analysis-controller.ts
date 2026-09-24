@@ -8,9 +8,11 @@ export interface TextingStyleAnalysisHttpResult {
 }
 
 export async function handleTextingStyleAnalysisRequest(
-  userId: string,
-  body: Record<string, unknown>
+  userIdOrBody: string | Record<string, unknown>,
+  requestBody?: Record<string, unknown>
 ): Promise<TextingStyleAnalysisHttpResult> {
+  const userId = typeof userIdOrBody === "string" ? userIdOrBody : null;
+  const body = typeof userIdOrBody === "string" ? (requestBody ?? {}) : userIdOrBody;
   const validated = validateTextingStyleAnalysisRequest(body);
   if (!validated.ok) {
     return { status: 400, body: { error: validated.error } };
@@ -19,6 +21,7 @@ export async function handleTextingStyleAnalysisRequest(
   try {
     const result = await analyzeTextingStyleWithGemini(validated.value.examples);
     if (validated.value.retainSourceExamples) {
+      if (!userId) throw new Error("texting_style_source_retention_requires_user");
       await retainTextingStyleSourceExamples(userId, validated.value.examples);
     }
     return {
