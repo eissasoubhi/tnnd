@@ -7,7 +7,7 @@ import {
   humanActionPausesConversation,
   sortPendingHumanActions,
   type HumanActionItem
-} from "./action-center";
+} from "./action-center-policy";
 
 function action(overrides: Partial<HumanActionItem> = {}): HumanActionItem {
   return {
