@@ -1,8 +1,9 @@
 import type { IncomingMessage } from "node:http";
 import { handleAiProviderSettingsRoute, type AiProviderSettingsRouteResult } from "./ai-provider-settings-route.js";
 import { handleGeminiConnectionTestRoute, type GeminiConnectionTestRouteResult } from "./gemini-connection-test-route.js";
+import { handleTextingStyleSourceRoute, type TextingStyleSourceRouteResult } from "./texting-style-source-route.js";
 
-export type ProductionAiRouteResult = AiProviderSettingsRouteResult | GeminiConnectionTestRouteResult;
+export type ProductionAiRouteResult = AiProviderSettingsRouteResult | GeminiConnectionTestRouteResult | TextingStyleSourceRouteResult;
 
 /**
  * Single production entry point for authenticated AI configuration routes.
@@ -15,6 +16,9 @@ export async function handleProductionAiRequest(
   pathname: string,
   body: Record<string, unknown> = {}
 ): Promise<ProductionAiRouteResult | null> {
+  const textingStyleResult = await handleTextingStyleSourceRoute(request, pathname, body);
+  if (textingStyleResult) return textingStyleResult;
+
   const settingsResult = await handleAiProviderSettingsRoute(request, pathname, body);
   if (settingsResult) return settingsResult;
 
