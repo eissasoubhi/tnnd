@@ -2,6 +2,7 @@ import { readSession } from "./auth-client";
 import { fetchProfile, saveProfile } from "./profile-client";
 import { writeEditablePreferences, type EditablePreferences } from "./profile-preferences";
 import { analyzeTextingStyle } from "./texting-style-analysis-client";
+import { deleteRetainedTextingStyleSourceExamples, fetchRetainedTextingStyleSourceExamples } from "./texting-style-source-client";
 import {
   approveStyleAnalysis,
   approvedStylePreferences,
@@ -54,7 +55,7 @@ panel.innerHTML = `
   </label>
   <label>
     <input id="style-learning-retain" type="checkbox" />
-    Keep source examples when server-side retention becomes available
+    Keep source examples on the server after analysis
   </label>
   <div>
     <button id="style-learning-analyze" type="button">Analyze style</button>
@@ -63,6 +64,19 @@ panel.innerHTML = `
   </div>
   <p class="subtle" id="style-learning-message" role="status">Sign in to analyze your texting style.</p>
   <div id="style-learning-analysis" class="preferences-grid" hidden></div>
+  <hr />
+  <div class="panel-heading">
+    <div>
+      <p class="eyebrow">Privacy</p>
+      <h3>Retained source examples</h3>
+    </div>
+    <span class="pill" id="style-source-status">Sign in required</span>
+  </div>
+  <p class="subtle" id="style-source-message" role="status">Source examples are stored only when you opt in during analysis.</p>
+  <div>
+    <button id="style-source-refresh" type="button">Check retained sources</button>
+    <button id="style-source-delete" type="button" disabled>Delete retained sources</button>
+  </div>
 `;
 grid.append(panel);
 
@@ -74,6 +88,10 @@ const applyButton = panel.querySelector<HTMLButtonElement>("#style-learning-appl
 const status = panel.querySelector<HTMLElement>("#style-learning-status");
 const message = panel.querySelector<HTMLElement>("#style-learning-message");
 const analysisContainer = panel.querySelector<HTMLElement>("#style-learning-analysis");
+const sourceStatus = panel.querySelector<HTMLElement>("#style-source-status");
+const sourceMessage = panel.querySelector<HTMLElement>("#style-source-message");
+const sourceRefreshButton = panel.querySelector<HTMLButtonElement>("#style-source-refresh");
+const sourceDeleteButton = panel.querySelector<HTMLButtonElement>("#style-source-delete");
 
 let draft: TextingStyleLearningDraft = createTextingStyleLearningDraft();
 let model = "";
@@ -82,10 +100,47 @@ function setMessage(value: string): void {
   if (message) message.textContent = value;
 }
 
+function setSourceState(state: "signed-out" | "loading" | "empty" | "retained" | "error", detail?: string): void {
+  if (sourceStatus) {
+    sourceStatus.textContent = state === "signed-out" ? "Sign in required"
+      : state === "loading" ? "Checking…"
+      : state === "empty" ? "Nothing retained"
+      : state === "retained" ? "Sources retained"
+      : "Unable to check";
+  }
+  if (sourceMessage) sourceMessage.textContent = detail ?? "Source examples are stored only when you opt in during analysis.";
+  if (sourceDeleteButton) sourceDeleteButton.disabled = state !== "retained";
+  if (sourceRefreshButton) sourceRefreshButton.disabled = state === "loading" || state === "signed-out";
+}
+
+async function refreshRetainedSources(): Promise<void> {
+  if (!readSession()) {
+    setSourceState("signed-out", "Sign in to check or delete retained source examples.");
+    return;
+  }
+  setSourceState("loading", "Checking server-side retention…");
+  try {
+    const retained = await fetchRetainedTextingStyleSourceExamples();
+    if (!retained) {
+      setSourceState("empty", "No texting-style source examples are retained on the server.");
+      return;
+    }
+    const updated = new Date(retained.updatedAt);
+    const updatedLabel = Number.isNaN(updated.getTime()) ? retained.updatedAt : updated.toLocaleString();
+    setSourceState("retained", `Source examples are retained. Last updated ${updatedLabel}. You can delete them without changing your approved style profile.`);
+  } catch (error) {
+    setSourceState("error", error instanceof Error ? error.message : "Unable to check retained source examples.");
+  }
+}
+
 function refreshAvailability(): void {
   const authenticated = Boolean(readSession());
   if (analyzeButton) analyzeButton.disabled = !authenticated || !draft.sourceExamples.trim();
-  if (!authenticated) setMessage("Sign in to analyze your texting style.");
+  if (sourceRefreshButton) sourceRefreshButton.disabled = !authenticated;
+  if (!authenticated) {
+    setMessage("Sign in to analyze your texting style.");
+    setSourceState("signed-out", "Sign in to check or delete retained source examples.");
+  }
 }
 
 function renderAnalysis(): void {
@@ -155,6 +210,7 @@ analyzeButton?.addEventListener("click", async () => {
       ? `Analysis ready with ${model}. Source examples retained.`
       : `Analysis ready with ${model}. Source examples were not stored.`);
     renderAnalysis();
+    await refreshRetainedSources();
   } catch (error) {
     setMessage(error instanceof Error ? error.message : "Unable to analyze texting style.");
   } finally {
@@ -195,5 +251,21 @@ applyButton?.addEventListener("click", async () => {
   }
 });
 
-window.addEventListener("tnnd:auth-session-changed", refreshAvailability);
+sourceRefreshButton?.addEventListener("click", () => void refreshRetainedSources());
+sourceDeleteButton?.addEventListener("click", async () => {
+  sourceDeleteButton.disabled = true;
+  if (sourceMessage) sourceMessage.textContent = "Deleting retained source examples…";
+  try {
+    await deleteRetainedTextingStyleSourceExamples();
+    setSourceState("empty", "Retained source examples deleted. Your approved style profile was not changed.");
+  } catch (error) {
+    setSourceState("error", error instanceof Error ? error.message : "Unable to delete retained source examples.");
+  }
+});
+
+window.addEventListener("tnnd:auth-session-changed", () => {
+  refreshAvailability();
+  void refreshRetainedSources();
+});
 refreshAvailability();
+void refreshRetainedSources();
