@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { handleAccountDataExportRoute } from "./account-data-export-route.js";
 import { hashSessionToken } from "./auth.js";
 import { authenticateSession, listAccountSessions, loginWithPassword, registerAccount, revokeAccountSession, revokeSession } from "./auth-service.js";
 import { handleConversationGenerationRequest } from "./conversation-generation-controller.js";
@@ -112,6 +113,12 @@ const server = createServer(async (request, response) => {
   try {
     if (await handleProductionAiHttp(request, response, url.pathname, readJsonBody, sendJson)) return;
 
+    const accountExport = await handleAccountDataExportRoute(request, url.pathname);
+    if (accountExport) {
+      sendJson(response, accountExport.status, accountExport.body);
+      return;
+    }
+
     if (request.method === "GET" && url.pathname === "/health") {
       sendJson(response, 200, { ok: true, service: "tnnd-api", version: "0.1.0", now: new Date().toISOString() });
       return;
@@ -120,7 +127,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "texting-style-analysis", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-management", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "match-profiles", "human-actions", "human-action-manual-answer", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "account-data-export", "texting-style-analysis", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-management", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "match-profiles", "human-actions", "human-action-manual-answer", "security-baseline"]
       });
       return;
     }
