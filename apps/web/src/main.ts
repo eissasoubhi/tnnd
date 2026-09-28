@@ -10,6 +10,7 @@ import { datingGoals, disclosureStrategies, readEditablePreferences, writeEditab
 void import("./auth-panel");
 void import("./ai-provider-panel");
 void import("./analytics-panel");
+void import("./account-privacy-panel");
 
 type ConversationState = "Active" | "Waiting for them" | "Action required" | "Paused";
 
