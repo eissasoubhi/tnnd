@@ -15,6 +15,7 @@ import { handleHumanActionManualAnswerRequest } from "./human-action-manual-answ
 import { createHumanAction, listHumanActions, updateHumanActionStatus, type HumanActionSeverity, type HumanActionStatus } from "./human-action-service.js";
 import { handleConversationMatchProfileRequest, handleMatchProfileCaptureRequest, handleMatchProfilePromoteRequest } from "./match-profile-controller.js";
 import { profileSchemaVersion, publicProfileSchema, validateProfileEnvelope } from "./profile-schema.js";
+import { deleteConversationData, deleteMatchProfileData } from "./privacy-delete-service.js";
 import { handleProductionAiHttp } from "./production-ai-http-handler.js";
 import { handleTextingStyleAnalysisRequest } from "./texting-style-analysis-controller.js";
 
@@ -92,6 +93,20 @@ function matchProfileSubresourceId(pathname: string, suffix: string): string | n
   return encoded ? decodeURIComponent(encoded) : null;
 }
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function directUuidResourceId(pathname: string, prefix: string): string | null {
+  if (!pathname.startsWith(prefix)) return null;
+  const encoded = pathname.slice(prefix.length);
+  if (!encoded || encoded.includes("/")) return null;
+  try {
+    const decoded = decodeURIComponent(encoded);
+    return uuidPattern.test(decoded) ? decoded : null;
+  } catch {
+    return null;
+  }
+}
+
 function parseConversationManagementUpdates(value: unknown): ConversationManagementUpdate[] | null {
   if (!Array.isArray(value) || value.length < 1 || value.length > 100) return null;
   const updates: ConversationManagementUpdate[] = [];
@@ -127,7 +142,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "account-data-export", "texting-style-analysis", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-management", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "match-profiles", "human-actions", "human-action-manual-answer", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "account-data-export", "individual-data-deletion", "texting-style-analysis", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-management", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "match-profiles", "human-actions", "human-action-manual-answer", "security-baseline"]
       });
       return;
     }
@@ -286,6 +301,18 @@ const server = createServer(async (request, response) => {
       }
       const result = await handleMatchProfilePromoteRequest(session.user.id, promoteMatchProfileId, await readJsonBody(request));
       sendJson(response, result.status, result.body);
+      return;
+    }
+
+    const deleteMatchProfileId = directUuidResourceId(url.pathname, "/api/v1/match-profiles/");
+    if (deleteMatchProfileId && request.method === "DELETE") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const deleted = await deleteMatchProfileData(session.user.id, deleteMatchProfileId);
+      sendJson(response, deleted ? 200 : 404, deleted ? { deleted: true } : { error: "match_profile_not_found" });
       return;
     }
 
@@ -477,6 +504,18 @@ const server = createServer(async (request, response) => {
         const details = error instanceof Error ? error.message : "invalid_conversation_overrides";
         sendJson(response, 400, { error: "invalid_conversation_overrides", details });
       }
+      return;
+    }
+
+    const deleteConversationId = directUuidResourceId(url.pathname, "/api/v1/conversations/");
+    if (deleteConversationId && request.method === "DELETE") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const deleted = await deleteConversationData(session.user.id, deleteConversationId);
+      sendJson(response, deleted ? 200 : 404, deleted ? { deleted: true } : { error: "conversation_not_found" });
       return;
     }
 
