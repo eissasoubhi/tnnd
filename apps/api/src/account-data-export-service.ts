@@ -1,3 +1,4 @@
+import type { QueryResultRow } from "pg";
 import { getPool } from "./db-client.js";
 
 export interface AccountDataExport {
@@ -15,12 +16,12 @@ export interface AccountDataExport {
   conversationTopicTransitions: unknown[];
 }
 
-export type AccountExportQuery = <T = Record<string, unknown>>(
+export type AccountExportQuery = <T extends QueryResultRow = QueryResultRow>(
   text: string,
   values: unknown[]
 ) => Promise<{ rows: T[] }>;
 
-function defaultQuery<T = Record<string, unknown>>(text: string, values: unknown[]) {
+function defaultQuery<T extends QueryResultRow = QueryResultRow>(text: string, values: unknown[]) {
   return getPool().query<T>(text, values);
 }
 
