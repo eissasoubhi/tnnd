@@ -37,7 +37,27 @@ export type NormalizedMatchProfile = {
 const TEXT_LIMIT = 500;
 const LIST_LIMIT = 20;
 const ROUTE_LIMIT = 512;
-const TEMPORARY_RETENTION_DAYS = 7;
+export const DEFAULT_TEMPORARY_RETENTION_DAYS = 7;
+export const MIN_TEMPORARY_RETENTION_DAYS = 1;
+export const MAX_TEMPORARY_RETENTION_DAYS = 30;
+
+export function normalizeTemporaryMatchProfileRetentionDays(value: unknown): number {
+  return Number.isInteger(value)
+    && Number(value) >= MIN_TEMPORARY_RETENTION_DAYS
+    && Number(value) <= MAX_TEMPORARY_RETENTION_DAYS
+    ? Number(value)
+    : DEFAULT_TEMPORARY_RETENTION_DAYS;
+}
+
+export function temporaryMatchProfileRetentionDaysFromProfile(value: unknown): number {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return DEFAULT_TEMPORARY_RETENTION_DAYS;
+  const profile = value as Record<string, unknown>;
+  const section = profile.matchProfileCapture;
+  if (!section || typeof section !== "object" || Array.isArray(section)) return DEFAULT_TEMPORARY_RETENTION_DAYS;
+  return normalizeTemporaryMatchProfileRetentionDays(
+    (section as Record<string, unknown>).temporaryRetentionDays
+  );
+}
 
 function normalizeText(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -89,14 +109,14 @@ export function parseMatchProfileSourceCapture(value: unknown): MatchProfileSour
 
 export function normalizeMatchProfile(
   capture: MatchProfileSourceCapture,
-  options: { conversationRef?: string | null; now?: Date } = {}
+  options: { conversationRef?: string | null; now?: Date; temporaryRetentionDays?: number } = {}
 ): NormalizedMatchProfile {
   const conversationRef = normalizeText(options.conversationRef) ?? null;
   const now = options.now ?? new Date();
   const durable = Boolean(conversationRef);
   const expiresAt = durable
     ? null
-    : new Date(now.getTime() + TEMPORARY_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    : new Date(now.getTime() + normalizeTemporaryMatchProfileRetentionDays(options.temporaryRetentionDays) * 24 * 60 * 60 * 1000).toISOString();
 
   return {
     schemaVersion: 1,
