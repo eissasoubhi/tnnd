@@ -97,6 +97,7 @@ app.innerHTML = `
           <label>French behavior<select id="french-style"><option value="neutral">neutral</option><option value="casual">casual</option><option value="very-casual">very-casual</option></select></label>
           <label>Darija behavior<select id="darija-style"><option value="light">light</option><option value="natural">natural</option><option value="darija-heavy">darija-heavy</option></select></label>
           <label>English behavior<select id="english-style"><option value="neutral">neutral</option><option value="casual">casual</option><option value="very-casual">very-casual</option></select></label>
+          <label>Temporary Tinder profile retention (days)<input id="match-profile-retention-days" type="number" min="1" max="30" step="1" value="7" /></label>
         </div>
         <button id="preferences-save" type="button">Save preferences</button>
         <p class="subtle">Signed-in profiles are stored in the backend. Browser storage is only a disconnected fallback.</p>
@@ -141,6 +142,7 @@ const doubleTexting = document.querySelector<HTMLSelectElement>("#double-texting
 const frenchStyle = document.querySelector<HTMLSelectElement>("#french-style");
 const darijaStyle = document.querySelector<HTMLSelectElement>("#darija-style");
 const englishStyle = document.querySelector<HTMLSelectElement>("#english-style");
+const matchProfileRetentionDays = document.querySelector<HTMLInputElement>("#match-profile-retention-days");
 const actionCenter = document.querySelector<HTMLElement>("#action-center");
 const actionCount = document.querySelector<HTMLElement>("#action-count");
 const humanActionMetric = document.querySelector<HTMLElement>('[data-metric-state="Action required"]');
@@ -180,7 +182,7 @@ async function refreshProfile(): Promise<void> {
 }
 
 function refreshPreferences(profile: ImportedProfile | null): void {
-  const controls = [datingGoal, disclosureStrategy, textFormality, capitalization, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, fragmentStyle, grammarStyle, directness, questionFrequency, teasingStyle, humorStyle, doubleTexting, frenchStyle, darijaStyle, englishStyle, preferencesSave];
+  const controls = [datingGoal, disclosureStrategy, textFormality, capitalization, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, fragmentStyle, grammarStyle, directness, questionFrequency, teasingStyle, humorStyle, doubleTexting, frenchStyle, darijaStyle, englishStyle, matchProfileRetentionDays, preferencesSave];
   controls.forEach((control) => { if (control) control.disabled = !profile; });
   if (!profile) {
     if (preferencesStatus) preferencesStatus.textContent = "Import a profile first";
@@ -207,6 +209,7 @@ function refreshPreferences(profile: ImportedProfile | null): void {
   if (frenchStyle) frenchStyle.value = preferences.frenchStyle;
   if (darijaStyle) darijaStyle.value = preferences.darijaStyle;
   if (englishStyle) englishStyle.value = preferences.englishStyle;
+  if (matchProfileRetentionDays) matchProfileRetentionDays.value = String(preferences.temporaryMatchProfileRetentionDays);
   if (preferencesStatus) preferencesStatus.textContent = readSession() ? "Synced" : "Local fallback";
 }
 
@@ -263,7 +266,7 @@ exportButton?.addEventListener("click", () => {
 });
 
 preferencesSave?.addEventListener("click", async () => {
-  if (!currentProfile || !datingGoal || !disclosureStrategy || !textFormality || !capitalization || !emojiFrequency || !abbreviations || !messageLength || !punctuationDensity || !slangLevel || !fragmentStyle || !grammarStyle || !directness || !questionFrequency || !teasingStyle || !humorStyle || !doubleTexting || !frenchStyle || !darijaStyle || !englishStyle) return;
+  if (!currentProfile || !datingGoal || !disclosureStrategy || !textFormality || !capitalization || !emojiFrequency || !abbreviations || !messageLength || !punctuationDensity || !slangLevel || !fragmentStyle || !grammarStyle || !directness || !questionFrequency || !teasingStyle || !humorStyle || !doubleTexting || !frenchStyle || !darijaStyle || !englishStyle || !matchProfileRetentionDays) return;
   const updated = writeEditablePreferences(currentProfile, {
     datingGoal: datingGoal.value,
     disclosureStrategy: disclosureStrategy.value,
@@ -283,7 +286,8 @@ preferencesSave?.addEventListener("click", async () => {
     doubleTexting: doubleTexting.value,
     frenchStyle: frenchStyle.value,
     darijaStyle: darijaStyle.value,
-    englishStyle: englishStyle.value
+    englishStyle: englishStyle.value,
+    temporaryMatchProfileRetentionDays: Number(matchProfileRetentionDays.value)
   });
   try {
     await persistProfile(updated);
