@@ -34,7 +34,7 @@ export interface EditablePreferences {
   frenchStyle: string;
   darijaStyle: string;
   englishStyle: string;
-  temporaryMatchProfileRetentionDays: number;
+  temporaryMatchProfileRetentionDays?: number;
 }
 
 function objectValue(value: unknown): Record<string, unknown> {
