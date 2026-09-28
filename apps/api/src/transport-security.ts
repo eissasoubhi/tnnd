@@ -1,0 +1,19 @@
+export type TransportSecurityInput = {
+  nodeEnv?: string;
+  pathname: string;
+  forwardedProto?: string | string[];
+  encrypted?: boolean;
+  trustProxy?: boolean;
+};
+
+function firstForwardedProtocol(value: string | string[] | undefined): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw?.split(",")[0]?.trim().toLowerCase() ?? "";
+}
+
+export function isAllowedRequestTransport(input: TransportSecurityInput): boolean {
+  if (input.nodeEnv !== "production") return true;
+  if (input.pathname === "/health") return true;
+  if (input.encrypted) return true;
+  return input.trustProxy === true && firstForwardedProtocol(input.forwardedProto) === "https";
+}
