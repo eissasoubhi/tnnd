@@ -134,7 +134,8 @@ const server = createServer(async (request, response) => {
       nodeEnv: process.env.NODE_ENV,
       pathname: url.pathname,
       forwardedProto: request.headers["x-forwarded-proto"],
-      encrypted
+      encrypted,
+      trustProxy: process.env.TNND_TRUST_PROXY === "true"
     })) {
       sendJson(response, 426, { error: "https_required" });
       return;
