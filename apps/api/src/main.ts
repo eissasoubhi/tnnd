@@ -20,6 +20,7 @@ import { deleteConversationData, deleteMatchProfileData } from "./privacy-delete
 import { handleProductionAiHttp } from "./production-ai-http-handler.js";
 import { handleTextingStyleAnalysisRequest } from "./texting-style-analysis-controller.js";
 import { safeApiErrorLog } from "./safe-error-log.js";
+import { isAllowedRequestTransport } from "./transport-security.js";
 
 const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? "127.0.0.1";
@@ -128,6 +129,17 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${host}:${port}`}`);
 
   try {
+    const encrypted = Boolean((request.socket as typeof request.socket & { encrypted?: boolean }).encrypted);
+    if (!isAllowedRequestTransport({
+      nodeEnv: process.env.NODE_ENV,
+      pathname: url.pathname,
+      forwardedProto: request.headers["x-forwarded-proto"],
+      encrypted
+    })) {
+      sendJson(response, 426, { error: "https_required" });
+      return;
+    }
+
     if (await handleProductionAiHttp(request, response, url.pathname, readJsonBody, sendJson)) return;
 
     const accountExport = await handleAccountDataExportRoute(request, url.pathname);
