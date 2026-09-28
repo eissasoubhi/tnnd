@@ -34,6 +34,7 @@ export interface EditablePreferences {
   frenchStyle: string;
   darijaStyle: string;
   englishStyle: string;
+  temporaryMatchProfileRetentionDays: number;
 }
 
 function objectValue(value: unknown): Record<string, unknown> {
@@ -48,10 +49,15 @@ function optionalStringValue(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+function retentionDaysValue(value: unknown): number {
+  return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 30 ? Number(value) : 7;
+}
+
 export function readEditablePreferences(profile: ImportedProfile): EditablePreferences {
   const datingIntent = objectValue(profile.datingIntent);
   const textingStyle = objectValue(profile.textingStyle);
   const languageBehavior = objectValue(textingStyle.languageBehavior);
+  const matchProfileCapture = objectValue(profile.matchProfileCapture);
   return {
     datingGoal: stringValue(datingIntent.defaultGoal, "open-to-see"),
     datingGoalDetails: optionalStringValue(datingIntent.datingGoalDetails),
@@ -72,7 +78,8 @@ export function readEditablePreferences(profile: ImportedProfile): EditablePrefe
     doubleTexting: stringValue(textingStyle.doubleTexting, "sometimes"),
     frenchStyle: stringValue(languageBehavior.fr, "casual"),
     darijaStyle: stringValue(languageBehavior.darija, "natural"),
-    englishStyle: stringValue(languageBehavior.en, "casual")
+    englishStyle: stringValue(languageBehavior.en, "casual"),
+    temporaryMatchProfileRetentionDays: retentionDaysValue(matchProfileCapture.temporaryRetentionDays)
   };
 }
 
@@ -114,6 +121,10 @@ export function writeEditablePreferences(profile: ImportedProfile, preferences: 
         darija: preferences.darijaStyle,
         en: preferences.englishStyle
       }
+    },
+    matchProfileCapture: {
+      ...objectValue(profile.matchProfileCapture),
+      temporaryRetentionDays: retentionDaysValue(preferences.temporaryMatchProfileRetentionDays)
     }
   };
 }
