@@ -161,3 +161,41 @@ describe("structured texting preferences", () => {
     );
   });
 });
+
+
+describe("MatchProfile retention preference", () => {
+  it("defaults temporary MatchProfile retention to seven days", () => {
+    assert.equal(readEditablePreferences(profile()).temporaryMatchProfileRetentionDays, 7);
+  });
+
+  it("round-trips a bounded temporary retention value", () => {
+    const current = profile();
+    const updated = writeEditablePreferences(current, {
+      ...readEditablePreferences(current),
+      temporaryMatchProfileRetentionDays: 14
+    });
+
+    assert.equal(
+      (updated.matchProfileCapture as Record<string, unknown>).temporaryRetentionDays,
+      14
+    );
+    assert.equal(readEditablePreferences(updated).temporaryMatchProfileRetentionDays, 14);
+  });
+
+  it("falls back to seven days for out-of-range values", () => {
+    const current = {
+      ...profile(),
+      matchProfileCapture: { temporaryRetentionDays: 99 }
+    };
+    assert.equal(readEditablePreferences(current).temporaryMatchProfileRetentionDays, 7);
+
+    const updated = writeEditablePreferences(current, {
+      ...readEditablePreferences(current),
+      temporaryMatchProfileRetentionDays: 0
+    });
+    assert.equal(
+      (updated.matchProfileCapture as Record<string, unknown>).temporaryRetentionDays,
+      7
+    );
+  });
+});
