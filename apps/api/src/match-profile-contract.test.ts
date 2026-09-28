@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeMatchProfile, parseMatchProfileSourceCapture } from "./match-profile-contract.js";
+import { normalizeMatchProfile, parseMatchProfileSourceCapture, temporaryMatchProfileRetentionDaysFromProfile } from "./match-profile-contract.js";
 
 const source = {
   schemaVersion: 1,
@@ -31,6 +31,28 @@ test("keeps pre-match captures temporary", () => {
   assert.equal(profile.retention.reason, "pre-match-capture");
   assert.equal(profile.retention.expiresAt, "2026-09-21T12:00:00.000Z");
   assert.equal(profile.conversationRef, null);
+});
+
+test("uses configured temporary retention from the user profile policy", () => {
+  const parsed = parseMatchProfileSourceCapture(source);
+  const profile = normalizeMatchProfile(parsed, {
+    now: new Date("2026-09-14T12:00:00.000Z"),
+    temporaryRetentionDays: 3
+  });
+  assert.equal(profile.retention.expiresAt, "2026-09-17T12:00:00.000Z");
+
+  assert.equal(
+    temporaryMatchProfileRetentionDaysFromProfile({
+      matchProfileCapture: { temporaryRetentionDays: 14 }
+    }),
+    14
+  );
+  assert.equal(
+    temporaryMatchProfileRetentionDaysFromProfile({
+      matchProfileCapture: { temporaryRetentionDays: 0 }
+    }),
+    7
+  );
 });
 
 test("promotes captures to durable only when linked to a conversation", () => {
