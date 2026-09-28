@@ -53,6 +53,10 @@ test("main server exposes production AI routes without breaking health", async (
     const settings = await fetch(`${base}/api/v1/ai/provider-settings`);
     assert.equal(settings.status, 401);
     assert.deepEqual(await settings.json(), { error: "invalid_or_expired_session" });
+
+    const accountExport = await fetch(`${base}/api/v1/account/export`);
+    assert.equal(accountExport.status, 401);
+    assert.deepEqual(await accountExport.json(), { error: "invalid_or_expired_session" });
   } finally {
     child.kill("SIGTERM");
     await new Promise<void>((resolve) => {
