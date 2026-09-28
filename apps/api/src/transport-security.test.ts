@@ -39,13 +39,23 @@ test("production accepts TLS terminated locally or by a trusted proxy header", (
       pathname: "/api/v1/profile",
       forwardedProto: "https"
     }),
+    false
+  );
+  assert.equal(
+    isAllowedRequestTransport({
+      nodeEnv: "production",
+      pathname: "/api/v1/profile",
+      forwardedProto: "https",
+      trustProxy: true
+    }),
     true
   );
   assert.equal(
     isAllowedRequestTransport({
       nodeEnv: "production",
       pathname: "/api/v1/profile",
-      forwardedProto: "https, http"
+      forwardedProto: "https, http",
+      trustProxy: true
     }),
     true
   );
