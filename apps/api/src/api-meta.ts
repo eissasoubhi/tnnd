@@ -12,6 +12,7 @@ export const apiCapabilities = [
   "session-management",
   "session-client-metadata",
   "account-profile",
+  "account-data-export",
   "texting-style-analysis",
   "extension-sync-foundation",
   "conversation-sync",
