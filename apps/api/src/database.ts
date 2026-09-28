@@ -4,7 +4,24 @@ export interface DatabaseConfig {
   maxConnections: number;
 }
 
-export const migrationFiles = ["0001_platform.sql", "0002_auth_sessions.sql"] as const;
+export const migrationFiles = [
+  "0001_platform.sql",
+  "0002_auth_sessions.sql",
+  "0003_human_actions.sql",
+  "0004_conversations.sql",
+  "0005_conversation_temporary_instructions.sql",
+  "0006_conversation_overrides.sql",
+  "0007_conversation_management_state.sql",
+  "0008_conversation_sync_cursor.sql",
+  "0009_match_profiles.sql",
+  "0010_personal_memories.sql",
+  "0011_conversation_topics.sql",
+  "0012_conversation_summaries.sql",
+  "0013_conversation_facts.sql",
+  "0014_conversation_fact_analysis_state.sql",
+  "0015_ai_provider_settings.sql",
+  "0016_texting_style_source_examples.sql"
+] as const;
 
 export function getDatabaseConfig(env: NodeJS.ProcessEnv = process.env): DatabaseConfig {
   const url = env.DATABASE_URL?.trim();
