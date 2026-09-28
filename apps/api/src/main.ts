@@ -19,6 +19,7 @@ import { profileSchemaVersion, publicProfileSchema, validateProfileEnvelope } fr
 import { deleteConversationData, deleteMatchProfileData } from "./privacy-delete-service.js";
 import { handleProductionAiHttp } from "./production-ai-http-handler.js";
 import { handleTextingStyleAnalysisRequest } from "./texting-style-analysis-controller.js";
+import { safeApiErrorLog } from "./safe-error-log.js";
 
 const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? "127.0.0.1";
@@ -673,7 +674,7 @@ const server = createServer(async (request, response) => {
       sendJson(response, 400, { error: "invalid_json" });
       return;
     }
-    console.error("TNND API request failed", error);
+    console.error(safeApiErrorLog(error));
     sendJson(response, 500, { error: "internal_error" });
   }
 });
