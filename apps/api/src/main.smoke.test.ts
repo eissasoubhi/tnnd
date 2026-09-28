@@ -58,6 +58,10 @@ test("main server exposes production AI routes without breaking health", async (
     assert.equal(accountExport.status, 401);
     assert.deepEqual(await accountExport.json(), { error: "invalid_or_expired_session" });
 
+    const accountDelete = await fetch(`${base}/api/v1/account`, { method: "DELETE" });
+    assert.equal(accountDelete.status, 401);
+    assert.deepEqual(await accountDelete.json(), { error: "invalid_or_expired_session" });
+
     const conversationDelete = await fetch(
       `${base}/api/v1/conversations/00000000-0000-4000-8000-000000000001`,
       { method: "DELETE" }
