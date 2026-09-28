@@ -3,6 +3,7 @@ import { getPool } from "./db-client.js";
 import {
   normalizeMatchProfile,
   parseMatchProfileSourceCapture,
+  temporaryMatchProfileRetentionDaysFromProfile,
   type MatchProfileSourceCapture,
   type NormalizedMatchProfile
 } from "./match-profile-contract.js";
@@ -59,6 +60,14 @@ export function isPromotableTemporaryMatchProfile(expiresAt: Date | null, now = 
   return expiresAt === null || expiresAt.getTime() > now.getTime();
 }
 
+async function loadTemporaryMatchProfileRetentionDays(userId: string): Promise<number> {
+  const result = await getPool().query<{ profile_json: unknown }>(
+    "SELECT profile_json FROM user_profiles WHERE user_id = $1 LIMIT 1",
+    [userId]
+  );
+  return temporaryMatchProfileRetentionDaysFromProfile(result.rows[0]?.profile_json);
+}
+
 async function assertConversationOwnership(userId: string, conversationId: string): Promise<boolean> {
   const result = await getPool().query(
     "SELECT 1 FROM conversations WHERE id = $1 AND user_id = $2 LIMIT 1",
@@ -92,12 +101,15 @@ async function findEquivalentTemporaryCapture(
 export async function saveMatchProfileCapture(
   userId: string,
   value: unknown,
-  options: { conversationId?: string | null; now?: Date } = {}
+  options: { conversationId?: string | null; now?: Date; temporaryRetentionDays?: number } = {}
 ): Promise<StoredMatchProfile | null> {
   const sourceCapture = parseMatchProfileSourceCapture(value);
   const conversationId = options.conversationId?.trim() || null;
   const now = options.now ?? new Date();
   if (conversationId && !(await assertConversationOwnership(userId, conversationId))) return null;
+  const temporaryRetentionDays = conversationId
+    ? undefined
+    : options.temporaryRetentionDays ?? await loadTemporaryMatchProfileRetentionDays(userId);
 
   if (!conversationId) {
     const duplicate = await findEquivalentTemporaryCapture(userId, sourceCapture, now);
@@ -106,7 +118,8 @@ export async function saveMatchProfileCapture(
 
   const normalizedProfile = normalizeMatchProfile(sourceCapture, {
     conversationRef: conversationId,
-    now
+    now,
+    ...(temporaryRetentionDays === undefined ? {} : { temporaryRetentionDays })
   });
   const id = randomUUID();
   const result = await getPool().query<MatchProfileRow>(
