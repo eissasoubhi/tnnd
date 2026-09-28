@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { deleteAccountWithPassword } from "./account-deletion-service.js";
 import { handleAccountDataExportRoute } from "./account-data-export-route.js";
 import { hashSessionToken } from "./auth.js";
 import { authenticateSession, listAccountSessions, loginWithPassword, registerAccount, revokeAccountSession, revokeSession } from "./auth-service.js";
@@ -134,6 +135,31 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "DELETE" && url.pathname === "/api/v1/account") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const body = await readJsonBody(request);
+      const password = typeof body.password === "string" ? body.password : "";
+      if (!password) {
+        sendJson(response, 400, { error: "password_required" });
+        return;
+      }
+      const deletion = await deleteAccountWithPassword(session.user.id, password);
+      if (deletion === "invalid_password") {
+        sendJson(response, 403, { error: "invalid_password" });
+        return;
+      }
+      if (deletion === "not_found") {
+        sendJson(response, 404, { error: "account_not_found" });
+        return;
+      }
+      sendJson(response, 200, { deleted: true });
+      return;
+    }
+
     if (request.method === "GET" && url.pathname === "/health") {
       sendJson(response, 200, { ok: true, service: "tnnd-api", version: "0.1.0", now: new Date().toISOString() });
       return;
@@ -142,7 +168,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "account-data-export", "individual-data-deletion", "texting-style-analysis", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-management", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "match-profiles", "human-actions", "human-action-manual-answer", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "account-data-export", "account-deletion", "individual-data-deletion", "texting-style-analysis", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-management", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "match-profiles", "human-actions", "human-action-manual-answer", "security-baseline"]
       });
       return;
     }
