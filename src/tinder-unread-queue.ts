@@ -6,7 +6,16 @@ export interface TinderUnreadThreadCandidate {
 }
 
 const THREAD_PREFIX = "/app/messages/";
-const UNREAD_TOKEN = /\bunread\b|new[-_ ]?message|notification/i;
+const GENERIC_UNREAD_TOKEN = /\bunread\b|new[-_ ]?message|notification/i;
+const OBSERVED_UNREAD_CLASS_TOKEN = "messageListItem--isNew";
+
+export function isObservedUnreadHint(value: string): boolean {
+  return value.includes(OBSERVED_UNREAD_CLASS_TOKEN);
+}
+
+function hasUnreadHint(value: string): boolean {
+  return isObservedUnreadHint(value) || GENERIC_UNREAD_TOKEN.test(value);
+}
 
 function visible(element: Element): boolean {
   return element instanceof HTMLElement && element.offsetParent !== null;
@@ -26,19 +35,19 @@ function conversationRefFromHref(href: string | null): string | null {
 
 function unreadSignal(anchor: HTMLAnchorElement): TinderUnreadThreadCandidate["signal"] | null {
   const aria = anchor.getAttribute("aria-label") ?? "";
-  if (UNREAD_TOKEN.test(aria)) return "aria";
+  if (hasUnreadHint(aria)) return "aria";
 
   const testId = anchor.getAttribute("data-testid") ?? "";
-  if (UNREAD_TOKEN.test(testId)) return "testid";
+  if (hasUnreadHint(testId)) return "testid";
 
   const className = anchor.className?.toString() ?? "";
-  if (UNREAD_TOKEN.test(className)) return "class";
+  if (hasUnreadHint(className)) return "class";
 
   const scope = anchor.closest("li,[role='listitem'],article,div") ?? anchor;
   const badge = Array.from(scope.querySelectorAll<HTMLElement>("[aria-label],[data-testid],[class]")).find((element) => {
     if (!visible(element)) return false;
     const hint = `${element.getAttribute("aria-label") ?? ""} ${element.getAttribute("data-testid") ?? ""} ${element.className?.toString() ?? ""}`;
-    return UNREAD_TOKEN.test(hint);
+    return hasUnreadHint(hint);
   });
   return badge ? "badge" : null;
 }
