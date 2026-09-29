@@ -20,6 +20,13 @@ Route state and visible layout are not always the same thing. Tinder can keep Di
 - A hidden/off-screen `role="dialog"` element is not sufficient evidence of a blocking modal. Visibility must be checked before gating actions.
 - Conversation pages expose a visible message composer and a message list; Send can be present but disabled when the composer is empty.
 
+## Observed inbox and conversation signals
+
+- A visible Messages sidebar can coexist with the primary Discovery route; route and sidebar state must stay independent.
+- Real unread conversation anchors were observed with the structural class token `messageListItem--isNew`.
+- A real conversation exposed a visible message composer and both incoming/outgoing message candidates.
+- Raw thread identifiers, message/profile text, screenshots and DOM snapshots remain excluded from repository fixtures.
+
 ## Orchestrator rules derived from diagnostics
 
 1. Detect the primary route state.
