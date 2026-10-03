@@ -3,7 +3,9 @@ import { readFile } from "node:fs/promises";
 import { planBoundedTinderJob } from "../src/tinder-orchestrator.ts";
 import { completeTinderSchedulerStep, canResumeCheckpoint, planTinderSchedulerStep } from "../src/tinder-scheduler.ts";
 import { classifySyncReconciliation, describeSyncReconciliation } from "../src/sync-status.ts";
-import { classifyTinderPath, composeTinderUiState, isInboxReadableTinderState, isObservedV1Transition, planNavigation } from "../src/tinder-state-machine.ts";\nimport { OBSERVED_TINDER_UNREAD_CLASS, unreadSignalFromHints } from "../src/tinder-unread-queue.ts";\nimport { hashTinderThreadKey, tinderThreadKeyFromPath } from "../src/tinder-thread-identity.ts";
+import { classifyTinderPath, composeTinderUiState, isInboxReadableTinderState, isObservedV1Transition, planNavigation } from "../src/tinder-state-machine.ts";
+import { OBSERVED_TINDER_UNREAD_CLASS, unreadSignalFromHints } from "../src/tinder-unread-queue.ts";
+import { hashTinderThreadKey, tinderThreadKeyFromPath } from "../src/tinder-thread-identity.ts";
 
 const fixtureUrl = new URL("../fixtures/tinder-state-regression.json", import.meta.url);
 const fixture = JSON.parse(await readFile(fixtureUrl, "utf8"));
