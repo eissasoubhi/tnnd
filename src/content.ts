@@ -1,6 +1,7 @@
 import { TinderDomAdapter } from "./tinder-adapter";
 import { observeTinderRuntime } from "./tinder-runtime-observation";
-import { readCurrentTinderUiState } from "./tinder-runtime-state";\nimport { isInboxReadableTinderState } from "./tinder-state-machine";
+import { readCurrentTinderUiState } from "./tinder-runtime-state";
+import { isInboxReadableTinderState } from "./tinder-state-machine";
 import type { TinderScheduledJob } from "./tinder-scheduler";
 import { executeUnreadAwareTinderStep } from "./tinder-unread-executor";
 import type { AutomationConfig, GenerateRequest, GenerateResponse } from "./types";
