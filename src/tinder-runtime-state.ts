@@ -22,7 +22,7 @@ function visibleElements(selector: string): HTMLElement[] {
 }
 
 function detectSidebarState(): TinderSidebarState {
-  if (visibleElements('a[href*="/app/messages/"]').length > 0) return "messages";
+  if (visibleElements('a.messageListItem[href*="/app/messages/"]').length > 0) return "messages";
   if (visibleElements('[data-testid*="matchList" i], [aria-label*="matches" i]').length > 0) return "matches";
   return "unknown";
 }
