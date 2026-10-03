@@ -1,6 +1,6 @@
 import { TinderDomAdapter } from "./tinder-adapter";
 import { observeTinderRuntime } from "./tinder-runtime-observation";
-import { readCurrentTinderUiState } from "./tinder-runtime-state";
+import { readCurrentTinderUiState } from "./tinder-runtime-state";\nimport { isInboxReadableTinderState } from "./tinder-state-machine";
 import type { TinderScheduledJob } from "./tinder-scheduler";
 import { executeUnreadAwareTinderStep } from "./tinder-unread-executor";
 import type { AutomationConfig, GenerateRequest, GenerateResponse } from "./types";
@@ -247,14 +247,16 @@ async function observeRuntimeReadMode(): Promise<void> {
   if (runtimeReadBusy) return;
   const observation = observeTinderRuntime(adapter);
   if (!observation.readOnlyStepAllowed) return;
-  if (observation.route.state !== "inbox" && observation.route.state !== "conversation") return;
+  const diagnosticsInboxReadable = observation.route.state === "inbox"
+    || (observation.route.state === "discovery" && observation.diagnostics.sidebarState === "messages");
+  if (!diagnosticsInboxReadable && observation.route.state !== "conversation") return;
 
   runtimeReadBusy = true;
   try {
     const uiState = readCurrentTinderUiState();
     if (uiState.state !== observation.route.state || uiState.path !== observation.route.path || !uiState.boundedActionAllowed) return;
 
-    if (uiState.state === "inbox") {
+    if (isInboxReadableTinderState(uiState)) {
       const job: TinderScheduledJob = { id: "runtime-observe-inbox", kind: "scan-inbox" };
       const result = await executeUnreadAwareTinderStep(
         uiState,
