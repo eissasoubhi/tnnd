@@ -1,4 +1,4 @@
-import { planNavigation, type TinderJobKind, type TinderNavigationPlan, type TinderUiStateSnapshot } from "./tinder-state-machine.ts";
+import { isInboxReadableTinderState, planNavigation, type TinderJobKind, type TinderNavigationPlan, type TinderUiStateSnapshot } from "./tinder-state-machine.ts";
 
 export interface TinderJobDecision {
   allowed: boolean;
@@ -11,7 +11,10 @@ export function planBoundedTinderJob(
   job: TinderJobKind,
   conversationRef?: string
 ): TinderJobDecision {
-  const navigation = planNavigation(current, job, conversationRef);
+  const plannedNavigation = planNavigation(current, job, conversationRef);
+  const navigation = job === "scan-inbox" && isInboxReadableTinderState(current)
+    ? { ...plannedNavigation, path: null, reason: "visible Messages sidebar is readable without route navigation" }
+    : plannedNavigation;
 
   if (job === "sync-only") {
     return {

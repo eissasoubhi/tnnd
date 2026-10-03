@@ -71,6 +71,12 @@ export function classifyTinderPath(value: string): TinderStateSnapshot {
   return { state: "unknown", path, conversationRef: null, discoveryContext: "unknown" };
 }
 
+export function isInboxReadableTinderState(
+  state: Pick<TinderUiStateSnapshot, "state" | "sidebarState">
+): boolean {
+  return state.state === "inbox" || (state.state === "discovery" && state.sidebarState === "messages");
+}
+
 export function composeTinderUiState(route: TinderStateSnapshot, signals: TinderUiSignals = {}): TinderUiStateSnapshot {
   const overlay: TinderOverlayState = signals.visibleModal ? "blocking-modal" : "none";
   const profileState: TinderProfileState = route.state === "discovery"

@@ -1,3 +1,4 @@
+import { hashTinderThreadKey, tinderThreadKeyFromPath } from "./tinder-thread-identity";
 export interface ConversationSnapshot {
   threadKey: string;
   context: string;
@@ -244,7 +245,7 @@ function inboxPath(path: string): boolean {
 
 function detectSidebarState(): { state: TinderSidebarState; signals: string[] } {
   const signals: string[] = [];
-  const visibleConversationLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/app/messages/"]'))
+  const visibleConversationLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('a.messageListItem[href*="/app/messages/"]'))
     .filter((element) => visible(element));
   if (visibleConversationLinks.length) {
     signals.push(`visible-conversation-links:${visibleConversationLinks.length}`);
@@ -369,7 +370,7 @@ export class TinderDomAdapter {
     if (messages.slice(latestIncomingIndex + 1).some((m) => m.direction === "me")) return null;
 
     const context = messages.slice(-24).map((message) => `${message.direction === "me" ? "Me" : "Them"}: ${message.text}`).join("\n");
-    const threadKey = `${location.pathname}|${document.title}`;
+    const threadKey = tinderThreadKeyFromPath(location.pathname);
     return {
       threadKey,
       context,
@@ -406,7 +407,7 @@ export class TinderDomAdapter {
       sendButtonEnabled: Boolean(sendButton && !sendButton.disabled),
       navigationCandidates: navigationCandidates(),
       runtimeIssues: runtimeIssues.map((issue) => ({ ...issue })),
-      threadKeyHash: simpleHash(`${location.pathname}|${document.title}`)
+      threadKeyHash: hashTinderThreadKey(location.pathname)
     };
   }
 

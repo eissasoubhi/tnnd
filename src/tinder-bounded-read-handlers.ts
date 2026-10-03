@@ -1,7 +1,7 @@
 import { TinderDomAdapter } from "./tinder-adapter";
 import { buildNormalizedMessageKeys } from "./tinder-message-key";
 import type { TinderScheduledJob } from "./tinder-scheduler";
-import type { TinderUiStateSnapshot } from "./tinder-state-machine";
+import { isInboxReadableTinderState, type TinderUiStateSnapshot } from "./tinder-state-machine";
 import { buildUnreadProcessThreadJobs, discoverUnreadThreadCandidates } from "./tinder-unread-queue";
 
 const MAX_SYNC_MESSAGE_TEXT = 4000;
@@ -23,10 +23,10 @@ export function executeBoundedTinderRead(
 
   if (job.kind === "scan-inbox") {
     const diagnostics = adapter.diagnose();
-    const unreadCandidates = state.state === "inbox" ? discoverUnreadThreadCandidates() : [];
+    const unreadCandidates = isInboxReadableTinderState(state) ? discoverUnreadThreadCandidates() : [];
     const queuedJobs = buildUnreadProcessThreadJobs(unreadCandidates);
     return {
-      completed: state.state === "inbox",
+      completed: isInboxReadableTinderState(state),
       kind: job.kind,
       observation: {
         state: state.state,

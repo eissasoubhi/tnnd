@@ -34,3 +34,16 @@ Route state and visible layout are not always the same thing. Tinder can keep Di
 ## Regression coverage
 
 `fixtures/tinder-state-regression.json` is the executable synthetic source for these observations. The root build runs `scripts/check-tinder-state-machine.mjs` so the known route/sub-state behavior does not silently regress.
+
+
+## 2026-09 V1 diagnostic sequence
+
+A five-step user-triggered redacted diagnostic sequence confirmed these additional structural facts without retaining raw profile/message text or real thread identifiers:
+
+- Discovery can remain on `/app/recs` while a Messages sidebar is visibly open; that state is inbox-readable without forcing navigation to `/app/matches`.
+- Visible unread conversation anchors use the exact class token `messageListItem--isNew` and route to `/app/messages/<thread>`.
+- The observed conversation used `textarea[placeholder*="message" i]` as its visible composer.
+- The redacted conversation sample produced 7 visible message candidates, with direction classification resolving all 7 (1 outgoing, 6 incoming).
+- Thread identity is derived from the stable conversation pathname rather than `document.title`.
+
+Only synthetic placeholders and aggregate counts belong in regression fixtures; real thread IDs, screenshots and raw DOM remain outside the repository.

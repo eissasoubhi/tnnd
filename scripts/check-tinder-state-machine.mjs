@@ -3,7 +3,9 @@ import { readFile } from "node:fs/promises";
 import { planBoundedTinderJob } from "../src/tinder-orchestrator.ts";
 import { completeTinderSchedulerStep, canResumeCheckpoint, planTinderSchedulerStep } from "../src/tinder-scheduler.ts";
 import { classifySyncReconciliation, describeSyncReconciliation } from "../src/sync-status.ts";
-import { classifyTinderPath, composeTinderUiState, isObservedV1Transition, planNavigation } from "../src/tinder-state-machine.ts";
+import { classifyTinderPath, composeTinderUiState, isInboxReadableTinderState, isObservedV1Transition, planNavigation } from "../src/tinder-state-machine.ts";
+import { OBSERVED_TINDER_UNREAD_CLASS, unreadSignalFromHints } from "../src/tinder-unread-queue.ts";
+import { hashTinderThreadKey, tinderThreadKeyFromPath } from "../src/tinder-thread-identity.ts";
 
 const fixtureUrl = new URL("../fixtures/tinder-state-regression.json", import.meta.url);
 const fixture = JSON.parse(await readFile(fixtureUrl, "utf8"));
@@ -94,5 +96,37 @@ assert.equal(classifySyncReconciliation(null, "server-cursor"), "restored");
 assert.equal(classifySyncReconciliation("same", "same"), "matching");
 assert.equal(classifySyncReconciliation("local", "server"), "mismatch");
 assert.equal(describeSyncReconciliation("mismatch"), "checkpoint mismatch · sync paused");
+
+const sidebarDiscovery = composeTinderUiState(
+  classifyTinderPath("/app/recs"),
+  { sidebarState: "messages" }
+);
+assert.equal(isInboxReadableTinderState(sidebarDiscovery), true);
+assert.equal(
+  unreadSignalFromHints({ className: `messageListItem other-class ${OBSERVED_TINDER_UNREAD_CLASS}` }),
+  "class"
+);
+assert.equal(
+  unreadSignalFromHints({ className: "messageListItem" }),
+  null
+);
+
+const observedThreadPath = "/app/messages/thread-fixture-001";
+assert.equal(tinderThreadKeyFromPath(observedThreadPath), observedThreadPath);
+assert.equal(hashTinderThreadKey(observedThreadPath), hashTinderThreadKey(`https://tinder.com${observedThreadPath}`));
+assert.notEqual(
+  hashTinderThreadKey("/app/messages/thread-fixture-001"),
+  hashTinderThreadKey("/app/messages/thread-fixture-002")
+);
+
+for (const observation of fixture.domObservations ?? []) {
+  if (observation.unreadClass) assert.equal(observation.unreadClass, OBSERVED_TINDER_UNREAD_CLASS);
+  if (observation.sidebarState === "messages") {
+    assert.equal(
+      isInboxReadableTinderState(composeTinderUiState(classifyTinderPath(observation.path), { sidebarState: "messages" })),
+      true
+    );
+  }
+}
 
 console.log(`Tinder state regression fixtures passed (${fixture.routes.length} routes, ${fixture.uiObservations.length} UI observations).`);

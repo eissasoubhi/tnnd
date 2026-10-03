@@ -5,7 +5,7 @@ import { loadTinderMessageCursor, saveTinderMessageCursor } from "./tinder-messa
 import { planTinderMessageDelta } from "./tinder-message-delta";
 import { executeTinderSingleTabStep, type TinderSingleTabExecutionResult } from "./tinder-single-tab-executor";
 import type { TinderScheduledJob } from "./tinder-scheduler";
-import type { TinderUiStateSnapshot } from "./tinder-state-machine";
+import { isInboxReadableTinderState, type TinderUiStateSnapshot } from "./tinder-state-machine";
 import { completeUnreadCycleThread, reconcileUnreadCycle } from "./tinder-unread-cycle";
 import { TinderDomAdapter } from "./tinder-adapter";
 
@@ -95,7 +95,7 @@ export async function executeUnreadAwareTinderStep(
   existingJobs: readonly TinderScheduledJob[] = [],
   now = new Date().toISOString()
 ): Promise<TinderUnreadExecutorResult> {
-  const cycle = job.kind === "scan-inbox" && state.state === "inbox"
+  const cycle = job.kind === "scan-inbox" && isInboxReadableTinderState(state)
     ? await reconcileUnreadCycle(document, existingJobs, now)
     : null;
   const conversationRef = job.kind === "process-thread" ? job.conversationRef ?? null : null;

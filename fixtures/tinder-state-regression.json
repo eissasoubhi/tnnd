@@ -2,19 +2,50 @@
   "schemaVersion": 2,
   "source": "synthetic fixtures derived from redacted user-triggered V1 observations",
   "routes": [
-    { "path": "/app/explore", "state": "discovery", "discoveryContext": "explore-catalog" },
-    { "path": "/app/explore/category-fixture-001", "state": "discovery", "discoveryContext": "explore-category" },
-    { "path": "/app/recs", "state": "discovery", "discoveryContext": "recs" },
-    { "path": "/app/matches", "state": "inbox", "discoveryContext": "unknown" },
-    { "path": "/app/messages", "state": "inbox", "discoveryContext": "unknown" },
-    { "path": "/app/messages/thread-fixture-001", "state": "conversation", "conversationRef": "thread-fixture-001", "discoveryContext": "unknown" },
-    { "path": "/settings", "state": "unknown", "discoveryContext": "unknown" }
+    {
+      "path": "/app/explore",
+      "state": "discovery",
+      "discoveryContext": "explore-catalog"
+    },
+    {
+      "path": "/app/explore/category-fixture-001",
+      "state": "discovery",
+      "discoveryContext": "explore-category"
+    },
+    {
+      "path": "/app/recs",
+      "state": "discovery",
+      "discoveryContext": "recs"
+    },
+    {
+      "path": "/app/matches",
+      "state": "inbox",
+      "discoveryContext": "unknown"
+    },
+    {
+      "path": "/app/messages",
+      "state": "inbox",
+      "discoveryContext": "unknown"
+    },
+    {
+      "path": "/app/messages/thread-fixture-001",
+      "state": "conversation",
+      "conversationRef": "thread-fixture-001",
+      "discoveryContext": "unknown"
+    },
+    {
+      "path": "/settings",
+      "state": "unknown",
+      "discoveryContext": "unknown"
+    }
   ],
   "uiObservations": [
     {
       "name": "discovery-with-visible-modal",
       "path": "/app/explore",
-      "signals": { "visibleModal": true },
+      "signals": {
+        "visibleModal": true
+      },
       "overlay": "blocking-modal",
       "profileState": "card",
       "boundedActionAllowed": false
@@ -22,7 +53,9 @@
     {
       "name": "discovery-profile-expanded",
       "path": "/app/explore",
-      "signals": { "profileExpanded": true },
+      "signals": {
+        "profileExpanded": true
+      },
       "overlay": "none",
       "profileState": "expanded",
       "boundedActionAllowed": true
@@ -38,7 +71,9 @@
     {
       "name": "discovery-with-messages-sidebar",
       "path": "/app/recs",
-      "signals": { "sidebarState": "messages" },
+      "signals": {
+        "sidebarState": "messages"
+      },
       "overlay": "none",
       "profileState": "card",
       "boundedActionAllowed": true
@@ -55,5 +90,34 @@
     "discovery",
     "discovery",
     "discovery"
+  ],
+  "domObservations": [
+    {
+      "name": "discovery-messages-sidebar",
+      "path": "/app/recs",
+      "sidebarState": "messages",
+      "conversationLinkPattern": "/app/messages/<thread>",
+      "unreadClass": "messageListItem--isNew",
+      "unreadCountObserved": 6
+    },
+    {
+      "name": "conversation-composer-and-directions",
+      "path": "/app/messages/thread-fixture-001",
+      "composerSelector": "textarea[placeholder*=\"message\" i]",
+      "visibleCandidateCount": 7,
+      "directionCounts": {
+        "me": 1,
+        "them": 6,
+        "unknown": 0
+      }
+    },
+    {
+      "name": "inbox-unread-list",
+      "path": "/app/matches",
+      "sidebarState": "messages",
+      "conversationLinkPattern": "/app/messages/<thread>",
+      "unreadClass": "messageListItem--isNew",
+      "unreadCountObserved": 6
+    }
   ]
 }
