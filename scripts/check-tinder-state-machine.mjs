@@ -6,6 +6,7 @@ import { classifySyncReconciliation, describeSyncReconciliation } from "../src/s
 import { classifyTinderPath, composeTinderUiState, isInboxReadableTinderState, isObservedV1Transition, planNavigation } from "../src/tinder-state-machine.ts";
 import { OBSERVED_TINDER_UNREAD_CLASS, unreadSignalFromHints } from "../src/tinder-unread-queue.ts";
 import { hashTinderThreadKey, tinderThreadKeyFromPath } from "../src/tinder-thread-identity.ts";
+import { planTinderMessageDelta } from "../src/tinder-message-delta.ts";
 
 const fixtureUrl = new URL("../fixtures/tinder-state-regression.json", import.meta.url);
 const fixture = JSON.parse(await readFile(fixtureUrl, "utf8"));
@@ -118,6 +119,31 @@ assert.notEqual(
   hashTinderThreadKey("/app/messages/thread-fixture-001"),
   hashTinderThreadKey("/app/messages/thread-fixture-002")
 );
+
+const observedConversation = fixture.domObservations?.find((observation) => observation.name === "conversation-composer-and-directions");
+assert.ok(observedConversation, "observed conversation fixture should exist");
+assert.equal(observedConversation.visibleCandidateCount, 7);
+assert.deepEqual(observedConversation.directionCounts, { me: 1, them: 6, unknown: 0 });
+
+const observedMessages = Array.from({ length: observedConversation.visibleCandidateCount }, (_, index) => ({
+  key: `message-fixture-${index + 1}`,
+  value: { direction: index === 3 ? "me" : "them" }
+}));
+const initialDelta = planTinderMessageDelta(observedMessages, null);
+assert.equal(initialDelta.cursorFound, true);
+assert.equal(initialDelta.items.length, 7);
+assert.equal(initialDelta.nextCursor, "message-fixture-7");
+assert.equal(initialDelta.items.filter((message) => message.value.direction === "me").length, 1);
+assert.equal(initialDelta.items.filter((message) => message.value.direction === "them").length, 6);
+
+const resumedDelta = planTinderMessageDelta(observedMessages, "message-fixture-4");
+assert.equal(resumedDelta.cursorFound, true);
+assert.deepEqual(resumedDelta.items.map((message) => message.key), [
+  "message-fixture-5",
+  "message-fixture-6",
+  "message-fixture-7"
+]);
+assert.equal(resumedDelta.nextCursor, "message-fixture-7");
 
 for (const observation of fixture.domObservations ?? []) {
   if (observation.unreadClass) assert.equal(observation.unreadClass, OBSERVED_TINDER_UNREAD_CLASS);
