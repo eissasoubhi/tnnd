@@ -24,21 +24,39 @@ function conversationRefFromHref(href: string | null): string | null {
   }
 }
 
-function unreadSignal(anchor: HTMLAnchorElement): TinderUnreadThreadCandidate["signal"] | null {
-  const aria = anchor.getAttribute("aria-label") ?? "";
+export function unreadSignalFromHints(hints: {
+  ariaLabel?: string | null;
+  testId?: string | null;
+  className?: string | null;
+}): TinderUnreadThreadCandidate["signal"] | null {
+  const aria = hints.ariaLabel ?? "";
   if (UNREAD_TOKEN.test(aria)) return "aria";
 
-  const testId = anchor.getAttribute("data-testid") ?? "";
+  const testId = hints.testId ?? "";
   if (UNREAD_TOKEN.test(testId)) return "testid";
 
-  const className = anchor.className?.toString() ?? "";
-  if (UNREAD_TOKEN.test(className)) return "class";
+  const className = hints.className ?? "";
+  const classTokens = className.split(/\\s+/).filter(Boolean);
+  if (classTokens.includes(OBSERVED_TINDER_UNREAD_CLASS) || UNREAD_TOKEN.test(className)) return "class";
+  return null;
+}
+
+function unreadSignal(anchor: HTMLAnchorElement): TinderUnreadThreadCandidate["signal"] | null {
+  const direct = unreadSignalFromHints({
+    ariaLabel: anchor.getAttribute("aria-label"),
+    testId: anchor.getAttribute("data-testid"),
+    className: anchor.className?.toString() ?? ""
+  });
+  if (direct) return direct;
 
   const scope = anchor.closest("li,[role='listitem'],article,div") ?? anchor;
   const badge = Array.from(scope.querySelectorAll<HTMLElement>("[aria-label],[data-testid],[class]")).find((element) => {
     if (!visible(element)) return false;
-    const hint = `${element.getAttribute("aria-label") ?? ""} ${element.getAttribute("data-testid") ?? ""} ${element.className?.toString() ?? ""}`;
-    return UNREAD_TOKEN.test(hint);
+    return unreadSignalFromHints({
+      ariaLabel: element.getAttribute("aria-label"),
+      testId: element.getAttribute("data-testid"),
+      className: element.className?.toString() ?? ""
+    }) !== null;
   });
   return badge ? "badge" : null;
 }
