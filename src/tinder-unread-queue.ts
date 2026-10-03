@@ -37,7 +37,7 @@ export function unreadSignalFromHints(hints: {
   if (UNREAD_TOKEN.test(testId)) return "testid";
 
   const className = hints.className ?? "";
-  const classTokens = className.split(/\\s+/).filter(Boolean);
+  const classTokens = className.split(/\s+/).filter(Boolean);
   if (classTokens.includes(OBSERVED_TINDER_UNREAD_CLASS) || UNREAD_TOKEN.test(className)) return "class";
   return null;
 }
