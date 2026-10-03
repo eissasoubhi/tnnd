@@ -22,6 +22,23 @@ jobs:
   typecheck:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tnnd
+          POSTGRES_PASSWORD: tnnd
+          POSTGRES_DB: tnnd
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tnnd -d tnnd"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://tnnd:tnnd@127.0.0.1:5432/tnnd
+      DB_SSL: "false"
     defaults:
       run:
         working-directory: apps/api
@@ -33,3 +50,7 @@ jobs:
       - run: npm install
       - run: npm run typecheck
       - run: npm test
+      - name: Apply all migrations to disposable PostgreSQL
+        run: npm run migrate
+      - name: Re-run migrations to prove idempotency
+        run: npm run migrate
