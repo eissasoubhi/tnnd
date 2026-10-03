@@ -6,6 +6,7 @@ export interface TinderUnreadThreadCandidate {
 }
 
 const THREAD_PREFIX = "/app/messages/";
+export const OBSERVED_TINDER_UNREAD_CLASS = "messageListItem--isNew";
 const UNREAD_TOKEN = /\bunread\b|new[-_ ]?message|notification/i;
 
 function visible(element: Element): boolean {
