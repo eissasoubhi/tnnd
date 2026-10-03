@@ -1,0 +1,87 @@
+name: V1 Release Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v1-release-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tnnd
+          POSTGRES_PASSWORD: tnnd
+          POSTGRES_DB: tnnd
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tnnd -d tnnd"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://tnnd:tnnd@127.0.0.1:5432/tnnd
+      DB_SSL: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify repository release invariants
+        run: |
+          test ! -s README.md
+          if git ls-files | grep -E '(^|/)\.env($|\.)' | grep -vE '(^|/)\.env\.example$'; then
+            echo 'Local environment files must not be committed.' >&2
+            exit 1
+          fi
+          node -e "const p=require('./package.json');const m=require('./public/manifest.json');if(p.version!==m.version)process.exit(1)"
+
+      - name: Build extension and run root regression gates
+        run: |
+          npm install
+          npm run build
+
+      - name: Validate Web application
+        working-directory: apps/web
+        run: |
+          npm install
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Validate API
+        working-directory: apps/api
+        run: |
+          npm install
+          npm run typecheck
+          npm test
+          npm run migrate
+          npm run migrate
+
+      - name: Add extension integrity metadata
+        run: |
+          printf '{"commit":"%s","version":"%s"}\n' "$GITHUB_SHA" "$(node -p "require('./package.json').version")" > dist/BUILD-INFO.json
+          find dist -type f ! -name BUILD-SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > dist/BUILD-SHA256SUMS.txt
+          sha256sum -c dist/BUILD-SHA256SUMS.txt
+
+      - name: Upload V1 candidate extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tnnd-v1-candidate-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
