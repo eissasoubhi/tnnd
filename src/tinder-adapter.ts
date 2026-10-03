@@ -245,7 +245,7 @@ function inboxPath(path: string): boolean {
 
 function detectSidebarState(): { state: TinderSidebarState; signals: string[] } {
   const signals: string[] = [];
-  const visibleConversationLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/app/messages/"]'))
+  const visibleConversationLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('a.messageListItem[href*="/app/messages/"]'))
     .filter((element) => visible(element));
   if (visibleConversationLinks.length) {
     signals.push(`visible-conversation-links:${visibleConversationLinks.length}`);
