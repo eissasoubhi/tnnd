@@ -28,6 +28,7 @@ const cards: DashboardCard[] = [
 ];
 
 const storageKey = "tnnd:web:imported-profile";
+const maxLocalProfileBytes = 512 * 1024;
 const app = document.querySelector<HTMLElement>("#app");
 if (!app) throw new Error("TNND web app root was not found.");
 
@@ -152,8 +153,16 @@ let currentProfile: ImportedProfile | null = null;
 function loadFallbackProfile(): ImportedProfile | null {
   const raw = localStorage.getItem(storageKey);
   if (!raw) return null;
+  if (raw.length > maxLocalProfileBytes) {
+    localStorage.removeItem(storageKey);
+    return null;
+  }
   const parsed = parseImportedProfile(raw);
-  return parsed.ok ? parsed.profile : null;
+  if (!parsed.ok) {
+    localStorage.removeItem(storageKey);
+    return null;
+  }
+  return parsed.profile;
 }
 
 function setProfile(profile: ImportedProfile | null, source: "backend" | "local" | "none"): void {
