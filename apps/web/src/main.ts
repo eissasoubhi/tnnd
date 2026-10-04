@@ -5,12 +5,25 @@ import { fetchProfile, saveProfile } from "./profile-client";
 import { downloadProfile, parseImportedProfile, type ImportedProfile } from "./profile-import";
 import { datingGoals, disclosureStrategies, readEditablePreferences, writeEditablePreferences } from "./profile-preferences";
 
-// Bootstrap independent dashboard panels from the shell rather than chaining
-// panel side effects together. Each panel remains independently deployable.
-void import("./auth-panel");
-void import("./ai-provider-panel");
-void import("./analytics-panel");
-void import("./account-privacy-panel");
+let optionalPanelsLoaded = false;
+
+async function loadOptionalPanels(): Promise<void> {
+  if (optionalPanelsLoaded || !readSession()) return;
+  optionalPanelsLoaded = true;
+  for (const loader of [
+    () => import("./ai-provider-panel"),
+    () => import("./analytics-panel"),
+    () => import("./account-privacy-panel"),
+    () => import("./texting-style-learning-panel")
+  ]) {
+    await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));
+    try {
+      await loader();
+    } catch (error) {
+      console.error("Unable to load an optional TNND panel", error);
+    }
+  }
+}
 
 type ConversationState = "Active" | "Waiting for them" | "Action required" | "Paused";
 
@@ -28,6 +41,7 @@ const cards: DashboardCard[] = [
 ];
 
 const storageKey = "tnnd:web:imported-profile";
+const maxLocalProfileBytes = 512 * 1024;
 const app = document.querySelector<HTMLElement>("#app");
 if (!app) throw new Error("TNND web app root was not found.");
 
@@ -117,6 +131,13 @@ app.innerHTML = `
   </section>
 `;
 
+void import("./auth-panel").then(() => loadOptionalPanels()).catch((error) => {
+  console.error("Unable to load TNND authentication panel", error);
+});
+window.addEventListener("tnnd:auth-session-changed", () => {
+  void loadOptionalPanels();
+});
+
 const status = document.querySelector<HTMLElement>("#profile-status");
 const message = document.querySelector<HTMLElement>("#profile-message");
 const input = document.querySelector<HTMLInputElement>("#profile-file");
@@ -152,8 +173,16 @@ let currentProfile: ImportedProfile | null = null;
 function loadFallbackProfile(): ImportedProfile | null {
   const raw = localStorage.getItem(storageKey);
   if (!raw) return null;
+  if (raw.length > maxLocalProfileBytes) {
+    localStorage.removeItem(storageKey);
+    return null;
+  }
   const parsed = parseImportedProfile(raw);
-  return parsed.ok ? parsed.profile : null;
+  if (!parsed.ok) {
+    localStorage.removeItem(storageKey);
+    return null;
+  }
+  return parsed.profile;
 }
 
 function setProfile(profile: ImportedProfile | null, source: "backend" | "local" | "none"): void {

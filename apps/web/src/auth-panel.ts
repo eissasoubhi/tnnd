@@ -1,4 +1,3 @@
-import "./texting-style-learning-panel";
 import { clearSession, listSessions, login, logout as logoutSession, persistSession, readSession, register, revokeSession, type AccountSession } from "./auth-client";
 
 const grid = document.querySelector<HTMLElement>(".grid");
