@@ -42,3 +42,5 @@ function bindCards(): void {
 const observer = new MutationObserver(bindCards);
 observer.observe(document.documentElement, { childList: true, subtree: true });
 bindCards();
+
+export {};
