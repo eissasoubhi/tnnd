@@ -12,26 +12,38 @@ import {
 const MAX_EVENTS = 250;
 const MAX_TABS = 6;
 let queue: Promise<void> = Promise.resolve();
+let cachedStore: WebDiagnosticStore | null = null;
+let flushTimer: number | null = null;
 
 function emptyStore(): WebDiagnosticStore {
   return { version: 1, tabs: {} };
 }
 
 async function readStore(): Promise<WebDiagnosticStore> {
+  if (cachedStore) return cachedStore;
   const raw = (await chrome.storage.session.get(WEB_DIAGNOSTIC_STORAGE_KEY))[WEB_DIAGNOSTIC_STORAGE_KEY] as WebDiagnosticStore | undefined;
-  return raw?.version === 1 && raw.tabs ? raw : emptyStore();
+  cachedStore = raw?.version === 1 && raw.tabs ? raw : emptyStore();
+  return cachedStore;
 }
 
-async function writeStore(store: WebDiagnosticStore): Promise<void> {
+async function flushStore(): Promise<void> {
+  flushTimer = null;
+  const store = await readStore();
   const tabs = Object.values(store.tabs)
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, MAX_TABS);
-  await chrome.storage.session.set({
-    [WEB_DIAGNOSTIC_STORAGE_KEY]: {
-      version: 1,
-      tabs: Object.fromEntries(tabs.map((tab) => [String(tab.tabId), tab]))
-    } satisfies WebDiagnosticStore
-  });
+  cachedStore = {
+    version: 1,
+    tabs: Object.fromEntries(tabs.map((tab) => [String(tab.tabId), tab]))
+  };
+  await chrome.storage.session.set({ [WEB_DIAGNOSTIC_STORAGE_KEY]: cachedStore });
+}
+
+function scheduleFlush(): void {
+  if (flushTimer !== null) return;
+  flushTimer = globalThis.setTimeout(() => {
+    enqueue(flushStore);
+  }, 500);
 }
 
 function freshState(tabId: number, pageUrl: string, event: WebDiagnosticEvent): WebDiagnosticTabState {
@@ -117,7 +129,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender) => {
       store.tabs[key] = state;
     }
     applyEvent(state, event);
-    await writeStore(store);
+    scheduleFlush();
   });
   return false;
 });
@@ -127,6 +139,6 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     const store = await readStore();
     if (!store.tabs[String(tabId)]) return;
     delete store.tabs[String(tabId)];
-    await writeStore(store);
+    scheduleFlush();
   });
 });
