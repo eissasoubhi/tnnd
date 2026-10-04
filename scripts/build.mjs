@@ -15,6 +15,8 @@ const entries = [
   ["preview", "src/preview.ts"],
   ["content", "src/content.ts"],
   ["chat-bridge", "src/chat-bridge.ts"],
+  ["web-diagnostic-page", "src/web-diagnostic-page.ts"],
+  ["web-diagnostic-bridge", "src/web-diagnostic-bridge.ts"],
   ["popup", "src/popup.ts"]
 ];
 const builds = entries.map(([name, entry]) => build({
