@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { deleteAccountWithPassword } from "./account-deletion-service.js";
 import { handleAccountDataExportRoute } from "./account-data-export-route.js";
@@ -21,6 +22,7 @@ import { handleProductionAiHttp } from "./production-ai-http-handler.js";
 import { handleTextingStyleAnalysisRequest } from "./texting-style-analysis-controller.js";
 import { safeApiErrorLog } from "./safe-error-log.js";
 import { isAllowedRequestTransport } from "./transport-security.js";
+import { resolveCorsOrigin } from "./cors.js";
 
 const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? "127.0.0.1";
@@ -127,6 +129,23 @@ function parseConversationManagementUpdates(value: unknown): ConversationManagem
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${host}:${port}`}`);
+  const corsOrigin = resolveCorsOrigin(request.headers.origin, process.env.NODE_ENV, process.env.TNND_ALLOWED_ORIGINS);
+  if (corsOrigin) {
+    response.setHeader("access-control-allow-origin", corsOrigin);
+    response.setHeader("access-control-allow-headers", "authorization, content-type");
+    response.setHeader("access-control-allow-methods", "GET, POST, PUT, DELETE, OPTIONS");
+    response.setHeader("vary", "Origin");
+  }
+
+  if (request.method === "OPTIONS") {
+    if (!request.headers.origin || !corsOrigin) {
+      sendJson(response, 403, { error: "cors_origin_not_allowed" });
+      return;
+    }
+    response.writeHead(204);
+    response.end();
+    return;
+  }
 
   try {
     const encrypted = Boolean((request.socket as typeof request.socket & { encrypted?: boolean }).encrypted);
