@@ -1,3 +1,4 @@
+import "./web-diagnostic-background";
 import "./tinder-checkpoint-background";
 import "./tinder-message-cursor-background";
 import "./tinder-unread-observation-background";
