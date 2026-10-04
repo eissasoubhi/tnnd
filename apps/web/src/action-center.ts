@@ -8,6 +8,8 @@ export { filterPendingHumanActions, getPersistedManualAnswer, humanActionPausesC
 export type { HumanActionItem, HumanActionSeverity, HumanActionSeverityFilter, HumanActionStatus } from "./action-center-policy";
 
 const storageKey = "tnnd:web:human-actions";
+const maxLocalStorageBytes = 512 * 1024;
+const maxLocalHumanActions = 500;
 const manualAnswerDrafts = new Map<string, ManualAnswerDraft>();
 const severityFilters: Array<{ value: HumanActionSeverityFilter; label: string }> = [
   { value: "all", label: "All" },
@@ -20,16 +22,27 @@ const severityFilters: Array<{ value: HumanActionSeverityFilter; label: string }
 export function readHumanActions(): HumanActionItem[] {
   const raw = localStorage.getItem(storageKey);
   if (!raw) return [];
+  if (raw.length > maxLocalStorageBytes) {
+    localStorage.removeItem(storageKey);
+    return [];
+  }
   try {
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.filter(isHumanActionItem) : [];
+    if (!Array.isArray(parsed)) {
+      localStorage.removeItem(storageKey);
+      return [];
+    }
+    const items = parsed.filter(isHumanActionItem).slice(-maxLocalHumanActions);
+    if (items.length !== parsed.length) localStorage.setItem(storageKey, JSON.stringify(items));
+    return items;
   } catch {
+    localStorage.removeItem(storageKey);
     return [];
   }
 }
 
 export function writeHumanActions(items: HumanActionItem[]): void {
-  localStorage.setItem(storageKey, JSON.stringify(items));
+  localStorage.setItem(storageKey, JSON.stringify(items.slice(-maxLocalHumanActions)));
 }
 
 export async function loadHumanActions(): Promise<HumanActionItem[]> {
