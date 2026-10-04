@@ -10,7 +10,7 @@ assert.equal(isTnndLocalWebUrl("http://127.0.0.1:5173/"), true);
 assert.equal(isTnndLocalWebUrl("http://localhost:5173/dashboard"), true);
 assert.equal(isTnndLocalWebUrl("http://localhost:4000/"), false);
 assert.equal(sanitizeWebDiagnosticUrl("ws://127.0.0.1:5173/?token=secret#x"), "ws://127.0.0.1:5173/");
-assert.equal(sanitizeWebDiagnosticText("https://localhost:5173/path?token=abc"), "http://localhost:5173/path");
+assert.equal(sanitizeWebDiagnosticText("https://localhost:5173/path?token=abc"), "https://localhost:5173/path");
 
 const base = {
   tabId: 1,
