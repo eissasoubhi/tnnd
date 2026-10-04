@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "TNND",
   "description": "Gemini-powered Tinder auto-chat with configurable identity, style and language mix.",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "permissions": [
     "storage",
     "activeTab"
@@ -28,6 +28,27 @@
         "assets/chat-bridge.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://127.0.0.1/*",
+        "http://localhost/*"
+      ],
+      "js": [
+        "assets/web-diagnostic-page.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "http://127.0.0.1/*",
+        "http://localhost/*"
+      ],
+      "js": [
+        "assets/web-diagnostic-bridge.js"
+      ],
+      "run_at": "document_start"
     }
   ],
   "action": {

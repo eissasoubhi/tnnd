@@ -3,6 +3,7 @@ import { loginBackend, logoutBackend, validateBackendSession } from "./backend-s
 import { getChatSettings, saveChatSettings } from "./storage";
 import { renderSyncStatus } from "./sync-status-panel";
 import type { ChatSettings, ConversationStage, Tone } from "./types";
+import { WEB_DIAGNOSTIC_STORAGE_KEY, analyzeWebDiagnosticState, isTnndLocalWebUrl, type WebDiagnosticStore, type WebDiagnosticTabState } from "./web-diagnostic-types";
 
 type TinderViewState = "discovery" | "inbox" | "conversation" | "unknown";
 
@@ -49,6 +50,13 @@ interface ThreadInfoResponse {
 }
 
 const DIAGNOSTIC_TRACE_KEY = "tnnd.diagnosticTrace.v1";
+const webDiagnosticCard = document.getElementById("webDiagnosticCard")!;
+const webDiagnosticHealth = document.getElementById("webDiagnosticHealth")!;
+const webDiagnosticSummary = document.getElementById("webDiagnosticSummary")!;
+const webDiagnosticDetail = document.getElementById("webDiagnosticDetail")!;
+const refreshWebDiagnostics = document.getElementById("refreshWebDiagnostics") as HTMLButtonElement;
+const resetWebDiagnostics = document.getElementById("resetWebDiagnostics") as HTMLButtonElement;
+const exportWebDiagnostics = document.getElementById("exportWebDiagnostics") as HTMLButtonElement;
 const version = document.getElementById("extensionVersion")!;
 const status = document.getElementById("status")!;
 const diagnosticView = document.getElementById("diagnosticView")!;
@@ -93,6 +101,51 @@ function isTinderUrl(value?: string): boolean {
   } catch {
     return false;
   }
+}
+
+async function currentWebDiagnosticState(): Promise<{ tabId: number; state: WebDiagnosticTabState | null } | null> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id || !isTnndLocalWebUrl(tab.url)) return null;
+  const raw = (await chrome.storage.session.get(WEB_DIAGNOSTIC_STORAGE_KEY))[WEB_DIAGNOSTIC_STORAGE_KEY] as WebDiagnosticStore | undefined;
+  return { tabId: tab.id, state: raw?.tabs?.[String(tab.id)] ?? null };
+}
+
+async function renderWebDiagnostics(): Promise<void> {
+  const current = await currentWebDiagnosticState();
+  webDiagnosticCard.classList.toggle("hidden", !current);
+  if (!current) return;
+  const analysis = analyzeWebDiagnosticState(current.state);
+  webDiagnosticHealth.textContent = analysis.level;
+  webDiagnosticHealth.dataset.level = analysis.level;
+  webDiagnosticSummary.textContent = analysis.summary;
+  webDiagnosticDetail.textContent = analysis.evidence.join(" ");
+}
+
+function downloadWebDiagnosticZip(state: WebDiagnosticTabState): void {
+  const analysis = analyzeWebDiagnosticState(state);
+  const files: Record<string, Uint8Array> = {
+    "summary.json": strToU8(JSON.stringify({
+      kind: "tnnd-web-diagnostics",
+      schemaVersion: 1,
+      extensionVersion: chrome.runtime.getManifest().version,
+      exportedAt: new Date().toISOString(),
+      diagnosis: analysis,
+      privacy: "No request/response bodies, headers, tokens, cookies, localStorage or sessionStorage are collected. URL query strings and hashes are removed."
+    }, null, 2)),
+    "state.json": strToU8(JSON.stringify({
+      ...state,
+      events: undefined
+    }, null, 2)),
+    "events.json": strToU8(JSON.stringify(state.events, null, 2))
+  };
+  const zipped = zipSync(files, { level: 6 });
+  const blob = new Blob([zipped], { type: "application/zip" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `tnnd-web-diagnostics-${new Date().toISOString().replace(/[:.]/g, "-")}.zip`;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function displayView(view: TinderViewState | undefined, signals: string[] = []): void {
@@ -369,6 +422,27 @@ saveChat.addEventListener("click", () => {
   });
 });
 
+refreshWebDiagnostics.addEventListener("click", () => void renderWebDiagnostics());
+resetWebDiagnostics.addEventListener("click", () => {
+  void currentWebDiagnosticState().then(async (current) => {
+    if (!current) return;
+    const raw = (await chrome.storage.session.get(WEB_DIAGNOSTIC_STORAGE_KEY))[WEB_DIAGNOSTIC_STORAGE_KEY] as WebDiagnosticStore | undefined;
+    if (!raw?.tabs) return;
+    delete raw.tabs[String(current.tabId)];
+    await chrome.storage.session.set({ [WEB_DIAGNOSTIC_STORAGE_KEY]: raw });
+    await renderWebDiagnostics();
+  });
+});
+exportWebDiagnostics.addEventListener("click", () => {
+  void currentWebDiagnosticState().then((current) => {
+    if (!current?.state) {
+      webDiagnosticSummary.textContent = "No Web diagnostic state is available yet.";
+      return;
+    }
+    downloadWebDiagnosticZip(current.state);
+  });
+});
+
 resetDiagnosticSequence.addEventListener("click", () => {
   void chrome.storage.local.remove(DIAGNOSTIC_TRACE_KEY).then(() => {
     renderDiagnosticSequence([]);
@@ -385,3 +459,5 @@ void refreshBackendAuth();
 void loadCurrentChat();
 void loadDiagnosticView();
 void refreshDiagnosticSequence();
+void renderWebDiagnostics();
+window.setInterval(() => void renderWebDiagnostics(), 2_000);
