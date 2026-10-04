@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run typecheck && npm run test:readme && npm run test:extension-version && npm run test:preview-feedback && npm run test:texting-style && npm run test:tinder-state && npm run test:human-action-resume && npm run test:match-profile-capture && node scripts/build.mjs",
+    "build": "npm run typecheck && npm run test:readme && npm run test:extension-version && npm run test:preview-feedback && npm run test:texting-style && npm run test:tinder-state && npm run test:extension-context && npm run test:human-action-resume && npm run test:match-profile-capture && node scripts/build.mjs",
     "dev": "node scripts/build.mjs --watch",
     "typecheck": "tsc --noEmit",
     "test:readme": "node scripts/check-public-readme.mjs",
@@ -13,8 +13,15 @@
     "test:texting-style": "node scripts/check-texting-style-controls.mjs",
     "test:tinder-state": "node --experimental-strip-types scripts/check-tinder-state-machine.mjs",
     "test:human-action-resume": "node --experimental-strip-types scripts/check-human-action-resume.mjs",
-    "test:match-profile-capture": "node --experimental-strip-types scripts/check-match-profile-capture.mjs"
+    "test:match-profile-capture": "node --experimental-strip-types scripts/check-match-profile-capture.mjs",
+    "test:extension-context": "node --experimental-strip-types scripts/check-extension-context-lifecycle.mjs"
   },
-  "dependencies": { "fflate": "^0.8.2" },
-  "devDependencies": { "@types/chrome": "^0.0.320", "typescript": "^5.8.0", "vite": "^7.0.0" }
+  "dependencies": {
+    "fflate": "^0.8.2"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.320",
+    "typescript": "^5.8.0",
+    "vite": "^7.0.0"
+  }
 }
