@@ -82,3 +82,10 @@ export function publicProfileSchema() {
     sections: [...profileObjectSections]
   };
 }
+
+export function createDefaultUserProfile(): TnndProfileEnvelope {
+  return {
+    kind: "tnnd-user-profile",
+    schemaVersion: profileSchemaVersion
+  };
+}
