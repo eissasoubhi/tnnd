@@ -20,7 +20,10 @@ test("secret encryption uses a fresh nonce", () => {
 test("secret decryption rejects tampering", () => {
   const encrypted = encryptSecret("provider-secret-value", key);
   const parts = encrypted.split(".");
-  parts[3] = `${parts[3]?.slice(0, -1)}A`;
+  const ciphertext = Buffer.from(parts[3] ?? "", "base64url");
+  assert.ok(ciphertext.length > 0);
+  ciphertext[0] ^= 0x01;
+  parts[3] = ciphertext.toString("base64url");
   assert.throws(() => decryptSecret(parts.join("."), key), /secret_ciphertext_invalid/);
 });
 
