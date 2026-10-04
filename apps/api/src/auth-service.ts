@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createSessionToken, hashPassword, normalizeEmail, validatePassword, verifyPassword } from "./auth.js";
 import { getPool } from "./db-client.js";
+import { createDefaultUserProfile, profileSchemaVersion } from "./profile-schema.js";
 
 const ACTIVE_SESSION_LIMIT = 20;
 
@@ -44,8 +45,15 @@ export async function registerAccount(emailInput: string, password: string): Pro
   const passwordHash = await hashPassword(password);
   try {
     await getPool().query(
-      "INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3)",
-      [id, email, passwordHash]
+      `WITH new_user AS (
+         INSERT INTO users (id, email, password_hash)
+         VALUES ($1, $2, $3)
+         RETURNING id
+       )
+       INSERT INTO user_profiles (user_id, schema_version, profile_json)
+       SELECT id, $4, $5::jsonb
+       FROM new_user`,
+      [id, email, passwordHash, profileSchemaVersion, JSON.stringify(createDefaultUserProfile())]
     );
     return { ok: true, user: { id, email } };
   } catch (error) {
