@@ -12,9 +12,17 @@ async function loadOptionalPanels(): Promise<void> {
   optionalPanelsLoaded = true;
   for (const loader of [
     () => import("./ai-provider-panel"),
+    () => import("./conversation-panel"),
+    () => import("./conversation-overrides-panel"),
+    () => import("./conversation-quick-filters"),
+    () => import("./conversation-action-indicator"),
+    () => import("./conversation-takeover-onboarding"),
+    () => import("./conversation-management-panel"),
+    () => import("./conversation-management-badges"),
+    () => import("./dating-goal-details-panel"),
+    () => import("./texting-style-learning-panel"),
     () => import("./analytics-panel"),
-    () => import("./account-privacy-panel"),
-    () => import("./texting-style-learning-panel")
+    () => import("./account-privacy-panel")
   ]) {
     await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));
     try {
