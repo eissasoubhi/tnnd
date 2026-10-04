@@ -5,11 +5,14 @@ import { isInboxReadableTinderState } from "./tinder-state-machine";
 import type { TinderScheduledJob } from "./tinder-scheduler";
 import { executeUnreadAwareTinderStep } from "./tinder-unread-executor";
 import type { AutomationConfig, GenerateRequest, GenerateResponse } from "./types";
+import { sendRuntimeMessageSafely } from "./extension-context";
 
 const adapter = new TinderDomAdapter();
 let busy = false;
 let scanTimer: number | undefined;
 let runtimeReadBusy = false;
+let contentRuntimeAlive = true;
+let observer: MutationObserver | null = null;
 let runtimeObservedJobs: TinderScheduledJob[] = [];
 const runtimeProcessedThreadRefs = new Set<string>();
 
@@ -70,29 +73,68 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-async function getContentConfig(): Promise<ContentConfig> {
-  const response = await chrome.runtime.sendMessage({ type: "TNND_GET_CONTENT_CONFIG" }) as { ok: boolean; config?: ContentConfig; error?: string };
-  if (!response?.ok || !response.config) throw new Error(response?.error ?? "Could not load TNND configuration.");
+function stopContentRuntime(): void {
+  if (!contentRuntimeAlive) return;
+  contentRuntimeAlive = false;
+  if (scanTimer !== undefined) {
+    window.clearTimeout(scanTimer);
+    scanTimer = undefined;
+  }
+  observer?.disconnect();
+  window.removeEventListener("focus", scheduleScan);
+}
+
+function hasLiveExtensionContext(): boolean {
+  if (!contentRuntimeAlive) return false;
+  try {
+    if (!chrome.runtime?.id) {
+      stopContentRuntime();
+      return false;
+    }
+    return true;
+  } catch {
+    stopContentRuntime();
+    return false;
+  }
+}
+
+async function sendRuntimeMessage<T>(message: unknown): Promise<T | null> {
+  if (!hasLiveExtensionContext()) return null;
+  return sendRuntimeMessageSafely<T>(
+    message,
+    (payload) => chrome.runtime.sendMessage(payload) as Promise<T>,
+    stopContentRuntime
+  );
+}
+
+async function getContentConfig(): Promise<ContentConfig | null> {
+  const response = await sendRuntimeMessage<{ ok: boolean; config?: ContentConfig; error?: string }>({ type: "TNND_GET_CONTENT_CONFIG" });
+  if (!response) return null;
+  if (!response.ok || !response.config) throw new Error(response.error ?? "Could not load TNND configuration.");
   return response.config;
 }
 
-async function getChatAutomationEnabled(threadKey: string): Promise<boolean> {
-  const response = await chrome.runtime.sendMessage({ type: "TNND_GET_CHAT_AUTOMATION", threadKey }) as { ok: boolean; enabled?: boolean; error?: string };
-  if (!response?.ok) throw new Error(response?.error ?? "Could not load TNND chat configuration.");
+async function getChatAutomationEnabled(threadKey: string): Promise<boolean | null> {
+  const response = await sendRuntimeMessage<{ ok: boolean; enabled?: boolean; error?: string }>({ type: "TNND_GET_CHAT_AUTOMATION", threadKey });
+  if (!response) return null;
+  if (!response.ok) throw new Error(response.error ?? "Could not load TNND chat configuration.");
   return response.enabled !== false;
 }
 
-async function getState(): Promise<AutoState> {
-  const response = await chrome.runtime.sendMessage({ type: "TNND_GET_AUTO_STATE" }) as { ok: boolean; state?: AutoState; error?: string };
-  if (!response?.ok || !response.state) throw new Error(response?.error ?? "Could not load TNND automation state.");
+async function getState(): Promise<AutoState | null> {
+  const response = await sendRuntimeMessage<{ ok: boolean; state?: AutoState; error?: string }>({ type: "TNND_GET_AUTO_STATE" });
+  if (!response) return null;
+  if (!response.ok || !response.state) throw new Error(response.error ?? "Could not load TNND automation state.");
   return response.state.date === today() ? response.state : { date: today(), dailyCount: 0, processed: {} };
 }
 
-async function saveState(state: AutoState): Promise<void> {
+async function saveState(state: AutoState): Promise<boolean> {
   const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
   state.processed = Object.fromEntries(Object.entries(state.processed).filter(([, timestamp]) => timestamp >= cutoff));
-  const response = await chrome.runtime.sendMessage({ type: "TNND_SAVE_AUTO_STATE", state }) as { ok: boolean; error?: string };
-  if (!response?.ok) throw new Error(response?.error ?? "Could not save TNND automation state.");
+  const response = await sendRuntimeMessage<{ ok: boolean; error?: string }>({ type: "TNND_SAVE_AUTO_STATE", state });
+  if (!response) return false;
+  if (!response.ok) throw new Error(response.error ?? "Could not save TNND automation state.");
+  return true;
 }
 
 function minutes(value: string): number {
@@ -129,9 +171,10 @@ function randomCadenceSeconds(config: AutomationConfig): number {
   return min + unit * (max - min);
 }
 
-async function generateReply(context: string, threadKey: string): Promise<string> {
+async function generateReply(context: string, threadKey: string): Promise<string | null> {
   const request: GenerateRequest = { type: "GENERATE_SUGGESTIONS", context, purpose: "auto", replyCount: 1, threadKey };
-  const response = (await chrome.runtime.sendMessage(request)) as GenerateResponse;
+  const response = await sendRuntimeMessage<GenerateResponse>(request);
+  if (!response) return null;
   if (!response.ok || !response.suggestions?.[0]) throw new Error(response.error ?? "TNND received no automatic reply.");
   return response.suggestions[0];
 }
@@ -194,6 +237,7 @@ function sanitizeDom(): { html: string; truncated: boolean } {
 
 async function diagnosticSnapshot(): Promise<DiagnosticSnapshot> {
   const config = await getContentConfig();
+  if (!config) throw new Error("TNND extension context is no longer available.");
   const dom = sanitizeDom();
   const resources = (performance.getEntriesByType("resource") as PerformanceResourceTiming[]).slice(-500).map((entry) => ({
     name: safeUrl(entry.name),
@@ -245,7 +289,7 @@ function currentConversationRef(): string | null {
 }
 
 async function observeRuntimeReadMode(): Promise<void> {
-  if (runtimeReadBusy) return;
+  if (runtimeReadBusy || !hasLiveExtensionContext()) return;
   const observation = observeTinderRuntime(adapter);
   if (!observation.readOnlyStepAllowed) return;
   const diagnosticsInboxReadable = observation.route.state === "inbox"
@@ -304,45 +348,60 @@ async function observeRuntimeReadMode(): Promise<void> {
 }
 
 async function scan(): Promise<void> {
-  if (busy) return;
-  const config = await getContentConfig();
-  if (!config.automation.enabled) return;
-  if (config.automation.quietHoursEnabled && insideQuietHours(config.automation.quietStart, config.automation.quietEnd)) return;
+  if (busy || !hasLiveExtensionContext()) return;
 
-  const snapshot = adapter.read();
-  if (!snapshot) return;
-  if (!(await getChatAutomationEnabled(snapshot.threadKey))) return;
-
-  const state = await getState();
-  if (state.processed[snapshot.latestIncomingKey]) return;
-  if (state.dailyCount >= config.automation.maxAutoRepliesPerDay) return;
-
-  busy = true;
   try {
+    const config = await getContentConfig();
+    if (!config || !contentRuntimeAlive) return;
+    if (!config.automation.enabled) return;
+    if (config.automation.quietHoursEnabled && insideQuietHours(config.automation.quietStart, config.automation.quietEnd)) return;
+
+    const snapshot = adapter.read();
+    if (!snapshot) return;
+    const chatAutomationEnabled = await getChatAutomationEnabled(snapshot.threadKey);
+    if (chatAutomationEnabled !== true) return;
+
+    const state = await getState();
+    if (!state) return;
+    if (state.processed[snapshot.latestIncomingKey]) return;
+    if (state.dailyCount >= config.automation.maxAutoRepliesPerDay) return;
+
+    busy = true;
     const delaySeconds = randomCadenceSeconds(config.automation);
     console.info(`TNND queued an automatic reply in ${delaySeconds.toFixed(1)}s.`);
     await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
+    if (!hasLiveExtensionContext()) return;
+
     const currentSnapshot = adapter.read();
     if (!currentSnapshot || currentSnapshot.latestIncomingKey !== snapshot.latestIncomingKey || currentSnapshot.threadKey !== snapshot.threadKey) return;
-    if (!(await getChatAutomationEnabled(currentSnapshot.threadKey))) return;
+    const stillEnabled = await getChatAutomationEnabled(currentSnapshot.threadKey);
+    if (stillEnabled !== true) return;
+
     const reply = await generateReply(currentSnapshot.context, currentSnapshot.threadKey);
+    if (!reply || !hasLiveExtensionContext()) return;
+
     await adapter.send(reply);
     const freshState = await getState();
+    if (!freshState) return;
     freshState.processed[currentSnapshot.latestIncomingKey] = Date.now();
     freshState.dailyCount += 1;
     await saveState(freshState);
     console.info("TNND sent an automatic reply.");
   } catch (error) {
-    console.warn("TNND auto-reply skipped", error);
+    if (contentRuntimeAlive) console.warn("TNND auto-reply skipped", error);
   } finally {
     busy = false;
   }
 }
 
 function scheduleScan(): void {
+  if (!hasLiveExtensionContext()) return;
   void observeRuntimeReadMode();
   if (scanTimer) window.clearTimeout(scanTimer);
-  scanTimer = window.setTimeout(() => void scan(), 900);
+  scanTimer = window.setTimeout(() => {
+    if (!hasLiveExtensionContext()) return;
+    void scan();
+  }, 900);
 }
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
@@ -353,7 +412,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
   return true;
 });
 
-const observer = new MutationObserver(scheduleScan);
+observer = new MutationObserver(scheduleScan);
 observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
 window.addEventListener("focus", scheduleScan);
 scheduleScan();
