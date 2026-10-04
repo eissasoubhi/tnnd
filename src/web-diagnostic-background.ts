@@ -142,3 +142,12 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     scheduleFlush();
   });
 });
+
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "session") return;
+  const change = changes[WEB_DIAGNOSTIC_STORAGE_KEY];
+  if (!change) return;
+  const next = change.newValue as WebDiagnosticStore | undefined;
+  cachedStore = next?.version === 1 && next.tabs ? next : emptyStore();
+});
