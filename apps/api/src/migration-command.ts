@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { closePool } from "./db-client.js";
+import { isDirectCommand } from "./command-entry.js";
 import { migrateDatabase } from "./migration-runner.js";
 
 async function main(): Promise<void> {
@@ -21,6 +22,6 @@ async function main(): Promise<void> {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isDirectCommand(import.meta.url)) {
   void main();
 }

@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { closePool } from "./db-client.js";
+import { isDirectCommand } from "./command-entry.js";
 import { runMatchProfileCleanup } from "./match-profile-cleanup.js";
 
 export function cleanupLogPayload(result: {
@@ -31,6 +32,6 @@ async function main(): Promise<void> {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isDirectCommand(import.meta.url)) {
   void main();
 }
