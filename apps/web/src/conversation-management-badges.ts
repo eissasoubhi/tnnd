@@ -8,6 +8,11 @@ import {
 let records = new Map<string, ConversationManagementRecord>();
 let refreshInFlight: Promise<void> | null = null;
 let activeManagementFilter: ConversationManagementState | "all" = "all";
+let badgeObserver: MutationObserver | null = null;
+
+function observeConversationDom(): void {
+  badgeObserver?.observe(document.body, { childList: true, subtree: true });
+}
 
 function labelForState(state: ConversationManagementState): string {
   switch (state) {
@@ -107,8 +112,12 @@ function appendSyncBadge(container: HTMLElement, record: ConversationManagementR
 }
 
 function renderBadges(): void {
-  installStyles();
-  ensureFilterControl();
+  // This renderer changes child nodes itself. Pause the observer while rendering
+  // so those TNND-owned mutations cannot recursively schedule another render.
+  badgeObserver?.disconnect();
+  try {
+    installStyles();
+    ensureFilterControl();
   document.querySelectorAll<HTMLElement>("[data-conversation-id]").forEach((row) => {
     const conversationId = row.dataset.conversationId;
     if (!conversationId) return;
@@ -147,6 +156,9 @@ function renderBadges(): void {
     : "Not explicitly selected for AI takeover";
   heading.append(badge);
   appendSyncBadge(heading, record, true);
+  } finally {
+    observeConversationDom();
+  }
 }
 
 async function refresh(): Promise<void> {
@@ -174,8 +186,8 @@ async function refresh(): Promise<void> {
   return refreshInFlight;
 }
 
-const observer = new MutationObserver(() => renderBadges());
-observer.observe(document.body, { childList: true, subtree: true });
+badgeObserver = new MutationObserver(() => renderBadges());
+observeConversationDom();
 window.addEventListener("tnnd:auth-session-changed", () => void refresh());
 window.addEventListener("focus", () => void refresh());
 window.addEventListener("tnnd:conversation-management-changed", () => void refresh());
