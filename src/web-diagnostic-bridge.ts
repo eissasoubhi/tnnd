@@ -4,7 +4,7 @@ import {
   isTnndLocalWebUrl,
   type WebDiagnosticEvent
 } from "./web-diagnostic-types";
-import { isExtensionContextInvalidated } from "./extension-context";
+import { sendRuntimeMessageSafely } from "./extension-context";
 
 if (isTnndLocalWebUrl(window.location.href)) {
   let alive = true;
@@ -13,11 +13,15 @@ if (isTnndLocalWebUrl(window.location.href)) {
     if (!alive || messageEvent.source !== window) return;
     const payload = messageEvent.data as { source?: string; event?: WebDiagnosticEvent } | null;
     if (!payload || payload.source !== WEB_DIAGNOSTIC_CHANNEL || !payload.event) return;
-    void chrome.runtime.sendMessage({
-      type: "TNND_WEB_DIAGNOSTIC_EVENT",
-      event: payload.event
-    }).catch((error) => {
-      if (isExtensionContextInvalidated(error)) alive = false;
+    void sendRuntimeMessageSafely(
+      {
+        type: "TNND_WEB_DIAGNOSTIC_EVENT",
+        event: payload.event
+      },
+      (message) => chrome.runtime.sendMessage(message),
+      () => { alive = false; }
+    ).catch((error) => {
+      console.warn("TNND Web diagnostic bridge could not forward an event.", error);
     });
   });
 
