@@ -53,3 +53,17 @@ test("AI provider client preserves API status and error code", async () => {
     return true;
   });
 });
+
+
+test("AI provider client defaults to the TNND API origin instead of the Web origin", async () => {
+  const calls: string[] = [];
+  const client = createAiProviderClient("session-token", {
+    fetchImpl: async (input) => {
+      calls.push(String(input));
+      return jsonResponse({ provider: "gemini", model: "gemini-2.5-flash", connected: true });
+    }
+  });
+
+  await client.testConnection();
+  assert.deepEqual(calls, ["http://127.0.0.1:4000/api/v1/ai/test-connection"]);
+});
