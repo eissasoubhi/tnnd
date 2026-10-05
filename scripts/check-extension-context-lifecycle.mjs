@@ -10,7 +10,7 @@ assert.equal(isExtensionContextInvalidated(new Error("network failed")), false);
 let invalidations = 0;
 const invalidated = await sendRuntimeMessageSafely(
   { type: "TEST" },
-  async () => { throw new Error("Extension context invalidated."); },
+  () => { throw new Error("Extension context invalidated."); },
   () => { invalidations += 1; }
 );
 assert.equal(invalidated, null);
