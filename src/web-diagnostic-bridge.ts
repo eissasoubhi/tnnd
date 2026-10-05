@@ -4,13 +4,17 @@ import {
   isTnndLocalWebUrl,
   type WebDiagnosticEvent
 } from "./web-diagnostic-types";
-import { sendRuntimeMessageSafely } from "./extension-context";
+import { hasLiveExtensionContext, sendRuntimeMessageSafely } from "./extension-context";
 
 if (isTnndLocalWebUrl(window.location.href)) {
   let alive = true;
 
   window.addEventListener("message", (messageEvent) => {
     if (!alive || messageEvent.source !== window) return;
+    if (!hasLiveExtensionContext()) {
+      alive = false;
+      return;
+    }
     const payload = messageEvent.data as { source?: string; event?: WebDiagnosticEvent } | null;
     if (!payload || payload.source !== WEB_DIAGNOSTIC_CHANNEL || !payload.event) return;
     void sendRuntimeMessageSafely(

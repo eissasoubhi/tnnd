@@ -1,20 +1,30 @@
 import assert from "node:assert/strict";
 import {
+  hasLiveExtensionContext,
   isExtensionContextInvalidated,
   sendRuntimeMessageSafely
 } from "../src/extension-context.ts";
+
+assert.equal(hasLiveExtensionContext(() => "extension-id"), true);
+assert.equal(hasLiveExtensionContext(() => undefined), false);
+assert.equal(hasLiveExtensionContext(() => { throw new Error("Extension context invalidated."); }), false);
 
 assert.equal(isExtensionContextInvalidated(new Error("Extension context invalidated.")), true);
 assert.equal(isExtensionContextInvalidated(new Error("network failed")), false);
 
 let invalidations = 0;
+let sendCalls = 0;
 const invalidated = await sendRuntimeMessageSafely(
   { type: "TEST" },
-  () => { throw new Error("Extension context invalidated."); },
+  () => {
+    sendCalls += 1;
+    throw new Error("Extension context invalidated.");
+  },
   () => { invalidations += 1; }
 );
 assert.equal(invalidated, null);
 assert.equal(invalidations, 1);
+assert.equal(sendCalls, 1);
 
 const success = await sendRuntimeMessageSafely(
   { type: "TEST" },
