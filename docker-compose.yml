@@ -1,0 +1,113 @@
+name: tnnd
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tnnd
+      POSTGRES_PASSWORD: tnnd
+      POSTGRES_DB: tnnd
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tnnd -d tnnd"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  api:
+    image: node:22-alpine
+    restart: unless-stopped
+    init: true
+    working_dir: /workspace/apps/api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      HOST: 0.0.0.0
+      PORT: 4000
+      DATABASE_URL: postgresql://tnnd:tnnd@postgres:5432/tnnd
+      DB_SSL: "false"
+      DB_MAX_CONNECTIONS: "10"
+      TNND_TRUST_PROXY: "false"
+      TNND_ALLOWED_ORIGINS: http://127.0.0.1:5173,http://localhost:5173
+    volumes:
+      - ./:/workspace
+      - api_node_modules:/workspace/apps/api/node_modules
+      - api_secrets:/run/tnnd
+    ports:
+      - "4000:4000"
+    command:
+      - sh
+      - -lc
+      - |
+        set -eu
+        npm install --no-package-lock --no-audit --no-fund
+
+        mkdir -p /run/tnnd
+        if [ ! -s /run/tnnd/secret-key ]; then
+          node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64"))' > /run/tnnd/secret-key
+          chmod 600 /run/tnnd/secret-key
+        fi
+        export TNND_SECRET_ENCRYPTION_KEY="$(cat /run/tnnd/secret-key)"
+
+        npm run migrate
+        exec npm run dev
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+  web:
+    image: node:22-alpine
+    restart: unless-stopped
+    init: true
+    working_dir: /workspace/apps/web
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      VITE_TNND_API_BASE_URL: http://127.0.0.1:4000
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ./:/workspace
+      - web_node_modules:/workspace/apps/web/node_modules
+    ports:
+      - "5173:5173"
+    command:
+      - sh
+      - -lc
+      - |
+        set -eu
+        npm install --no-package-lock --no-audit --no-fund
+        exec npm run dev -- --host 0.0.0.0 --port 5173
+
+  extension:
+    image: node:22-alpine
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+      - extension_node_modules:/workspace/node_modules
+    command:
+      - sh
+      - -lc
+      - |
+        set -eu
+        npm install --no-package-lock --no-audit --no-fund
+        npm run build
+        echo "TNND extension built in /workspace/dist (host: ./dist)"
+
+volumes:
+  postgres_data:
+  api_node_modules:
+  web_node_modules:
+  extension_node_modules:
+  api_secrets:
