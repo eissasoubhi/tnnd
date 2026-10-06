@@ -52,3 +52,17 @@ test("routes provider settings GET without consuming a request body", async () =
   assert.equal(bodyReads, 0);
   assert.deepEqual(result, { status: 401, body: { error: "invalid_or_expired_session" } });
 });
+
+
+test("reads the extension suggestions body exactly once for POST", async () => {
+  let bodyReads = 0;
+  const request = { method: "POST", headers: {} } as IncomingMessage;
+
+  const result = await handleProductionAiHttpRequest(request, "/api/v1/ai/suggestions", async () => {
+    bodyReads += 1;
+    return { context: "Them: hi", purpose: "preview", count: 1, config: { tone: "playful" } };
+  });
+
+  assert.equal(bodyReads, 1);
+  assert.deepEqual(result, { status: 401, body: { error: "invalid_or_expired_session" } });
+});

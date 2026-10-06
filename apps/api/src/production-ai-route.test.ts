@@ -24,3 +24,13 @@ test("dispatches Gemini connection test route", async () => {
   const result = await handleProductionAiRequest(request("POST"), "/api/v1/ai/test-connection");
   assert.deepEqual(result, { status: 401, body: { error: "invalid_or_expired_session" } });
 });
+
+
+test("dispatches authenticated extension suggestion route boundary", async () => {
+  const result = await handleProductionAiRequest(
+    request("POST"),
+    "/api/v1/ai/suggestions",
+    { context: "Them: hi", purpose: "preview", count: 1, config: { tone: "playful" } }
+  );
+  assert.deepEqual(result, { status: 401, body: { error: "invalid_or_expired_session" } });
+});

@@ -1,4 +1,5 @@
 import { clearBackendProfileCache, clearBackendSession, getBackendSession, saveBackendProfileCache, saveBackendSession, saveSyncState, type BackendSession } from "./storage";
+import type { AppConfig, ChatSettings, GeneratePurpose } from "./types";
 
 const DEFAULT_API_BASE = "http://127.0.0.1:4000";
 
@@ -108,4 +109,32 @@ export async function logoutBackend(): Promise<void> {
     await clearBackendProfileCache();
     await saveSyncState({ status: "disconnected", pendingItems: 0, lastSyncedAt: null, message: null });
   }
+}
+
+
+export interface BackendSuggestionInput {
+  context: string;
+  purpose: GeneratePurpose;
+  count: number;
+  config: AppConfig;
+  chat?: ChatSettings;
+}
+
+export async function generateBackendSuggestions(
+  session: BackendSession,
+  input: BackendSuggestionInput
+): Promise<string[]> {
+  const response = await fetch(`${apiBase()}/api/v1/ai/suggestions`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${session.token}`
+    },
+    body: JSON.stringify(input)
+  });
+  const payload = await parseJson<{ suggestions?: string[]; error?: string }>(response);
+  if (!response.ok || !payload?.suggestions?.length) {
+    throw new BackendApiError(payload?.error ?? "Unable to generate TNND suggestions.", response.status);
+  }
+  return payload.suggestions;
 }

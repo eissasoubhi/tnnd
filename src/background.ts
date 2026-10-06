@@ -3,7 +3,8 @@ import "./tinder-checkpoint-background";
 import "./tinder-message-cursor-background";
 import "./tinder-unread-observation-background";
 import { generateSuggestions } from "./gemini";
-import { getApiKey, getChatSettings, getConfig, lockStorageToTrustedContexts, resolveEffectiveConfig } from "./storage";
+import { generateBackendSuggestions } from "./backend-session";
+import { getApiKey, getBackendSession, getChatSettings, getConfig, lockStorageToTrustedContexts, resolveEffectiveConfig } from "./storage";
 import type { AppConfig, GenerateRequest, GenerateResponse, PreviewOverrides } from "./types";
 
 const AUTO_STATE_KEY = "tnnd.autoState";
@@ -140,7 +141,8 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
 
   void (async () => {
     try {
-      const [apiKey, baseConfig, chat] = await Promise.all([
+      const [backendSession, apiKey, baseConfig, chat] = await Promise.all([
+        getBackendSession(),
         getApiKey(),
         getConfig(),
         getChatSettings(message.threadKey ?? "")
@@ -149,7 +151,16 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
       if (purpose === "auto" && !chat.enabled) throw new Error("Automatic replies are disabled for this conversation.");
       const effective = resolveEffectiveConfig(baseConfig, chat);
       const config = purpose === "preview" ? applyPreviewOverrides(effective, message.previewOverrides) : effective;
-      const suggestions = await generateSuggestions(apiKey, config, message.context, purpose, message.replyCount ?? config.replyCount, chat);
+      const count = message.replyCount ?? config.replyCount;
+      const suggestions = backendSession
+        ? await generateBackendSuggestions(backendSession, {
+            context: message.context,
+            purpose,
+            count,
+            config,
+            chat
+          })
+        : await generateSuggestions(apiKey, config, message.context, purpose, count, chat);
       sendResponse({ ok: true, suggestions } satisfies GenerateResponse);
     } catch (error) {
       sendResponse({ ok: false, error: error instanceof Error ? error.message : "Unknown TNND error." } satisfies GenerateResponse);

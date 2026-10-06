@@ -1,9 +1,10 @@
 import type { IncomingMessage } from "node:http";
 import { handleAiProviderSettingsRoute, type AiProviderSettingsRouteResult } from "./ai-provider-settings-route.js";
 import { handleGeminiConnectionTestRoute, type GeminiConnectionTestRouteResult } from "./gemini-connection-test-route.js";
+import { handleExtensionSuggestionsRoute, type ExtensionSuggestionsRouteResult } from "./extension-suggestions-route.js";
 import { handleTextingStyleSourceRoute, type TextingStyleSourceRouteResult } from "./texting-style-source-route.js";
 
-export type ProductionAiRouteResult = AiProviderSettingsRouteResult | GeminiConnectionTestRouteResult | TextingStyleSourceRouteResult;
+export type ProductionAiRouteResult = AiProviderSettingsRouteResult | GeminiConnectionTestRouteResult | ExtensionSuggestionsRouteResult | TextingStyleSourceRouteResult;
 
 /**
  * Single production entry point for authenticated AI configuration routes.
@@ -21,6 +22,9 @@ export async function handleProductionAiRequest(
 
   const settingsResult = await handleAiProviderSettingsRoute(request, pathname, body);
   if (settingsResult) return settingsResult;
+
+  const suggestionsResult = await handleExtensionSuggestionsRoute(request, pathname, body);
+  if (suggestionsResult) return suggestionsResult;
 
   return handleGeminiConnectionTestRoute(request, pathname);
 }
