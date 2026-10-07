@@ -218,7 +218,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "account-data-export", "account-deletion", "individual-data-deletion", "texting-style-analysis", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-management", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "match-profiles", "human-actions", "human-action-manual-answer", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "account-data-export", "account-deletion", "individual-data-deletion", "texting-style-analysis", "identity-builder", "personal-memories", "token-budgeted-context", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-management", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "match-profiles", "human-actions", "human-action-manual-answer", "security-baseline"]
       });
       return;
     }
