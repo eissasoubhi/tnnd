@@ -40,3 +40,14 @@ test("Gemini test route maps provider errors without exposing secrets", async ()
   );
   assert.deepEqual(result, { status: 422, body: { error: "gemini_credentials_rejected" } });
 });
+
+
+test("Gemini test route reports unavailable generation models", async () => {
+  const result = await handleGeminiConnectionTestRoute(
+    request("POST", "Bearer test-token"),
+    "/api/v1/ai/test-connection",
+    async () => session,
+    async () => { throw new Error("gemini_model_unavailable"); }
+  );
+  assert.deepEqual(result, { status: 422, body: { error: "gemini_model_unavailable" } });
+});
