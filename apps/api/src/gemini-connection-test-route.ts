@@ -34,7 +34,7 @@ export async function handleGeminiConnectionTestRoute(
     return { status: 200, body: await testConnection(session.user.id) };
   } catch (error) {
     const code = error instanceof Error ? error.message : "gemini_connection_failed";
-    const status = code === "ai_provider_not_configured" ? 409 : code === "gemini_credentials_rejected" ? 422 : 502;
+    const status = code === "ai_provider_not_configured" ? 409 : (code === "gemini_credentials_rejected" || code === "gemini_model_unavailable") ? 422 : 502;
     return { status, body: { error: code } };
   }
 }
