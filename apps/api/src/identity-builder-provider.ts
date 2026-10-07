@@ -59,8 +59,7 @@ export async function analyzeIdentityWithGemini(userId: string, sourceValue: unk
           }
         }
       }
-    })
-  }),
+    }),
     signal: AbortSignal.timeout(25_000)
   });
 
