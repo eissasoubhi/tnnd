@@ -58,8 +58,9 @@ export async function analyzeIdentityWithGemini(userId: string, sourceValue: unk
             avoidTopics: { type: "ARRAY", items: { type: "STRING" } }
           }
         }
-      })
-    }),
+      }
+    })
+  }),
     signal: AbortSignal.timeout(25_000)
   });
 
