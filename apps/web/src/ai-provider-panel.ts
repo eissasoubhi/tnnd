@@ -16,7 +16,7 @@ panel.innerHTML = `
   </div>
   <p>Configure Gemini for backend AI features. The API key is sent to TNND only when you save it and is never displayed again.</p>
   <form id="ai-provider-form" class="preferences-grid">
-    <label>Model<input id="ai-provider-model" type="text" value="gemini-2.5-flash" autocomplete="off" required /></label>
+    <label>Model<input id="ai-provider-model" type="text" value="gemini-3.8-flash" autocomplete="off" required /></label>
     <label>API key<input id="ai-provider-key" type="password" autocomplete="new-password" required /></label>
     <div>
       <button id="ai-provider-save" type="submit">Save configuration</button>
@@ -99,7 +99,14 @@ test?.addEventListener("click", async () => {
     if (message) message.textContent = result.connected ? "Gemini connection succeeded." : "Gemini connection test failed.";
   } catch (error) {
     if (status) status.textContent = "Connection failed";
-    if (message) message.textContent = error instanceof Error ? error.message : "Unable to test Gemini connection.";
+    if (message) {
+      const code = error instanceof Error ? error.message : "";
+      message.textContent = code === "gemini_model_unavailable"
+        ? "This Gemini model is not available for generation with this project. Use gemini-3.8-flash or another model your project can generate with."
+        : code === "gemini_credentials_rejected"
+          ? "Gemini rejected this API key or project."
+          : code || "Unable to test Gemini connection.";
+    }
   } finally {
     test.disabled = false;
   }
