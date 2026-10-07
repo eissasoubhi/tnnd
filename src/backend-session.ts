@@ -130,7 +130,10 @@ export async function generateBackendSuggestions(
       "content-type": "application/json",
       authorization: `Bearer ${session.token}`
     },
-    body: JSON.stringify(input)
+    body: JSON.stringify((() => {
+      const { identity: _identity, ...configWithoutIdentity } = input.config;
+      return { ...input, config: configWithoutIdentity };
+    })())
   });
   const payload = await parseJson<{ suggestions?: string[]; error?: string }>(response);
   if (!response.ok || !payload?.suggestions?.length) {
