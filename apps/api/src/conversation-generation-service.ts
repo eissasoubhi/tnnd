@@ -64,14 +64,14 @@ export async function generateConversationReply(
   ].filter((value): value is string => Boolean(value));
   const rankedMemories = await retrievePersonalMemories(userId, {
     context: [normalizedMessage, ...new Set(topicTerms)].join("\n"),
-    limit: 3
+    limit: 2
   });
   const personalMemories = rankedMemories.map(({ memory }) => ({
     id: memory.id,
-    title: memory.structuredAnalysis.title,
-    summary: memory.structuredAnalysis.summary,
-    immutableFacts: memory.structuredAnalysis.immutableFacts,
-    conversationHooks: memory.structuredAnalysis.conversationHooks
+    title: memory.structuredAnalysis.title.slice(0, 120),
+    summary: memory.structuredAnalysis.summary.slice(0, 500),
+    immutableFacts: memory.structuredAnalysis.immutableFacts.slice(0, 6).map((fact) => fact.slice(0, 180)),
+    conversationHooks: memory.structuredAnalysis.conversationHooks.slice(0, 4).map((hook) => hook.slice(0, 180))
   }));
   const toTopic = (topic: { topic: string; subtopic?: string; confidence: number }) => ({
     topic: topic.topic,
