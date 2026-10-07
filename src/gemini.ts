@@ -2,7 +2,7 @@ import { buildSystemInstruction, buildUserPrompt } from "./prompt";
 import type { AppConfig, ChatSettings, GeneratePurpose } from "./types";
 
 interface GeminiResponse {
-  candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  candidates?: Array<{ finishReason?: string; content?: { parts?: Array<{ text?: string }> } }>;
   error?: { message?: string };
 }
 
@@ -13,7 +13,12 @@ function cleanJson(text: string): string {
 }
 
 function parseSuggestions(text: string, count: number): string[] {
-  const parsed = JSON.parse(cleanJson(text)) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleanJson(text)) as unknown;
+  } catch {
+    throw new Error("Gemini returned invalid structured output.");
+  }
   if (!Array.isArray(parsed)) throw new Error("Gemini did not return an array of suggestions.");
   const suggestions = parsed.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean).slice(0, count);
   if (!suggestions.length) throw new Error("Gemini returned no usable suggestions.");
@@ -33,13 +38,26 @@ export async function generateSuggestions(apiKey: string, config: AppConfig, con
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: buildSystemInstruction(config, safeCount, purpose, chat) }] },
       contents: [{ role: "user", parts: [{ text: buildUserPrompt(context, purpose) }] }],
-      generationConfig: { temperature: 0.95, maxOutputTokens: 500 }
+      generationConfig: {
+        temperature: 0.95,
+        maxOutputTokens: 2048,
+        thinkingConfig: { thinkingLevel: "LOW" },
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "ARRAY",
+          minItems: safeCount,
+          maxItems: safeCount,
+          items: { type: "STRING" }
+        }
+      }
     })
   });
 
   const data = (await response.json()) as GeminiResponse;
   if (!response.ok) throw new Error(data.error?.message || `Gemini request failed (${response.status}).`);
-  const text = data.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("").trim();
+  const candidate = data.candidates?.[0];
+  if (candidate?.finishReason === "MAX_TOKENS") throw new Error("Gemini response was truncated. Try again.");
+  const text = candidate?.content?.parts?.map((part) => part.text ?? "").join("").trim();
   if (!text) throw new Error("Gemini returned an empty response.");
   return parseSuggestions(text, safeCount);
 }

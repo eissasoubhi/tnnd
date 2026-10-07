@@ -27,7 +27,11 @@ export async function testGeminiConnection(
       },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: "Reply with OK." }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 8 }
+        generationConfig: {
+          temperature: 0,
+          maxOutputTokens: 128,
+          thinkingConfig: { thinkingLevel: "LOW" }
+        }
       }),
       signal: AbortSignal.timeout(10_000)
     }
@@ -38,6 +42,11 @@ export async function testGeminiConnection(
     if (response.status === 404) throw new Error("gemini_model_unavailable");
     throw new Error("gemini_connection_failed");
   }
+
+  const payload = await response.json().catch(() => null) as { candidates?: Array<{ finishReason?: string; content?: { parts?: Array<{ text?: string }> } }> } | null;
+  const candidate = payload?.candidates?.[0];
+  const text = candidate?.content?.parts?.map((part) => part.text ?? "").join("").trim() ?? "";
+  if (candidate?.finishReason === "MAX_TOKENS" || !text) throw new Error("gemini_generation_unusable");
 
   return { provider: "gemini", model: settings.model, connected: true };
 }

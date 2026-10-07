@@ -23,7 +23,12 @@ function cleanJson(text: string): string {
 }
 
 function parseSuggestions(text: string, count: number): string[] {
-  const parsed = JSON.parse(cleanJson(text)) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleanJson(text)) as unknown;
+  } catch {
+    throw new Error("gemini_invalid_suggestions");
+  }
   if (!Array.isArray(parsed)) throw new Error("gemini_invalid_suggestions");
   const suggestions = parsed
     .filter((item): item is string => typeof item === "string")
@@ -32,6 +37,16 @@ function parseSuggestions(text: string, count: number): string[] {
     .slice(0, count);
   if (!suggestions.length) throw new Error("gemini_empty_response");
   return suggestions;
+}
+
+function responseFinishReason(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const candidates = (value as { candidates?: unknown }).candidates;
+  if (!Array.isArray(candidates)) return "";
+  const first = candidates[0];
+  return first && typeof first === "object" && typeof (first as { finishReason?: unknown }).finishReason === "string"
+    ? (first as { finishReason: string }).finishReason
+    : "";
 }
 
 function responseText(value: unknown): string {
@@ -118,7 +133,18 @@ export async function generateExtensionSuggestions(
       },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.95, maxOutputTokens: 500, responseMimeType: "application/json" }
+        generationConfig: {
+          temperature: 0.95,
+          maxOutputTokens: 2048,
+          thinkingConfig: { thinkingLevel: "LOW" },
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "ARRAY",
+            minItems: request.count,
+            maxItems: request.count,
+            items: { type: "STRING" }
+          }
+        }
       }),
       signal: AbortSignal.timeout(20_000)
     }
@@ -129,7 +155,9 @@ export async function generateExtensionSuggestions(
     if (response.status === 404) throw new Error("gemini_model_unavailable");
     throw new Error(`gemini_provider_error:${response.status}`);
   }
-  const raw = responseText(await response.json());
+  const payload = await response.json();
+  if (responseFinishReason(payload) === "MAX_TOKENS") throw new Error("gemini_response_truncated");
+  const raw = responseText(payload);
   if (!raw) throw new Error("gemini_empty_response");
 
   return {

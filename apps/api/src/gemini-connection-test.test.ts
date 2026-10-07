@@ -23,6 +23,9 @@ test("tests real Gemini generation without exposing the key", async () => {
   assert.match(requestedUrl, /gemini-3\.8-flash:generateContent$/);
   assert.equal(new Headers(requestInit?.headers).get("x-goog-api-key"), "test-key");
   assert.equal(requestInit?.method, "POST");
+  const body = JSON.parse(String(requestInit?.body));
+  assert.equal(body.generationConfig.thinkingConfig.thinkingLevel, "LOW");
+  assert.equal(body.generationConfig.maxOutputTokens, 128);
   assert.equal(JSON.stringify(result).includes("test-key"), false);
 });
 
@@ -44,5 +47,19 @@ test("classifies a model that is visible but unavailable for generation", async 
   await assert.rejects(
     () => testGeminiConnection("user-1", async () => settings, async () => new Response("", { status: 404 })),
     /gemini_model_unavailable/
+  );
+});
+
+
+test("rejects a connection test whose generation is truncated", async () => {
+  await assert.rejects(
+    () => testGeminiConnection(
+      "user-1",
+      async () => settings,
+      async () => new Response(JSON.stringify({
+        candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: "" }] } }]
+      }), { status: 200, headers: { "content-type": "application/json" } })
+    ),
+    /gemini_generation_unusable/
   );
 });
