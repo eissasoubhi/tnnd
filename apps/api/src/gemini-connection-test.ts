@@ -18,12 +18,25 @@ export async function testGeminiConnection(
   if (!settings) throw new Error("ai_provider_not_configured");
 
   const response = await fetcher(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(settings.model)}?key=${encodeURIComponent(settings.apiKey)}`,
-    { method: "GET", signal: AbortSignal.timeout(10_000) }
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(settings.model)}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-goog-api-key": settings.apiKey
+      },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: "Reply with OK." }] }],
+        generationConfig: { temperature: 0, maxOutputTokens: 8 }
+      }),
+      signal: AbortSignal.timeout(10_000)
+    }
   );
 
   if (!response.ok) {
-    throw new Error(response.status === 401 || response.status === 403 ? "gemini_credentials_rejected" : "gemini_connection_failed");
+    if (response.status === 401 || response.status === 403) throw new Error("gemini_credentials_rejected");
+    if (response.status === 404) throw new Error("gemini_model_unavailable");
+    throw new Error("gemini_connection_failed");
   }
 
   return { provider: "gemini", model: settings.model, connected: true };
