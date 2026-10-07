@@ -65,8 +65,9 @@ export async function analyzePersonalMemoryWithGemini(
             creativeFreedom: { type: "STRING", enum: ["strict","natural","storyteller"] }
           }
         }
-      })
-    }),
+      }
+    })
+  }),
     signal: AbortSignal.timeout(25_000)
   });
 
