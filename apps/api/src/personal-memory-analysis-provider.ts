@@ -66,8 +66,7 @@ export async function analyzePersonalMemoryWithGemini(
           }
         }
       }
-    })
-  }),
+    }),
     signal: AbortSignal.timeout(25_000)
   });
 
