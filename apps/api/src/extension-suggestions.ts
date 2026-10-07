@@ -1,3 +1,5 @@
+import { loadGenerationProfile } from "./generation-user-profile-context.js";
+import { retrievePersonalMemories } from "./personal-memory-service.js";
 import { loadAiProviderSettings } from "./ai-provider-settings-service.js";
 
 export interface ExtensionSuggestionRequest {
@@ -110,12 +112,24 @@ export async function generateExtensionSuggestions(
 ): Promise<ExtensionSuggestionResult> {
   const settings = await loadSettings(userId);
   if (!settings) throw new Error("ai_provider_not_configured");
+  const [profile, rankedMemories] = await Promise.all([
+    loadGenerationProfile(userId),
+    retrievePersonalMemories(userId, { context: request.context, limit: 2 })
+  ]);
+  const { identity: _clientIdentity, ...configWithoutIdentity } = request.config;
+  const memoryContext = rankedMemories.map(({ memory }) => ({
+    title: memory.structuredAnalysis.title.slice(0, 120),
+    summary: memory.structuredAnalysis.summary.slice(0, 450),
+    immutableFacts: memory.structuredAnalysis.immutableFacts.slice(0, 5).map((fact) => fact.slice(0, 160))
+  }));
 
   const prompt = [
     "You are TNND, a dating conversation writing engine acting from the user's configured identity.",
     "Write concise, natural dating-app messages. Avoid assistant prose, canned pickup lines, pressure, manipulation, and invented personal facts.",
     `Generation purpose: ${request.purpose}.`,
-    `Effective TNND configuration JSON: ${boundedJson(request.config)}`,
+    `Effective TNND configuration JSON: ${boundedJson(configWithoutIdentity, 12_000)}`,
+    profile.userProfile ? `Stored user identity/style JSON: ${boundedJson(profile.userProfile, 5_000)}` : "",
+    memoryContext.length ? `Relevant approved personal memories JSON: ${boundedJson(memoryContext, 3_500)}` : "",
     request.chat ? `Per-chat configuration JSON: ${boundedJson(request.chat, 8_000)}` : "",
     "Use the recent conversation flow, answer what was actually said, and avoid abruptly changing subject.",
     "If context is incomplete, stay generic rather than inventing details.",
