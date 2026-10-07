@@ -1,3 +1,5 @@
+import { loadGenerationProfile } from "./generation-user-profile-context.js";
+import { retrievePersonalMemories } from "./personal-memory-service.js";
 import { loadAiProviderSettings } from "./ai-provider-settings-service.js";
 
 export interface ExtensionSuggestionRequest {
@@ -15,6 +17,26 @@ export interface ExtensionSuggestionResult {
 
 type SettingsLoader = typeof loadAiProviderSettings;
 type Fetcher = typeof fetch;
+export interface ExtensionGenerationContext {
+  userProfile?: Record<string, unknown>;
+  memories: Array<{ title: string; summary: string; immutableFacts: string[] }>;
+}
+type ContextLoader = (userId: string, context: string) => Promise<ExtensionGenerationContext>;
+
+async function loadExtensionGenerationContext(userId: string, context: string): Promise<ExtensionGenerationContext> {
+  const [profile, rankedMemories] = await Promise.all([
+    loadGenerationProfile(userId),
+    retrievePersonalMemories(userId, { context, limit: 2 })
+  ]);
+  return {
+    ...(profile.userProfile ? { userProfile: profile.userProfile as unknown as Record<string, unknown> } : {}),
+    memories: rankedMemories.map(({ memory }) => ({
+      title: memory.structuredAnalysis.title.slice(0, 120),
+      summary: memory.structuredAnalysis.summary.slice(0, 450),
+      immutableFacts: memory.structuredAnalysis.immutableFacts.slice(0, 5).map((fact) => fact.slice(0, 160))
+    }))
+  };
+}
 
 function cleanJson(text: string): string {
   const trimmed = text.trim();
@@ -106,16 +128,22 @@ export async function generateExtensionSuggestions(
   userId: string,
   request: ExtensionSuggestionRequest,
   loadSettings: SettingsLoader = loadAiProviderSettings,
-  fetcher: Fetcher = fetch
+  fetcher: Fetcher = fetch,
+  loadContext: ContextLoader = loadExtensionGenerationContext
 ): Promise<ExtensionSuggestionResult> {
   const settings = await loadSettings(userId);
   if (!settings) throw new Error("ai_provider_not_configured");
+  const generationContext = await loadContext(userId, request.context);
+  const { identity: _clientIdentity, ...configWithoutIdentity } = request.config;
+  const memoryContext = generationContext.memories;
 
   const prompt = [
     "You are TNND, a dating conversation writing engine acting from the user's configured identity.",
     "Write concise, natural dating-app messages. Avoid assistant prose, canned pickup lines, pressure, manipulation, and invented personal facts.",
     `Generation purpose: ${request.purpose}.`,
-    `Effective TNND configuration JSON: ${boundedJson(request.config)}`,
+    `Effective TNND configuration JSON: ${boundedJson(configWithoutIdentity, 12_000)}`,
+    generationContext.userProfile ? `Stored user identity/style JSON: ${boundedJson(generationContext.userProfile, 5_000)}` : "",
+    memoryContext.length ? `Relevant approved personal memories JSON: ${boundedJson(memoryContext, 3_500)}` : "",
     request.chat ? `Per-chat configuration JSON: ${boundedJson(request.chat, 8_000)}` : "",
     "Use the recent conversation flow, answer what was actually said, and avoid abruptly changing subject.",
     "If context is incomplete, stay generic rather than inventing details.",

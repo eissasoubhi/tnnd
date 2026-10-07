@@ -30,7 +30,8 @@ test("uses stored per-user Gemini settings without returning the API key", async
       return new Response(JSON.stringify({
         candidates: [{ content: { parts: [{ text: "[\"salut 😄\"]" }] } }]
       }), { status: 200, headers: { "content-type": "application/json" } });
-    }
+    },
+    async () => ({ memories: [] })
   );
 
   assert.deepEqual(result, { suggestions: ["salut 😄"], model: "gemini-test" });
@@ -61,7 +62,8 @@ test("classifies Gemini models unavailable for generation", async () => {
         config: { tone: "chill" }
       },
       async () => ({ provider: "gemini", model: "gemini-2.5-flash", apiKey: "server-secret" }),
-      async () => new Response("", { status: 404 })
+      async () => new Response("", { status: 404 }),
+      async () => ({ memories: [] })
     ),
     /gemini_model_unavailable/
   );
@@ -84,7 +86,8 @@ test("classifies truncated Gemini output before JSON parsing", async () => {
           finishReason: "MAX_TOKENS",
           content: { parts: [{ text: "[\"message cut off" }] }
         }]
-      }), { status: 200, headers: { "content-type": "application/json" } })
+      }), { status: 200, headers: { "content-type": "application/json" } }),
+      async () => ({ memories: [] })
     ),
     /gemini_response_truncated/
   );
@@ -103,8 +106,36 @@ test("classifies malformed structured output without leaking parser details", as
       async () => ({ provider: "gemini", model: "gemini-3.8-flash", apiKey: "server-secret" }),
       async () => new Response(JSON.stringify({
         candidates: [{ finishReason: "STOP", content: { parts: [{ text: "[\"unterminated" }] } }]
-      }), { status: 200, headers: { "content-type": "application/json" } })
+      }), { status: 200, headers: { "content-type": "application/json" } }),
+      async () => ({ memories: [] })
     ),
     /gemini_invalid_suggestions/
   );
+});
+
+
+test("does not send client raw identity when server context is available", async () => {
+  let body = "";
+  await generateExtensionSuggestions(
+    "user-1",
+    {
+      context: "Them: what do you do?",
+      purpose: "preview",
+      count: 1,
+      config: { identity: { aboutMe: "VERY LONG RAW ABOUT ME" }, tone: "chill" }
+    },
+    async () => ({ provider: "gemini", model: "gemini-test", apiKey: "server-secret" }),
+    async (_input, init) => {
+      body = String(init?.body ?? "");
+      return new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ text: "[\"software\"]" }] } }]
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    },
+    async () => ({
+      userProfile: { identity: { summary: "software engineer" } },
+      memories: []
+    })
+  );
+  assert.equal(body.includes("VERY LONG RAW ABOUT ME"), false);
+  assert.equal(body.includes("software engineer"), true);
 });

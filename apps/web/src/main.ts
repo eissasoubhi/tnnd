@@ -12,6 +12,8 @@ async function loadOptionalPanels(): Promise<void> {
   optionalPanelsLoaded = true;
   for (const loader of [
     () => import("./ai-provider-panel"),
+    () => import("./identity-builder-panel"),
+    () => import("./personal-memory-panel"),
     () => import("./conversation-panel"),
     () => import("./conversation-overrides-panel"),
     () => import("./conversation-quick-filters"),
@@ -338,6 +340,9 @@ preferencesSave?.addEventListener("click", async () => {
 window.addEventListener("tnnd:auth-session-changed", () => {
   void refreshProfile();
   void refreshActionCenter();
+});
+window.addEventListener("tnnd:profile-updated", () => {
+  void refreshProfile();
 });
 
 if (actionCenter) bindActionCenter(actionCenter, refreshActionCounts);

@@ -48,13 +48,33 @@ export async function createPersonalMemoryFromAnecdote(session: AuthSession, ori
   }));
 }
 
+function structuredAnalysis(draft: PersonalMemoryReviewDraft) {
+  return {
+    title: draft.title,
+    category: draft.category,
+    summary: draft.summary,
+    immutableFacts: draft.immutableFacts,
+    topics: draft.topics,
+    conversationHooks: draft.conversationHooks,
+    sensitivity: draft.sensitivity,
+    allowedForChat: draft.allowedForChat,
+    creativeFreedom: draft.creativeFreedom
+  };
+}
+
 /** Keeps explicit structured imports/review flows available without bypassing backend validation. */
 export async function createPersonalMemory(session: AuthSession, draft: PersonalMemoryReviewDraft): Promise<PersonalMemoryRecord> {
-  return requireMemory(await request(session, "/api/v1/personal-memories", { method: "POST", body: JSON.stringify(draft) }));
+  return requireMemory(await request(session, "/api/v1/personal-memories", {
+    method: "POST",
+    body: JSON.stringify({ originalText: draft.originalText, structuredAnalysis: structuredAnalysis(draft) })
+  }));
 }
 
 export async function updatePersonalMemory(session: AuthSession, id: string, draft: PersonalMemoryReviewDraft): Promise<PersonalMemoryRecord> {
-  return requireMemory(await request(session, `/api/v1/personal-memories/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(draft) }));
+  return requireMemory(await request(session, `/api/v1/personal-memories/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify({ structuredAnalysis: structuredAnalysis(draft) })
+  }));
 }
 
 export async function approvePersonalMemory(session: AuthSession, id: string): Promise<PersonalMemoryRecord> {

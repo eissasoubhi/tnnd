@@ -6,6 +6,7 @@ export interface TnndProfileEnvelope {
   profileVersion?: string;
   status?: string;
   identity?: Record<string, unknown>;
+  identityBuilder?: Record<string, unknown>;
   datingIntent?: Record<string, unknown>;
   languages?: Record<string, unknown>;
   textingStyle?: Record<string, unknown>;
@@ -24,6 +25,7 @@ export interface TnndProfileEnvelope {
 
 const profileObjectSections = [
   "identity",
+  "identityBuilder",
   "datingIntent",
   "languages",
   "textingStyle",

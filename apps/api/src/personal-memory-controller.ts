@@ -30,12 +30,13 @@ export async function handlePersonalMemoryCreateRequest(userId: string, body: Re
   try {
     const generated = body.structuredAnalysis
       ? { analysis: body.structuredAnalysis, model: "user-supplied" }
-      : await analyzePersonalMemoryWithGemini(body.originalText);
+      : await analyzePersonalMemoryWithGemini(userId, body.originalText);
     const memory = await createPersonalMemory(userId, body.originalText, generated.analysis);
     return { status: 201, body: { memory, analysisModel: generated.model } };
   } catch (error) {
     const code = error instanceof Error ? error.message : "invalid_personal_memory";
-    if (code === "gemini_not_configured") return { status: 503, body: { error: code } };
+    if (code === "ai_provider_not_configured") return { status: 409, body: { error: code } };
+    if (code === "gemini_credentials_rejected" || code === "gemini_model_unavailable") return { status: 422, body: { error: code } };
     if (code.startsWith("gemini_provider_error:") || code === "gemini_empty_response" || code === "gemini_invalid_json" || code.startsWith("gemini_invalid_personal_memory:")) {
       return { status: 502, body: { error: code } };
     }

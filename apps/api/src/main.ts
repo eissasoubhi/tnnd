@@ -19,6 +19,7 @@ import { handleConversationMatchProfileRequest, handleMatchProfileCaptureRequest
 import { profileSchemaVersion, publicProfileSchema, validateProfileEnvelope } from "./profile-schema.js";
 import { deleteConversationData, deleteMatchProfileData } from "./privacy-delete-service.js";
 import { handleProductionAiHttp } from "./production-ai-http-handler.js";
+import { routeAuthenticatedPersonalMemoryRequest } from "./personal-memory-authenticated-route.js";
 import { handleTextingStyleAnalysisRequest } from "./texting-style-analysis-controller.js";
 import { safeApiErrorLog } from "./safe-error-log.js";
 import { isAllowedRequestTransport } from "./transport-security.js";
@@ -162,6 +163,22 @@ const server = createServer(async (request, response) => {
 
     if (await handleProductionAiHttp(request, response, url.pathname, readJsonBody, sendJson)) return;
 
+    if (url.pathname.startsWith("/api/v1/personal-memories")) {
+      const body = request.method === "POST" || request.method === "PUT" || request.method === "PATCH"
+        ? await readJsonBody(request)
+        : undefined;
+      const personalMemory = await routeAuthenticatedPersonalMemoryRequest({
+        authorization: request.headers.authorization,
+        method: request.method ?? "GET",
+        pathname: url.pathname,
+        ...(body ? { body } : {})
+      });
+      if (personalMemory.matched) {
+        sendJson(response, personalMemory.status, personalMemory.body);
+        return;
+      }
+    }
+
     const accountExport = await handleAccountDataExportRoute(request, url.pathname);
     if (accountExport) {
       sendJson(response, accountExport.status, accountExport.body);
@@ -201,7 +218,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/v1/meta") {
       sendJson(response, 200, {
         apiVersion: "v1",
-        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "account-data-export", "account-deletion", "individual-data-deletion", "texting-style-analysis", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-management", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "match-profiles", "human-actions", "human-action-manual-answer", "security-baseline"]
+        capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "account-data-export", "account-deletion", "individual-data-deletion", "texting-style-analysis", "identity-builder", "personal-memories", "token-budgeted-context", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-management", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "match-profiles", "human-actions", "human-action-manual-answer", "security-baseline"]
       });
       return;
     }
