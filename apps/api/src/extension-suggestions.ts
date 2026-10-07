@@ -126,6 +126,7 @@ export async function generateExtensionSuggestions(
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) throw new Error("gemini_credentials_rejected");
+    if (response.status === 404) throw new Error("gemini_model_unavailable");
     throw new Error(`gemini_provider_error:${response.status}`);
   }
   const raw = responseText(await response.json());
