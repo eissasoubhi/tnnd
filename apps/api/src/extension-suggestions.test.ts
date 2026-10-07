@@ -39,3 +39,21 @@ test("uses stored per-user Gemini settings without returning the API key", async
   assert.equal(new Headers(calls[0]!.init?.headers).get("x-goog-api-key"), "server-secret");
   assert.equal(JSON.stringify(result).includes("server-secret"), false);
 });
+
+
+test("classifies Gemini models unavailable for generation", async () => {
+  await assert.rejects(
+    () => generateExtensionSuggestions(
+      "user-1",
+      {
+        context: "Them: salut",
+        purpose: "preview",
+        count: 1,
+        config: { tone: "chill" }
+      },
+      async () => ({ provider: "gemini", model: "gemini-2.5-flash", apiKey: "server-secret" }),
+      async () => new Response("", { status: 404 })
+    ),
+    /gemini_model_unavailable/
+  );
+});
