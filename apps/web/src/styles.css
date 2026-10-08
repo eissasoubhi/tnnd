@@ -129,3 +129,15 @@ button.secondary:hover:not(:disabled), .button-muted:hover:not(:disabled) { back
   button.secondary:hover:not(:disabled), .button-muted:hover:not(:disabled) { background: #2d3c55; }
   .subtle, .panel > p, .metric span, .metric small, label { color: var(--muted); }
 }
+
+
+.workspace-nav { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 22px; }
+.workspace-nav a { display: inline-flex; align-items: center; min-height: 40px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); text-decoration: none; font-size: 13px; font-weight: 650; }
+.workspace-nav a:hover { border-color: var(--accent); color: var(--accent); }
+.workspace-feature { scroll-margin-top: 24px; }
+.workspace-field-label { display: block; margin: 20px 0 8px; }
+.workspace-empty { width: 100%; padding: 20px; border: 1px dashed var(--line); border-radius: 12px; background: var(--canvas); color: var(--muted); }
+#memory-list button { flex: 1 1 220px; }
+#memory-list button:not(.secondary) { box-shadow: inset 0 0 0 1px var(--accent); }
+#memory-review label { margin-bottom: 12px; }
+@media (max-width: 480px) { .workspace-nav { display: grid; grid-template-columns: 1fr 1fr; } .workspace-nav a { justify-content: center; } }
