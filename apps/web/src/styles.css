@@ -141,3 +141,52 @@ button.secondary:hover:not(:disabled), .button-muted:hover:not(:disabled) { back
 #memory-list button:not(.secondary) { box-shadow: inset 0 0 0 1px var(--accent); }
 #memory-review label { margin-bottom: 12px; }
 @media (max-width: 480px) { .workspace-nav { display: grid; grid-template-columns: 1fr 1fr; } .workspace-nav a { justify-content: center; } }
+
+
+/* Guided identity and memory workflows */
+.workspace-steps { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.workspace-steps span { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--canvas); border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.workspace-steps b { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--surface); border: 1px solid var(--line); color: var(--ink); }
+.workspace-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 14px 0; }
+.workspace-actions .subtle { font-size: 12px; }
+.workspace-review-heading { margin: 20px 0 0; padding-top: 20px; border-top: 1px solid var(--line); }
+.workspace-review-heading h3 { margin: 0 0 5px; font-size: 18px; letter-spacing: -.025em; }
+.workspace-review-heading + .preferences-grid { margin-top: 18px; }
+#identity-builder-review small.subtle { display: block; font-size: 11px; line-height: 1.5; }
+.memory-toolbar { display: flex; flex-wrap: wrap; gap: 14px; align-items: end; padding: 18px 0; border-top: 1px solid var(--line); margin-top: 22px; }
+.memory-toolbar label:first-child { flex: 1 1 240px; }
+.memory-toolbar label:last-child { flex: 0 1 190px; }
+.memory-toolbar input, .memory-toolbar select { width: 100%; }
+.memory-workspace { display: grid; grid-template-columns: minmax(200px, 290px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.memory-list { display: grid; align-content: start; gap: 8px; min-width: 0; max-height: 760px; overflow-y: auto; }
+.memory-list .memory-list-item { display: grid; width: 100%; gap: 6px; min-height: 68px; padding: 12px 14px; text-align: left; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); box-shadow: none; }
+.memory-list .memory-list-item:hover { border-color: var(--accent); }
+.memory-list .memory-list-item.is-selected { background: var(--canvas); border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.memory-list-item__title { display: block; font-weight: 700; font-size: 13px; line-height: 1.4; }
+.memory-list-item__meta { display: block; font-size: 11px; font-weight: 500; color: var(--muted); }
+.memory-detail { min-width: 0; padding: 0 0 0 20px; border-left: 1px solid var(--line); }
+.personal-memory-review header { display: flex; justify-content: space-between; gap: 12px; align-items: start; margin-bottom: 16px; }
+.personal-memory-review header strong { display: block; font-size: 17px; }
+.personal-memory-review header p { margin-top: 5px; }
+.personal-memory-review header span { font-size: 12px; color: var(--muted); font-weight: 700; }
+.personal-memory-review label { display: grid; margin-top: 14px; gap: 7px; }
+.personal-memory-review label input:not([type=checkbox]), .personal-memory-review label select { width: 100%; }
+.personal-memory-review details { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--canvas); }
+.personal-memory-review details p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.personal-memory-review summary { cursor: pointer; font-weight: 650; }
+.memory-review-options { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; margin: 12px 0 18px; }
+.memory-review-options label:last-child { display: flex; gap: 8px; align-items: center; grid-column: 1 / -1; }
+.memory-review-options input[type=checkbox] { width: 18px; height: 18px; min-height: 18px; accent-color: var(--accent); }
+.memory-usage { margin-top: 16px; font-size: 12px; }
+#memory-review { border-top: 0; padding-top: 0; }
+@media (max-width: 860px) {
+  .memory-workspace { grid-template-columns: 1fr; }
+  .memory-list { display: flex; flex-wrap: nowrap; overflow-x: auto; max-height: none; padding-bottom: 8px; }
+  .memory-list .memory-list-item { flex: 0 0 220px; }
+  .memory-detail { border-left: 0; border-top: 1px solid var(--line); padding: 20px 0 0; }
+}
+@media (max-width: 480px) {
+  .workspace-steps span { flex: 1 1 100%; }
+  .memory-review-options { grid-template-columns: 1fr; }
+  .memory-toolbar label:last-child { flex: 1 1 190px; }
+}
