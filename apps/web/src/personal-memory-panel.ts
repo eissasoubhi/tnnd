@@ -14,19 +14,21 @@ const grid = document.querySelector<HTMLElement>(".grid");
 if (!grid) throw new Error("TNND dashboard grid was not found.");
 
 const panel = document.createElement("article");
-panel.className = "panel panel-wide";
+panel.className = "panel panel-wide workspace-feature";
+panel.id = "personal-memory-panel";
 panel.innerHTML = `
   <div class="panel-heading">
     <div>
       <p class="eyebrow">Personal Memories</p>
-      <h2>Anecdotes TNND may use naturally</h2>
+      <h2>Your story library</h2>
     </div>
     <span class="pill" id="memory-count">0 memories</span>
   </div>
-  <p>Add a true anecdote once. Gemini structures it once; future conversations retrieve only the most relevant approved memories instead of sending the whole library.</p>
-  <textarea id="memory-source" rows="5" maxlength="20000" placeholder="Tell a true anecdote from your life…"></textarea>
+  <p>Save real moments and stories. Review each memory before TNND can use it in a conversation.</p>
+  <label for="memory-source" class="workspace-field-label">A memory worth sharing</label>
+  <textarea id="memory-source" rows="5" maxlength="20000" placeholder="A trip, a funny moment, something you learned, or a story you enjoy telling…"></textarea>
   <button id="memory-analyze" type="button" style="margin-top:10px">Analyze anecdote</button>
-  <p class="subtle" id="memory-message"></p>
+  <p class="subtle" id="memory-message" role="status" aria-live="polite"></p>
   <div id="memory-list" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"></div>
   <div id="memory-review" style="margin-top:16px"></div>
 `;
@@ -41,6 +43,10 @@ const review = panel.querySelector<HTMLElement>("#memory-review")!;
 let items: PersonalMemoryLibraryItem[] = [];
 let selectedId: string | null = null;
 let workingDraft: PersonalMemoryReviewDraft | null = null;
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"\']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
+}
 
 async function refresh(selectId?: string): Promise<void> {
   const session = readSession();
@@ -58,17 +64,17 @@ async function refresh(selectId?: string): Promise<void> {
   analyzeButton.disabled = false;
   items = (await listPersonalMemories(session)).map(toPersonalMemoryLibraryItem);
   count.textContent = `${items.length} memor${items.length === 1 ? "y" : "ies"}`;
-  selectedId = selectId ?? selectedId ?? items[0]?.id ?? null;
+  selectedId = items.some((item) => item.id === (selectId ?? selectedId)) ? (selectId ?? selectedId)! : items[0]?.id ?? null;
   renderList();
   renderSelected();
 }
 
 function renderList(): void {
-  list.innerHTML = items.map((item) => `
+  list.innerHTML = items.length ? items.map((item) => `
     <button type="button" data-memory-id="${item.id}" class="${item.id === selectedId ? "" : "secondary"}">
-      ${item.draft.title} · ${item.draft.reviewStatus}
+      ${escapeHtml(item.draft.title || "Untitled memory")} · ${item.draft.reviewStatus}
     </button>
-  `).join("");
+  `).join("") : '<p class="workspace-empty">No memories yet. Add a story above to get started.</p>';
   list.querySelectorAll<HTMLButtonElement>("[data-memory-id]").forEach((button) => {
     button.addEventListener("click", () => {
       selectedId = button.dataset.memoryId ?? null;
@@ -122,6 +128,7 @@ async function saveAndApprove(item: PersonalMemoryLibraryItem, draft: PersonalMe
 async function removeMemory(item: PersonalMemoryLibraryItem): Promise<void> {
   const session = readSession();
   if (!session) return;
+  if (!window.confirm("Delete this memory? This cannot be undone.")) return;
   await deletePersonalMemory(session, item.id);
   selectedId = null;
   message.textContent = "Memory deleted.";
@@ -132,6 +139,7 @@ analyzeButton.addEventListener("click", () => {
   void (async () => {
     const session = readSession();
     if (!session) return;
+    if (!source.value.trim()) { message.textContent = "Write a memory before analyzing."; source.focus(); return; }
     analyzeButton.disabled = true;
     message.textContent = "Analyzing anecdote once…";
     const record = await createPersonalMemoryFromAnecdote(session, source.value);
