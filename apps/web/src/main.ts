@@ -61,12 +61,14 @@ app.innerHTML = `
   <section class="shell">
     <header class="topbar">
       <div>
-        <p class="eyebrow">TNND</p>
-        <h1>Conversation control center</h1>
-        <p class="subtle">Platform foundation for profile, conversations, actions, memories and analytics.</p>
+        <p class="eyebrow">TNND · Your workspace</p>
+        <h1>Make every conversation feel like you.</h1>
+        <p class="subtle">Build your identity, save meaningful memories, and manage conversations from one place.</p>
       </div>
-      <span class="status">Platform foundation</span>
+      <span class="status">Your private workspace</span>
     </header>
+
+    <nav class="workspace-nav" aria-label="Workspace sections"><a href="#identity-builder-panel">Identity</a><a href="#personal-memory-panel">Memories</a><a href="#conversation-workspace">Conversations</a><a href="#profile-settings">Settings</a></nav>
 
     <section class="metrics" aria-label="Conversation overview">
       ${cards.map((card) => `
@@ -78,8 +80,8 @@ app.innerHTML = `
       `).join("")}
     </section>
 
-    <section class="grid">
-      <article class="panel">
+    <section class="grid" id="conversation-workspace">
+      <article class="panel" id="profile-settings">
         <div class="panel-heading">
           <div>
             <p class="eyebrow">Account</p>
