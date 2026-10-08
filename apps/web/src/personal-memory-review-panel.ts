@@ -8,7 +8,7 @@ import {
 export interface PersonalMemoryReviewPanelOptions {
   draft: PersonalMemoryReviewDraft;
   onChange(draft: PersonalMemoryReviewDraft): void;
-  onApprove?(draft: PersonalMemoryReviewDraft): void;
+  onApprove?(draft: PersonalMemoryReviewDraft): void | Promise<void>;
 }
 
 function escapeHtml(value: string): string {
@@ -73,6 +73,7 @@ export function renderPersonalMemoryReviewPanel(container: HTMLElement, options:
       </div>
 
       <button type="button" data-memory-action="approve">Approve structured memory</button>
+      <p class="subtle" data-memory-approval-feedback role="status" aria-live="polite"></p>
       <p class="subtle">Approval never permits inventing new precise facts, people, places or dates.</p>
     </section>
   `;
@@ -110,14 +111,26 @@ export function renderPersonalMemoryReviewPanel(container: HTMLElement, options:
     options.onChange(options.draft);
   });
 
-  container.querySelector<HTMLButtonElement>("[data-memory-action='approve']")?.addEventListener("click", () => {
-    try {
-      options.draft = approvePersonalMemoryDraft(options.draft);
-      options.onChange(options.draft);
-      options.onApprove?.(options.draft);
-      renderPersonalMemoryReviewPanel(container, options);
-    } catch (error) {
-      console.error("Unable to approve TNND personal memory", error);
-    }
+  container.querySelector<HTMLButtonElement>("[data-memory-action='approve']")?.addEventListener("click", (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    const feedback = container.querySelector<HTMLElement>("[data-memory-approval-feedback]");
+    void (async () => {
+      // Approval is only visible after the server confirms it. Never optimistically
+      // mark an anecdote approved while its save/approve request is in flight.
+      const approved = approvePersonalMemoryDraft(options.draft);
+      button.disabled = true;
+      if (feedback) feedback.textContent = "Saving and approving…";
+      if (options.onApprove) {
+        await options.onApprove(approved);
+      } else {
+        options.draft = approved;
+        options.onChange(approved);
+        renderPersonalMemoryReviewPanel(container, options);
+      }
+    })().catch((error) => {
+      if (feedback) feedback.textContent = error instanceof Error ? error.message : "Unable to approve memory. Please try again.";
+    }).finally(() => {
+      if (button.isConnected) button.disabled = false;
+    });
   });
 }
