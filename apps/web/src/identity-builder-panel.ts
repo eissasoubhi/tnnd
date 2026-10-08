@@ -11,7 +11,8 @@ const grid = document.querySelector<HTMLElement>(".grid");
 if (!grid) throw new Error("TNND dashboard grid was not found.");
 
 const panel = document.createElement("article");
-panel.className = "panel panel-wide";
+panel.className = "panel panel-wide workspace-feature";
+panel.id = "identity-builder-panel";
 panel.innerHTML = `
   <div class="panel-heading">
     <div>
@@ -26,7 +27,7 @@ panel.innerHTML = `
     <button id="identity-builder-analyze" type="button">Analyze identity</button>
     <button id="identity-builder-approve" type="button" disabled>Approve identity</button>
   </div>
-  <p class="subtle" id="identity-builder-message">Sign in and configure Gemini first.</p>
+  <p class="subtle" id="identity-builder-message" role="status" aria-live="polite">Sign in and configure Gemini first.</p>
   <div id="identity-builder-review"></div>
 `;
 grid.prepend(panel);
@@ -114,6 +115,7 @@ analyzeButton.addEventListener("click", () => {
   void (async () => {
     const session = readSession();
     if (!session) return;
+    if (!source.value.trim()) { message.textContent = "Describe yourself before analyzing."; source.focus(); return; }
     analyzeButton.disabled = true;
     message.textContent = "Analyzing identity…";
     const result = await analyzeIdentity(session, source.value);
