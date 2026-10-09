@@ -68,7 +68,7 @@ app.innerHTML = `
       <span class="status">Your private workspace</span>
     </header>
 
-    <nav class="workspace-nav" aria-label="Workspace sections"><a href="#identity-builder-panel">Identity</a><a href="#personal-memory-panel">Memories</a><a href="#conversation-workspace">Conversations</a><a href="#profile-settings">Settings</a></nav>
+    <nav class="workspace-nav" aria-label="Workspace sections"><a href="#identity-builder-panel">Identity</a><a href="#personal-memory-panel">Memories</a><a href="#conversation-workspace">Conversations</a><a href="#action-center-section">Action Center</a><a href="#analytics-panel">Analytics</a><a href="#profile-settings">Settings</a></nav>
 
     <section class="metrics" aria-label="Conversation overview">
       ${cards.map((card) => `
@@ -129,7 +129,7 @@ app.innerHTML = `
         <p class="subtle">Signed-in profiles are stored in the backend. Browser storage is only a disconnected fallback.</p>
       </article>
 
-      <article class="panel panel-wide">
+      <article class="panel panel-wide" id="action-center-section">
         <div class="panel-heading">
           <div>
             <p class="eyebrow">Operations</p>
@@ -148,6 +148,15 @@ void import("./auth-panel").then(() => loadOptionalPanels()).catch((error) => {
 });
 window.addEventListener("tnnd:auth-session-changed", () => {
   void loadOptionalPanels();
+});
+
+// Highlight the current workspace section without introducing a router dependency.
+const workspaceNav = document.querySelector<HTMLElement>(".workspace-nav");
+workspaceNav?.querySelectorAll<HTMLAnchorElement>('a[href^="#"]').forEach((link) => {
+  link.addEventListener("click", () => {
+    workspaceNav.querySelectorAll("a").forEach((item) => item.removeAttribute("aria-current"));
+    link.setAttribute("aria-current", "location");
+  });
 });
 
 const status = document.querySelector<HTMLElement>("#profile-status");
