@@ -58,6 +58,23 @@ if (!app) throw new Error("TNND web app root was not found.");
 
 const options = (values: readonly string[]) => values.map((value) => `<option value="${value}">${value}</option>`).join("");
 
+function initWorkspaceNavigation(): void {
+  const nav = document.querySelector<HTMLElement>(".workspace-nav");
+  if (!nav) return;
+  const links = Array.from(nav.querySelectorAll<HTMLAnchorElement>('a[href^="#"]'));
+  const update = (): void => {
+    const current = decodeURIComponent(window.location.hash.slice(1)) || "workspace-overview";
+    const selected = links.find((link) => link.hash.slice(1) === current)
+      ?? links.find((link) => link.hash === "#workspace-overview");
+    for (const link of links) {
+      if (link === selected) link.setAttribute("aria-current", "location");
+      else link.removeAttribute("aria-current");
+    }
+  };
+  window.addEventListener("hashchange", update);
+  update();
+}
+
 app.innerHTML = `
   <section class="shell">
     <header class="topbar" id="workspace-overview">
@@ -357,6 +374,7 @@ window.addEventListener("tnnd:profile-updated", () => {
   void refreshProfile();
 });
 
+initWorkspaceNavigation();
 if (actionCenter) bindActionCenter(actionCenter, refreshActionCounts);
 void refreshActionCenter();
 void refreshProfile();
