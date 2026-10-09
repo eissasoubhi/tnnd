@@ -145,7 +145,7 @@ function inspectLayout() {
 async function capture(cdp, base, name, width, height, theme) {
   await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
   await cdp.send("Emulation.setEmulatedMedia", {
-    media: [{ name: "prefers-color-scheme", value: theme }, { name: "prefers-reduced-motion", value: "reduce" }]
+    features: [{ name: "prefers-color-scheme", value: theme }, { name: "prefers-reduced-motion", value: "reduce" }]
   });
   await cdp.send("Page.navigate", { url: base + "/" + name + ".html" });
   let loaded = false;
