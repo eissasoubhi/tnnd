@@ -7,7 +7,7 @@ const root = process.cwd();
 const outDir = resolve(root, "dist");
 await rm(outDir, { recursive: true, force: true });
 await mkdir(resolve(outDir, "assets"), { recursive: true });
-for (const file of ["manifest.json", "options.html", "preview.html", "popup.html"]) await cp(resolve(root, `public/${file}`), resolve(outDir, file));
+for (const file of ["manifest.json", "options.html", "preview.html", "popup.html", "neo-bento.css"]) await cp(resolve(root, `public/${file}`), resolve(outDir, file));
 
 const entries = [
   ["background", "src/background.ts"],
