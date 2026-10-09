@@ -288,3 +288,41 @@ label { color: var(--nb-text); }
   #app .conversation-message.outgoing { color: #ffffff; }
   #app .conversation-topic-panel { color: #ffffff; }
 }
+
+
+/* Neo Bento conversations: task-first search and inbox details. */
+#app .conversation-toolbar {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(190px, 250px) auto;
+  align-items: end;
+  gap: 14px;
+  padding: 18px;
+  margin-top: 18px;
+  border: 1px solid var(--nb-border);
+  border-radius: var(--nb-radius-lg);
+  background: var(--nb-surface-soft);
+}
+#app .conversation-search-label,
+#app .conversation-filter {
+  display: grid;
+  align-items: start;
+  gap: 7px;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--nb-text);
+}
+#app #conversation-search,
+#app #conversation-status-filter { width: 100%; min-width: 0; min-height: 44px; }
+#app .conversation-summary { align-self: center; font-size: 12px; color: var(--nb-text-muted); opacity: 1; white-space: nowrap; }
+#app .conversation-row:focus-visible { outline: 3px solid var(--nb-focus); outline-offset: 2px; }
+#app .conversation-detail-heading strong { font-size: 19px; letter-spacing: -.025em; }
+#app .conversation-list > .workspace-empty { min-height: 130px; display: grid; place-items: center; text-align: center; }
+@media (max-width: 1180px) {
+  #app .conversation-toolbar { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+  #app .conversation-summary { grid-column: 1 / -1; }
+}
+@media (max-width: 560px) {
+  #app .conversation-toolbar { grid-template-columns: minmax(0,1fr); padding: 14px; }
+  #app .conversation-summary { grid-column: auto; }
+}
