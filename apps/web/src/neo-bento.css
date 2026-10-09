@@ -18,6 +18,7 @@
   --nb-lilac: #e5e1fc;
   --nb-peach: #ffdfc3;
   --nb-danger: #b34243;
+  --nb-danger-text: #9d3034;
   --nb-danger-soft: #f8d8d5;
   --nb-space-1: 4px;
   --nb-space-2: 8px;
@@ -190,7 +191,8 @@ button:not(.secondary):not(.button-muted):not(.danger) { background: var(--nb-pr
 button:not(.secondary):not(.button-muted):not(.danger):hover:not(:disabled) { background: var(--nb-primary-hover); border-color: var(--nb-primary-hover); transform: translateY(-1px); }
 button.secondary, .button-muted { border: 1px solid var(--nb-border); background: var(--nb-surface); color: var(--nb-text); }
 button.secondary:hover:not(:disabled), .button-muted:hover:not(:disabled) { background: var(--nb-surface-soft); }
-button.danger { border-color: var(--nb-danger); color: var(--nb-danger); background: var(--nb-danger-soft); }
+button.danger { border-color: var(--nb-danger-text); color: var(--nb-danger-text); background: var(--nb-danger-soft); }
+#account-privacy-panel .privacy-danger-zone button { border-color: var(--nb-danger-text); color: var(--nb-danger-text); background: var(--nb-danger-soft); }
 button.danger:hover:not(:disabled) { filter: brightness(.97); }
 input, select, textarea { border-color: var(--nb-border); background: var(--nb-surface); color: var(--nb-text); }
 label { color: var(--nb-text); }
@@ -274,6 +276,7 @@ label { color: var(--nb-text); }
     --nb-lilac: #3a3557;
     --nb-peach: #503b31;
     --nb-danger: #f6c9a6;
+    --nb-danger-text: #f6c9a6;
     --nb-danger-soft: #503b31;
     --nb-shadow: 0 12px 36px rgba(0,0,0,.18);
   }
