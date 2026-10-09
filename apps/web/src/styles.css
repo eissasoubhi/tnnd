@@ -197,3 +197,14 @@ button.secondary:hover:not(:disabled), .button-muted:hover:not(:disabled) { back
 .workspace-nav a:focus-visible, .workspace-feature button:focus-visible, .workspace-feature input:focus-visible, .workspace-feature textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 #action-center-section, #analytics-panel, #profile-settings, #identity-builder-panel, #personal-memory-panel { scroll-margin-top: 24px; }
 @media (max-width: 620px) { .workspace-nav { display: flex; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 8px; } .workspace-nav a { white-space: nowrap; flex-shrink: 0; } }
+
+/* Settings privacy and analytics refinements */
+#analytics-panel { scroll-margin-top: 24px; }
+#analytics-refresh-status { min-height: 22px; }
+#account-privacy-panel .privacy-export-block, #account-privacy-panel .privacy-danger-zone { padding: 18px; border: 1px solid var(--line); border-radius: 12px; margin-top: 16px; background: var(--surface); }
+#account-privacy-panel h3 { margin: 0 0 8px; font-size: 16px; }
+#account-privacy-panel .privacy-danger-zone { border-color: #c47e7e; }
+#account-privacy-panel .privacy-danger-zone input { width: 100%; }
+#account-privacy-panel .privacy-danger-zone button { border-color: #b84b4b; color: #b84b4b; }
+#account-privacy-panel .privacy-danger-zone button:hover:not(:disabled) { background: #fbecec; color: #8f2929; }
+@media (prefers-color-scheme: dark) { #account-privacy-panel .privacy-danger-zone button:hover:not(:disabled) { background: #44252c; color: #ffc4c4; } }
