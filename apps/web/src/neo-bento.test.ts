@@ -31,3 +31,12 @@ test("Neo Bento keeps a responsive navigation and panel layout", () => {
   assert.match(css, /@media \(max-width: 840px\)/);
   assert.match(css, /@media \(max-width: 560px\)/);
 });
+
+
+test("Neo Bento navigation updates the active location for keyboard and screen-reader users", () => {
+  assert.match(entrypoint, /function initWorkspaceNavigation\(\)/);
+  assert.match(entrypoint, /window\.addEventListener\("hashchange", update\)/);
+  assert.match(entrypoint, /link\.setAttribute\("aria-current", "location"\)/);
+  assert.match(entrypoint, /link\.removeAttribute\("aria-current"\)/);
+  assert.match(entrypoint, /initWorkspaceNavigation\(\);/);
+});
