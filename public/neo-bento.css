@@ -1,0 +1,235 @@
+/*
+ * TNND Neo Bento · Extension shell v1
+ * Shared by popup, options and preview. Scoped to extension pages only.
+ * The existing HTML IDs and scripts are intentionally unchanged.
+ */
+:root {
+  color-scheme: light;
+  --nb-bg: #f6f8f3;
+  --nb-surface: #ffffff;
+  --nb-surface-soft: #edf4eb;
+  --nb-text: #162a24;
+  --nb-muted: #56716a;
+  --nb-border: #c8d8cd;
+  --nb-primary: #264b40;
+  --nb-primary-hover: #1e3a34;
+  --nb-on-primary: #ffffff;
+  --nb-mint: #d9efcc;
+  --nb-lilac: #e5e1fc;
+  --nb-peach: #ffdfc3;
+  --nb-focus: #7565de;
+  --nb-danger: #9d3034;
+  --nb-danger-soft: #f8d8d5;
+  --nb-radius-sm: 10px;
+  --nb-radius-md: 14px;
+  --nb-radius-lg: 18px;
+  --nb-radius-xl: 24px;
+  --nb-shadow: 0 10px 30px rgba(22,42,36,.06);
+  font-family: "DM Sans", Inter, ui-sans-serif, system-ui, sans-serif;
+  background: var(--nb-bg);
+  color: var(--nb-text);
+}
+* { box-sizing: border-box; }
+body { background: var(--nb-bg); color: var(--nb-text); }
+h1,h2,h3 { color: var(--nb-text); letter-spacing: -.025em; }
+h1 { font-weight: 800; }
+p,.hint,.meta,.muted,.warning { color: var(--nb-muted); }
+a { color: var(--nb-primary); }
+:where(a,button,input,select,textarea,summary):focus-visible {
+  outline: 3px solid var(--nb-focus);
+  outline-offset: 3px;
+}
+:where(button,.button) {
+  min-height: 44px;
+  border-radius: var(--nb-radius-sm);
+  font-weight: 750;
+  transition: background-color .16s ease, border-color .16s ease, transform .16s ease;
+}
+:where(button,.button):not(:disabled) { cursor: pointer; }
+button:disabled { opacity: .58; cursor: not-allowed; }
+button.primary, .primary, button:not(.secondary):not(.danger) {
+  background: var(--nb-primary);
+  border-color: var(--nb-primary);
+  color: var(--nb-on-primary);
+}
+button.primary:hover:not(:disabled), button:not(.secondary):not(.danger):hover:not(:disabled) {
+  background: var(--nb-primary-hover);
+  border-color: var(--nb-primary-hover);
+}
+button.secondary, .button.secondary, .secondary {
+  background: var(--nb-surface);
+  border: 1px solid var(--nb-border);
+  color: var(--nb-text);
+}
+button.secondary:hover:not(:disabled), .button.secondary:hover { background: var(--nb-surface-soft); }
+button.danger { background: var(--nb-danger-soft); color: var(--nb-danger); border: 1px solid var(--nb-danger); }
+:where(input,select,textarea) {
+  min-height: 42px;
+  border: 1px solid var(--nb-border);
+  border-radius: var(--nb-radius-sm);
+  background: var(--nb-surface);
+  color: var(--nb-text);
+}
+:where(input,select,textarea)::placeholder { color: var(--nb-muted); opacity: .85; }
+input[type=checkbox], input[type=range] { min-height: 0; accent-color: var(--nb-primary); }
+.version {
+  background: var(--nb-mint);
+  color: #264b40;
+  border-radius: 999px;
+  font-weight: 750;
+  padding: 5px 9px;
+}
+#status, #chatStatus, #backendAuthStatus, #webDiagnosticDetail {
+  color: var(--nb-muted);
+  line-height: 1.5;
+}
+body:has(#extensionVersion):has(#webDiagnosticCard) { width: 380px; max-width: 100vw; }
+body:has(#webDiagnosticCard) main { padding: 14px; }
+body:has(#webDiagnosticCard) header {
+  position: relative;
+  min-height: 88px;
+  padding: 20px;
+  margin-bottom: 14px;
+  overflow: hidden;
+  border: 1px solid var(--nb-border);
+  border-radius: var(--nb-radius-lg);
+  background: linear-gradient(120deg,var(--nb-surface),var(--nb-lilac));
+}
+body:has(#webDiagnosticCard) header::after {
+  content: "";
+  position: absolute;
+  width: 92px;
+  height: 92px;
+  right: -56px;
+  bottom: -58px;
+  border: 20px solid var(--nb-mint);
+  border-radius: 22px;
+  transform: rotate(-20deg);
+  pointer-events: none;
+}
+body:has(#webDiagnosticCard) header > * { position: relative; z-index: 1; }
+body:has(#webDiagnosticCard) h1 { font-size: 25px; }
+body:has(#webDiagnosticCard) .card {
+  border: 1px solid var(--nb-border);
+  border-radius: var(--nb-radius-lg);
+  background: var(--nb-surface);
+  box-shadow: var(--nb-shadow);
+  padding: 17px;
+  margin-bottom: 12px;
+}
+body:has(#webDiagnosticCard) .card:nth-of-type(2) { border-top: 5px solid var(--nb-mint); }
+body:has(#webDiagnosticCard) .card:nth-of-type(3) { border-top: 5px solid var(--nb-lilac); }
+body:has(#webDiagnosticCard) .card:nth-of-type(4) { border-top: 5px solid var(--nb-peach); }
+body:has(#webDiagnosticCard) .card h2 { font-size: 15px; }
+body:has(#webDiagnosticCard) .actions { gap: 8px; }
+body:has(#webDiagnosticCard) button { padding: 10px 11px; }
+body:has(#webDiagnosticCard) .grid { gap: 10px; }
+body:has(#webDiagnosticCard) label.field { color: var(--nb-text); font-size: 11px; gap: 6px; }
+body:has(#webDiagnosticCard) .web-health, body:has(#webDiagnosticCard) .diagnostic-view {
+  background: var(--nb-surface-soft);
+  color: var(--nb-text);
+}
+body:has(#webDiagnosticCard) .web-health[data-level=healthy],
+body:has(#webDiagnosticCard) .diagnostic-view[data-view=conversation] { background: var(--nb-mint); color: #264b40; }
+body:has(#webDiagnosticCard) .web-health[data-level=warning],
+body:has(#webDiagnosticCard) .diagnostic-view[data-view=unknown] { background: var(--nb-peach); color: #503b31; }
+body:has(#webDiagnosticCard) .web-health[data-level=blocked] { background: var(--nb-danger-soft); color: var(--nb-danger); }
+body:has(#webDiagnosticCard) .diagnostic-view[data-view=inbox] { background: var(--nb-lilac); color: #473c78; }
+body:has(#webDiagnosticCard) .diagnostic-view[data-view=discovery] { background: var(--nb-peach); color: #503b31; }
+body:has(#webDiagnosticCard) .diagnostic-checklist span {
+  border-radius: 9px;
+  background: var(--nb-surface-soft);
+  color: var(--nb-text);
+}
+body:has(#webDiagnosticCard) .diagnostic-checklist strong { color: var(--nb-primary); }
+body:has(#settings-form) main, body:has(#cards) main { width: min(1100px,calc(100% - 32px)); }
+body:has(#settings-form) header, body:has(#cards) header {
+  padding: clamp(20px,3vw,36px);
+  border: 1px solid var(--nb-border);
+  border-radius: var(--nb-radius-xl);
+  background: linear-gradient(110deg,var(--nb-surface) 50%,var(--nb-lilac));
+  box-shadow: var(--nb-shadow);
+}
+body:has(#settings-form) header h1, body:has(#cards) header h1 {
+  font-size: clamp(27px,3vw,39px);
+  letter-spacing: -.045em;
+}
+body:has(#settings-form) form { gap: 16px; }
+body:has(#settings-form) section,
+body:has(#cards) .controls,
+body:has(#cards) #cards > section {
+  border: 1px solid var(--nb-border);
+  border-radius: var(--nb-radius-xl);
+  background: var(--nb-surface);
+  box-shadow: var(--nb-shadow);
+  padding: clamp(18px,2.5vw,28px);
+}
+body:has(#settings-form) section:nth-of-type(3n+1) { border-top: 5px solid var(--nb-mint); }
+body:has(#settings-form) section:nth-of-type(3n+2) { border-top: 5px solid var(--nb-lilac); }
+body:has(#settings-form) section:nth-of-type(3n) { border-top: 5px solid var(--nb-peach); }
+body:has(#settings-form) section h2 { font-size: 19px; }
+body:has(#settings-form) label { color: var(--nb-text); }
+body:has(#settings-form) .actions {
+  z-index: 2;
+  border: 1px solid var(--nb-border);
+  border-radius: var(--nb-radius-lg);
+  background: var(--nb-surface);
+  padding: 12px 16px;
+  box-shadow: var(--nb-shadow);
+}
+body:has(#settings-form) .status-chip { background: var(--nb-surface-soft); color: var(--nb-text); }
+body:has(#settings-form) .status-chip[data-state=connected] { background: var(--nb-mint); color: #264b40; }
+body:has(#settings-form) .status-chip[data-state=checking] { background: var(--nb-peach); color: #503b31; }
+body:has(#settings-form) .status-chip[data-state=error] { background: var(--nb-danger-soft); color: var(--nb-danger); }
+body:has(#cards) .controls { margin-top: 16px; }
+body:has(#cards) #cards { gap: 18px; }
+body:has(#cards) .bubble { padding: 13px 15px; border-radius: 15px; }
+body:has(#cards) .bubble.them { background: var(--nb-surface-soft); color: var(--nb-text); }
+body:has(#cards) .bubble.tnnd { background: var(--nb-primary); color: var(--nb-on-primary); }
+body:has(#cards) .preset-row input, body:has(#cards) .preset-row select {
+  border-color: var(--nb-border);
+  background: var(--nb-surface);
+  color: var(--nb-text);
+}
+body:has(#cards) .danger { background: var(--nb-danger-soft); color: var(--nb-danger); border-color: var(--nb-danger); }
+@media (max-width: 650px) {
+  body:has(#settings-form) main, body:has(#cards) main { width: calc(100% - 24px); margin: 14px auto 48px; }
+  body:has(#settings-form) header, body:has(#cards) header { border-radius: var(--nb-radius-lg); }
+  body:has(#settings-form) .actions { bottom: 8px; }
+  body:has(#webDiagnosticCard) .grid.three { grid-template-columns: repeat(3,minmax(0,1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(button,.button) { transition: none; }
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --nb-bg: #101e1a;
+    --nb-surface: #192c26;
+    --nb-surface-soft: #1e3a34;
+    --nb-text: #ffffff;
+    --nb-muted: #b8cfc1;
+    --nb-border: #3d554b;
+    --nb-primary: #d9efcc;
+    --nb-primary-hover: #c1e6b5;
+    --nb-on-primary: #101e1a;
+    --nb-mint: #2e4934;
+    --nb-lilac: #3a3557;
+    --nb-peach: #503b31;
+    --nb-focus: #b7a9ff;
+    --nb-danger: #f6c9a6;
+    --nb-danger-soft: #503b31;
+    --nb-shadow: 0 12px 30px rgba(0,0,0,.15);
+  }
+  body:has(#webDiagnosticCard) .web-health[data-level=healthy],
+  body:has(#webDiagnosticCard) .diagnostic-view[data-view=conversation],
+  body:has(#settings-form) .status-chip[data-state=connected] { background: #d9efcc; color: #264b40; }
+  body:has(#webDiagnosticCard) .web-health[data-level=warning],
+  body:has(#webDiagnosticCard) .diagnostic-view[data-view=unknown],
+  body:has(#settings-form) .status-chip[data-state=checking] { background: #ffdfc3; color: #503b31; }
+  body:has(#webDiagnosticCard) .web-health[data-level=blocked],
+  body:has(#settings-form) .status-chip[data-state=error] { background: #f8d8d5; color: #9d3034; }
+  body:has(#webDiagnosticCard) .diagnostic-view[data-view=inbox] { background: #e5e1fc; color: #473c78; }
+  body:has(#webDiagnosticCard) .diagnostic-view[data-view=discovery] { background: #ffdfc3; color: #503b31; }
+  body:has(#webDiagnosticCard) .diagnostic-checklist strong { color: #d9efcc; }
+}
