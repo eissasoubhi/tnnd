@@ -45,6 +45,7 @@ a { color: var(--nb-primary); }
   font-weight: 750;
   transition: background-color .16s ease, border-color .16s ease, transform .16s ease;
 }
+.button { display: inline-flex; align-items: center; justify-content: center; }
 :where(button,.button):not(:disabled) { cursor: pointer; }
 button:disabled { opacity: .58; cursor: not-allowed; }
 button.primary, .primary, button:not(.secondary):not(.danger) {
