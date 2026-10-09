@@ -2,8 +2,8 @@
 
 **Status:** approved visual direction · implementation in progress  
 **Figma:** https://www.figma.com/design/HM86imsTxQGfuilebN6Npt  
-**Code:** `apps/web/src/neo-bento.css` (imported after `styles.css`)  
-**Scope:** TNND web dashboard, Identity Builder, Personal Memories, Conversations, Action Center, Analytics and Settings. Extension UI is a separate later adaptation, not automatically restyled by web CSS.
+**Code:** `apps/web/src/neo-bento.css` (imported after `styles.css`) and `public/neo-bento.css` (shared extension stylesheet)  
+**Scope:** TNND web dashboard, Identity Builder, Personal Memories, Conversations, Action Center, Analytics and Settings. Extension popup, settings and chat preview are independently themed by the shared extension stylesheet.
 
 ## Brand concept
 
@@ -84,6 +84,20 @@ Respect `prefers-reduced-motion` and `prefers-color-scheme`. Keyboard access and
 The file contains a **Neo Bento · Foundations & Components** page with color, type and spacing specimens plus reusable component masters, and a **Neo Bento · Product Screens** page with desktop dashboard, desktop conversations and mobile dashboard examples. Colors are represented as primitive and semantic Figma variables.
 
 **Figma Starter limitation:** this file supports only one variable mode per collection, so light and dark semantic variables use separate collections rather than one collection with two modes. CSS implements automatic theme switching with `prefers-color-scheme`.
+
+## Extension browser visual smoke
+
+The extension has a dedicated Neo Bento stylesheet at `public/neo-bento.css` loaded by popup, settings and chat preview. `scripts/build.mjs` copies it into `dist/`.
+
+Run the browser smoke after `npm run build`:
+
+```bash
+CHROME_BIN=google-chrome node scripts/visual-qa-extension.mjs
+```
+
+The CI workflow installs Chrome and runs this smoke test on pull requests. It renders **10 scenarios**: popup at 380px and settings/preview at 390px and 1280px, each in light and dark mode. The script checks the active palette, shared stylesheet, absence of horizontal overflow and 44px button targets. PNG screenshots and `report.json` are uploaded as a GitHub Actions artifact for human review.
+
+**Limitations:** this is a static HTML/CSS test. Chrome extension scripts are deliberately disabled and sample conversation text is synthetic. It does not validate authentication, Chrome APIs, Tinder DOM integration, or actual message sending. Manual browser QA and real extension smoke testing remain required before release. Screenshots should be visually reviewed rather than treated as proof of polish on their own.
 
 ## Implementation and QA sequence
 
