@@ -86,9 +86,9 @@ async function openCDP(port) {
   return { send, evaluate, close: () => socket.close() };
 }
 
-function syntheticFixtures(variant) {
+function syntheticFixtures(variant, extensionVersion) {
   const version = document.querySelector("#extensionVersion");
-  if (version) version.textContent = "v0.2.13";
+  if (version) version.textContent = "v" + extensionVersion;
   if (location.pathname.endsWith("popup.html") && variant === "chat-open") {
     const chat = document.querySelector("#chatEditor");
     const unavailable = document.querySelector("#chatUnavailable");
@@ -150,7 +150,7 @@ function inspectLayout() {
   };
 }
 
-async function capture(cdp, base, name, width, height, theme, variant = "") {
+async function capture(cdp, base, name, width, height, theme, variant = "", extensionVersion = "") {
   await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
   await cdp.send("Emulation.setEmulatedMedia", {
     features: [{ name: "prefers-color-scheme", value: theme }, { name: "prefers-reduced-motion", value: "reduce" }]
@@ -165,7 +165,7 @@ async function capture(cdp, base, name, width, height, theme, variant = "") {
     await sleep(100);
   }
   assert.ok(loaded, name + ": stylesheet not loaded");
-  await cdp.evaluate("(" + syntheticFixtures.toString() + ")(" + JSON.stringify(variant) + ")");
+  await cdp.evaluate("(" + syntheticFixtures.toString() + ")(" + JSON.stringify(variant) + "," + JSON.stringify(extensionVersion) + ")");
   const result = await cdp.evaluate("(" + inspectLayout.toString() + ")()");
   const label = name + (variant ? "-" + variant : "") + "-" + theme + "-" + width;
   assert.ok(result.hasMain && result.hasStylesheet, label + ": missing main or CSS");
@@ -196,10 +196,11 @@ async function main() {
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
     const report = [];
+    const extensionVersion = JSON.parse(await readFile(join(root, "manifest.json"), "utf8")).version;
     const base = "http://127.0.0.1:" + server.address().port;
     for (const [name, width, height, variant] of screens) {
       for (const theme of ["light", "dark"]) {
-        report.push(await capture(cdp, base, name, width, height, theme, variant));
+        report.push(await capture(cdp, base, name, width, height, theme, variant, extensionVersion));
       }
     }
     await writeFile(join(output, "report.json"), JSON.stringify({
