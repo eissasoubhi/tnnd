@@ -5,7 +5,8 @@ const grid = document.querySelector<HTMLElement>(".grid");
 if (!grid) throw new Error("TNND dashboard grid was not found.");
 
 const panel = document.createElement("article");
-panel.className = "panel";
+panel.className = "panel workspace-feature";
+panel.id = "account-privacy-panel";
 panel.innerHTML = `
   <div class="panel-heading">
     <div>
@@ -14,19 +15,21 @@ panel.innerHTML = `
     </div>
     <span class="pill" id="privacy-status">Sign in required</span>
   </div>
-  <p>Download a portable account export or permanently delete your TNND account and server-side data.</p>
-  <div class="preferences-grid">
-    <div>
-      <button id="account-export" type="button">Export account data</button>
-    </div>
+  <p>Control your private data. Export a portable copy at any time, or permanently delete your account.</p>
+  <div class="privacy-export-block">
+    <h3>Download your data</h3>
+    <p class="subtle">Keep a portable copy of your account information.</p>
+    <button id="account-export" type="button" class="secondary">Export account data</button>
+  </div>
+  <div class="privacy-danger-zone">
+    <h3>Delete your account</h3>
+    <p class="subtle">This permanently removes your TNND account and server-side data. This action cannot be undone.</p>
     <label>Current password
       <input id="account-delete-password" type="password" autocomplete="current-password" minlength="12" />
     </label>
-    <div>
-      <button id="account-delete" type="button">Delete account permanently</button>
-    </div>
+    <button id="account-delete" type="button" class="secondary danger">Delete account permanently</button>
   </div>
-  <p class="subtle" id="privacy-message" role="status">Sign in to manage account data.</p>
+  <p class="subtle" id="privacy-message" role="status" aria-live="polite">Sign in to manage account data.</p>
 `;
 grid.append(panel);
 
