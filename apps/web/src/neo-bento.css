@@ -329,3 +329,34 @@ label { color: var(--nb-text); }
   #app .conversation-toolbar { grid-template-columns: minmax(0,1fr); padding: 14px; }
   #app .conversation-summary { grid-column: auto; }
 }
+
+
+/* Analytics and privacy — Neo Bento rollout slice 03. */
+#analytics-panel .panel-heading { border-bottom: 2px solid var(--nb-lilac); }
+#analytics-panel #analytics-refresh-status { min-height: 20px; margin: 10px 0; }
+#analytics-panel #analytics-dashboard-panel { min-width: 0; }
+#analytics-panel #analytics-dashboard-panel :is(.metric, .stat, .analytics-card) {
+  border-radius: var(--nb-radius-lg);
+}
+#account-privacy-panel .panel-heading { border-bottom: 2px solid var(--nb-peach); }
+#account-privacy-panel .privacy-export-block,
+#account-privacy-panel .privacy-danger-zone {
+  padding: clamp(16px, 2vw, 24px);
+  margin: 18px 0 0;
+  border-radius: var(--nb-radius-lg);
+  border: 1px solid var(--nb-border);
+}
+#account-privacy-panel .privacy-export-block { background: var(--nb-mint); }
+#account-privacy-panel .privacy-danger-zone { background: var(--nb-peach); }
+#account-privacy-panel .privacy-export-block h3,
+#account-privacy-panel .privacy-danger-zone h3 { margin-top: 0; color: var(--nb-text); }
+#account-privacy-panel .privacy-export-block .subtle,
+#account-privacy-panel .privacy-danger-zone .subtle { color: var(--nb-text-muted); }
+#account-privacy-panel .privacy-danger-zone label { display: grid; gap: 8px; }
+#account-privacy-panel .privacy-danger-zone input { width: 100%; max-width: 450px; min-height: 44px; }
+#account-privacy-panel .privacy-danger-zone button { margin-top: 14px; }
+#account-privacy-panel #privacy-message { min-height: 22px; }
+@media (prefers-color-scheme: dark) {
+  #account-privacy-panel .privacy-export-block h3,
+  #account-privacy-panel .privacy-danger-zone h3 { color: var(--nb-text); }
+}
