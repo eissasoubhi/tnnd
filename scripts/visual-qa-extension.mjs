@@ -15,7 +15,8 @@ const root = resolve("dist");
 const output = resolve(process.env.VISUAL_QA_DIR || "artifacts/neo-bento-extension");
 const chrome = process.env.CHROME_BIN || "google-chrome";
 const screens = [
-  ["popup", 380, 600],
+  ["popup", 380, 600, "logged-out"],
+  ["popup", 380, 600, "chat-open"],
   ["options", 1280, 900],
   ["options", 390, 844],
   ["preview", 1280, 900],
@@ -85,8 +86,10 @@ async function openCDP(port) {
   return { send, evaluate, close: () => socket.close() };
 }
 
-function syntheticFixtures() {
-  if (location.pathname.endsWith("popup.html")) {
+function syntheticFixtures(variant) {
+  const version = document.querySelector("#extensionVersion");
+  if (version) version.textContent = "v0.2.13";
+  if (location.pathname.endsWith("popup.html") && variant === "chat-open") {
     const chat = document.querySelector("#chatEditor");
     const unavailable = document.querySelector("#chatUnavailable");
     if (chat && unavailable) { chat.classList.remove("hidden"); unavailable.classList.add("hidden"); }
@@ -94,6 +97,11 @@ function syntheticFixtures() {
     if (alias) alias.value = "Example conversation";
     const status = document.querySelector("#backendSyncStatus");
     if (status) status.textContent = "Connected (demo)";
+    const loggedOut = document.querySelector("#backendLoggedOut");
+    const loggedIn = document.querySelector("#backendLoggedIn");
+    if (loggedOut && loggedIn) { loggedOut.classList.add("hidden"); loggedIn.classList.remove("hidden"); }
+    const account = document.querySelector("#backendAccount");
+    if (account) account.textContent = "demo@example.com";
   }
   if (location.pathname.endsWith("preview.html")) {
     const cards = document.querySelector("#cards");
@@ -142,7 +150,7 @@ function inspectLayout() {
   };
 }
 
-async function capture(cdp, base, name, width, height, theme) {
+async function capture(cdp, base, name, width, height, theme, variant = "") {
   await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
   await cdp.send("Emulation.setEmulatedMedia", {
     features: [{ name: "prefers-color-scheme", value: theme }, { name: "prefers-reduced-motion", value: "reduce" }]
@@ -157,9 +165,9 @@ async function capture(cdp, base, name, width, height, theme) {
     await sleep(100);
   }
   assert.ok(loaded, name + ": stylesheet not loaded");
-  await cdp.evaluate("(" + syntheticFixtures.toString() + ")()");
+  await cdp.evaluate("(" + syntheticFixtures.toString() + ")(" + JSON.stringify(variant) + ")");
   const result = await cdp.evaluate("(" + inspectLayout.toString() + ")()");
-  const label = name + "-" + theme + "-" + width;
+  const label = name + (variant ? "-" + variant : "") + "-" + theme + "-" + width;
   assert.ok(result.hasMain && result.hasStylesheet, label + ": missing main or CSS");
   assert.equal(result.theme, theme, label + ": color scheme");
   assert.equal(result.background, theme === "dark" ? "#101e1a" : "#f6f8f3", label + ": theme token");
@@ -189,9 +197,9 @@ async function main() {
     await cdp.send("Runtime.enable");
     const report = [];
     const base = "http://127.0.0.1:" + server.address().port;
-    for (const [name, width, height] of screens) {
+    for (const [name, width, height, variant] of screens) {
       for (const theme of ["light", "dark"]) {
-        report.push(await capture(cdp, base, name, width, height, theme));
+        report.push(await capture(cdp, base, name, width, height, theme, variant));
       }
     }
     await writeFile(join(output, "report.json"), JSON.stringify({
