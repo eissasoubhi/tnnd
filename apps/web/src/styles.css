@@ -190,3 +190,10 @@ button.secondary:hover:not(:disabled), .button-muted:hover:not(:disabled) { back
   .memory-review-options { grid-template-columns: 1fr; }
   .memory-toolbar label:last-child { flex: 1 1 190px; }
 }
+
+/* Workspace navigation and focus accessibility */
+.workspace-nav { flex-wrap: wrap; }
+.workspace-nav a[aria-current="location"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+.workspace-nav a:focus-visible, .workspace-feature button:focus-visible, .workspace-feature input:focus-visible, .workspace-feature textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+#action-center-section, #analytics-panel, #profile-settings, #identity-builder-panel, #personal-memory-panel { scroll-margin-top: 24px; }
+@media (max-width: 620px) { .workspace-nav { display: flex; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 8px; } .workspace-nav a { white-space: nowrap; flex-shrink: 0; } }
