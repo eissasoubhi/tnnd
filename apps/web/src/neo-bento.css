@@ -227,7 +227,7 @@ label { color: var(--nb-text); }
 #app .conversation-topic-panel { border-color: var(--nb-border); border-radius: var(--nb-radius-md); background: var(--nb-lilac); color: #162a24; }
 #app .temporary-instruction-panel { border-color: var(--nb-border); border-radius: var(--nb-radius-md); background: var(--nb-surface-soft); }
 #app .conversation-status-action, #app .temporary-instruction-actions button { background: var(--nb-surface); color: var(--nb-text); border-color: var(--nb-border); }
-#app .conversation-status-action.danger, #app .temporary-instruction-actions button.danger { color: var(--nb-danger); border-color: var(--nb-danger); background: var(--nb-danger-soft); }
+#app .conversation-status-action.danger, #app .temporary-instruction-actions button.danger { color: var(--nb-danger-text); border-color: var(--nb-danger-text); background: var(--nb-danger-soft); }
 @media (max-width: 1180px) {
   .shell { grid-template-columns: 190px minmax(0,1fr); gap: 16px; }
   .metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
