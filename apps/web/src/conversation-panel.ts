@@ -9,6 +9,7 @@ import {
   type TemporaryInstructionScope
 } from "./conversation-client";
 import type { ConversationListItem, ConversationStatus } from "./conversation-contract";
+import { filterConversationSummaries } from "./conversation-list-filter";
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>'"]/g, (char) => ({
@@ -27,9 +28,9 @@ function formatDate(value?: string | null): string {
 }
 
 function renderList(items: ConversationListItem[], selectedId?: string): string {
-  if (!items.length) return '<p class="subtle">No conversations match this filter.</p>';
+  if (!items.length) return '<p class="workspace-empty">No conversations match your search or status filter.</p>';
   return items.map((item) => `
-    <button type="button" class="conversation-row${item.id === selectedId ? " selected" : ""}" data-conversation-id="${escapeHtml(item.id)}">
+    <button type="button" class="conversation-row${item.id === selectedId ? " selected" : ""}" data-conversation-id="${escapeHtml(item.id)}" aria-pressed="${item.id === selectedId}">
       <span class="conversation-row-main">
         <strong>${escapeHtml(item.displayName)}</strong>
         <small>${escapeHtml(item.currentTopic ?? "No topic yet")}</small>
@@ -198,12 +199,13 @@ function installStyles(): void {
   document.head.append(style);
 }
 
-function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement; filter: HTMLSelectElement; summary: HTMLElement; stats: HTMLElement } | null {
+function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement; filter: HTMLSelectElement; search: HTMLInputElement; summary: HTMLElement; stats: HTMLElement } | null {
   const grid = document.querySelector<HTMLElement>(".grid");
   if (!grid) return null;
   installStyles();
   const panel = document.createElement("article");
-  panel.className = "panel panel-wide";
+  panel.className = "panel panel-wide workspace-feature";
+  panel.id = "conversation-panel";
   panel.innerHTML = `
     <div class="panel-heading">
       <div><p class="eyebrow">Conversations</p><h2>Conversation control center</h2></div>
@@ -211,7 +213,10 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
     </div>
     <p class="subtle">Synced Tinder conversations from the backend. Select one to inspect its current status, topic and message history.</p>
     <div id="conversation-operational-summary" class="conversation-stats"></div>
-    <div class="conversation-toolbar">
+    <div class="conversation-toolbar" role="search" aria-label="Find conversations">
+      <label class="conversation-search-label" for="conversation-search">Search
+        <input id="conversation-search" type="search" autocomplete="off" placeholder="Name or topic…" aria-label="Search conversations by name or topic" />
+      </label>
       <label class="conversation-filter">Status
         <select id="conversation-status-filter">
           <option value="all">All conversations</option>
@@ -226,10 +231,10 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
           <option value="archived">Archived</option>
         </select>
       </label>
-      <span id="conversation-filter-summary" class="conversation-summary"></span>
+      <span id="conversation-filter-summary" class="conversation-summary" role="status" aria-live="polite"></span>
     </div>
     <div class="conversation-layout">
-      <div id="conversation-list" class="conversation-list"></div>
+      <div id="conversation-list" class="conversation-list" aria-label="Conversations"></div>
       <div id="conversation-detail" class="conversation-detail"><p class="subtle">Select a conversation.</p></div>
     </div>
   `;
@@ -239,6 +244,7 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
     detail: panel.querySelector<HTMLElement>("#conversation-detail")!,
     status: panel.querySelector<HTMLElement>("#conversation-panel-status")!,
     filter: panel.querySelector<HTMLSelectElement>("#conversation-status-filter")!,
+    search: panel.querySelector<HTMLInputElement>("#conversation-search")!,
     summary: panel.querySelector<HTMLElement>("#conversation-filter-summary")!,
     stats: panel.querySelector<HTMLElement>("#conversation-operational-summary")!
   };
@@ -247,10 +253,13 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
 const elements = mount();
 let cachedItems: ConversationListItem[] = [];
 let selectedConversationId: string | undefined;
+let detailRequestSequence = 0;
 
 function filteredItems(): ConversationListItem[] {
-  if (!elements || elements.filter.value === "all") return cachedItems;
-  return cachedItems.filter((item) => item.status === elements.filter.value as ConversationStatus);
+  return filterConversationSummaries(cachedItems, {
+    status: (elements?.filter.value ?? "all") as ConversationStatus | "all",
+    query: elements?.search.value ?? ""
+  });
 }
 
 function bindRows(items: ConversationListItem[]): void {
@@ -378,13 +387,16 @@ async function loadDetail(conversationId: string): Promise<void> {
   if (!elements) return;
   const session = readSession();
   if (!session) return;
-  elements.detail.innerHTML = '<p class="subtle">Loading conversation…</p>';
+  const requestId = ++detailRequestSequence;
+  elements.detail.innerHTML = '<p class="subtle" role="status">Loading conversation…</p>';
   try {
     const detail = await getConversation(session, conversationId);
+    if (requestId !== detailRequestSequence || selectedConversationId !== conversationId) return;
     elements.detail.innerHTML = renderDetail(detail);
     bindStatusActions(conversationId);
     bindTemporaryInstructionActions(conversationId);
   } catch (error) {
+    if (requestId !== detailRequestSequence || selectedConversationId !== conversationId) return;
     elements.detail.innerHTML = `<p class="subtle">${escapeHtml(error instanceof Error ? error.message : "Unable to load conversation.")}</p>`;
   }
 }
@@ -421,14 +433,23 @@ async function refresh(): Promise<void> {
   }
 }
 
-elements?.filter.addEventListener("change", () => {
+function applyConversationFilters(): void {
+  if (!elements) return;
   const visible = filteredItems();
+  const previous = selectedConversationId;
   if (!selectedConversationId || !visible.some((item) => item.id === selectedConversationId)) {
     selectedConversationId = visible[0]?.id;
   }
   renderCurrentList();
-  if (selectedConversationId) void loadDetail(selectedConversationId);
-});
+  if (!selectedConversationId) {
+    ++detailRequestSequence;
+    elements.detail.innerHTML = '<p class="workspace-empty">No conversation selected. Change the search or status filter to see more.</p>';
+  } else if (previous !== selectedConversationId) {
+    void loadDetail(selectedConversationId);
+  }
+}
+elements?.filter.addEventListener("change", applyConversationFilters);
+elements?.search.addEventListener("input", applyConversationFilters);
 
 window.addEventListener("tnnd:auth-session-changed", () => void refresh());
 void refresh();
