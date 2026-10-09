@@ -60,7 +60,7 @@ const options = (values: readonly string[]) => values.map((value) => `<option va
 
 app.innerHTML = `
   <section class="shell">
-    <header class="topbar">
+    <header class="topbar" id="workspace-overview">
       <div>
         <p class="eyebrow">TNND / Your workspace</p>
         <h1>Your conversation universe.</h1>
@@ -69,7 +69,7 @@ app.innerHTML = `
       <span class="status">Private by design</span>
     </header>
 
-    <nav class="workspace-nav" aria-label="Workspace sections"><a href="#identity-builder-panel">Identity</a><a href="#personal-memory-panel">Memories</a><a href="#conversation-workspace">Conversations</a><a href="#action-center-section">Action Center</a><a href="#analytics-panel">Analytics</a><a href="#profile-settings">Settings</a></nav>
+    <nav class="workspace-nav" aria-label="Workspace sections"><a href="#workspace-overview" aria-current="location">Overview</a><a href="#conversation-panel">Conversations</a><a href="#identity-builder-panel">Identity</a><a href="#personal-memory-panel">Memories</a><a href="#action-center-section">Action Center</a><a href="#analytics-panel">Analytics</a><a href="#profile-settings">Settings</a></nav>
 
     <section class="metrics" aria-label="Conversation overview">
       ${cards.map((card) => `

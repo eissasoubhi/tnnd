@@ -32,7 +32,8 @@
 | `--nb-mint` | `#D9EFCC` | `#2E4934` | Active/success tile |
 | `--nb-lilac` | `#E5E1FC` | `#3A3557` | AI/memory tile |
 | `--nb-peach` | `#FFDFC3` | `#503B31` | Attention tile |
-| `--nb-danger` | `#B34243` | `#F6C9A6` | Destructive action |
+| `--nb-danger` | `#B34243` | `#F6C9A6` | Destructive accent / border |
+| `--nb-danger-text` | `#9D3034` | `#F6C9A6` | AA-contrast destructive text on danger-soft surface |
 
 Do not encode meaning using color alone: pair with text, status label or icon. Don't place white text on light mint/lilac/peach.
 

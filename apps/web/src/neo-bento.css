@@ -18,6 +18,7 @@
   --nb-lilac: #e5e1fc;
   --nb-peach: #ffdfc3;
   --nb-danger: #b34243;
+  --nb-danger-text: #9d3034;
   --nb-danger-soft: #f8d8d5;
   --nb-space-1: 4px;
   --nb-space-2: 8px;
@@ -190,7 +191,8 @@ button:not(.secondary):not(.button-muted):not(.danger) { background: var(--nb-pr
 button:not(.secondary):not(.button-muted):not(.danger):hover:not(:disabled) { background: var(--nb-primary-hover); border-color: var(--nb-primary-hover); transform: translateY(-1px); }
 button.secondary, .button-muted { border: 1px solid var(--nb-border); background: var(--nb-surface); color: var(--nb-text); }
 button.secondary:hover:not(:disabled), .button-muted:hover:not(:disabled) { background: var(--nb-surface-soft); }
-button.danger { border-color: var(--nb-danger); color: var(--nb-danger); background: var(--nb-danger-soft); }
+button.danger { border-color: var(--nb-danger-text); color: var(--nb-danger-text); background: var(--nb-danger-soft); }
+#account-privacy-panel .privacy-danger-zone button { border-color: var(--nb-danger-text); color: var(--nb-danger-text); background: var(--nb-danger-soft); }
 button.danger:hover:not(:disabled) { filter: brightness(.97); }
 input, select, textarea { border-color: var(--nb-border); background: var(--nb-surface); color: var(--nb-text); }
 label { color: var(--nb-text); }
@@ -225,7 +227,7 @@ label { color: var(--nb-text); }
 #app .conversation-topic-panel { border-color: var(--nb-border); border-radius: var(--nb-radius-md); background: var(--nb-lilac); color: #162a24; }
 #app .temporary-instruction-panel { border-color: var(--nb-border); border-radius: var(--nb-radius-md); background: var(--nb-surface-soft); }
 #app .conversation-status-action, #app .temporary-instruction-actions button { background: var(--nb-surface); color: var(--nb-text); border-color: var(--nb-border); }
-#app .conversation-status-action.danger, #app .temporary-instruction-actions button.danger { color: var(--nb-danger); border-color: var(--nb-danger); background: var(--nb-danger-soft); }
+#app .conversation-status-action.danger, #app .temporary-instruction-actions button.danger { color: var(--nb-danger-text); border-color: var(--nb-danger-text); background: var(--nb-danger-soft); }
 @media (max-width: 1180px) {
   .shell { grid-template-columns: 190px minmax(0,1fr); gap: 16px; }
   .metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
@@ -274,6 +276,7 @@ label { color: var(--nb-text); }
     --nb-lilac: #3a3557;
     --nb-peach: #503b31;
     --nb-danger: #f6c9a6;
+    --nb-danger-text: #f6c9a6;
     --nb-danger-soft: #503b31;
     --nb-shadow: 0 12px 36px rgba(0,0,0,.18);
   }
@@ -287,4 +290,42 @@ label { color: var(--nb-text); }
   #app .conversation-row.selected small, #app .conversation-row.selected .pill { color: #b8cfc1; }
   #app .conversation-message.outgoing { color: #ffffff; }
   #app .conversation-topic-panel { color: #ffffff; }
+}
+
+
+/* Neo Bento conversations: task-first search and inbox details. */
+#app .conversation-toolbar {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(190px, 250px) auto;
+  align-items: end;
+  gap: 14px;
+  padding: 18px;
+  margin-top: 18px;
+  border: 1px solid var(--nb-border);
+  border-radius: var(--nb-radius-lg);
+  background: var(--nb-surface-soft);
+}
+#app .conversation-search-label,
+#app .conversation-filter {
+  display: grid;
+  align-items: start;
+  gap: 7px;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--nb-text);
+}
+#app #conversation-search,
+#app #conversation-status-filter { width: 100%; min-width: 0; min-height: 44px; }
+#app .conversation-summary { align-self: center; font-size: 12px; color: var(--nb-text-muted); opacity: 1; white-space: nowrap; }
+#app .conversation-row:focus-visible { outline: 3px solid var(--nb-focus); outline-offset: 2px; }
+#app .conversation-detail-heading strong { font-size: 19px; letter-spacing: -.025em; }
+#app .conversation-list > .workspace-empty { min-height: 130px; display: grid; place-items: center; text-align: center; }
+@media (max-width: 1180px) {
+  #app .conversation-toolbar { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+  #app .conversation-summary { grid-column: 1 / -1; }
+}
+@media (max-width: 560px) {
+  #app .conversation-toolbar { grid-template-columns: minmax(0,1fr); padding: 14px; }
+  #app .conversation-summary { grid-column: auto; }
 }
