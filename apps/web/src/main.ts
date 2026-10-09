@@ -1,4 +1,5 @@
 import "./styles.css";
+import "./neo-bento.css";
 import { bindActionCenter, loadHumanActions, readHumanActions, renderActionCenter, type HumanActionItem } from "./action-center";
 import { readSession } from "./auth-client";
 import { fetchProfile, saveProfile } from "./profile-client";
@@ -61,11 +62,11 @@ app.innerHTML = `
   <section class="shell">
     <header class="topbar">
       <div>
-        <p class="eyebrow">TNND · Your workspace</p>
-        <h1>Make every conversation feel like you.</h1>
-        <p class="subtle">Build your identity, save meaningful memories, and manage conversations from one place.</p>
+        <p class="eyebrow">TNND / Your workspace</p>
+        <h1>Your conversation universe.</h1>
+        <p class="subtle">Conversations, memories and your identity — thoughtfully organized in one private place.</p>
       </div>
-      <span class="status">Your private workspace</span>
+      <span class="status">Private by design</span>
     </header>
 
     <nav class="workspace-nav" aria-label="Workspace sections"><a href="#identity-builder-panel">Identity</a><a href="#personal-memory-panel">Memories</a><a href="#conversation-workspace">Conversations</a><a href="#action-center-section">Action Center</a><a href="#analytics-panel">Analytics</a><a href="#profile-settings">Settings</a></nav>
