@@ -151,7 +151,7 @@ async function capture(cdp, base, name, width, height, theme) {
   let loaded = false;
   for (let i = 0; i < 80; i++) {
     loaded = await cdp.evaluate(
-      "document.readyState === 'complete' && Array.from(document.styleSheets).some(s => s.href && s.href.endsWith('/neo-bento.css'))"
+      "location.pathname.endsWith('/" + name + ".html') && document.readyState === 'complete' && Array.from(document.styleSheets).some(s => s.href && s.href.endsWith('/neo-bento.css'))"
     );
     if (loaded) break;
     await sleep(100);
