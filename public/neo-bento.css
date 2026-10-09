@@ -45,6 +45,7 @@ a { color: var(--nb-primary); }
   font-weight: 750;
   transition: background-color .16s ease, border-color .16s ease, transform .16s ease;
 }
+.button { display: inline-flex; align-items: center; justify-content: center; }
 :where(button,.button):not(:disabled) { cursor: pointer; }
 button:disabled { opacity: .58; cursor: not-allowed; }
 button.primary, .primary, button:not(.secondary):not(.danger) {
@@ -63,8 +64,8 @@ button.secondary, .button.secondary, .secondary {
 }
 button.secondary:hover:not(:disabled), .button.secondary:hover { background: var(--nb-surface-soft); }
 button.danger { background: var(--nb-danger-soft); color: var(--nb-danger); border: 1px solid var(--nb-danger); }
-:where(input,select,textarea) {
-  min-height: 42px;
+input, select, textarea {
+  min-height: 44px;
   border: 1px solid var(--nb-border);
   border-radius: var(--nb-radius-sm);
   background: var(--nb-surface);
@@ -221,6 +222,7 @@ body:has(#cards) .danger { background: var(--nb-danger-soft); color: var(--nb-da
     --nb-danger-soft: #503b31;
     --nb-shadow: 0 12px 30px rgba(0,0,0,.15);
   }
+  .version { background: #d9efcc; color: #264b40; }
   body:has(#webDiagnosticCard) .web-health[data-level=healthy],
   body:has(#webDiagnosticCard) .diagnostic-view[data-view=conversation],
   body:has(#settings-form) .status-chip[data-state=connected] { background: #d9efcc; color: #264b40; }
