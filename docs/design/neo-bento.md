@@ -95,7 +95,7 @@ Run the browser smoke after `npm run build`:
 CHROME_BIN=google-chrome node scripts/visual-qa-extension.mjs
 ```
 
-The CI workflow installs Chrome and runs this smoke test on pull requests. It renders **10 scenarios**: popup at 380px and settings/preview at 390px and 1280px, each in light and dark mode. The script checks the active palette, shared stylesheet, absence of horizontal overflow and 44px button targets. PNG screenshots and `report.json` are uploaded as a GitHub Actions artifact for human review.
+The CI workflow installs Chrome and runs this smoke test on pull requests. It renders **12 scenarios**: popup at 380px in logged-out and connected-chat fixture states, plus settings/preview at 390px and 1280px, each in light and dark mode. The script checks the active palette, shared stylesheet, absence of horizontal overflow and 44px button targets. PNG screenshots and `report.json` are uploaded as a GitHub Actions artifact for human review.
 
 **Limitations:** this is a static HTML/CSS test. Chrome extension scripts are deliberately disabled and sample conversation text is synthetic. It does not validate authentication, Chrome APIs, Tinder DOM integration, or actual message sending. Manual browser QA and real extension smoke testing remain required before release. Screenshots should be visually reviewed rather than treated as proof of polish on their own.
 
