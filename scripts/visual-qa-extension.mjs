@@ -66,14 +66,14 @@ async function openCDP(port) {
   socket.addEventListener("message", (event) => {
     const msg = JSON.parse(event.data);
     if (!pending.has(msg.id)) return;
-    const { ok, fail } = pending.get(msg.id);
+    const { ok, fail, method } = pending.get(msg.id);
     pending.delete(msg.id);
-    msg.error ? fail(new Error(msg.error.message)) : ok(msg.result);
+    msg.error ? fail(new Error(method + ": " + msg.error.message + " " + JSON.stringify(msg.error.data || {}))) : ok(msg.result);
   });
   function send(method, params = {}) {
     const requestId = ++id;
     return new Promise((ok, fail) => {
-      pending.set(requestId, { ok, fail });
+      pending.set(requestId, { ok, fail, method });
       socket.send(JSON.stringify({ id: requestId, method, params }));
     });
   }
