@@ -213,17 +213,17 @@ describe("anchored adaptive preferences", () => {
     const existing = { ...profile(), textingStyle: { humorStyle: "auto-adaptive", messageLength: "medium", teasingStyle: "bold" } };
     const prefs = readEditablePreferences(existing);
     assert.equal(prefs.humorStyle, "playful");
-    assert.equal(prefs.autoAdapt.humorStyle, true);
+    assert.equal(prefs.autoAdapt!.humorStyle, true);
     assert.equal(prefs.messageLength, "medium");
-    assert.equal(prefs.autoAdapt.messageLength, false);
-    assert.equal(prefs.autoAdapt.teasingStyle, false);
+    assert.equal(prefs.autoAdapt!.messageLength, false);
+    assert.equal(prefs.autoAdapt!.teasingStyle, false);
     const saved = readEditablePreferences(writeEditablePreferences(existing, prefs));
     assert.deepEqual(saved.autoAdapt, prefs.autoAdapt);
   });
   it("round-trips disabled language adaptation without replacing language styles", () => {
     const first = readEditablePreferences(profile());
     const after = readEditablePreferences(writeEditablePreferences(profile(), { ...first, autoAdapt: { ...first.autoAdapt, languages: false }, frenchStyle: "very-casual", darijaStyle: "natural", englishStyle: "casual" }));
-    assert.equal(after.autoAdapt.languages, false);
+    assert.equal(after.autoAdapt!.languages, false);
     assert.deepEqual([after.frenchStyle, after.darijaStyle, after.englishStyle], ["very-casual","natural","casual"]);
   });
 });
