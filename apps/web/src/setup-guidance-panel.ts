@@ -1,6 +1,7 @@
 import { readSession } from "./auth-client";
 import { createAiProviderClient } from "./ai-provider-client";
-import { listConversations } from "./conversation-client";
+import { loadTopicCoverage, updateTopicPreference, avoidedTopicsFromProfile } from "./topic-coverage-client";
+import type { TopicInsight } from "../../../src/setup-progress";
 import { listPersonalMemories } from "./personal-memory-client";
 import { fetchProfile } from "./profile-client";
 import { missingStoryRecommendations, profileReadiness, setupProgress, type SetupSnapshot } from "../../../src/setup-progress";
@@ -21,7 +22,7 @@ panel.innerHTML = `
   <p class="subtle" id="setup-load-message" role="status" aria-live="polite"></p>
   <div class="setup-recommendations">
     <h3>Suggestions for your stories</h3>
-    <p class="subtle">Based on recent conversation topics and approved Personal Memories. Suggestions never invent your experiences.</p>
+    <p class="subtle">Based on your most discussed topics across your history and approved Personal Memories. Suggestions never invent your experiences.</p>
     <div id="setup-story-suggestions"></div>
     <button id="setup-recheck" type="button" class="secondary">Recheck progress</button>
   </div>
@@ -54,17 +55,17 @@ function renderSteps(snapshot: SetupSnapshot): void {
   }
 }
 function renderStories(
-  conversations: Awaited<ReturnType<typeof listConversations>>,
-  memories: Awaited<ReturnType<typeof listPersonalMemories>>
+  insights: TopicInsight[],
+  memories: Awaited<ReturnType<typeof listPersonalMemories>>,
+  avoidedTopics: string[]
 ): void {
-  const missing = missingStoryRecommendations(conversations, memories);
+  const missing = missingStoryRecommendations([], memories, Date.now(), insights, avoidedTopics);
   recommendations.replaceChildren();
   if (!missing.length) {
     const hint = document.createElement("p");
     hint.className = "subtle";
     hint.textContent = "No topic-specific gaps detected. You can always add a personal story.";
     recommendations.append(hint);
-    return;
   }
   for (const recommendation of missing) {
     const item = document.createElement("div");
@@ -84,8 +85,47 @@ function renderStories(
         field.focus();
       }
     });
-    item.append(title, explanation, link);
+    const avoid = document.createElement("button");
+    avoid.type = "button";
+    avoid.className = "secondary";
+    avoid.textContent = "Avoid this topic";
+    avoid.title = "Stop suggesting this topic and don't bring it up proactively in generated replies.";
+    avoid.addEventListener("click", () => {
+      const session = readSession();
+      if (!session) return;
+      avoid.disabled = true;
+      void updateTopicPreference(session, recommendation.id, true).then(() => {
+        window.dispatchEvent(new CustomEvent("tnnd:profile-updated"));
+      }).catch(error => {
+        message.textContent = error instanceof Error ? error.message : "Could not save topic preference.";
+        avoid.disabled = false;
+      });
+    });
+    item.append(title, explanation, link, avoid);
     recommendations.append(item);
+  }
+  if (avoidedTopics.length) {
+    const heading = document.createElement("h4");
+    heading.textContent = "Topics you've chosen to avoid";
+    recommendations.append(heading);
+    for (const topic of avoidedTopics) {
+      const restore = document.createElement("button");
+      restore.type = "button";
+      restore.className = "secondary";
+      restore.textContent = "Restore " + topic;
+      restore.addEventListener("click", () => {
+        const session = readSession();
+        if (!session) return;
+        restore.disabled = true;
+        void updateTopicPreference(session, topic, false).then(() => {
+          window.dispatchEvent(new CustomEvent("tnnd:profile-updated"));
+        }).catch(error => {
+          message.textContent = error instanceof Error ? error.message : "Could not restore topic.";
+          restore.disabled = false;
+        });
+      });
+      recommendations.append(restore);
+    }
   }
 }
 async function refresh(): Promise<void> {
@@ -102,10 +142,10 @@ async function refresh(): Promise<void> {
     fetchProfile(),
     createAiProviderClient(session.token).getSettings(),
     listPersonalMemories(session),
-    listConversations(session)
+    loadTopicCoverage(session)
   ] as const);
   if (generation !== refreshGeneration || readSession()?.user.id !== session.user.id) return;
-  const [profileResult, geminiResult, memoriesResult, conversationsResult] = results;
+  const [profileResult, geminiResult, memoriesResult, coverageResult] = results;
   const profile = profileResult.status === "fulfilled" ? profileResult.value : null;
   const readiness = profileResult.status === "fulfilled" ? profileReadiness(profile) : null;
   renderSteps({
@@ -114,8 +154,8 @@ async function refresh(): Promise<void> {
     geminiConfigured: geminiResult.status === "fulfilled" ? geminiResult.value.configured : null,
     preferencesConfigured: readiness?.preferencesConfigured ?? null
   });
-  if (memoriesResult.status === "fulfilled" && conversationsResult.status === "fulfilled") {
-    renderStories(conversationsResult.value, memoriesResult.value);
+  if (memoriesResult.status === "fulfilled" && coverageResult.status === "fulfilled" && profileResult.status === "fulfilled") {
+    renderStories(coverageResult.value, memoriesResult.value, avoidedTopicsFromProfile(profile));
   } else {
     recommendations.textContent = "Story suggestions are unavailable right now. Try again later.";
   }

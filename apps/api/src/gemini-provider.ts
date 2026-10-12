@@ -109,6 +109,9 @@ export const callGeminiConversationProvider: GeminiConversationProvider = async 
       `User profile JSON: ${JSON.stringify(input.userProfile)}`
     );
   }
+  if (input.userProfile?.topicEngine?.avoidedTopics?.length) {
+    promptParts.push("The user prefers not to proactively raise these subjects. Do not suggest, steer toward, or invent related anecdotes. If the other person directly asks about one, respond normally and respectfully without abruptly refusing or changing subject.");
+  }
   if (input.conversationSummary?.trim()) {
     promptParts.push(
       "A durable summary of the older conversation history follows. Use it for long-term continuity and facts already established in the chat. Prefer recent messages when they conflict with or supersede older summary context.",

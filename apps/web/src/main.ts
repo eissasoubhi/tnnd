@@ -118,7 +118,7 @@ app.innerHTML = `
         <div class="panel-heading">
           <div>
             <p class="eyebrow">Preferences</p>
-            <h2>Dating goal & texting identity</h2>
+            <h2>Dating goal & texting identity</h2><p class="subtle">Message length, directness, teasing, humor and double texting default to Auto-adaptive. Override any of them here or per conversation.</p>
           </div>
           <span class="pill" id="preferences-status">Import a profile first</span>
         </div>
@@ -129,16 +129,16 @@ app.innerHTML = `
           <label>Capitalization<select id="capitalization"><option value="relaxed">relaxed</option><option value="standard">standard</option><option value="lowercase-heavy">lowercase-heavy</option></select></label>
           <label>Emoji frequency<select id="emoji-frequency"><option value="none">none</option><option value="low">low</option><option value="medium">medium</option></select></label>
           <label>Abbreviations<select id="abbreviations"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
-          <label>Message length<select id="message-length"><option value="very-short">very-short</option><option value="short">short</option><option value="medium">medium</option></select></label>
+          <label>Message length<select id="message-length"><option value="auto-adaptive">Auto-adaptive (default)</option><option value="very-short">very-short</option><option value="short">short</option><option value="medium">medium</option></select></label>
           <label>Punctuation<select id="punctuation-density"><option value="none">none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
           <label>Slang level<select id="slang-level"><option value="none">none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
           <label>Fragments<select id="fragment-style"><option value="sentences">sentences</option><option value="mixed">mixed</option><option value="fragment-heavy">fragment-heavy</option></select></label>
           <label>Grammar<select id="grammar-style"><option value="clean">clean</option><option value="casual">casual</option><option value="very-casual">very-casual</option></select></label>
-          <label>Directness<select id="directness"><option value="soft">soft</option><option value="balanced">balanced</option><option value="direct">direct</option><option value="very-direct">very-direct</option></select></label>
+          <label>Directness<select id="directness"><option value="auto-adaptive">Auto-adaptive (default)</option><option value="soft">soft</option><option value="balanced">balanced</option><option value="direct">direct</option><option value="very-direct">very-direct</option></select></label>
           <label>Question frequency<select id="question-frequency"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
-          <label>Teasing<select id="teasing-style"><option value="none">none</option><option value="light">light</option><option value="playful">playful</option><option value="bold">bold</option></select></label>
-          <label>Humor<select id="humor-style"><option value="dry">dry</option><option value="playful">playful</option><option value="witty">witty</option><option value="mixed">mixed</option></select></label>
-          <label>Double texting<select id="double-texting"><option value="avoid">avoid</option><option value="sometimes">sometimes</option><option value="comfortable">comfortable</option></select></label>
+          <label>Teasing<select id="teasing-style"><option value="auto-adaptive">Auto-adaptive (default)</option><option value="none">none</option><option value="light">light</option><option value="playful">playful</option><option value="bold">bold</option></select></label>
+          <label>Humor<select id="humor-style"><option value="auto-adaptive">Auto-adaptive (default)</option><option value="dry">dry</option><option value="playful">playful</option><option value="witty">witty</option><option value="mixed">mixed</option></select></label>
+          <label>Double texting<select id="double-texting"><option value="auto-adaptive">Auto-adaptive (default)</option><option value="avoid">avoid</option><option value="sometimes">sometimes</option><option value="comfortable">comfortable</option></select></label>
           <label>French behavior<select id="french-style"><option value="neutral">neutral</option><option value="casual">casual</option><option value="very-casual">very-casual</option></select></label>
           <label>Darija behavior<select id="darija-style"><option value="light">light</option><option value="natural">natural</option><option value="darija-heavy">darija-heavy</option></select></label>
           <label>English behavior<select id="english-style"><option value="neutral">neutral</option><option value="casual">casual</option><option value="very-casual">very-casual</option></select></label>

@@ -11,6 +11,8 @@ export const overrideDatingGoals = [
 
 export const overrideDisclosureStrategies = ["subtle", "progressive", "clear", "very-direct"] as const;
 export const overrideTones = ["playful", "flirty", "direct", "warm", "chill", "witty"] as const;
+export const overrideTeasingStyles = ["none", "light", "playful", "bold"] as const;
+export const overrideDoubleTexting = ["avoid", "sometimes", "comfortable"] as const;
 export const overrideMessageLengths = ["very-short", "short", "medium"] as const;
 export const overrideEmojiLevels = ["none", "low", "medium"] as const;
 export const overrideStages = ["auto", "opener", "discovery", "playful", "date-prep", "off-app", "re-engagement"] as const;
@@ -30,6 +32,8 @@ export interface ConversationOverridesPayload {
   directness?: number;
   flirtLevel?: number;
   humorLevel?: number;
+  teasingStyle?: typeof overrideTeasingStyles[number];
+  doubleTexting?: typeof overrideDoubleTexting[number];
   emojiLevel?: OverrideEmojiLevel;
   messageLength?: OverrideMessageLength;
   languages?: Partial<{ fr: number; darija: number; en: number }>;
@@ -49,6 +53,8 @@ export interface ConversationOverrideDraft {
   directness?: string;
   flirtLevel?: string;
   humorLevel?: string;
+  teasingStyle?: string;
+  doubleTexting?: string;
   emojiLevel?: string;
   messageLength?: string;
   languageFr?: string;
@@ -108,6 +114,8 @@ export function buildConversationOverridesPayload(draft: ConversationOverrideDra
     ...(optionalNumber(draft.humorLevel, 0, 100) !== undefined ? { humorLevel: optionalNumber(draft.humorLevel, 0, 100) } : {}),
     ...(optionalEnum(draft.emojiLevel, overrideEmojiLevels) ? { emojiLevel: optionalEnum(draft.emojiLevel, overrideEmojiLevels) } : {}),
     ...(optionalEnum(draft.messageLength, overrideMessageLengths) ? { messageLength: optionalEnum(draft.messageLength, overrideMessageLengths) } : {}),
+    ...(optionalEnum(draft.teasingStyle, overrideTeasingStyles) ? { teasingStyle: optionalEnum(draft.teasingStyle, overrideTeasingStyles) } : {}),
+    ...(optionalEnum(draft.doubleTexting, overrideDoubleTexting) ? { doubleTexting: optionalEnum(draft.doubleTexting, overrideDoubleTexting) } : {}),
     ...(languages ? { languages } : {}),
     ...(optionalEnum(draft.stage, overrideStages) ? { stage: optionalEnum(draft.stage, overrideStages) } : {}),
     ...(optionalString(draft.specificGoal, 500) ? { specificGoal: optionalString(draft.specificGoal, 500) } : {}),

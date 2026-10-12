@@ -7,6 +7,7 @@ export interface GenerationUserProfileContext {
   datingIntent?: Record<string, unknown>;
   languages?: Record<string, unknown>;
   textingStyle?: Record<string, unknown>;
+  topicEngine?: { avoidedTopics: string[] };
 }
 
 export interface LoadedGenerationProfile {
@@ -87,11 +88,15 @@ export async function loadGenerationProfile(userId: string): Promise<LoadedGener
   const validated = validateProfileEnvelope(rawProfile);
   if (!validated.ok) return { defaults: {} };
   const profile = validated.profile;
+  const avoidedTopics = Array.isArray(profile.topicEngine?.avoidedTopics)
+    ? profile.topicEngine.avoidedTopics.filter((v): v is string => typeof v === "string" && v.length <= 80).slice(0, 50)
+    : [];
   const userProfile: GenerationUserProfileContext = {
     ...(compactIdentityForGeneration(profile.identity) ? { identity: compactIdentityForGeneration(profile.identity) } : {}),
     ...(compactSection(profile.datingIntent) ? { datingIntent: compactSection(profile.datingIntent) } : {}),
     ...(compactSection(profile.languages) ? { languages: compactSection(profile.languages) } : {}),
-    ...(compactSection(profile.textingStyle) ? { textingStyle: compactSection(profile.textingStyle) } : {})
+    ...(compactSection(profile.textingStyle) ? { textingStyle: compactSection(profile.textingStyle) } : {}),
+    ...(avoidedTopics.length ? { topicEngine: { avoidedTopics } } : {})
   };
   return {
     defaults: safeConversationDefaults(profile.conversationDefaults),

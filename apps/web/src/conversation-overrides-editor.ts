@@ -3,6 +3,8 @@ import {
   overrideDatingGoals,
   overrideDisclosureStrategies,
   overrideEmojiLevels,
+  overrideTeasingStyles,
+  overrideDoubleTexting,
   overrideMessageLengths,
   overrideStages,
   overrideTones,
@@ -26,7 +28,7 @@ function escapeHtml(value: unknown): string {
 
 function optionList(values: readonly string[], selected?: string): string {
   return ["", ...values].map((value) => {
-    const label = value || "Use global default";
+    const label = value || "Auto-adaptive / global";
     return `<option value="${escapeHtml(value)}"${selected === value ? " selected" : ""}>${escapeHtml(label)}</option>`;
   }).join("");
 }
@@ -40,6 +42,8 @@ function initialDraft(overrides: ConversationOverridesPayload): ConversationOver
     directness: overrides.directness?.toString(),
     flirtLevel: overrides.flirtLevel?.toString(),
     humorLevel: overrides.humorLevel?.toString(),
+    teasingStyle: overrides.teasingStyle,
+    doubleTexting: overrides.doubleTexting,
     emojiLevel: overrides.emojiLevel,
     messageLength: overrides.messageLength,
     languageFr: overrides.languages?.fr?.toString(),
@@ -74,6 +78,8 @@ function readDraft(form: HTMLFormElement): ConversationOverrideDraft {
     directness: inputValue(form, "directness"),
     flirtLevel: inputValue(form, "flirtLevel"),
     humorLevel: inputValue(form, "humorLevel"),
+    teasingStyle: inputValue(form, "teasingStyle"),
+    doubleTexting: inputValue(form, "doubleTexting"),
     emojiLevel: inputValue(form, "emojiLevel"),
     messageLength: inputValue(form, "messageLength"),
     languageFr: inputValue(form, "languageFr"),
@@ -96,16 +102,19 @@ export function mountConversationOverridesEditor(
   const draft = initialDraft(overrides);
   container.innerHTML = `
     <form class="conversation-overrides-form" data-conversation-overrides-form>
+      <p class="subtle">Leave adaptive fields blank to follow the conversation; a manual value always wins. Double texting changes style only, not automatic sending.</p>
       <div class="preferences-grid">
         <label>Dating goal<select name="datingGoal">${optionList(overrideDatingGoals, draft.datingGoal)}</select></label>
         <label>Disclosure<select name="disclosureStrategy">${optionList(overrideDisclosureStrategies, draft.disclosureStrategy)}</select></label>
         <label>Tone<select name="tone">${optionList(overrideTones, draft.tone)}</select></label>
         <label>Stage<select name="stage">${optionList(overrideStages, draft.stage)}</select></label>
         <label>Emoji<select name="emojiLevel">${optionList(overrideEmojiLevels, draft.emojiLevel)}</select></label>
-        <label>Message length<select name="messageLength">${optionList(overrideMessageLengths, draft.messageLength)}</select></label>
-        <label>Directness (0–100)<input name="directness" type="number" min="0" max="100" value="${escapeHtml(draft.directness)}" /></label>
+        <label>Message length (Auto-adaptive by default)<select name="messageLength">${optionList(overrideMessageLengths, draft.messageLength)}</select></label>
+        <label>Directness (Auto-adaptive if empty, 0–100)<input name="directness" type="number" min="0" max="100" value="${escapeHtml(draft.directness)}" /></label>
         <label>Flirt (0–3)<input name="flirtLevel" type="number" min="0" max="3" step="1" value="${escapeHtml(draft.flirtLevel)}" /></label>
-        <label>Humor (0–100)<input name="humorLevel" type="number" min="0" max="100" value="${escapeHtml(draft.humorLevel)}" /></label>
+        <label>Humor (Auto-adaptive if empty, 0–100)<input name="humorLevel" type="number" min="0" max="100" value="${escapeHtml(draft.humorLevel)}" /></label>
+        <label>Teasing<select name="teasingStyle">${optionList(overrideTeasingStyles, draft.teasingStyle)}</select></label>
+        <label>Double texting<select name="doubleTexting">${optionList(overrideDoubleTexting, draft.doubleTexting)}</select></label>
         <label>French weight<input name="languageFr" type="number" min="0" max="100" value="${escapeHtml(draft.languageFr)}" /></label>
         <label>Darija weight<input name="languageDarija" type="number" min="0" max="100" value="${escapeHtml(draft.languageDarija)}" /></label>
         <label>English weight<input name="languageEn" type="number" min="0" max="100" value="${escapeHtml(draft.languageEn)}" /></label>

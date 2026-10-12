@@ -1,10 +1,23 @@
 import { getBackendProfileCache, getBackendSession } from "./storage";
-import { missingStoryRecommendations, profileReadiness, setupProgress, type TopicConversation, type TopicMemory } from "./setup-progress";
+import { syncBackendProfileCache } from "./backend-session";
+import { missingStoryRecommendations, profileReadiness, setupProgress, type TopicInsight, type TopicMemory } from "./setup-progress";
 
 const WEB_BASE = "http://127.0.0.1:5173/";
 const API_BASE = "http://127.0.0.1:4000";
 let sequence = 0;
 /** The extension shows the server's setup state; it never maintains a second editable identity. */
+async function setAvoided(topic: string, avoid: boolean): Promise<void> {
+  const session = await getBackendSession();
+  if (!session) return;
+  const response = await fetch(`${API_BASE}/api/v1/profile/topic-preferences`, {
+    method: "PUT",
+    headers: { authorization: `Bearer ${session.token}`, "content-type": "application/json" },
+    body: JSON.stringify({ topic, avoid })
+  });
+  if (!response.ok) return;
+  await syncBackendProfileCache(session);
+  await renderExtensionSetupProgress();
+}
 export async function renderExtensionSetupProgress(): Promise<void> {
   const root = document.getElementById("tnnd-setup-progress");
   if (!root) return;
@@ -66,16 +79,19 @@ export async function renderExtensionSetupProgress(): Promise<void> {
   if (!session) return;
   try {
     const headers = { authorization: `Bearer ${session.token}` };
-    const [conversationsResponse, memoriesResponse] = await Promise.all([
-      fetch(`${API_BASE}/api/v1/conversations`, { headers }),
+    const [coverageResponse, memoriesResponse] = await Promise.all([
+      fetch(`${API_BASE}/api/v1/profile/topic-coverage`, { headers }),
       fetch(`${API_BASE}/api/v1/personal-memories`, { headers })
     ]);
-    if (!conversationsResponse.ok || !memoriesResponse.ok) return;
-    const conversationsData = await conversationsResponse.json() as { conversations?: TopicConversation[] };
+    if (!coverageResponse.ok || !memoriesResponse.ok) return;
+    const coverageData = await coverageResponse.json() as { topics?: TopicInsight[] };
     const memoriesData = await memoriesResponse.json() as { memories?: TopicMemory[] };
     if (generation !== sequence) return;
-    const ideas = missingStoryRecommendations(conversationsData.conversations ?? [], memoriesData.memories ?? []);
-    if (!ideas.length) return;
+    const avoided = Array.isArray((cache?.profile.topicEngine as { avoidedTopics?: unknown } | undefined)?.avoidedTopics)
+      ? ((cache?.profile.topicEngine as { avoidedTopics: string[] }).avoidedTopics).filter((value): value is string => typeof value === "string")
+      : [];
+    const ideas = missingStoryRecommendations([], memoriesData.memories ?? [], Date.now(), coverageData.topics ?? [], avoided);
+    if (!ideas.length && !avoided.length) return;
     const title = document.createElement("h2");
     title.style.marginTop = "14px";
     title.textContent = "Story suggestions (optional)";
@@ -92,6 +108,26 @@ export async function renderExtensionSetupProgress(): Promise<void> {
         void chrome.tabs.create({ url: `${WEB_BASE}#personal-memory-panel` });
       });
       root.append(button);
+      const ignore = document.createElement("button");
+      ignore.type = "button";
+      ignore.className = "secondary";
+      ignore.textContent = "Avoid this topic";
+      ignore.title = "TNND won't proactively raise this topic.";
+      ignore.addEventListener("click", () => { void setAvoided(idea.id, true); });
+      root.append(ignore);
+    }
+    if (avoided.length) {
+      const title = document.createElement("h2");
+      title.textContent = "Avoided topics";
+      root.append(title);
+      for (const topic of avoided) {
+        const restore = document.createElement("button");
+        restore.type = "button";
+        restore.textContent = "Restore " + topic;
+        restore.className = "secondary";
+        restore.addEventListener("click", () => { void setAvoided(topic, false); });
+        root.append(restore);
+      }
     }
   } catch { /* Optional enrichment is non-blocking when offline. */ }
 }

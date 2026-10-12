@@ -17,6 +17,8 @@ import { handleHumanActionManualAnswerRequest } from "./human-action-manual-answ
 import { createHumanAction, listHumanActions, updateHumanActionStatus, type HumanActionSeverity, type HumanActionStatus } from "./human-action-service.js";
 import { handleConversationMatchProfileRequest, handleMatchProfileCaptureRequest, handleMatchProfilePromoteRequest } from "./match-profile-controller.js";
 import { profileSchemaVersion, publicProfileSchema, validateProfileEnvelope } from "./profile-schema.js";
+import { listUserTopicCoverage } from "./conversation-topic-service.js";
+import { setAvoidedTopic } from "./topic-preference-service.js";
 import { deleteConversationData, deleteMatchProfileData } from "./privacy-delete-service.js";
 import { handleProductionAiHttp } from "./production-ai-http-handler.js";
 import { routeAuthenticatedPersonalMemoryRequest } from "./personal-memory-authenticated-route.js";
@@ -301,6 +303,34 @@ const server = createServer(async (request, response) => {
       }
       const revoked = await revokeSession(await hashSessionToken(token));
       sendJson(response, revoked ? 200 : 404, revoked ? { ok: true } : { error: "session_not_found" });
+      return;
+    }
+
+    if (request.method === "PUT" && url.pathname === "/api/v1/profile/topic-preferences") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      try {
+        const body = await readJsonBody(request);
+        const avoidedTopics = await setAvoidedTopic(session.user.id, body.topic, body.avoid);
+        sendJson(response, 200, { avoidedTopics });
+      } catch (error) {
+        const details = error instanceof Error ? error.message : "invalid_topic";
+        sendJson(response, 400, { error: "invalid_topic_preference", details });
+      }
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/v1/profile/topic-coverage") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const topics = await listUserTopicCoverage(session.user.id);
+      sendJson(response, 200, { topics });
       return;
     }
 

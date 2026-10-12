@@ -13,6 +13,8 @@ export interface ConversationOverrides {
   directness?: number;
   flirtLevel?: number;
   humorLevel?: number;
+  teasingStyle?: "none" | "light" | "playful" | "bold";
+  doubleTexting?: "avoid" | "sometimes" | "comfortable";
   emojiLevel?: ConversationOverrideEmojiLevel;
   messageLength?: ConversationOverrideMessageLength;
   languages?: Partial<{ fr: number; darija: number; en: number }>;
@@ -32,10 +34,12 @@ const disclosureStrategies = new Set<DisclosureStrategy>(["subtle", "progressive
 const tones = new Set<ConversationOverrideTone>(["playful", "flirty", "direct", "warm", "chill", "witty"]);
 const messageLengths = new Set<ConversationOverrideMessageLength>(["very-short", "short", "medium"]);
 const emojiLevels = new Set<ConversationOverrideEmojiLevel>(["none", "low", "medium"]);
+const teasingStyles = new Set(["none", "light", "playful", "bold"] as const);
+const doubleTextingModes = new Set(["avoid", "sometimes", "comfortable"] as const);
 const stages = new Set<ConversationOverrideStage>(["auto", "opener", "discovery", "playful", "date-prep", "off-app", "re-engagement"]);
 const allowedKeys = new Set<keyof ConversationOverrides>([
   "datingGoal", "datingGoalDetails", "disclosureStrategy", "tone", "directness", "flirtLevel", "humorLevel",
-  "emojiLevel", "messageLength", "languages", "stage", "specificGoal", "persistentInstructions", "preferredWords",
+  "emojiLevel", "messageLength", "teasingStyle", "doubleTexting", "languages", "stage", "specificGoal", "persistentInstructions", "preferredWords",
   "avoidedWords", "automationEnabled"
 ]);
 
@@ -94,6 +98,8 @@ export function validateConversationOverrides(value: unknown): ConversationOverr
     ...(boundedNumber(source.humorLevel, 0, 100) !== undefined ? { humorLevel: boundedNumber(source.humorLevel, 0, 100) } : {}),
     ...(enumValue(source.emojiLevel, emojiLevels) ? { emojiLevel: enumValue(source.emojiLevel, emojiLevels) } : {}),
     ...(enumValue(source.messageLength, messageLengths) ? { messageLength: enumValue(source.messageLength, messageLengths) } : {}),
+    ...(source.teasingStyle !== undefined ? { teasingStyle: enumValue(source.teasingStyle, teasingStyles) } : {}),
+    ...(source.doubleTexting !== undefined ? { doubleTexting: enumValue(source.doubleTexting, doubleTextingModes) } : {}),
     ...(source.languages !== undefined ? { languages: languageWeights(source.languages) } : {}),
     ...(enumValue(source.stage, stages) ? { stage: enumValue(source.stage, stages) } : {}),
     ...(boundedString(source.specificGoal, 500) !== undefined ? { specificGoal: boundedString(source.specificGoal, 500) } : {}),

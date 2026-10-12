@@ -139,3 +139,27 @@ test("does not send client raw identity when server context is available", async
   assert.equal(body.includes("VERY LONG RAW ABOUT ME"), false);
   assert.equal(body.includes("software engineer"), true);
 });
+
+
+test("extension generation honors stored adaptive style and proactive topic exclusions", async () => {
+  let body = "";
+  await generateExtensionSuggestions(
+    "user-1",
+    { context: "Them: I like football", purpose: "manual", count: 1, config: { messageLength: "short", humorLevel: 60 } },
+    async () => ({ provider: "gemini", model: "gemini-test", apiKey: "secret" }),
+    async (_input, init) => {
+      body = String(init?.body ?? "");
+      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '["Nice!"]' }] } }] }), { status: 200 });
+    },
+    async () => ({
+      userProfile: {
+        textingStyle: { messageLength: "auto-adaptive", teasingStyle: "auto-adaptive", doubleTexting: "auto-adaptive" },
+        topicEngine: { avoidedTopics: ["sports"] }
+      },
+      memories: []
+    })
+  );
+  assert.match(body, /Auto-adaptive style/);
+  assert.match(body, /Do not proactively raise/);
+  assert.match(body, /sports/);
+});
