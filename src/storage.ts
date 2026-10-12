@@ -1,3 +1,4 @@
+import { findLegacyChatSettingsKey } from "./tinder-chat-detection";
 import type { AppConfig, ChatSettings } from "./types";
 import { defaultSyncState, type SyncState } from "./sync-status";
 import { applyServerProfile } from "./server-effective-config";
@@ -127,7 +128,15 @@ export async function getChatSettings(threadKey: string): Promise<ChatSettings> 
   if (!threadKey) return { ...DEFAULT_CHAT_SETTINGS };
   const result = await chrome.storage.local.get(CHAT_SETTINGS_KEY);
   const map = result[CHAT_SETTINGS_KEY] as Record<string, Partial<ChatSettings>> | undefined;
-  const saved = map?.[threadKey];
+  // Older popup versions included document.title in the key. Safely recover the
+  // matching conversation's settings without mistaking another thread for it.
+  const legacyKey = map && !(threadKey in map)
+    ? findLegacyChatSettingsKey(Object.keys(map), threadKey)
+    : null;
+  const saved = map?.[threadKey] ?? (legacyKey ? map?.[legacyKey] : undefined);
+  if (saved && legacyKey) {
+    await chrome.storage.local.set({ [CHAT_SETTINGS_KEY]: { ...map, [threadKey]: saved } });
+  }
   return {
     ...DEFAULT_CHAT_SETTINGS,
     ...(saved ?? {}),

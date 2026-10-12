@@ -1,4 +1,5 @@
 import { TinderDomAdapter } from "./tinder-adapter";
+import { detectTinderChat } from "./tinder-chat-detection";
 import { executeBoundedTinderRead } from "./tinder-bounded-read-handlers";
 import { planCurrentTinderJob, readCurrentTinderUiState } from "./tinder-runtime-state";
 import { executeTinderSingleTabStep } from "./tinder-single-tab-executor";
@@ -13,14 +14,14 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
 
   if (input.type === "TNND_GET_THREAD_INFO") {
     const diagnostics = adapter.diagnose();
-    if (!diagnostics.composerFound) {
-      sendResponse({ ok: true, threadKey: null });
-      return false;
-    }
+    const chat = detectTinderChat(location.pathname, diagnostics.composerFound);
     sendResponse({
       ok: true,
-      threadKey: `${location.pathname}|${document.title}`,
-      threadKeyHash: diagnostics.threadKeyHash
+      threadKey: chat.threadKey,
+      threadKeyHash: chat.threadKey ? diagnostics.threadKeyHash : null,
+      source: chat.source,
+      composerFound: diagnostics.composerFound,
+      route: diagnostics.view
     });
     return false;
   }
