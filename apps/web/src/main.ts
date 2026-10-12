@@ -118,7 +118,7 @@ app.innerHTML = `
         <div class="panel-heading">
           <div>
             <p class="eyebrow">Preferences</p>
-            <h2>Dating goal & texting identity</h2><p class="subtle">Message length, directness, teasing, humor and double texting default to Auto-adaptive. Override any of them here or per conversation.</p>
+            <h2>Dating goal & texting identity</h2><p class="subtle">Choose your normal style, then independently allow each preference to adapt. The baseline stays unchanged, even during a serious conversation. Manual chat overrides always win.</p>
           </div>
           <span class="pill" id="preferences-status">Import a profile first</span>
         </div>
@@ -129,19 +129,20 @@ app.innerHTML = `
           <label>Capitalization<select id="capitalization"><option value="relaxed">relaxed</option><option value="standard">standard</option><option value="lowercase-heavy">lowercase-heavy</option></select></label>
           <label>Emoji frequency<select id="emoji-frequency"><option value="none">none</option><option value="low">low</option><option value="medium">medium</option></select></label>
           <label>Abbreviations<select id="abbreviations"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
-          <label>Message length<select id="message-length"><option value="auto-adaptive">Auto-adaptive (default)</option><option value="very-short">very-short</option><option value="short">short</option><option value="medium">medium</option></select></label>
+          <div class="adaptive-preference"><label>Message length<select id="message-length"><option value="very-short">very-short</option><option value="short">short</option><option value="medium">medium</option></select></label><label class="adaptive-toggle"><input id="adapt-message-length" type="checkbox" checked> Auto-adapt</label></div>
           <label>Punctuation<select id="punctuation-density"><option value="none">none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
           <label>Slang level<select id="slang-level"><option value="none">none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
           <label>Fragments<select id="fragment-style"><option value="sentences">sentences</option><option value="mixed">mixed</option><option value="fragment-heavy">fragment-heavy</option></select></label>
           <label>Grammar<select id="grammar-style"><option value="clean">clean</option><option value="casual">casual</option><option value="very-casual">very-casual</option></select></label>
-          <label>Directness<select id="directness"><option value="auto-adaptive">Auto-adaptive (default)</option><option value="soft">soft</option><option value="balanced">balanced</option><option value="direct">direct</option><option value="very-direct">very-direct</option></select></label>
+          <div class="adaptive-preference"><label>Directness<select id="directness"><option value="soft">soft</option><option value="balanced">balanced</option><option value="direct">direct</option><option value="very-direct">very-direct</option></select></label><label class="adaptive-toggle"><input id="adapt-directness" type="checkbox" checked> Auto-adapt</label></div>
           <label>Question frequency<select id="question-frequency"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
-          <label>Teasing<select id="teasing-style"><option value="auto-adaptive">Auto-adaptive (default)</option><option value="none">none</option><option value="light">light</option><option value="playful">playful</option><option value="bold">bold</option></select></label>
-          <label>Humor<select id="humor-style"><option value="auto-adaptive">Auto-adaptive (default)</option><option value="dry">dry</option><option value="playful">playful</option><option value="witty">witty</option><option value="mixed">mixed</option></select></label>
-          <label>Double texting<select id="double-texting"><option value="auto-adaptive">Auto-adaptive (default)</option><option value="avoid">avoid</option><option value="sometimes">sometimes</option><option value="comfortable">comfortable</option></select></label>
+          <div class="adaptive-preference"><label>Teasing<select id="teasing-style"><option value="none">none</option><option value="light">light</option><option value="playful">playful</option><option value="bold">bold</option></select></label><label class="adaptive-toggle"><input id="adapt-teasing-style" type="checkbox" checked> Auto-adapt</label></div>
+          <div class="adaptive-preference"><label>Humor<select id="humor-style"><option value="dry">dry</option><option value="playful">playful</option><option value="witty">witty</option><option value="mixed">mixed</option></select></label><label class="adaptive-toggle"><input id="adapt-humor-style" type="checkbox" checked> Auto-adapt</label></div>
+          <div class="adaptive-preference"><label>Double texting<select id="double-texting"><option value="avoid">avoid</option><option value="sometimes">sometimes</option><option value="comfortable">comfortable</option></select></label><label class="adaptive-toggle"><input id="adapt-double-texting" type="checkbox" checked> Auto-adapt</label></div>
           <label>French behavior<select id="french-style"><option value="neutral">neutral</option><option value="casual">casual</option><option value="very-casual">very-casual</option></select></label>
           <label>Darija behavior<select id="darija-style"><option value="light">light</option><option value="natural">natural</option><option value="darija-heavy">darija-heavy</option></select></label>
           <label>English behavior<select id="english-style"><option value="neutral">neutral</option><option value="casual">casual</option><option value="very-casual">very-casual</option></select></label>
+          <div class="adaptive-preference adaptive-languages"><label class="adaptive-toggle"><input id="adapt-languages" type="checkbox" checked> Auto-adapt language across English, French & Darija</label><small>Language styles above remain your defaults; language mixing follows the conversation.</small></div>
           <label>Temporary Tinder profile retention (days)<input id="match-profile-retention-days" type="number" min="1" max="30" step="1" value="7" /></label>
         </div>
         <button id="preferences-save" type="button">Save preferences</button>
@@ -204,6 +205,14 @@ const frenchStyle = document.querySelector<HTMLSelectElement>("#french-style");
 const darijaStyle = document.querySelector<HTMLSelectElement>("#darija-style");
 const englishStyle = document.querySelector<HTMLSelectElement>("#english-style");
 const matchProfileRetentionDays = document.querySelector<HTMLInputElement>("#match-profile-retention-days");
+const adaptiveCheckboxes = {
+  messageLength: document.querySelector<HTMLInputElement>("#adapt-message-length"),
+  directness: document.querySelector<HTMLInputElement>("#adapt-directness"),
+  teasingStyle: document.querySelector<HTMLInputElement>("#adapt-teasing-style"),
+  humorStyle: document.querySelector<HTMLInputElement>("#adapt-humor-style"),
+  doubleTexting: document.querySelector<HTMLInputElement>("#adapt-double-texting"),
+  languages: document.querySelector<HTMLInputElement>("#adapt-languages")
+};
 const actionCenter = document.querySelector<HTMLElement>("#action-center");
 const actionCount = document.querySelector<HTMLElement>("#action-count");
 const humanActionMetric = document.querySelector<HTMLElement>('[data-metric-state="Action required"]');
@@ -251,7 +260,7 @@ async function refreshProfile(): Promise<void> {
 }
 
 function refreshPreferences(profile: ImportedProfile | null): void {
-  const controls = [datingGoal, disclosureStrategy, textFormality, capitalization, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, fragmentStyle, grammarStyle, directness, questionFrequency, teasingStyle, humorStyle, doubleTexting, frenchStyle, darijaStyle, englishStyle, matchProfileRetentionDays, preferencesSave];
+  const controls = [datingGoal, disclosureStrategy, textFormality, capitalization, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, fragmentStyle, grammarStyle, directness, questionFrequency, teasingStyle, humorStyle, doubleTexting, frenchStyle, darijaStyle, englishStyle, matchProfileRetentionDays, ...Object.values(adaptiveCheckboxes), preferencesSave];
   controls.forEach((control) => { if (control) control.disabled = !profile; });
   if (!profile) {
     if (preferencesStatus) preferencesStatus.textContent = "Import a profile first";
@@ -278,6 +287,10 @@ function refreshPreferences(profile: ImportedProfile | null): void {
   if (frenchStyle) frenchStyle.value = preferences.frenchStyle;
   if (darijaStyle) darijaStyle.value = preferences.darijaStyle;
   if (englishStyle) englishStyle.value = preferences.englishStyle;
+  for (const key of Object.keys(adaptiveCheckboxes) as Array<keyof typeof adaptiveCheckboxes>) {
+    const input = adaptiveCheckboxes[key];
+    if (input) input.checked = preferences.autoAdapt[key];
+  }
   if (matchProfileRetentionDays) matchProfileRetentionDays.value = String(preferences.temporaryMatchProfileRetentionDays);
   if (preferencesStatus) preferencesStatus.textContent = readSession() ? "Synced" : "Local fallback";
 }
@@ -358,6 +371,7 @@ preferencesSave?.addEventListener("click", async () => {
     frenchStyle: frenchStyle.value,
     darijaStyle: darijaStyle.value,
     englishStyle: englishStyle.value,
+    autoAdapt: Object.fromEntries(Object.entries(adaptiveCheckboxes).map(([key, input]) => [key, input?.checked ?? false])) as ReturnType<typeof readEditablePreferences>["autoAdapt"],
     temporaryMatchProfileRetentionDays: Number(matchProfileRetentionDays.value)
   });
   try {
