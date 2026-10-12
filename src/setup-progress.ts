@@ -107,7 +107,7 @@ export function missingStoryRecommendations(
     const last = insight.lastDiscussedAt && recentEnough(insight.lastDiscussedAt, nowMs);
     groups.set(item.id, {
       item, occurrences: (previous?.occurrences ?? 0) + insight.messageCount,
-      chats: (previous?.chats ?? 0) + insight.conversationCount,
+      chats: Math.max(previous?.chats ?? 0, insight.conversationCount),
       recent: Boolean(previous?.recent || last)
     });
   }
@@ -126,7 +126,7 @@ export function missingStoryRecommendations(
     .map(group => ({
       id: group.item.id,
       label: group.item.label + " stories",
-      description: "Discussed " + group.occurrences + " time(s) across " + group.chats + " conversation(s), without an approved related anecdote.",
+      description: "Topic Engine recorded " + group.occurrences + " estimated mentions in at least " + group.chats + " conversation(s). No approved matching story found.",
       prompt: group.item.prompt,
       messageCount: group.occurrences,
       conversationCount: group.chats
