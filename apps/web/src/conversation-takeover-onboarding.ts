@@ -88,13 +88,15 @@ function buildRow(conversation: ConversationListItem, draft: ConversationTakeove
 }
 
 async function mount(): Promise<void> {
-  const app = document.querySelector<HTMLElement>("#app");
+  const app = document.querySelector<HTMLElement>("#conversation-workspace");
   if (!app) return;
   const session = readSession();
   if (!session) return;
 
+  if (app.querySelector("[data-conversation-takeover-onboarding]")) return;
   const section = document.createElement("section");
-  section.className = "panel";
+  section.className = "panel panel-wide";
+  section.id = "conversation-takeover-panel";
   section.dataset.conversationTakeoverOnboarding = "true";
 
   const heading = document.createElement("h2");
