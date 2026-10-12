@@ -159,7 +159,7 @@ test("extension generation honors stored adaptive style and proactive topic excl
       memories: []
     })
   );
-  assert.match(body, /Auto-adaptive style/);
+  assert.match(body, /Auto-adaptive relative to the saved user baseline/);
   assert.match(body, /Do not proactively raise/);
   assert.match(body, /sports/);
 });

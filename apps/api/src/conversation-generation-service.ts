@@ -21,6 +21,7 @@ export interface ConversationGenerationResult extends GeminiGenerationResult {
     hasPreviewInstruction: boolean;
     personalMemoryCandidateIds: string[];
     usedPersonalMemoryId: string | null;
+    adaptiveStyle: { effective: Record<string, unknown>; autoFields: string[]; reasons: Record<string, string> };
   };
 }
 
@@ -93,8 +94,15 @@ export async function generateConversationReply(
     value: fact.value,
     confidence: fact.confidence
   }));
-  const adaptive = resolveAdaptiveStyle(context.settings, generationProfile.userProfile?.textingStyle ?? {}, recentMessages, normalizedMessage);
-  const effectiveContext = { ...context, settings: adaptive.settings, instructions: [...context.instructions, ...(adaptive.autoFields.length ? [`Auto-adaptive fields: ${adaptive.autoFields.join(", ")}. Match observed conversation style naturally, without forcing humor or teasing. Double texting is only a style signal; produce one draft.`] : [])] };
+  const adaptive = resolveAdaptiveStyle(
+    context.settings,
+    generationProfile.userProfile?.textingStyle ?? {},
+    recentMessages,
+    normalizedMessage,
+    context.provenance.overriddenFields,
+    (generationProfile.userProfile?.languages ?? context.settings.languages ?? {}) as Partial<{fr:number;darija:number;en:number}>
+  );
+  const effectiveContext = { ...context, settings: adaptive.settings, instructions: [...context.instructions, ...(adaptive.autoFields.length ? [`Auto-adaptive fields: ${adaptive.autoFields.join(", ")}. Adapt around the saved style baseline, not by imitating the interlocutor. Keep jokes and teasing reciprocal and appropriate; return to the baseline when the mood lightens. ${adaptive.autoFields.includes("languages") ? "Mirror the interlocutor language naturally, treating language weights as soft guidance rather than word quotas; preserve the saved French, English and Darija writing styles." : "Honor the fixed or manually overridden language choices."} Double texting is only a style signal; produce exactly one draft and never send extra messages.`] : [])] };
   const generated = await provider({
     context: effectiveContext,
     latestMessage: normalizedMessage,
@@ -123,7 +131,12 @@ export async function generateConversationReply(
       hasTemporaryInstruction: context.provenance.hasTemporaryInstruction,
       hasPreviewInstruction: Boolean(normalizedPreviewInstruction),
       personalMemoryCandidateIds: candidateIds,
-      usedPersonalMemoryId: usedId
+      usedPersonalMemoryId: usedId,
+      adaptiveStyle: {
+        effective: Object.fromEntries(["messageLength", "directness", "teasingStyle", "humorLevel", "doubleTexting", "languages"].map(key => [key, (adaptive.settings as Record<string, unknown>)[key]])),
+        autoFields: adaptive.autoFields,
+        reasons: adaptive.reasons
+      }
     }
   };
 }

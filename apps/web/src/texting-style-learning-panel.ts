@@ -16,7 +16,7 @@ import {
 const grid = document.querySelector<HTMLElement>(".grid");
 if (!grid) throw new Error("TNND dashboard grid was not found.");
 
-type TextingStyleFieldKey = Exclude<keyof EditablePreferences, "temporaryMatchProfileRetentionDays">;
+type TextingStyleFieldKey = Exclude<keyof EditablePreferences, "temporaryMatchProfileRetentionDays" | "autoAdapt">;
 
 const styleFields: Array<{ key: TextingStyleFieldKey; label: string }> = [
   { key: "datingGoal", label: "Dating goal" },

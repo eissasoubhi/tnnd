@@ -11,6 +11,7 @@ export interface ConversationGeneration {
     hasPersistentInstruction: boolean;
     hasTemporaryInstruction: boolean;
     hasPreviewInstruction?: boolean;
+    adaptiveStyle?: { effective: Record<string, unknown>; autoFields: string[]; reasons: Record<string, string> };
   };
 }
 

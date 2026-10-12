@@ -1,4 +1,5 @@
 import type { ImportedProfile } from "./profile-import";
+import { parseStyleBaseline, type AutoAdaptFlags } from "../../../src/adaptive-preferences";
 
 export const datingGoals = [
   "one-night-stand",
@@ -34,6 +35,7 @@ export interface EditablePreferences {
   frenchStyle: string;
   darijaStyle: string;
   englishStyle: string;
+  autoAdapt?: AutoAdaptFlags;
   temporaryMatchProfileRetentionDays?: number;
 }
 
@@ -58,6 +60,7 @@ export function readEditablePreferences(profile: ImportedProfile): EditablePrefe
   const textingStyle = objectValue(profile.textingStyle);
   const languageBehavior = objectValue(textingStyle.languageBehavior);
   const matchProfileCapture = objectValue(profile.matchProfileCapture);
+  const { baseline, autoAdapt } = parseStyleBaseline(textingStyle);
   return {
     datingGoal: stringValue(datingIntent.defaultGoal, "open-to-see"),
     datingGoalDetails: optionalStringValue(datingIntent.datingGoalDetails),
@@ -66,19 +69,20 @@ export function readEditablePreferences(profile: ImportedProfile): EditablePrefe
     capitalization: stringValue(textingStyle.capitalization, "relaxed"),
     emojiFrequency: stringValue(textingStyle.emojiFrequency, "low"),
     abbreviations: stringValue(textingStyle.abbreviations, "medium"),
-    messageLength: stringValue(textingStyle.messageLength, "auto-adaptive"),
+    messageLength: baseline.messageLength,
     punctuationDensity: stringValue(textingStyle.punctuationDensity, "low"),
     slangLevel: stringValue(textingStyle.slangLevel, "medium"),
     fragmentStyle: stringValue(textingStyle.fragmentStyle, "mixed"),
     grammarStyle: stringValue(textingStyle.grammarStyle, "casual"),
-    directness: stringValue(textingStyle.directness, "auto-adaptive"),
+    directness: baseline.directness,
     questionFrequency: stringValue(textingStyle.questionFrequency, "medium"),
-    teasingStyle: stringValue(textingStyle.teasingStyle, "auto-adaptive"),
-    humorStyle: stringValue(textingStyle.humorStyle, "auto-adaptive"),
-    doubleTexting: stringValue(textingStyle.doubleTexting, "auto-adaptive"),
+    teasingStyle: baseline.teasingStyle,
+    humorStyle: baseline.humorStyle,
+    doubleTexting: baseline.doubleTexting,
     frenchStyle: stringValue(languageBehavior.fr, "casual"),
     darijaStyle: stringValue(languageBehavior.darija, "natural"),
     englishStyle: stringValue(languageBehavior.en, "casual"),
+    autoAdapt,
     temporaryMatchProfileRetentionDays: retentionDaysValue(matchProfileCapture.temporaryRetentionDays)
   };
 }
@@ -115,6 +119,7 @@ export function writeEditablePreferences(profile: ImportedProfile, preferences: 
       teasingStyle: preferences.teasingStyle,
       humorStyle: preferences.humorStyle,
       doubleTexting: preferences.doubleTexting,
+      autoAdapt: { ...parseStyleBaseline(textingStyle).autoAdapt, ...(preferences.autoAdapt ?? {}) },
       languageBehavior: {
         ...objectValue(textingStyle.languageBehavior),
         fr: preferences.frenchStyle,
