@@ -6,6 +6,7 @@ if (!grid) throw new Error("TNND dashboard grid was not found.");
 
 const panel = document.createElement("article");
 panel.className = "panel";
+panel.id = "ai-provider-panel";
 panel.innerHTML = `
   <div class="panel-heading">
     <div>
