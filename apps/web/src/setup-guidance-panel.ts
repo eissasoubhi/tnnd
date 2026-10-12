@@ -66,7 +66,6 @@ function renderStories(
     hint.className = "subtle";
     hint.textContent = "No topic-specific gaps detected. You can always add a personal story.";
     recommendations.append(hint);
-    return;
   }
   for (const recommendation of missing) {
     const item = document.createElement("div");
