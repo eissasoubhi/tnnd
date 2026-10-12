@@ -42,14 +42,19 @@ function renderSteps(snapshot: SetupSnapshot): void {
   checklist.replaceChildren();
   for (const step of state.steps) {
     const item = document.createElement("li");
+    item.dataset.state = step.state;
     const link = document.createElement("a");
+    link.className = "setup-step-link";
     link.href = step.href;
-    link.textContent = step.label;
+    const title = document.createElement("span");
+    title.className = "setup-step-name";
+    title.textContent = step.label;
     const flag = document.createElement("span");
     flag.className = "setup-check-state";
-    flag.textContent = step.state === "complete" ? "Done" : step.state === "unknown" ? "Check needed" : "To do";
+    flag.textContent = step.state === "complete" ? "✓ Done" : step.state === "unknown" ? "Check needed" : "To do →";
     flag.dataset.state = step.state;
-    item.append(link, flag);
+    link.append(title, flag);
+    item.append(link);
     if (state.next?.id === step.id) item.classList.add("setup-next");
     checklist.append(item);
   }
