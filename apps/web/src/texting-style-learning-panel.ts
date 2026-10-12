@@ -42,6 +42,7 @@ const styleFields: Array<{ key: TextingStyleFieldKey; label: string }> = [
 
 const panel = document.createElement("article");
 panel.className = "panel panel-wide";
+panel.id = "texting-style-learning-panel";
 panel.innerHTML = `
   <div class="panel-heading">
     <div>
