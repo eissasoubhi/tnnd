@@ -80,14 +80,14 @@ describe("structured texting preferences", () => {
         emojiFrequency: "low",
         abbreviations: "medium",
         slangLevel: "medium",
-        messageLength: "auto-adaptive",
+        messageLength: "short",
         fragmentStyle: "mixed",
         grammarStyle: "casual",
         questionFrequency: "medium",
-        teasingStyle: "auto-adaptive",
-        humorStyle: "auto-adaptive",
-        directness: "auto-adaptive",
-        doubleTexting: "auto-adaptive",
+        teasingStyle: "light",
+        humorStyle: "playful",
+        directness: "balanced",
+        doubleTexting: "sometimes",
         frenchStyle: "casual",
         darijaStyle: "natural",
         englishStyle: "casual"
@@ -197,5 +197,33 @@ describe("MatchProfile retention preference", () => {
       (updated.matchProfileCapture as Record<string, unknown>).temporaryRetentionDays,
       7
     );
+  });
+});
+
+describe("anchored adaptive preferences", () => {
+  it("defaults every independent checkbox to enabled while preserving all baseline values", () => {
+    const pref = readEditablePreferences(profile());
+    assert.deepEqual(pref.autoAdapt, { messageLength: true, directness: true, teasingStyle: true, humorStyle: true, doubleTexting: true, languages: true });
+    const stored = writeEditablePreferences(profile(), pref);
+    const texting = stored.textingStyle as Record<string, unknown>;
+    assert.equal(texting.humorStyle, "playful");
+    assert.deepEqual(texting.autoAdapt, pref.autoAdapt);
+  });
+  it("migrates legacy auto enums without erasing fixed choices", () => {
+    const existing = { ...profile(), textingStyle: { humorStyle: "auto-adaptive", messageLength: "medium", teasingStyle: "bold" } };
+    const prefs = readEditablePreferences(existing);
+    assert.equal(prefs.humorStyle, "playful");
+    assert.equal(prefs.autoAdapt.humorStyle, true);
+    assert.equal(prefs.messageLength, "medium");
+    assert.equal(prefs.autoAdapt.messageLength, false);
+    assert.equal(prefs.autoAdapt.teasingStyle, false);
+    const saved = readEditablePreferences(writeEditablePreferences(existing, prefs));
+    assert.deepEqual(saved.autoAdapt, prefs.autoAdapt);
+  });
+  it("round-trips disabled language adaptation without replacing language styles", () => {
+    const first = readEditablePreferences(profile());
+    const after = readEditablePreferences(writeEditablePreferences(profile(), { ...first, autoAdapt: { ...first.autoAdapt, languages: false }, frenchStyle: "very-casual", darijaStyle: "natural", englishStyle: "casual" }));
+    assert.equal(after.autoAdapt.languages, false);
+    assert.deepEqual([after.frenchStyle, after.darijaStyle, after.englishStyle], ["very-casual","natural","casual"]);
   });
 });
