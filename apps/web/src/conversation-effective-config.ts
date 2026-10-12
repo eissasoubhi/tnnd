@@ -8,7 +8,7 @@ export interface EffectiveConversationConfig {
 
 const allowedKeys = new Set<keyof ConversationOverridesPayload>([
   "datingGoal", "datingGoalDetails", "disclosureStrategy", "tone", "directness", "flirtLevel",
-  "humorLevel", "emojiLevel", "messageLength", "languages", "stage", "specificGoal",
+  "humorLevel", "teasingStyle", "doubleTexting", "emojiLevel", "messageLength", "languages", "stage", "specificGoal",
   "persistentInstructions", "preferredWords", "avoidedWords", "automationEnabled"
 ]);
 
