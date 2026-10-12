@@ -9,6 +9,7 @@ import {
 } from "./gemini-provider.js";
 import { loadGenerationProfile } from "./generation-user-profile-context.js";
 import { loadGenerationSupplementalContext } from "./generation-supplemental-context.js";
+import { resolveAdaptiveStyle } from "./conversation-style-adaptation.js";
 import { markPersonalMemoriesUsed, retrievePersonalMemories } from "./personal-memory-service.js";
 
 export interface ConversationGenerationResult extends GeminiGenerationResult {
@@ -92,8 +93,10 @@ export async function generateConversationReply(
     value: fact.value,
     confidence: fact.confidence
   }));
+  const adaptive = resolveAdaptiveStyle(context.settings, generationProfile.userProfile?.textingStyle ?? {}, recentMessages, normalizedMessage);
+  const effectiveContext = { ...context, settings: adaptive.settings, instructions: [...context.instructions, ...(adaptive.autoFields.length ? [`Auto-adaptive fields: ${adaptive.autoFields.join(", ")}. Match observed conversation style naturally, without forcing humor or teasing. Double texting is only a style signal; produce one draft.`] : [])] };
   const generated = await provider({
-    context,
+    context: effectiveContext,
     latestMessage: normalizedMessage,
     topics,
     ...(generationProfile.userProfile ? { userProfile: generationProfile.userProfile } : {}),
