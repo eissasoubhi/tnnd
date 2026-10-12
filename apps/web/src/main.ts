@@ -25,7 +25,6 @@ async function loadOptionalPanels(): Promise<void> {
     () => import("./conversation-takeover-onboarding"),
     () => import("./conversation-management-panel"),
     () => import("./conversation-management-badges"),
-    () => import("./dating-goal-details-panel"),
     () => import("./texting-style-learning-panel"),
     () => import("./analytics-panel"),
     () => import("./account-privacy-panel"),
@@ -112,6 +111,20 @@ app.innerHTML = `
         </div>
         <div class="preferences-grid" id="profile-preferences-grid">
           <label>Dating goal<select id="dating-goal">${options(datingGoals)}</select></label>
+          <div class="dating-goal-editor">
+            <label for="dating-goal-details">What are you looking for? <span class="dating-goal-optional">Optional</span></label>
+            <p id="dating-goal-help" class="subtle">Go beyond your dating goal. Describe the kind of connection you want and how you'd like things to develop. This helps TNND suggest replies that match your intentions.</p>
+            <textarea id="dating-goal-details" rows="3" maxlength="1000" aria-describedby="dating-goal-help" placeholder="e.g. I'm open to meeting new people and seeing where things go, without rushing or unnecessary drama."></textarea>
+            <div class="dating-goal-inspiration">
+              <span>Need inspiration? Try an example:</span>
+              <div class="dating-goal-example-actions">
+                <button type="button" class="secondary" data-goal-example="open">Open to see</button>
+                <button type="button" class="secondary" data-goal-example="serious">Something serious</button>
+                <button type="button" class="secondary" data-goal-example="casual">Keep it casual</button>
+              </div>
+              <small>Examples fill the field without saving. You can edit the text before choosing “Save preferences”.</small>
+            </div>
+          </div>
           <label>Disclosure<select id="disclosure-strategy">${options(disclosureStrategies)}</select></label>
           <label>Formality<select id="text-formality"><option value="very-casual">very-casual</option><option value="casual">casual</option><option value="neutral">neutral</option></select></label>
           <label>Capitalization<select id="capitalization"><option value="relaxed">relaxed</option><option value="standard">standard</option><option value="lowercase-heavy">lowercase-heavy</option></select></label>
@@ -165,6 +178,7 @@ const exportButton = document.querySelector<HTMLButtonElement>("#profile-export"
 const preferencesStatus = document.querySelector<HTMLElement>("#preferences-status");
 const preferencesSave = document.querySelector<HTMLButtonElement>("#preferences-save");
 const datingGoal = document.querySelector<HTMLSelectElement>("#dating-goal");
+const datingGoalDetails = document.querySelector<HTMLTextAreaElement>("#dating-goal-details");
 const disclosureStrategy = document.querySelector<HTMLSelectElement>("#disclosure-strategy");
 const textFormality = document.querySelector<HTMLSelectElement>("#text-formality");
 const capitalization = document.querySelector<HTMLSelectElement>("#capitalization");
@@ -276,7 +290,7 @@ async function refreshProfile(): Promise<void> {
 }
 
 function refreshPreferences(profile: ImportedProfile | null): void {
-  const controls = [datingGoal, disclosureStrategy, textFormality, capitalization, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, fragmentStyle, grammarStyle, directness, questionFrequency, teasingStyle, humorStyle, doubleTexting, frenchStyle, darijaStyle, englishStyle, matchProfileRetentionDays, ...Object.values(adaptiveCheckboxes), preferencesSave];
+  const controls = [datingGoal, datingGoalDetails, disclosureStrategy, textFormality, capitalization, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, fragmentStyle, grammarStyle, directness, questionFrequency, teasingStyle, humorStyle, doubleTexting, frenchStyle, darijaStyle, englishStyle, matchProfileRetentionDays, ...Object.values(adaptiveCheckboxes), preferencesSave];
   controls.forEach((control) => { if (control) control.disabled = !profile; });
   if (!profile) {
     if (preferencesStatus) preferencesStatus.textContent = "Import a profile first";
@@ -285,6 +299,7 @@ function refreshPreferences(profile: ImportedProfile | null): void {
 
   const preferences = readEditablePreferences(profile);
   if (datingGoal) datingGoal.value = preferences.datingGoal;
+  if (datingGoalDetails) datingGoalDetails.value = preferences.datingGoalDetails ?? "";
   if (disclosureStrategy) disclosureStrategy.value = preferences.disclosureStrategy;
   if (textFormality) textFormality.value = preferences.formality;
   if (capitalization) capitalization.value = preferences.capitalization;
@@ -365,10 +380,29 @@ exportButton?.addEventListener("click", () => {
   if (currentProfile) downloadProfile(currentProfile);
 });
 
+const goalDetailExamples = {
+  open: "I'm open to meeting new people, having fun conversations and seeing where things go. I value humor, chemistry and a natural connection without pressure.",
+  serious: "I'm looking for a genuine, meaningful connection that could grow into a serious relationship, with honesty, humor and mutual respect.",
+  casual: "I'd like to meet someone for easygoing dates, fun conversations and natural chemistry, without rushing into anything serious. Clear communication matters to me."
+} as const;
+document.querySelectorAll<HTMLButtonElement>("[data-goal-example]").forEach(button => {
+  button.addEventListener("click", () => {
+    if (!datingGoalDetails || datingGoalDetails.disabled) return;
+    const key = button.dataset.goalExample as keyof typeof goalDetailExamples;
+    const example = goalDetailExamples[key];
+    if (!example) return;
+    // Examples are suggestions, never auto-save or overwrite silently.
+    if (datingGoalDetails.value.trim() && !window.confirm("Replace your current description with this example?")) return;
+    datingGoalDetails.value = example;
+    datingGoalDetails.focus();
+  });
+});
+
 preferencesSave?.addEventListener("click", async () => {
-  if (!currentProfile || !datingGoal || !disclosureStrategy || !textFormality || !capitalization || !emojiFrequency || !abbreviations || !messageLength || !punctuationDensity || !slangLevel || !fragmentStyle || !grammarStyle || !directness || !questionFrequency || !teasingStyle || !humorStyle || !doubleTexting || !frenchStyle || !darijaStyle || !englishStyle || !matchProfileRetentionDays) return;
+  if (!currentProfile || !datingGoal || !datingGoalDetails || !disclosureStrategy || !textFormality || !capitalization || !emojiFrequency || !abbreviations || !messageLength || !punctuationDensity || !slangLevel || !fragmentStyle || !grammarStyle || !directness || !questionFrequency || !teasingStyle || !humorStyle || !doubleTexting || !frenchStyle || !darijaStyle || !englishStyle || !matchProfileRetentionDays) return;
   const updated = writeEditablePreferences(currentProfile, {
     datingGoal: datingGoal.value,
+    datingGoalDetails: datingGoalDetails.value,
     disclosureStrategy: disclosureStrategy.value,
     formality: textFormality.value,
     capitalization: capitalization.value,
@@ -412,7 +446,7 @@ function organizeProfilePreferences(): void {
   if (!original || original.dataset.organized) return;
   original.dataset.organized = "true";
   const groups = [
-    { title: "Conversation identity", description: "Your intent and how you present yourself.", expanded: true, ids: ["dating-goal", "disclosure-strategy"] },
+    { title: "Conversation identity", description: "Your intent and how you present yourself.", expanded: true, ids: ["dating-goal", "dating-goal-details", "disclosure-strategy"] },
     { title: "Your baseline & Auto-adapt", description: "Choose a starting style. TNND adapts without rewriting your preference.", expanded: true, ids: ["message-length", "directness", "teasing-style", "humor-style", "double-texting"] },
     { title: "Language & culture", description: "French, English and Moroccan Darija keep their own natural style.", expanded: true, ids: ["french-style", "darija-style", "english-style", "adapt-languages"] },
     { title: "Writing details", description: "Fine-tune grammar, punctuation and emoji usage when you need to.", expanded: false, ids: ["text-formality", "capitalization", "emoji-frequency", "abbreviations", "punctuation-density", "slang-level", "fragment-style", "grammar-style", "question-frequency"] },
@@ -435,7 +469,7 @@ function organizeProfilePreferences(): void {
     fields.className = "preferences-grid preference-section-grid";
     for (const controlId of group.ids) {
       const field: Element | null = original.querySelector("#" + controlId);
-      const row: HTMLElement | null = field?.closest(".adaptive-preference") ?? field?.closest("label") ?? null;
+      const row: HTMLElement | null = field?.closest(".adaptive-preference") ?? field?.closest(".dating-goal-editor") ?? field?.closest("label") ?? null;
       if (row && row.parentElement === original) fields.append(row);
     }
     details.append(fields);
