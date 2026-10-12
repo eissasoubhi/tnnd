@@ -35,7 +35,7 @@ export interface EditablePreferences {
   frenchStyle: string;
   darijaStyle: string;
   englishStyle: string;
-  autoAdapt: AutoAdaptFlags;
+  autoAdapt?: AutoAdaptFlags;
   temporaryMatchProfileRetentionDays?: number;
 }
 
@@ -119,7 +119,7 @@ export function writeEditablePreferences(profile: ImportedProfile, preferences: 
       teasingStyle: preferences.teasingStyle,
       humorStyle: preferences.humorStyle,
       doubleTexting: preferences.doubleTexting,
-      autoAdapt: { ...preferences.autoAdapt },
+      autoAdapt: { ...parseStyleBaseline(textingStyle).autoAdapt, ...(preferences.autoAdapt ?? {}) },
       languageBehavior: {
         ...objectValue(textingStyle.languageBehavior),
         fr: preferences.frenchStyle,
