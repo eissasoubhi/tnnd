@@ -180,6 +180,7 @@ async function runMutation(action: () => Promise<void>): Promise<void> {
   setBusy(true);
   try {
     await action();
+    window.dispatchEvent(new CustomEvent("tnnd:personal-memory-updated"));
   } finally {
     setBusy(false);
   }
