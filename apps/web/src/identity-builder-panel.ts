@@ -111,6 +111,7 @@ function updateState(): void {
   const changedSource = Boolean(current && !sourceIsCurrent());
   const changedReview = hasReviewEdits();
   const presentation = identityEditorPresentation(current, changedSource, changedReview);
+  reviewDetails.hidden = !current;
   approvedPreview.hidden = !presentation.showApprovedSummary;
   approvedSummary.textContent = presentation.summary;
   approvedCount.textContent = presentation.factCount + " facts · " + presentation.topicCount + " conversation topics";
