@@ -5,6 +5,7 @@ if (!grid) throw new Error("TNND dashboard grid was not found.");
 
 const panel = document.createElement("article");
 panel.className = "panel";
+panel.id = "auth-panel";
 panel.innerHTML = `
   <div class="panel-heading">
     <div>
@@ -19,11 +20,12 @@ panel.innerHTML = `
     <div>
       <button id="login-submit" type="submit">Sign in</button>
       <button id="register-submit" type="button">Create account</button>
-      <button id="logout-submit" type="button">Sign out</button>
+
     </div>
   </form>
+  <div id="auth-signed-in" class="auth-signed-in" hidden><span class="pill" id="auth-connected-email"></span><button id="logout-submit" class="secondary" type="button">Sign out</button></div>
   <p class="subtle" id="auth-message" role="status">Sign in or create an account to sync TNND data with the backend.</p>
-  <div id="session-manager" hidden>
+  <details id="session-manager" hidden><summary>Connected devices & sessions</summary>
     <div class="panel-heading">
       <div>
         <p class="eyebrow">Connected devices</p>
@@ -32,11 +34,13 @@ panel.innerHTML = `
       <button id="sessions-refresh" type="button">Refresh</button>
     </div>
     <div id="sessions-list" class="preferences-grid"></div>
-  </div>
+  </details>
 `;
 grid.prepend(panel);
 
 const form = panel.querySelector<HTMLFormElement>("#login-form");
+const signedInSummary = panel.querySelector<HTMLElement>("#auth-signed-in");
+const emailBadge = panel.querySelector<HTMLElement>("#auth-connected-email");
 const email = panel.querySelector<HTMLInputElement>("#login-email");
 const password = panel.querySelector<HTMLInputElement>("#login-password");
 const submit = panel.querySelector<HTMLButtonElement>("#login-submit");
@@ -96,7 +100,10 @@ async function refreshSessions(): Promise<void> {
 
 function refresh(): void {
   const session = readSession();
-  if (status) status.textContent = session ? session.user.email : "Signed out";
+  if (status) status.textContent = session ? "Connected" : "Signed out";
+  if (form) form.hidden = Boolean(session);
+  if (signedInSummary) signedInSummary.hidden = !session;
+  if (emailBadge) emailBadge.textContent = session?.user.email ?? "";
   if (logout) logout.disabled = !session;
   if (submit) submit.disabled = Boolean(session);
   if (registerButton) registerButton.disabled = Boolean(session);
