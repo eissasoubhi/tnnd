@@ -372,3 +372,11 @@ label { color: var(--nb-text); }
 #setup-guidance-panel .setup-story-item { display:grid; gap:5px; padding:12px; margin:10px 0; border:1px solid var(--nb-border); border-radius:var(--nb-radius-md); background:var(--nb-surface-soft); }
 #setup-guidance-panel #setup-recheck { margin-top:12px; }
 @media(max-width:700px) { #setup-guidance-panel .setup-checklist {grid-template-columns:1fr;} }
+
+/* Stable personal baseline + explicit adaptation switch for each setting */
+#profile-settings .adaptive-preference { display:grid; align-content:start; gap:9px; border:1px solid var(--nb-border); border-radius:var(--nb-radius-md); padding:12px; background:var(--nb-surface-soft); }
+#profile-settings .adaptive-preference label:not(.adaptive-toggle) { width:100%; }
+#profile-settings .adaptive-toggle { display:flex; align-items:center; flex-direction:row; gap:8px; font-size:12px; font-weight:650; cursor:pointer; }
+#profile-settings .adaptive-toggle input[type="checkbox"] { width:17px; height:17px; accent-color:var(--nb-primary); flex:none; }
+#profile-settings .adaptive-languages { grid-column:1 / -1; }
+#profile-settings .adaptive-languages small { color:var(--nb-text-muted); line-height:1.4; }
