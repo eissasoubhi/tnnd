@@ -222,7 +222,7 @@ describe("anchored adaptive preferences", () => {
   });
   it("round-trips disabled language adaptation without replacing language styles", () => {
     const first = readEditablePreferences(profile());
-    const after = readEditablePreferences(writeEditablePreferences(profile(), { ...first, autoAdapt: { ...first.autoAdapt, languages: false }, frenchStyle: "very-casual", darijaStyle: "natural", englishStyle: "casual" }));
+    const after = readEditablePreferences(writeEditablePreferences(profile(), { ...first, autoAdapt: { ...first.autoAdapt!, languages: false }, frenchStyle: "very-casual", darijaStyle: "natural", englishStyle: "casual" }));
     assert.equal(after.autoAdapt!.languages, false);
     assert.deepEqual([after.frenchStyle, after.darijaStyle, after.englishStyle], ["very-casual","natural","casual"]);
   });
