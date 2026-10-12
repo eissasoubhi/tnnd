@@ -102,6 +102,7 @@ export function mountConversationOverridesEditor(
   const draft = initialDraft(overrides);
   container.innerHTML = `
     <form class="conversation-overrides-form" data-conversation-overrides-form>
+      <p class="subtle">Leave adaptive fields blank to follow the conversation; a manual value always wins. Double texting changes style only, not automatic sending.</p>
       <div class="preferences-grid">
         <label>Dating goal<select name="datingGoal">${optionList(overrideDatingGoals, draft.datingGoal)}</select></label>
         <label>Disclosure<select name="disclosureStrategy">${optionList(overrideDisclosureStrategies, draft.disclosureStrategy)}</select></label>
