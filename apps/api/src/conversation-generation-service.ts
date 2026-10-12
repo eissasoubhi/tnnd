@@ -21,6 +21,7 @@ export interface ConversationGenerationResult extends GeminiGenerationResult {
     hasPreviewInstruction: boolean;
     personalMemoryCandidateIds: string[];
     usedPersonalMemoryId: string | null;
+    adaptiveStyle: { effective: Record<string, unknown>; autoFields: string[]; reasons: Record<string, string> };
   };
 }
 
@@ -130,7 +131,12 @@ export async function generateConversationReply(
       hasTemporaryInstruction: context.provenance.hasTemporaryInstruction,
       hasPreviewInstruction: Boolean(normalizedPreviewInstruction),
       personalMemoryCandidateIds: candidateIds,
-      usedPersonalMemoryId: usedId
+      usedPersonalMemoryId: usedId,
+      adaptiveStyle: {
+        effective: Object.fromEntries(["messageLength", "directness", "teasingStyle", "humorLevel", "doubleTexting", "languages"].map(key => [key, (adaptive.settings as Record<string, unknown>)[key]])),
+        autoFields: adaptive.autoFields,
+        reasons: adaptive.reasons
+      }
     }
   };
 }
