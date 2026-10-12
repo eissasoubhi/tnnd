@@ -83,7 +83,8 @@ export function resolveAdaptiveStyle(
   const fixed = (key: string): boolean => chatLockedFields.includes(key);
   const apply = (key: string, baselineValue: string | number, adaptedValue: string | number, rationale: string) => {
     if (fixed(key)) { reasons[key] = "manual chat override"; return; }
-    const auto = autoAdapt[key as keyof typeof autoAdapt];
+    const flag = key === "humorLevel" ? "humorStyle" : key;
+    const auto = autoAdapt[flag as keyof typeof autoAdapt];
     (values as Record<string,unknown>)[key] = auto ? adaptedValue : baselineValue;
     reasons[key] = auto ? rationale : "fixed baseline";
     if (auto) autoFields.push(key);
