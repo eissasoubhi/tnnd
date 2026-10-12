@@ -13,7 +13,9 @@ test("signed-out boot loads only authentication eagerly", async () => {
   assert.match(main, /import\("\.\/conversation-panel"\)/);
   assert.match(main, /import\("\.\/conversation-management-panel"\)/);
   assert.match(main, /import\("\.\/conversation-takeover-onboarding"\)/);
-  assert.match(main, /import\("\.\/dating-goal-details-panel"\)/);
+  // Goal details now belong to the single Preferences form (no redundant lazy panel/save).
+  assert.match(main, /<textarea id="dating-goal-details"/);
+  assert.doesNotMatch(main, /import\("\.\/dating-goal-details-panel"\)/);
 
   const index = await readFile(new URL("../apps/web/index.html", import.meta.url), "utf8");
   const moduleScripts = [...index.matchAll(/<script type="module" src="([^"]+)"><\/script>/g)].map((match) => match[1]);
