@@ -1,5 +1,6 @@
 import { strToU8, zipSync } from "fflate";
 import { loginBackend, logoutBackend, validateBackendSession } from "./backend-session";
+import { renderExtensionSetupProgress } from "./setup-extension-panel";
 import { getChatSettings, saveChatSettings } from "./storage";
 import { renderSyncStatus } from "./sync-status-panel";
 import type { ChatSettings, ConversationStage, Tone } from "./types";
@@ -266,6 +267,7 @@ async function refreshBackendAuth(): Promise<void> {
     backendAuthStatus.textContent = error instanceof Error ? error.message : "Could not validate TNND session.";
   } finally {
     await renderSyncStatus();
+    await renderExtensionSetupProgress();
   }
 }
 
@@ -386,6 +388,7 @@ backendLogin.addEventListener("click", () => {
     showBackendSession(session.user.email);
     backendAuthStatus.textContent = "TNND account connected.";
     await renderSyncStatus();
+    await renderExtensionSetupProgress();
   })().catch((error) => {
     backendAuthStatus.textContent = error instanceof Error ? error.message : "Could not connect to TNND.";
   }).finally(() => {
