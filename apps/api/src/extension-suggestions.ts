@@ -1,6 +1,8 @@
 import { loadGenerationProfile } from "./generation-user-profile-context.js";
 import { retrievePersonalMemories } from "./personal-memory-service.js";
 import { loadAiProviderSettings } from "./ai-provider-settings-service.js";
+import { resolveAdaptiveStyle, type StyleMessage } from "./conversation-style-adaptation.js";
+import type { ConversationOverrides } from "./conversation-overrides.js";
 
 export interface ExtensionSuggestionRequest {
   context: string;
@@ -138,8 +140,21 @@ export async function generateExtensionSuggestions(
   const memoryContext = generationContext.memories;
   const storedStyle = generationContext.userProfile?.textingStyle as Record<string, unknown> | undefined;
   const topicPreferences = generationContext.userProfile?.topicEngine as { avoidedTopics?: string[] } | undefined;
-  const adaptiveFields = ["messageLength", "directness", "teasingStyle", "humorStyle", "doubleTexting"]
-    .filter(key => !storedStyle || storedStyle[key] === undefined || storedStyle[key] === "auto-adaptive");
+  // Only clearly marked incoming lines count as evidence; unstructured text falls back to baseline.
+  const history: StyleMessage[] = request.context.split("\n").slice(-24).flatMap(line => {
+    const match = line.match(/^\s*(them|match|incoming|elle|lui)\s*:\s*(.+)$/i);
+    return match ? [{ direction: "incoming" as const, text: match[2].slice(0, 1200) }] : [];
+  });
+  const manual = request.chat ?? {};
+  const adaptive = resolveAdaptiveStyle(
+    { ...configWithoutIdentity, ...manual } as ConversationOverrides,
+    storedStyle ?? {},
+    history,
+    history.at(-1)?.text ?? "",
+    Object.keys(manual),
+    (generationContext.userProfile?.languages ?? {}) as Partial<{fr:number;darija:number;en:number}>
+  );
+  const effectiveConfig = { ...configWithoutIdentity, ...adaptive.settings };
   const avoidInstruction = Array.isArray(topicPreferences?.avoidedTopics) && topicPreferences.avoidedTopics.length
     ? "Do not proactively raise the user-avoided topics in the stored profile. If directly asked, respond normally without abruptly evading the question."
     : "";
@@ -149,12 +164,12 @@ export async function generateExtensionSuggestions(
     "You are TNND, a dating conversation writing engine acting from the user's configured identity.",
     "Write concise, natural dating-app messages. Avoid assistant prose, canned pickup lines, pressure, manipulation, and invented personal facts.",
     `Generation purpose: ${request.purpose}.`,
-    `Effective TNND configuration JSON: ${boundedJson(configWithoutIdentity, 12_000)}`,
+    `Effective TNND configuration JSON: ${boundedJson(effectiveConfig, 12_000)}`,
     generationContext.userProfile ? `Stored user identity/style JSON: ${boundedJson(generationContext.userProfile, 5_000)}` : "",
     memoryContext.length ? `Relevant approved personal memories JSON: ${boundedJson(memoryContext, 3_500)}` : "",
     request.chat ? `Per-chat configuration JSON: ${boundedJson(request.chat, 8_000)}` : "",
-    adaptiveFields.length
-      ? `Auto-adaptive style for: ${adaptiveFields.join(", ")}. Match the interlocutor's observable message length, directness, humor and teasing conservatively. Manual per-chat choices win. Double texting is style only; do not proactively send additional messages.`
+    adaptive.autoFields.length
+      ? `Auto-adaptive relative to the saved user baseline: ${adaptive.autoFields.join(", ")}. Return to baseline when mood changes. Adapt conservatively; never force jokes or teasing. Double texting never causes extra sends.`
       : "",
     avoidInstruction,
     "Use the recent conversation flow, answer what was actually said, and avoid abruptly changing subject.",
