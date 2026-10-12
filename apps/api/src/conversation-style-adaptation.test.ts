@@ -20,7 +20,7 @@ test("the baseline survives serious mood and returns when mood becomes playful",
     [{direction:"incoming",text:"I'm sorry for your loss"}, {direction:"incoming",text:"I feel very sad, it's been difficult"}], "I feel very sad, it's been difficult");
   assert.equal(serious.settings.teasingStyle, "none");
   assert.ok((serious.settings.humorLevel ?? 100) <= 20);
-  const fun = resolveAdaptiveStyle({}, defaults,
+  const fun = resolveAdaptiveStyle({}, { ...defaults, autoAdapt: { teasingStyle: true, humorStyle: true } },
     [{ direction:"incoming", text:"haha 😂 so funny" }, {direction:"incoming",text:"lol 😂 good one"}], "lol 😂 good one");
   assert.equal(fun.settings.teasingStyle, "playful");
   assert.ok((fun.settings.humorLevel ?? 0) >= 60);
