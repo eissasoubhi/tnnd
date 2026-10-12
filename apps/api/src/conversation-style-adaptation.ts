@@ -48,7 +48,7 @@ export function resolveAdaptiveStyle(
   const questionRate = texts.length ? texts.filter(text => /[?？؟]/u.test(text)).length / texts.length : 0;
   const consecutiveIncoming = history.slice(-4).reduceRight((n, message) => n >= 0 && message.direction === "incoming" ? n + 1 : -1, 0);
   const computed = {
-    messageLength: median <= 30 ? "very-short" : median >= 140 ? "medium" : "short",
+    messageLength: !texts.length ? "short" : median <= 30 ? "very-short" : median >= 140 ? "medium" : "short",
     directness: questionRate >= 0.5 ? 65 : 50,
     teasingStyle: jokeRate >= 0.4 && texts.length >= 2 ? "playful" : jokeRate > 0 ? "light" : "none",
     humorLevel: jokeRate >= 0.4 && texts.length >= 2 ? 70 : jokeRate > 0 ? 50 : 25,
