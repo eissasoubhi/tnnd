@@ -93,7 +93,14 @@ export async function generateConversationReply(
     value: fact.value,
     confidence: fact.confidence
   }));
-  const adaptive = resolveAdaptiveStyle(context.settings, generationProfile.userProfile?.textingStyle ?? {}, recentMessages, normalizedMessage);
+  const adaptive = resolveAdaptiveStyle(
+    context.settings,
+    generationProfile.userProfile?.textingStyle ?? {},
+    recentMessages,
+    normalizedMessage,
+    context.provenance.overriddenFields,
+    (generationProfile.userProfile?.languages ?? context.settings.languages ?? {}) as Partial<{fr:number;darija:number;en:number}>
+  );
   const effectiveContext = { ...context, settings: adaptive.settings, instructions: [...context.instructions, ...(adaptive.autoFields.length ? [`Auto-adaptive fields: ${adaptive.autoFields.join(", ")}. Match observed conversation style naturally, without forcing humor or teasing. Double texting is only a style signal; produce one draft.`] : [])] };
   const generated = await provider({
     context: effectiveContext,
