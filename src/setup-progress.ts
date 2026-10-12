@@ -111,7 +111,7 @@ export function missingStoryRecommendations(
       recent: Boolean(previous?.recent || last)
     });
   }
-  const approved = memories.filter(m => m.reviewStatus === "approved" && m.structuredAnalysis?.allowedForChat === true)
+  const approved = memories.filter(m => m.reviewStatus === "approved" && m.structuredAnalysis?.allowedForChat !== false)
     .map(m => normalized([m.structuredAnalysis?.title, m.structuredAnalysis?.category, ...(m.structuredAnalysis?.topics ?? [])].filter(Boolean).join(" ")));
   const excluded = new Set(avoidedTopics.map(normalized));
   return [...groups.values()]
