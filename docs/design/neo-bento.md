@@ -85,6 +85,29 @@ The file contains a **Neo Bento · Foundations & Components** page with color, t
 
 **Figma Starter limitation:** this file supports only one variable mode per collection, so light and dark semantic variables use separate collections rather than one collection with two modes. CSS implements automatic theme switching with `prefers-color-scheme`.
 
+
+## Workspace navigation and density rules (UX v2)
+
+The workspace is **section-first**, not a long page of every feature. Sidebar/hash navigation switches visible panels while keeping the existing forms mounted and preserving unsaved input states. Lazy loaded panels are assigned to a stable section and late mounts honor the current hash. Deep links (for example `#ai-provider-form` and `#memory-source`) open the owning section automatically.
+
+| Section | Primary panels |
+| --- | --- |
+| Overview | Compact hero, real conversation stats, setup checklist and suggested next steps |
+| Conversations | Inbox, conversation management and explicit takeover review |
+| Identity | Approved Identity Builder and optional writing-style learning |
+| Memories | Approved personal story library and review |
+| Action Center | Pending human decisions |
+| Analytics | Analytics and memory insights |
+| Settings | Baseline communication preferences, Gemini, connected account, import/export, privacy |
+
+**Density and hierarchy:** keep a single main task per view. Overview-only metrics are never duplicated alongside the inbox totals. Important style controls show a stored value and independent Auto-adapt toggle; group them into accessible details sections. Collapse less frequently changed writing/retention fields by default. Long profile editors must span the available workspace rather than sit alongside an unrelated short card and create tall empty gaps.
+
+**Authentication:** signed-in users see their connected account and optional session manager, not an unnecessary login form. Signed-out users can still find sign-in from Overview.
+
+**Empty and async states:** don't show unverified zeros as live activity metrics; use an unavailable marker until data is loaded and then render verified totals. Routing may not move or delete mounted feature nodes just to change visible sections—`hidden` preserves in-progress inputs.
+
+**Visual QA matrix:** inspect Overview, Conversations, Identity, Memories, Settings and mobile navigation at desktop (1440/1280), tablet (840), and mobile (390/375) widths in light and dark mode; verify no horizontal overflow, reachable primary buttons, focus-visible state and no account-auth form shown on signed-in sessions.
+
 ## Extension browser visual smoke
 
 The extension has a dedicated Neo Bento stylesheet at `public/neo-bento.css` loaded by popup, settings and chat preview. `scripts/build.mjs` copies it into `dist/`.
