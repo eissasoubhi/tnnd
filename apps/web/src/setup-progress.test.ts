@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { missingStoryRecommendations, profileReadiness, setupProgress } from "../../../src/setup-progress.ts";
+import { missingStoryRecommendations, profileReadiness, setupProgress } from "../../../src/setup-progress";
 
 test("checklist has a deterministic ordered next step and never claims an unknown percent", () => {
   assert.equal(setupProgress({ signedIn: false, identityApproved: false, geminiConfigured: false, preferencesConfigured: false }).percent, 0);
