@@ -6,6 +6,7 @@ import {
   type IdentityBuilderState,
   type IdentityStructuredAnalysis
 } from "./identity-builder-client";
+import { identityEditorPresentation } from "./identity-editor-presentation";
 
 const grid = document.querySelector<HTMLElement>(".grid");
 if (!grid) throw new Error("TNND dashboard grid was not found.");
@@ -27,15 +28,29 @@ panel.innerHTML = `
     <span><b>2</b> Review AI summary</span>
     <span><b>3</b> Approve</span>
   </div>
-  <label for="identity-builder-source" class="workspace-field-label">About you</label>
-  <textarea id="identity-builder-source" rows="8" maxlength="20000" aria-describedby="identity-builder-source-hint" placeholder="Your work, daily life, personality, interests, routines, what you like and dislike…"></textarea>
-  <p class="subtle" id="identity-builder-source-hint">Write naturally, in any language. You control what gets approved for chat.</p>
+  <div id="identity-approved-preview" class="identity-approved-preview" hidden>
+    <div class="identity-approved-topline"><span class="identity-approved-mark">✓</span><strong>Identity approved</strong><span id="identity-approved-count"></span></div>
+    <p id="identity-approved-summary"></p>
+    <p class="subtle">Only this approved compact profile is reused in conversations; your original text stays private in TNND.</p>
+    <button id="identity-builder-edit" type="button" class="secondary">Review or edit identity</button>
+  </div>
+  <details id="identity-about-details" class="identity-editor-details" open>
+    <summary>Edit original About Me</summary>
+    <div class="identity-editor-content">
+      <label for="identity-builder-source" class="workspace-field-label">About you</label>
+      <textarea id="identity-builder-source" rows="8" maxlength="20000" aria-describedby="identity-builder-source-hint" placeholder="Your work, daily life, personality, interests, routines, what you like and dislike…"></textarea>
+      <p class="subtle" id="identity-builder-source-hint">Write naturally, in any language. You control what gets approved for chat.</p>
+    </div>
+  </details>
   <div class="workspace-actions">
     <button id="identity-builder-analyze" type="button">Analyze identity</button>
     <button id="identity-builder-approve" class="secondary" type="button" disabled>Approve profile</button>
   </div>
   <p class="subtle" id="identity-builder-message" role="status" aria-live="polite">Sign in and configure Gemini first.</p>
-  <div id="identity-builder-review"></div>
+  <details id="identity-review-details" class="identity-editor-details" open>
+    <summary>Review & edit extracted details</summary>
+    <div id="identity-builder-review" class="identity-editor-content"></div>
+  </details>
 `;
 grid.prepend(panel);
 
@@ -45,6 +60,12 @@ const approveButton = panel.querySelector<HTMLButtonElement>("#identity-builder-
 const status = panel.querySelector<HTMLElement>("#identity-builder-status")!;
 const message = panel.querySelector<HTMLElement>("#identity-builder-message")!;
 const review = panel.querySelector<HTMLElement>("#identity-builder-review")!;
+const sourceDetails = panel.querySelector<HTMLDetailsElement>("#identity-about-details")!;
+const reviewDetails = panel.querySelector<HTMLDetailsElement>("#identity-review-details")!;
+const approvedPreview = panel.querySelector<HTMLElement>("#identity-approved-preview")!;
+const approvedSummary = panel.querySelector<HTMLElement>("#identity-approved-summary")!;
+const approvedCount = panel.querySelector<HTMLElement>("#identity-approved-count")!;
+const editButton = panel.querySelector<HTMLButtonElement>("#identity-builder-edit")!;
 let current: IdentityBuilderState | null = null;
 let busy = false;
 
@@ -64,7 +85,7 @@ function escapeHtml(value: string): string {
 }
 
 function sourceIsCurrent(): boolean {
-  return Boolean(current && source.value.trim() === current.sourceText);
+  return Boolean(current && source.value.trim() === current.sourceText.trim());
 }
 
 function editedAnalysis(): IdentityStructuredAnalysis {
@@ -89,6 +110,16 @@ function hasReviewEdits(): boolean {
 function updateState(): void {
   const changedSource = Boolean(current && !sourceIsCurrent());
   const changedReview = hasReviewEdits();
+  const presentation = identityEditorPresentation(current, changedSource, changedReview);
+  reviewDetails.hidden = !current;
+  approvedPreview.hidden = !presentation.showApprovedSummary;
+  approvedSummary.textContent = presentation.summary;
+  approvedCount.textContent = presentation.factCount + " facts · " + presentation.topicCount + " conversation topics";
+  editButton.hidden = !presentation.showApprovedSummary;
+  approveButton.hidden = !presentation.showApprove;
+  analyzeButton.hidden = presentation.showApprovedSummary;
+  if (changedSource) sourceDetails.open = true;
+  if (changedReview) reviewDetails.open = true;
   analyzeButton.disabled = busy || !readSession();
   approveButton.disabled = busy || !readSession() || !current || changedSource;
   status.textContent = changedSource ? "Reanalysis needed" :
@@ -103,15 +134,17 @@ function render(state: IdentityBuilderState | null): void {
   current = state;
   if (!state) {
     review.innerHTML = "";
+    sourceDetails.open = true;
+    reviewDetails.open = false;
     updateState();
     return;
   }
   source.value = state.sourceText;
+  const presentation = identityEditorPresentation(state);
+  sourceDetails.open = presentation.openSource;
+  reviewDetails.open = presentation.openReview;
   review.innerHTML = `
-    <div class="workspace-review-heading">
-      <h3>Review your identity</h3>
-      <p class="subtle">Correct anything Gemini misunderstood. Only approved fields are used for conversation context.</p>
-    </div>
+    <p class="subtle">Correct anything Gemini misunderstood. Only approved fields are used for conversation context.</p>
     <div class="preferences-grid">
       ${fields.map((field) => {
         const value = state.analysis[field.key];
@@ -153,6 +186,11 @@ async function refresh(): Promise<void> {
   }
 }
 
+editButton.addEventListener("click", () => {
+  sourceDetails.open = true;
+  reviewDetails.open = true;
+  source.focus();
+});
 source.addEventListener("input", updateState);
 analyzeButton.addEventListener("click", () => {
   if (busy) return;
