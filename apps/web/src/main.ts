@@ -2,6 +2,8 @@ import "./styles.css";
 import "./neo-bento.css";
 import { bindActionCenter, loadHumanActions, readHumanActions, renderActionCenter, type HumanActionItem } from "./action-center";
 import { readSession } from "./auth-client";
+import { listConversations } from "./conversation-client";
+import { countOverviewStatuses } from "./overview-metrics";
 import { fetchProfile, saveProfile } from "./profile-client";
 import { downloadProfile, parseImportedProfile, type ImportedProfile } from "./profile-import";
 import { datingGoals, disclosureStrategies, readEditablePreferences, writeEditablePreferences } from "./profile-preferences";
@@ -247,6 +249,43 @@ const adaptiveCheckboxes = {
 const actionCenter = document.querySelector<HTMLElement>("#action-center");
 const actionCount = document.querySelector<HTMLElement>("#action-count");
 const humanActionMetric = document.querySelector<HTMLElement>('[data-metric-state="Action required"]');
+let overviewRefreshId = 0;
+async function refreshOverviewMetrics(): Promise<void> {
+  const run = ++overviewRefreshId;
+  const session = readSession();
+  const metric = (status: string): HTMLElement | null => document.querySelector<HTMLElement>('[data-metric-state="' + status + '"]');
+  if (!session) {
+    for (const state of ["Active", "Waiting for them", "Paused"]) {
+      const field = metric(state);
+      if (field) field.textContent = "—";
+    }
+    return;
+  }
+  try {
+    const list = await listConversations(session);
+    if (run !== overviewRefreshId || readSession()?.user.id !== session.user.id) return;
+    const counts = countOverviewStatuses(list);
+    const pairs: Array<[string, number]> = [
+      ["Active", counts.active],
+      ["Waiting for them", counts.waitingForThem],
+      ["Paused", counts.paused]
+    ];
+    for (const [state, count] of pairs) {
+      const field = metric(state);
+      if (field) field.textContent = String(count);
+    }
+  } catch {
+    if (run !== overviewRefreshId) return;
+    for (const state of ["Active", "Waiting for them", "Paused"]) {
+      const field = metric(state);
+      if (field) field.textContent = "—";
+    }
+  }
+}
+window.addEventListener("tnnd:conversation-updated", () => { void refreshOverviewMetrics(); });
+window.addEventListener("tnnd:auth-session-changed", () => { void refreshOverviewMetrics(); });
+void refreshOverviewMetrics();
+
 
 let currentProfile: ImportedProfile | null = null;
 
