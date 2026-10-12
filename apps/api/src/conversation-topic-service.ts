@@ -104,3 +104,34 @@ export async function getConversationTopicState(conversationId: string): Promise
     recentTopics: mapped.slice(0, 10)
   };
 }
+
+/** Aggregated topic coverage for the authenticated account, across conversation history. */
+export interface TopicCoverageRow {
+  topic: string;
+  messageCount: number;
+  conversationCount: number;
+  lastDiscussedAt: string;
+}
+export async function listUserTopicCoverage(userId: string): Promise<TopicCoverageRow[]> {
+  const result = await getPool().query<{
+    topic: string; mentions: string; chats: string; last_at: Date;
+  }>(
+    `SELECT ct.topic,
+            SUM(ct.message_count)::text AS mentions,
+            COUNT(DISTINCT ct.conversation_id)::text AS chats,
+            MAX(ct.last_discussed_at) AS last_at
+     FROM conversation_topics ct
+     JOIN conversations c ON c.id = ct.conversation_id
+     WHERE c.user_id = $1 AND c.status NOT IN ('archived', 'disabled') AND ct.confidence >= 0.4
+     GROUP BY ct.topic
+     ORDER BY SUM(ct.message_count) DESC, COUNT(DISTINCT ct.conversation_id) DESC
+     LIMIT 100`,
+    [userId]
+  );
+  return result.rows.map(row => ({
+    topic: row.topic.slice(0, 120),
+    messageCount: Math.min(1000000, Math.max(0, Number(row.mentions) || 0)),
+    conversationCount: Math.min(100000, Math.max(0, Number(row.chats) || 0)),
+    lastDiscussedAt: row.last_at.toISOString()
+  }));
+}
