@@ -5,7 +5,7 @@ import { resolveAdaptiveStyle } from "./conversation-style-adaptation.js";
 const defaults = { messageLength: "short", directness: "balanced", teasingStyle: "light", humorStyle: "playful", doubleTexting: "sometimes" };
 test("a new conversation starts from the user's personality, not arbitrary neutral values", () => {
   const source = { humorLevel: 25, messageLength: "medium" as const };
-  const result = resolveAdaptiveStyle(source, defaults, [], "");
+  const result = resolveAdaptiveStyle(source, { ...defaults, autoAdapt: { messageLength: true, directness: true, teasingStyle: true, humorStyle: true, doubleTexting: true, languages: true } }, [], "");
   assert.equal(result.settings.messageLength, "short");
   assert.equal(result.settings.directness, 50);
   assert.equal(result.settings.teasingStyle, "light");
@@ -24,7 +24,7 @@ test("the baseline survives serious mood and returns when mood becomes playful",
     [{ direction:"incoming", text:"haha 😂 so funny" }, {direction:"incoming",text:"lol 😂 good one"}], "lol 😂 good one");
   assert.equal(fun.settings.teasingStyle, "playful");
   assert.ok((fun.settings.humorLevel ?? 0) >= 60);
-  const next = resolveAdaptiveStyle({}, defaults, [], "hi");
+  const next = resolveAdaptiveStyle({}, { ...defaults, autoAdapt: { teasingStyle: true, humorStyle: true } }, [], "hi");
   assert.equal(next.settings.teasingStyle, "light");
   assert.equal(next.settings.humorLevel, 60);
 });
@@ -50,7 +50,7 @@ test("French and English mix adapts only after repeated clear evidence; language
   const r=resolveAdaptiveStyle({},defaults,history,"and what are you doing this weekend?");
   assert.ok((r.settings.languages?.en ?? 0)>15);
   assert.equal(Object.values(r.settings.languages!).reduce((a,b)=>a+b,0),100);
-  const another=resolveAdaptiveStyle({},defaults,[{direction:"incoming",text:"salut tu vas bien ?"}],"bonjour comment ça va ?");
+  const another=resolveAdaptiveStyle({},defaults,[],"bonjour comment ça va ?");
   assert.deepEqual(another.settings.languages,{fr:45,darija:40,en:15});
 });
 test("legacy fixed selections stay fixed; legacy auto values migrate to anchored adaptation",()=>{
