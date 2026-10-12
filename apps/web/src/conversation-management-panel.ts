@@ -66,6 +66,7 @@ function mount(): { list: HTMLElement; status: HTMLElement } | null {
   installStyles();
   const panel = document.createElement("article");
   panel.className = "panel panel-wide";
+  panel.id = "conversation-management-panel";
   panel.innerHTML = `
     <div class="panel-heading">
       <div><p class="eyebrow">AI takeover</p><h2>Conversation management</h2></div>
