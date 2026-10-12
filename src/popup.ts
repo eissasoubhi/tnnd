@@ -48,6 +48,9 @@ interface ThreadInfoResponse {
   ok: boolean;
   threadKey?: string | null;
   threadKeyHash?: string;
+  source?: "route-and-composer" | "route-only" | "not-a-conversation";
+  composerFound?: boolean;
+  route?: TinderViewState;
 }
 
 const DIAGNOSTIC_TRACE_KEY = "tnnd.diagnosticTrace.v1";
@@ -272,18 +275,34 @@ async function refreshBackendAuth(): Promise<void> {
 }
 
 async function loadCurrentChat(): Promise<void> {
+  currentThreadKey = null;
+  chatEditor.classList.add("hidden");
+  chatUnavailable.classList.remove("hidden");
+  const hint = chatUnavailable.querySelector("p");
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id || !isTinderUrl(tab.url)) return;
+  if (!tab?.id || !isTinderUrl(tab.url)) {
+    if (hint) hint.textContent = "Open a Tinder conversation in the active Chrome tab, then reopen TNND.";
+    return;
+  }
   try {
     const response = await chrome.tabs.sendMessage(tab.id, { type: "TNND_GET_THREAD_INFO" }) as ThreadInfoResponse;
-    if (!response?.ok || !response.threadKey) return;
+    if (!response?.ok) {
+      if (hint) hint.textContent = "TNND could not check this Tinder tab. Reload Tinder, then reopen the extension.";
+      return;
+    }
+    if (!response.threadKey) {
+      if (hint) hint.textContent = "No stable conversation URL detected. Open the actual chat so its address has /app/messages/<thread>. If Tinder displays the chat under another URL, export the diagnostic ZIP so TNND can be updated.";
+      return;
+    }
     currentThreadKey = response.threadKey;
     applyChatSettings(await getChatSettings(currentThreadKey));
     chatUnavailable.classList.add("hidden");
     chatEditor.classList.remove("hidden");
-    chatStatus.textContent = response.threadKeyHash ? `Local thread ${response.threadKeyHash}` : "Current conversation detected.";
+    chatStatus.textContent = response.composerFound === false
+      ? "Conversation identified from its URL, but the message composer was not found. Read-only diagnosis only; do not enable auto-replies. Export a diagnostic ZIP to investigate Tinder selectors."
+      : response.threadKeyHash ? `Conversation detected · local ref ${response.threadKeyHash}` : "Current conversation detected.";
   } catch {
-    chatStatus.textContent = "Reload the Tinder page once after updating TNND.";
+    if (hint) hint.textContent = "TNND cannot communicate with this Tinder tab. After updating the extension, reload Tinder completely, then reopen TNND. If it persists, check the extension's site access.";
   }
 }
 
