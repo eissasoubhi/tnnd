@@ -118,7 +118,7 @@ app.innerHTML = `
         <div class="panel-heading">
           <div>
             <p class="eyebrow">Preferences</p>
-            <h2>Dating goal & texting identity</h2>
+            <h2>Dating goal & texting identity</h2><p class="subtle">Message length, directness, teasing, humor and double texting default to Auto-adaptive. Override any of them here or per conversation.</p>
           </div>
           <span class="pill" id="preferences-status">Import a profile first</span>
         </div>
