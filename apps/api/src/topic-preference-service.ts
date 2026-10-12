@@ -32,9 +32,9 @@ export async function setAvoidedTopic(userId: string, rawTopic: unknown, avoid: 
     const avoidedTopics = nextAvoidedTopics(topicEngine.avoidedTopics, topic, avoid);
     const next = { ...profile, topicEngine: { ...topicEngine, avoidedTopics } };
     await client.query(
-      \`INSERT INTO user_profiles (user_id, schema_version, profile_json)
+      `INSERT INTO user_profiles (user_id, schema_version, profile_json)
        VALUES ($1, $2, $3::jsonb)
-       ON CONFLICT (user_id) DO UPDATE SET profile_json = EXCLUDED.profile_json, updated_at = now()\`,
+       ON CONFLICT (user_id) DO UPDATE SET profile_json = EXCLUDED.profile_json, updated_at = now()`,
       [userId, profileSchemaVersion, JSON.stringify(next)]
     );
     await client.query("COMMIT");
