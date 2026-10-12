@@ -289,7 +289,7 @@ function refreshPreferences(profile: ImportedProfile | null): void {
   if (englishStyle) englishStyle.value = preferences.englishStyle;
   for (const key of Object.keys(adaptiveCheckboxes) as Array<keyof typeof adaptiveCheckboxes>) {
     const input = adaptiveCheckboxes[key];
-    if (input) input.checked = preferences.autoAdapt[key];
+    if (input) input.checked = preferences.autoAdapt?.[key] ?? true;
   }
   if (matchProfileRetentionDays) matchProfileRetentionDays.value = String(preferences.temporaryMatchProfileRetentionDays);
   if (preferencesStatus) preferencesStatus.textContent = readSession() ? "Synced" : "Local fallback";
