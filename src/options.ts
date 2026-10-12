@@ -1,5 +1,6 @@
 import { createProfileBundle, parseProfileBundle } from "./profile-bundle";
-import { getApiKey, getConfig, saveApiKey, saveConfig } from "./storage";
+import { getApiKey, getBackendProfileCache, getBackendSession, getConfig, saveApiKey, saveConfig } from "./storage";
+import { profileReadiness } from "./setup-progress";
 import { mountTextingStyleControls } from "./texting-options";
 import type { AppConfig, ContactPreference, EmojiLevel, MessageLength, Tone } from "./types";
 
@@ -15,11 +16,13 @@ const f = {
   form: el<HTMLFormElement>("settings-form"), apiKey: el<HTMLInputElement>("apiKey"), model: el<HTMLInputElement>("model"),
   tone: el<HTMLSelectElement>("tone"), messageLength: el<HTMLSelectElement>("messageLength"), flirtLevel: el<HTMLInputElement>("flirtLevel"), flirtValue: el<HTMLElement>("flirtValue"), humorLevel: el<HTMLInputElement>("humorLevel"), humorValue: el<HTMLElement>("humorValue"), emojiLevel: el<HTMLSelectElement>("emojiLevel"), replyCount: el<HTMLSelectElement>("replyCount"),
   langFr: el<HTMLInputElement>("langFr"), langDarija: el<HTMLInputElement>("langDarija"), langEn: el<HTMLInputElement>("langEn"), preferredWords: el<HTMLTextAreaElement>("preferredWords"), avoidedWords: el<HTMLTextAreaElement>("avoidedWords"), extraInstructions: el<HTMLTextAreaElement>("extraInstructions"),
-  firstName: el<HTMLInputElement>("firstName"), age: el<HTMLInputElement>("age"), city: el<HTMLInputElement>("city"), origin: el<HTMLInputElement>("origin"), occupation: el<HTMLInputElement>("occupation"), interests: el<HTMLInputElement>("interests"), aboutMe: el<HTMLTextAreaElement>("aboutMe"), instagram: el<HTMLInputElement>("instagram"), whatsapp: el<HTMLInputElement>("whatsapp"), contactPreference: el<HTMLSelectElement>("contactPreference"),
+  instagram: el<HTMLInputElement>("instagram"), whatsapp: el<HTMLInputElement>("whatsapp"), contactPreference: el<HTMLSelectElement>("contactPreference"),
   autoEnabled: el<HTMLInputElement>("autoEnabled"), replyDelayMinSeconds: el<HTMLInputElement>("replyDelayMinSeconds"), replyDelayMaxSeconds: el<HTMLInputElement>("replyDelayMaxSeconds"), quietHoursEnabled: el<HTMLInputElement>("quietHoursEnabled"), quietStart: el<HTMLInputElement>("quietStart"), quietEnd: el<HTMLInputElement>("quietEnd"), maxAutoRepliesPerDay: el<HTMLInputElement>("maxAutoRepliesPerDay"),
   exportProfile: el<HTMLButtonElement>("exportProfile"), importProfile: el<HTMLButtonElement>("importProfile"), importProfileFile: el<HTMLInputElement>("importProfileFile"), extensionVersion: el<HTMLElement>("extensionVersion"), aiStatus: el<HTMLElement>("aiStatus"),
   testGemini: el<HTMLButtonElement>("testGemini"), status: el<HTMLElement>("status")
 };
+
+let identityCache: AppConfig["identity"] | null = null;
 
 const num = (control: HTMLInputElement | HTMLSelectElement, fallback = 0) => Number.isFinite(Number(control.value)) ? Number(control.value) : fallback;
 const updateRanges = () => { f.flirtValue.textContent = `${f.flirtLevel.value}/3`; f.humorValue.textContent = `${f.humorLevel.value}/100`; };
@@ -36,7 +39,7 @@ function readConfig(): AppConfig {
     languages: { fr: num(f.langFr), darija: num(f.langDarija), en: num(f.langEn) },
     preferredWords: f.preferredWords.value.trim(), avoidedWords: f.avoidedWords.value.trim(), extraInstructions: f.extraInstructions.value.trim(),
     textingStyle: textingStyle.read(),
-    identity: { firstName: f.firstName.value.trim(), age: f.age.value.trim(), city: f.city.value.trim(), origin: f.origin.value.trim(), occupation: f.occupation.value.trim(), interests: f.interests.value.trim(), aboutMe: f.aboutMe.value.trim(), instagram: f.instagram.value.trim(), whatsapp: f.whatsapp.value.trim(), contactPreference: f.contactPreference.value as ContactPreference },
+    identity: { ...(identityCache ?? { firstName: "", age: "", city: "", origin: "", occupation: "", interests: "", aboutMe: "" }), instagram: f.instagram.value.trim(), whatsapp: f.whatsapp.value.trim(), contactPreference: f.contactPreference.value as ContactPreference },
     automation: { enabled: f.autoEnabled.checked, replyDelayMinSeconds, replyDelayMaxSeconds, quietHoursEnabled: f.quietHoursEnabled.checked, quietStart: f.quietStart.value, quietEnd: f.quietEnd.value, maxAutoRepliesPerDay: num(f.maxAutoRepliesPerDay, 40) }
   };
 }
@@ -45,7 +48,8 @@ function applyConfig(c: AppConfig): void {
   f.model.value = c.model; f.tone.value = c.tone; f.messageLength.value = c.messageLength; f.flirtLevel.value = String(c.flirtLevel); f.humorLevel.value = String(c.humorLevel); f.emojiLevel.value = c.emojiLevel; f.replyCount.value = String(c.replyCount);
   f.langFr.value = String(c.languages.fr); f.langDarija.value = String(c.languages.darija); f.langEn.value = String(c.languages.en); f.preferredWords.value = c.preferredWords; f.avoidedWords.value = c.avoidedWords; f.extraInstructions.value = c.extraInstructions;
   textingStyle.apply(c.textingStyle);
-  f.firstName.value = c.identity.firstName; f.age.value = c.identity.age; f.city.value = c.identity.city; f.origin.value = c.identity.origin; f.occupation.value = c.identity.occupation; f.interests.value = c.identity.interests; f.aboutMe.value = c.identity.aboutMe; f.instagram.value = c.identity.instagram; f.whatsapp.value = c.identity.whatsapp; f.contactPreference.value = c.identity.contactPreference;
+  identityCache = c.identity;
+  f.instagram.value = c.identity.instagram; f.whatsapp.value = c.identity.whatsapp; f.contactPreference.value = c.identity.contactPreference;
   const legacy = Number(c.automation.replyDelaySeconds);
   f.autoEnabled.checked = c.automation.enabled;
   f.replyDelayMinSeconds.value = String(c.automation.replyDelayMinSeconds ?? (Number.isFinite(legacy) ? Math.max(0, legacy - 15) : 20));
@@ -60,9 +64,16 @@ function setAiStatus(kind: "unconfigured" | "idle" | "checking" | "connected" | 
 }
 
 async function load(): Promise<void> {
-  const [c, apiKey] = await Promise.all([getConfig(), getApiKey()]);
+  const [c, apiKey, session, cache] = await Promise.all([getConfig(), getApiKey(), getBackendSession(), getBackendProfileCache()]);
   f.apiKey.value = apiKey;
   applyConfig(c);
+  const summary = document.getElementById("serverIdentityPreview");
+  const status = document.getElementById("serverIdentityStatus");
+  if (summary && status) {
+    const approved = session && cache && profileReadiness(cache.profile).identityApproved;
+    summary.textContent = approved ? c.identity.aboutMe || "Identity approved in TNND." : session ? "Complete and approve your About Me on TNND Web, then reopen this page." : "Connect your TNND account in the extension, then manage your identity on TNND Web.";
+    status.textContent = approved ? "Approved on TNND Web" : "Needs setup or sync";
+  }
   f.extensionVersion.textContent = `v${chrome.runtime.getManifest().version}`;
   setAiStatus(apiKey ? "idle" : "unconfigured", apiKey ? c.model : "");
 }

@@ -24,6 +24,12 @@ export function applyServerProfile(base: AppConfig, profile: Record<string, unkn
   if (!profile) return base;
 
   const identity = objectValue(profile.identity);
+  const builder = objectValue(profile.identityBuilder);
+  const approvedAnalysis = builder.reviewStatus === "approved" ? objectValue(builder.analysis) : {};
+  const approvedSummary = typeof approvedAnalysis.summary === "string" && approvedAnalysis.summary.trim() ? approvedAnalysis.summary.trim() : null;
+  const approvedInterests = Array.isArray(approvedAnalysis.interests)
+    ? approvedAnalysis.interests.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).join(", ")
+    : "";
   const languages = objectValue(profile.languages);
   const textingStyle = objectValue(profile.textingStyle);
   const automation = objectValue(profile.automation);
@@ -71,8 +77,8 @@ export function applyServerProfile(base: AppConfig, profile: Record<string, unkn
       city: optionalString(identity.city, base.identity.city),
       origin: optionalString(identity.origin, base.identity.origin),
       occupation: optionalString(identity.occupation, base.identity.occupation),
-      interests: optionalString(identity.interests, base.identity.interests),
-      aboutMe: optionalString(identity.aboutMe, base.identity.aboutMe),
+      interests: approvedInterests || optionalString(identity.interests, base.identity.interests),
+      aboutMe: approvedSummary ?? optionalString(identity.aboutMe, base.identity.aboutMe),
       instagram: optionalString(identity.instagram, base.identity.instagram),
       whatsapp: optionalString(identity.whatsapp, base.identity.whatsapp),
       contactPreference: stringValue(identity.contactPreference, ["instagram-first", "whatsapp-first", "stay-on-tinder"] as const, base.identity.contactPreference)

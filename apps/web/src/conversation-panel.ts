@@ -418,6 +418,7 @@ async function refresh(): Promise<void> {
   elements.status.textContent = "Loading…";
   try {
     cachedItems = await listConversations(session);
+    window.dispatchEvent(new CustomEvent("tnnd:conversation-updated"));
     elements.status.textContent = `${cachedItems.length} synced`;
     const visible = filteredItems();
     if (!selectedConversationId && visible[0]) selectedConversationId = visible[0].id;

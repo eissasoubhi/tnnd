@@ -81,6 +81,7 @@ form?.addEventListener("submit", async (event) => {
     apiKey.value = "";
     if (status) status.textContent = `${result.model} · configured`;
     if (message) message.textContent = "Gemini configuration saved securely on the backend.";
+    window.dispatchEvent(new CustomEvent("tnnd:ai-provider-updated"));
   } catch (error) {
     if (message) message.textContent = error instanceof Error ? error.message : "Unable to save Gemini configuration.";
   } finally {

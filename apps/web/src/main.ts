@@ -25,7 +25,8 @@ async function loadOptionalPanels(): Promise<void> {
     () => import("./dating-goal-details-panel"),
     () => import("./texting-style-learning-panel"),
     () => import("./analytics-panel"),
-    () => import("./account-privacy-panel")
+    () => import("./account-privacy-panel"),
+    () => import("./setup-guidance-panel")
   ]) {
     await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));
     try {
@@ -306,10 +307,12 @@ async function persistProfile(profile: ImportedProfile): Promise<void> {
     currentProfile = await saveProfile(profile);
     localStorage.removeItem(storageKey);
     setProfile(currentProfile, "backend");
+    window.dispatchEvent(new CustomEvent("tnnd:profile-updated"));
     return;
   }
   localStorage.setItem(storageKey, JSON.stringify(profile));
   setProfile(profile, "local");
+  window.dispatchEvent(new CustomEvent("tnnd:profile-updated"));
 }
 
 input?.addEventListener("change", async () => {
