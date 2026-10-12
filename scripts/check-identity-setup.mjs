@@ -1,6 +1,13 @@
 import { strict as assert } from "node:assert";
 import { applyServerProfile } from "../src/server-effective-config.ts";
-import { DEFAULT_CONFIG } from "../src/storage.ts";
+const DEFAULT_CONFIG = {
+  model: "gemini-3.8-flash", tone: "playful", messageLength: "short",
+  flirtLevel: 2, humorLevel: 50, emojiLevel: "low", replyCount: 3,
+  preferredWords: "", avoidedWords: "", extraInstructions: "",
+  languages: { fr: 45, darija: 40, en: 15 }, textingStyle: { formality: "casual" },
+  identity: { firstName: "", age: "", city: "", origin: "", occupation: "", interests: "", aboutMe: "", instagram: "", whatsapp: "", contactPreference: "instagram-first" },
+  automation: { enabled: false, quietHoursEnabled: false, quietStart: "00:00", quietEnd: "08:00", maxAutoRepliesPerDay: 40 }
+};
 import { profileReadiness, setupProgress, missingStoryRecommendations } from "../src/setup-progress.ts";
 
 const profile = {
