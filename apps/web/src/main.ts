@@ -7,7 +7,7 @@ import { countOverviewStatuses } from "./overview-metrics";
 import { fetchProfile, saveProfile } from "./profile-client";
 import { downloadProfile, parseImportedProfile, type ImportedProfile } from "./profile-import";
 import { datingGoals, disclosureStrategies, readEditablePreferences, writeEditablePreferences } from "./profile-preferences";
-import { groupForPanelId, viewForHash, workspaceCopy, type WorkspaceView } from "./workspace-sections";
+import { initWorkspaceScrollNavigation } from "./workspace-scroll-navigation";
 
 let optionalPanelsLoaded = false;
 
@@ -62,60 +62,6 @@ if (!app) throw new Error("TNND web app root was not found.");
 
 const options = (values: readonly string[]) => values.map((value) => `<option value="${value}">${value}</option>`).join("");
 
-function initWorkspaceNavigation(): void {
-  const nav = document.querySelector<HTMLElement>(".workspace-nav");
-  const grid = document.querySelector<HTMLElement>("#conversation-workspace");
-  const shell = document.querySelector<HTMLElement>(".shell");
-  const title = document.querySelector<HTMLElement>("#workspace-title");
-  const description = document.querySelector<HTMLElement>("#workspace-description");
-  const sectionLabel = document.querySelector<HTMLElement>("#workspace-location");
-  const empty = document.querySelector<HTMLElement>("#workspace-section-empty");
-  if (!nav || !grid || !shell) return;
-
-  const links = Array.from(nav.querySelectorAll<HTMLAnchorElement>('a[href^="#"]'));
-  let lastScrolledHash = "";
-  const update = (): void => {
-    const targetId = decodeURIComponent(window.location.hash.slice(1)) || "workspace-overview";
-    const target = document.getElementById(targetId);
-    const panelId = target?.closest<HTMLElement>(".panel")?.id ?? "";
-    const view: WorkspaceView = viewForHash(window.location.hash, panelId);
-    shell.dataset.workspaceView = view;
-    if (title) title.textContent = workspaceCopy[view].title;
-    if (description) description.textContent = workspaceCopy[view].subtitle;
-    if (sectionLabel) sectionLabel.textContent = workspaceCopy[view].label;
-    for (const link of links) {
-      const linkView = viewForHash(link.hash);
-      if (linkView === view) link.setAttribute("aria-current", "location");
-      else link.removeAttribute("aria-current");
-    }
-    let visible = 0;
-    for (const panel of Array.from(grid.children)) {
-      if (!(panel instanceof HTMLElement) || panel === empty) continue;
-      const group = groupForPanelId(panel.id);
-      const show = group === view || (view === "overview" && panel.id === "auth-panel" && !readSession());
-      panel.hidden = !show;
-      if (show) visible++;
-    }
-    if (empty) {
-      empty.hidden = visible > 0 || view === "overview";
-      if (!empty.hidden) {
-        const label = empty.querySelector<HTMLElement>("[data-empty-view]");
-        if (label) label.textContent = workspaceCopy[view].label;
-      }
-    }
-    if (window.location.hash && target && lastScrolledHash !== window.location.hash) {
-      lastScrolledHash = window.location.hash;
-      const navigationLink = links.some((link) => link.hash === window.location.hash);
-      const scrollTarget = navigationLink ? document.querySelector(".topbar") : target;
-      window.requestAnimationFrame(() => scrollTarget?.scrollIntoView({ block: "start" }));
-    }
-  };
-  window.addEventListener("hashchange", update);
-  const observer = new MutationObserver(update);
-  observer.observe(grid, { childList: true });
-  window.addEventListener("tnnd:auth-session-changed", update);
-  update();
-}
 
 app.innerHTML = `
   <section class="shell">
@@ -503,7 +449,7 @@ function organizeProfilePreferences(): void {
 }
 
 organizeProfilePreferences();
-initWorkspaceNavigation();
+initWorkspaceScrollNavigation();
 if (actionCenter) bindActionCenter(actionCenter, refreshActionCounts);
 void refreshActionCenter();
 void refreshProfile();

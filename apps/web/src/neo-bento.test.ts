@@ -7,6 +7,8 @@ import test from "node:test";
 const directory = dirname(fileURLToPath(import.meta.url));
 const css = readFileSync(resolve(directory, "neo-bento.css"), "utf8");
 const entrypoint = readFileSync(resolve(directory, "main.ts"), "utf8");
+const navigation = readFileSync(resolve(directory, "workspace-scroll-navigation.ts"), "utf8");
+const setup = readFileSync(resolve(directory, "setup-guidance-panel.ts"), "utf8");
 
 test("Neo Bento is loaded after the legacy stylesheet", () => {
   assert.match(entrypoint, /import "\.\/styles\.css";\s*import "\.\/neo-bento\.css";/);
@@ -33,10 +35,22 @@ test("Neo Bento keeps a responsive navigation and panel layout", () => {
 });
 
 
-test("Neo Bento navigation updates the active location for keyboard and screen-reader users", () => {
-  assert.match(entrypoint, /function initWorkspaceNavigation\(\)/);
-  assert.match(entrypoint, /window\.addEventListener\("hashchange", update\)/);
-  assert.match(entrypoint, /link\.setAttribute\("aria-current", "location"\)/);
-  assert.match(entrypoint, /link\.removeAttribute\("aria-current"\)/);
-  assert.match(entrypoint, /initWorkspaceNavigation\(\);/);
+test("Single-page navigation keeps all panels mounted with sticky scroll spy", () => {
+  assert.match(entrypoint, /initWorkspaceScrollNavigation\(\);/);
+  assert.match(navigation, /function initWorkspaceScrollNavigation\(\)/);
+  assert.match(navigation, /new IntersectionObserver\(scheduleSpy/);
+  assert.match(navigation, /window\.addEventListener\("scroll", scheduleSpy/);
+  assert.match(navigation, /link\.setAttribute\("aria-current", "location"\)/);
+  assert.match(navigation, /areas\.get\(locate\(panel\)\)\?\.append\(panel\)/);
+  assert.doesNotMatch(navigation, /panel\.hidden\s*=/);
+  assert.match(css, /html \{ scroll-behavior: smooth;/);
+  assert.match(css, /#app \.workspace-nav \{ z-index: 25; align-self: start;/);
+});
+
+test("Setup cards have one full-width actionable link and don't overflow", () => {
+  assert.match(setup, /link\.className = "setup-step-link"/);
+  assert.match(setup, /link\.append\(title, flag\)/);
+  assert.match(css, /#app #setup-guidance-panel \.setup-step-link/);
+  assert.match(css, /overflow-wrap: anywhere/);
+  assert.match(css, /@media\(max-width: 700px\)/);
 });

@@ -538,3 +538,138 @@ label { color: var(--nb-text); }
   #identity-builder-panel .identity-editor-content > .preferences-grid { grid-template-columns: 1fr; }
   #identity-builder-panel .identity-editor-content { padding: 14px; }
 }
+
+/* Single-page workspace: navigation scrolls the same document, no hidden panels. */
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+#app .shell[data-workspace-view] .metrics { display: grid; }
+#app .shell[data-workspace-view] .grid { grid-row: 3; }
+#app .shell[data-workspace-view]:not([data-workspace-view="overview"]) .topbar {
+  min-height: 210px; padding: clamp(24px, 3vw, 40px);
+}
+#app .shell[data-workspace-view]:not([data-workspace-view="overview"]) .topbar h1 {
+  font-size: clamp(30px, 3.3vw, 49px); margin: 10px 0 14px;
+}
+#app .workspace-nav { z-index: 25; align-self: start; }
+#app .workspace-nav a { min-width: 0; scroll-margin-top: 70px; }
+#app .workspace-section {
+  grid-column: 1 / -1; min-width: 0; display: grid; gap: 16px;
+  scroll-margin-top: 26px;
+}
+#app .workspace-section + .workspace-section { margin-top: clamp(16px, 3vw, 32px); }
+#app .workspace-section-heading {
+  min-width: 0; padding: 8px 3px 5px;
+}
+#app .workspace-section-heading h2 {
+  font-size: clamp(23px, 2vw, 31px); line-height: 1.2; letter-spacing: -.035em; margin: 7px 0 8px;
+}
+#app .workspace-section-heading .subtle { max-width: 760px; }
+#app .workspace-section-panels {
+  min-width: 0; display: grid; grid-template-columns: repeat(12,minmax(0,1fr));
+  align-items: start; gap: 18px;
+}
+#app .workspace-section-panels > .panel { grid-column: span 6; min-width: 0; }
+#app .workspace-section-panels > .panel.panel-wide,
+#app .workspace-section-panels > #profile-settings,
+#app .workspace-section-panels > #identity-builder-panel,
+#app .workspace-section-panels > #texting-style-learning-panel,
+#app .workspace-section-panels > #personal-memory-panel,
+#app .workspace-section-panels > #texting-style-examples,
+#app .workspace-section-panels > #setup-guidance-panel { grid-column: 1 / -1; }
+#app .workspace-section-placeholder {
+  grid-column: 1 / -1; color: var(--nb-text-muted); font-size: 14px;
+  padding: 20px 22px; background: var(--nb-surface);
+  border: 1px dashed var(--nb-border); border-radius: var(--nb-radius-lg);
+}
+#app :is(.workspace-section, .workspace-section-panels, .panel, .panel-heading,
+ .preferences-grid, .adaptive-preference, .conversation-layout, .memory-workspace,
+ .conversation-detail, .setup-story-item, .workspace-actions) { min-width: 0; }
+#app .panel :is(button, input, select, textarea, a) { max-width: 100%; }
+#app .panel :is(button, .secondary) { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+#app .panel :is(.workspace-actions, .action-item__buttons, .temporary-instruction-actions,
+ .conversation-status-actions, .setup-recommendations) { flex-wrap: wrap; }
+#app .panel :is(.panel-heading, .workspace-review-heading, .conversation-detail-heading) > * { min-width: 0; }
+#app .panel :is(.pill, .status) { max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
+#app .panel :is(.management-row, .conversation-row, .setup-story-item, .memory-list-item) { min-width: 0; overflow-wrap: anywhere; }
+
+/* Setup card itself is the link: no browser-default blue/purple underline. */
+#app #setup-guidance-panel .setup-checklist {
+  list-style: none; padding: 0; margin: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;
+}
+#app #setup-guidance-panel .setup-checklist li {
+  display: block; padding: 0; margin: 0; min-width: 0;
+  background: var(--nb-surface); border: 1px solid var(--nb-border);
+  border-radius: var(--nb-radius-md); overflow: hidden;
+  transition: border-color .16s ease, background-color .16s ease, transform .16s ease;
+}
+#app #setup-guidance-panel .setup-checklist li:hover {
+  border-color: var(--nb-primary); background: var(--nb-surface-soft);
+}
+#app #setup-guidance-panel .setup-checklist li[data-state="complete"] {
+  background: var(--nb-surface-soft);
+}
+#app #setup-guidance-panel .setup-checklist li.setup-next {
+  border: 2px solid var(--nb-primary);
+}
+#app #setup-guidance-panel .setup-step-link {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; width: 100%; min-height: 64px; padding: 12px 16px;
+  text-decoration: none; color: var(--nb-text); font-size: 14px; font-weight: 750;
+}
+#app #setup-guidance-panel .setup-step-link:focus-visible {
+  outline: 3px solid var(--nb-focus); outline-offset: -4px;
+}
+#app #setup-guidance-panel .setup-step-name {
+  display: block; flex: 1 1 auto; min-width: 0; line-height: 1.4;
+  overflow-wrap: anywhere; text-decoration: none;
+}
+#app #setup-guidance-panel .setup-check-state {
+  display: inline-flex; flex: 0 0 auto; max-width: 40%;
+  align-items: center; justify-content: center;
+  padding: 6px 10px; border-radius: 999px; font-size: 11px;
+  border: 1px solid var(--nb-border); background: var(--nb-surface);
+  color: var(--nb-text-muted); white-space: normal; text-align: center;
+}
+#app #setup-guidance-panel .setup-check-state[data-state="complete"] {
+  color: var(--nb-primary); background: var(--nb-mint);
+}
+#app #setup-guidance-panel .setup-checklist li.setup-next .setup-check-state {
+  color: var(--nb-on-primary); background: var(--nb-primary);
+}
+#app #setup-guidance-panel .setup-story-item {
+  display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center;
+  gap: 10px 14px; padding: 14px 16px;
+}
+#app #setup-guidance-panel .setup-story-item strong,
+#app #setup-guidance-panel .setup-story-item p { grid-column: 1 / -1; min-width: 0; margin: 0; }
+#app #setup-guidance-panel .setup-story-item a,
+#app #setup-guidance-panel .setup-story-item button {
+  width: fit-content; max-width: 100%; overflow-wrap: anywhere; min-width: 0;
+}
+@media(max-width: 1180px) {
+  #app .workspace-section-panels > .panel { grid-column: 1 / -1; }
+}
+@media(max-width: 840px) {
+  #app .workspace-nav {
+    position: sticky; top: 0; z-index: 30;
+    max-height: none; overflow-x: auto; overflow-y: hidden;
+    overscroll-behavior-x: contain; scrollbar-width: thin;
+    background: var(--nb-surface); box-shadow: var(--nb-shadow);
+  }
+  html { scroll-padding-top: 90px; }
+  #app .workspace-section,
+  #app .workspace-section-panels > .panel { scroll-margin-top: 90px; }
+  #app .workspace-section-panels { grid-template-columns: minmax(0,1fr); gap: 14px; }
+}
+@media(max-width: 700px) {
+  #app #setup-guidance-panel .setup-checklist { grid-template-columns: minmax(0,1fr); }
+  #app #setup-guidance-panel .setup-story-item { grid-template-columns: minmax(0, 1fr); }
+}
+@media(max-width: 480px) {
+  #app #setup-guidance-panel .setup-step-link { padding: 11px 12px; }
+  #app #setup-guidance-panel .setup-check-state { max-width: 46%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  #app #setup-guidance-panel .setup-checklist li { transition: none; }
+}
