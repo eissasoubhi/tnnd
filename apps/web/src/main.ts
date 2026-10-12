@@ -2,9 +2,12 @@ import "./styles.css";
 import "./neo-bento.css";
 import { bindActionCenter, loadHumanActions, readHumanActions, renderActionCenter, type HumanActionItem } from "./action-center";
 import { readSession } from "./auth-client";
+import { listConversations } from "./conversation-client";
+import { countOverviewStatuses } from "./overview-metrics";
 import { fetchProfile, saveProfile } from "./profile-client";
 import { downloadProfile, parseImportedProfile, type ImportedProfile } from "./profile-import";
 import { datingGoals, disclosureStrategies, readEditablePreferences, writeEditablePreferences } from "./profile-preferences";
+import { groupForPanelId, viewForHash, workspaceCopy, type WorkspaceView } from "./workspace-sections";
 
 let optionalPanelsLoaded = false;
 
@@ -61,18 +64,56 @@ const options = (values: readonly string[]) => values.map((value) => `<option va
 
 function initWorkspaceNavigation(): void {
   const nav = document.querySelector<HTMLElement>(".workspace-nav");
-  if (!nav) return;
+  const grid = document.querySelector<HTMLElement>("#conversation-workspace");
+  const shell = document.querySelector<HTMLElement>(".shell");
+  const title = document.querySelector<HTMLElement>("#workspace-title");
+  const description = document.querySelector<HTMLElement>("#workspace-description");
+  const sectionLabel = document.querySelector<HTMLElement>("#workspace-location");
+  const empty = document.querySelector<HTMLElement>("#workspace-section-empty");
+  if (!nav || !grid || !shell) return;
+
   const links = Array.from(nav.querySelectorAll<HTMLAnchorElement>('a[href^="#"]'));
+  let lastScrolledHash = "";
   const update = (): void => {
-    const current = decodeURIComponent(window.location.hash.slice(1)) || "workspace-overview";
-    const selected = links.find((link) => link.hash.slice(1) === current)
-      ?? links.find((link) => link.hash === "#workspace-overview");
+    const targetId = decodeURIComponent(window.location.hash.slice(1)) || "workspace-overview";
+    const target = document.getElementById(targetId);
+    const panelId = target?.closest<HTMLElement>(".panel")?.id ?? "";
+    const view: WorkspaceView = viewForHash(window.location.hash, panelId);
+    shell.dataset.workspaceView = view;
+    if (title) title.textContent = workspaceCopy[view].title;
+    if (description) description.textContent = workspaceCopy[view].subtitle;
+    if (sectionLabel) sectionLabel.textContent = workspaceCopy[view].label;
     for (const link of links) {
-      if (link === selected) link.setAttribute("aria-current", "location");
+      const linkView = viewForHash(link.hash);
+      if (linkView === view) link.setAttribute("aria-current", "location");
       else link.removeAttribute("aria-current");
+    }
+    let visible = 0;
+    for (const panel of Array.from(grid.children)) {
+      if (!(panel instanceof HTMLElement) || panel === empty) continue;
+      const group = groupForPanelId(panel.id);
+      const show = group === view || (view === "overview" && panel.id === "auth-panel" && !readSession());
+      panel.hidden = !show;
+      if (show) visible++;
+    }
+    if (empty) {
+      empty.hidden = visible > 0 || view === "overview";
+      if (!empty.hidden) {
+        const label = empty.querySelector<HTMLElement>("[data-empty-view]");
+        if (label) label.textContent = workspaceCopy[view].label;
+      }
+    }
+    if (window.location.hash && target && lastScrolledHash !== window.location.hash) {
+      lastScrolledHash = window.location.hash;
+      const navigationLink = links.some((link) => link.hash === window.location.hash);
+      const scrollTarget = navigationLink ? document.querySelector(".topbar") : target;
+      window.requestAnimationFrame(() => scrollTarget?.scrollIntoView({ block: "start" }));
     }
   };
   window.addEventListener("hashchange", update);
+  const observer = new MutationObserver(update);
+  observer.observe(grid, { childList: true });
+  window.addEventListener("tnnd:auth-session-changed", update);
   update();
 }
 
@@ -80,9 +121,9 @@ app.innerHTML = `
   <section class="shell">
     <header class="topbar" id="workspace-overview">
       <div>
-        <p class="eyebrow">TNND / Your workspace</p>
-        <h1>Your conversation universe.</h1>
-        <p class="subtle">Conversations, memories and your identity — thoughtfully organized in one private place.</p>
+        <p class="eyebrow">TNND / <span id="workspace-location">Overview</span></p>
+        <h1 id="workspace-title">Your conversation universe.</h1>
+        <p class="subtle" id="workspace-description">A quick view of your conversations, setup and next steps.</p>
       </div>
       <span class="status">Private by design</span>
     </header>
@@ -100,11 +141,12 @@ app.innerHTML = `
     </section>
 
     <section class="grid" id="conversation-workspace">
-      <article class="panel" id="profile-settings">
+      <div id="workspace-section-empty" class="workspace-empty-state" hidden><h2>No <span data-empty-view>items</span> yet</h2><p>This space becomes available when you connect your account and complete the initial setup.</p><a href="#workspace-overview">Go to setup overview →</a></div>
+      <article class="panel" id="profile-import-panel">
         <div class="panel-heading">
           <div>
-            <p class="eyebrow">Account</p>
-            <h2>Profile import / export</h2>
+            <p class="eyebrow">Backup</p>
+            <h2>Import & export</h2>
           </div>
           <span class="pill" id="profile-status">No profile</span>
         </div>
@@ -114,7 +156,7 @@ app.innerHTML = `
         <p class="subtle" id="profile-message" role="status"></p>
       </article>
 
-      <article class="panel">
+      <article class="panel panel-wide" id="profile-settings">
         <div class="panel-heading">
           <div>
             <p class="eyebrow">Preferences</p>
@@ -122,7 +164,7 @@ app.innerHTML = `
           </div>
           <span class="pill" id="preferences-status">Import a profile first</span>
         </div>
-        <div class="preferences-grid">
+        <div class="preferences-grid" id="profile-preferences-grid">
           <label>Dating goal<select id="dating-goal">${options(datingGoals)}</select></label>
           <label>Disclosure<select id="disclosure-strategy">${options(disclosureStrategies)}</select></label>
           <label>Formality<select id="text-formality"><option value="very-casual">very-casual</option><option value="casual">casual</option><option value="neutral">neutral</option></select></label>
@@ -170,15 +212,6 @@ window.addEventListener("tnnd:auth-session-changed", () => {
   void loadOptionalPanels();
 });
 
-// Highlight the current workspace section without introducing a router dependency.
-const workspaceNav = document.querySelector<HTMLElement>(".workspace-nav");
-workspaceNav?.querySelectorAll<HTMLAnchorElement>('a[href^="#"]').forEach((link) => {
-  link.addEventListener("click", () => {
-    workspaceNav.querySelectorAll("a").forEach((item) => item.removeAttribute("aria-current"));
-    link.setAttribute("aria-current", "location");
-  });
-});
-
 const status = document.querySelector<HTMLElement>("#profile-status");
 const message = document.querySelector<HTMLElement>("#profile-message");
 const input = document.querySelector<HTMLInputElement>("#profile-file");
@@ -216,6 +249,43 @@ const adaptiveCheckboxes = {
 const actionCenter = document.querySelector<HTMLElement>("#action-center");
 const actionCount = document.querySelector<HTMLElement>("#action-count");
 const humanActionMetric = document.querySelector<HTMLElement>('[data-metric-state="Action required"]');
+let overviewRefreshId = 0;
+async function refreshOverviewMetrics(): Promise<void> {
+  const run = ++overviewRefreshId;
+  const session = readSession();
+  const metric = (status: string): HTMLElement | null => document.querySelector<HTMLElement>('[data-metric-state="' + status + '"]');
+  if (!session) {
+    for (const state of ["Active", "Waiting for them", "Paused"]) {
+      const field = metric(state);
+      if (field) field.textContent = "—";
+    }
+    return;
+  }
+  try {
+    const list = await listConversations(session);
+    if (run !== overviewRefreshId || readSession()?.user.id !== session.user.id) return;
+    const counts = countOverviewStatuses(list);
+    const pairs: Array<[string, number]> = [
+      ["Active", counts.active],
+      ["Waiting for them", counts.waitingForThem],
+      ["Paused", counts.paused]
+    ];
+    for (const [state, count] of pairs) {
+      const field = metric(state);
+      if (field) field.textContent = String(count);
+    }
+  } catch {
+    if (run !== overviewRefreshId) return;
+    for (const state of ["Active", "Waiting for them", "Paused"]) {
+      const field = metric(state);
+      if (field) field.textContent = "—";
+    }
+  }
+}
+window.addEventListener("tnnd:conversation-updated", () => { void refreshOverviewMetrics(); });
+window.addEventListener("tnnd:auth-session-changed", () => { void refreshOverviewMetrics(); });
+void refreshOverviewMetrics();
+
 
 let currentProfile: ImportedProfile | null = null;
 
@@ -391,6 +461,48 @@ window.addEventListener("tnnd:profile-updated", () => {
   void refreshProfile();
 });
 
+function organizeProfilePreferences(): void {
+  const original = document.querySelector<HTMLElement>("#profile-preferences-grid");
+  if (!original || original.dataset.organized) return;
+  original.dataset.organized = "true";
+  const groups = [
+    { title: "Conversation identity", description: "Your intent and how you present yourself.", expanded: true, ids: ["dating-goal", "disclosure-strategy"] },
+    { title: "Your baseline & Auto-adapt", description: "Choose a starting style. TNND adapts without rewriting your preference.", expanded: true, ids: ["message-length", "directness", "teasing-style", "humor-style", "double-texting"] },
+    { title: "Language & culture", description: "French, English and Moroccan Darija keep their own natural style.", expanded: true, ids: ["french-style", "darija-style", "english-style", "adapt-languages"] },
+    { title: "Writing details", description: "Fine-tune grammar, punctuation and emoji usage when you need to.", expanded: false, ids: ["text-formality", "capitalization", "emoji-frequency", "abbreviations", "punctuation-density", "slang-level", "fragment-style", "grammar-style", "question-frequency"] },
+    { title: "Privacy & retention", description: "Choose how long temporary match context remains available.", expanded: false, ids: ["match-profile-retention-days"] }
+  ];
+  const layout = document.createElement("div");
+  layout.className = "preference-sections";
+  for (const group of groups) {
+    const details = document.createElement("details");
+    details.className = "preference-section";
+    details.open = group.expanded;
+    const summary = document.createElement("summary");
+    const heading = document.createElement("strong");
+    heading.textContent = group.title;
+    const hint = document.createElement("span");
+    hint.textContent = group.description;
+    summary.append(heading, hint);
+    details.append(summary);
+    const fields = document.createElement("div");
+    fields.className = "preferences-grid preference-section-grid";
+    for (const controlId of group.ids) {
+      const field: Element | null = original.querySelector("#" + controlId);
+      const row: HTMLElement | null = field?.closest(".adaptive-preference") ?? field?.closest("label") ?? null;
+      if (row && row.parentElement === original) fields.append(row);
+    }
+    details.append(fields);
+    layout.append(details);
+  }
+  if (original.children.length) {
+    const other = layout.querySelector<HTMLElement>(".preference-section-grid");
+    other?.append(...Array.from(original.children));
+  }
+  original.replaceWith(layout);
+}
+
+organizeProfilePreferences();
 initWorkspaceNavigation();
 if (actionCenter) bindActionCenter(actionCenter, refreshActionCounts);
 void refreshActionCenter();
