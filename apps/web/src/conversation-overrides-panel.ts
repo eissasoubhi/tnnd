@@ -271,7 +271,15 @@ async function mountInlineEditor(): Promise<void> {
       const sources = result.provenance.overriddenFields.length
         ? `Chat overrides: ${result.provenance.overriddenFields.join(", ")}. `
         : "Global defaults only. ";
-      generationProvenance.textContent = `${sources}Persistent instruction: ${result.provenance.hasPersistentInstruction ? "yes" : "no"}; temporary instruction: ${result.provenance.hasTemporaryInstruction ? "yes" : "no"}; preview steering: ${result.provenance.hasPreviewInstruction ? "yes" : "no"}. Model: ${result.model}.`;
+      const adapted = result.provenance.adaptiveStyle;
+      const adaptedText = adapted ? Object.entries(adapted.effective)
+        .map(([key, value]) => {
+          const display = key === "languages" && value && typeof value === "object"
+            ? Object.entries(value).map(([lang, weight]) => `${lang} ${weight}%`).join(" / ")
+            : String(value);
+          return `${key}: ${display} (${adapted.reasons[key] ?? "baseline"})`;
+        }).join(" · ") : "";
+      generationProvenance.textContent = `${sources}Persistent instruction: ${result.provenance.hasPersistentInstruction ? "yes" : "no"}; temporary instruction: ${result.provenance.hasTemporaryInstruction ? "yes" : "no"}; preview steering: ${result.provenance.hasPreviewInstruction ? "yes" : "no"}. Model: ${result.model}. ${adaptedText ? "Effective style for this reply: " + adaptedText : ""}`;
       generationStatus.textContent = regenerate && previewInstruction ? "Draft regenerated with preview feedback" : "Draft ready";
     } catch (error) {
       generationStatus.textContent = error instanceof Error ? error.message : "Unable to generate draft.";
