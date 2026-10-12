@@ -71,6 +71,7 @@ function initWorkspaceNavigation(): void {
   if (!nav || !grid || !shell) return;
 
   const links = Array.from(nav.querySelectorAll<HTMLAnchorElement>('a[href^="#"]'));
+  let lastScrolledHash = "";
   const update = (): void => {
     const targetId = decodeURIComponent(window.location.hash.slice(1)) || "workspace-overview";
     const target = document.getElementById(targetId);
@@ -99,6 +100,12 @@ function initWorkspaceNavigation(): void {
         const label = empty.querySelector<HTMLElement>("[data-empty-view]");
         if (label) label.textContent = workspaceCopy[view].label;
       }
+    }
+    if (window.location.hash && target && lastScrolledHash !== window.location.hash) {
+      lastScrolledHash = window.location.hash;
+      const navigationLink = links.some((link) => link.hash === window.location.hash);
+      const scrollTarget = navigationLink ? document.querySelector(".topbar") : target;
+      window.requestAnimationFrame(() => scrollTarget?.scrollIntoView({ block: "start" }));
     }
   };
   window.addEventListener("hashchange", update);
@@ -442,8 +449,8 @@ function organizeProfilePreferences(): void {
     const fields = document.createElement("div");
     fields.className = "preferences-grid preference-section-grid";
     for (const controlId of group.ids) {
-      const control = original.querySelector<HTMLElement>("#" + controlId);
-      const row = control?.closest<HTMLElement>(".adaptive-preference") ?? control?.closest<HTMLElement>("label");
+      const field: Element | null = original.querySelector("#" + controlId);
+      const row: HTMLElement | null = field?.closest(".adaptive-preference") ?? field?.closest("label") ?? null;
       if (row && row.parentElement === original) fields.append(row);
     }
     details.append(fields);
