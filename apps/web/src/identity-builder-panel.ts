@@ -85,7 +85,7 @@ function escapeHtml(value: string): string {
 }
 
 function sourceIsCurrent(): boolean {
-  return Boolean(current && source.value.trim() === current.sourceText);
+  return Boolean(current && source.value.trim() === current.sourceText.trim());
 }
 
 function editedAnalysis(): IdentityStructuredAnalysis {
