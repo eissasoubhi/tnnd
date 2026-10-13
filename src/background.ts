@@ -3,6 +3,8 @@ import "./tinder-checkpoint-background";
 import "./tinder-message-cursor-background";
 import "./tinder-unread-observation-background";
 import "./tinder-new-match-background";
+import "./tinder-global-new-match-runner";
+import { newMatchSendPermission } from "./tinder-new-match-background";
 import "./tinder-global-existing-runner";
 import { generateSuggestions } from "./gemini";
 import { loadTinderConversationManagement } from "./tinder-backend-management";
@@ -71,6 +73,7 @@ type TrustedContentRequest =
   | { type: "TNND_GET_CHAT_AUTOMATION"; threadKey: string }
   | { type: "TNND_GET_BACKEND_AUTO_SEND_PERMISSION"; conversationRef: string }
   | { type: "TNND_GET_FIRST_MESSAGE_PERMISSION"; conversationRef: string }
+  | { type: "TNND_GET_NEW_MATCH_SEND_PERMISSION"; conversationRef: string }
   | { type: "TNND_CLAIM_FIRST_MESSAGE"; conversationRef: string }
   | { type: "TNND_SYNC_VISIBLE_MATCH_IDENTITY"; conversationRef: string; identity: VisibleTinderMatchIdentity }
   | { type: "TNND_GET_AUTO_STATE" }
@@ -208,6 +211,18 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
     void getChatSettings(message.threadKey)
       .then((chat) => sendResponse({ ok: true, enabled: chat.enabled }))
       .catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : "Could not load TNND chat configuration." }));
+    return true;
+  }
+
+  if (message.type === "TNND_GET_NEW_MATCH_SEND_PERMISSION") {
+    const ref = message.conversationRef?.trim();
+    if (!ref || senderThreadRef(sender) !== ref || typeof sender.tab?.id !== "number") {
+      sendResponse({ ok: true, allowed: false });
+      return false;
+    }
+    void newMatchSendPermission(ref, sender.tab.id)
+      .then(allowed => sendResponse({ ok: true, allowed }))
+      .catch(() => sendResponse({ ok: true, allowed: false }));
     return true;
   }
 
