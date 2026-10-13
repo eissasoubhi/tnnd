@@ -38,8 +38,8 @@ async function refreshAnalytics(): Promise<void> {
   const status = document.querySelector<HTMLElement>("#analytics-refresh-status");
   if (status) status.textContent = "Refreshing insights…";
   try {
-    await mountAnalyticsDashboard(container);
-    if (status) status.textContent = "Insights are up to date.";
+    const result = await mountAnalyticsDashboard(container);
+    if (status) status.textContent = result.mounted ? "Insights are up to date." : result.reason === "missing-session" ? "Sign in to see analytics." : "Could not load analytics. Check the API connection and retry.";
   } catch (error) {
     if (status) status.textContent = error instanceof Error ? error.message : "Unable to load insights. Try refreshing.";
   } finally {
