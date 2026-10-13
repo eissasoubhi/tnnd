@@ -66,4 +66,23 @@ assert.equal(failedFunction.level, "warning");
 assert.match(failedFunction.summary, /API\/function failure/);
 assert.ok(failedFunction.evidence.some(text => /Docker API logs/.test(text)));
 
+// Reproduces the real ZIP: a POST 500 at T, health checked T+62s.
+const older = analyzeWebDiagnosticState({
+  ...base,
+  lastHeartbeatAt: 89_500,
+  events: [{
+    kind: "ui-click", pageSessionId: "page-1", at: 27_500, detail: "generate-draft"
+  }, {
+    kind: "fetch-end", pageSessionId: "page-1", at: 28_000,
+    id: "generate", url: "http://127.0.0.1:5173/api/v1/conversations/[conversation]/generate",
+    method: "POST", status: 500
+  }, {
+    kind: "app-error", pageSessionId: "page-1", at: 28_001,
+    id: "generate", url: "http://127.0.0.1:5173/api/v1/conversations/[conversation]/generate",
+    method: "POST", status: 500, detail: "internal_error"
+  }]
+}, 90_000);
+assert.equal(older.level, "warning");
+assert.match(older.summary, /API\/function failure/);
+
 console.log("TNND Web self-diagnostic checks passed.");
