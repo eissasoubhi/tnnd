@@ -93,7 +93,9 @@ export function buildSystemInstruction(config: AppConfig, count: number, purpose
 
 export function buildUserPrompt(context: string, purpose: GeneratePurpose): string {
   return [
-    purpose === "auto" ? "Write the next reply to the latest incoming Tinder message." : "Draft the next dating-app message from this conversation/profile context.",
+    purpose === "opener"
+      ? "Write the very first Tinder message in a new chat. There is no incoming message to answer. Never imply you already talked."
+      : purpose === "auto" ? "Write the next reply to the latest incoming Tinder message." : "Draft the next dating-app message from this conversation/profile context.",
     "Use the recent conversation flow, answer what was actually said, and avoid abruptly changing subject.",
     "If there is no conversation yet, use something specific from the profile context instead of a generic hello.",
     "If context is incomplete, stay generic rather than inventing details.",
