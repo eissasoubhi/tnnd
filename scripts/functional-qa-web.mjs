@@ -323,7 +323,7 @@ async function main() {
             await new Promise(done => setTimeout(done, 500));
           }
         }
-        return {ok:false,error:failure,tabId:tab.id};
+        return {ok:false,error:failure,tabId:tab.id,tabs:tabs.map(t=>({id:t.id,url:t.url,active:t.active,status:t.status}))};
       })()`);
       assert.ok(audit?.ok && audit.report, "Extension-to-Web UI audit failed: " + JSON.stringify(audit));
       assert.equal(audit.report.sections, 7, "Expected all workspace sections");
