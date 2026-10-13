@@ -458,7 +458,7 @@ async function scan(): Promise<void> {
 /** One explicitly confirmed first message, never triggered by the observation loop.
  * Send attempts are persisted before clicking Tinder, so uncertain sends are
  * never repeated automatically. Live Tinder selector verification is required. */
-async function startFirstMessage(expectedThreadKey: string): Promise<{ ok: boolean; error?: string; sent?: boolean }> {
+async function startFirstMessage(expectedThreadKey: string, mode: "individual" | "global-new" = "individual"): Promise<{ ok: boolean; error?: string; sent?: boolean }> {
   if (busy) return { ok: false, error: "TNND is already processing a message. Try again later." };
   busy = true;
   try {
@@ -468,6 +468,10 @@ async function startFirstMessage(expectedThreadKey: string): Promise<{ ok: boole
     const state = await getState();
     if (!conversationRef || !config || !state) return { ok: false, error: "Open the Tinder chat and connect TNND first." };
 
+    if (mode === "global-new") {
+      const global = await sendRuntimeMessage<{ ok: boolean; allowed?: boolean }>({ type: "TNND_GET_NEW_MATCH_SEND_PERMISSION", conversationRef });
+      if (!global?.allowed) return { ok: false, error: "Global new-match automation was stopped or the tab is not authorized." };
+    }
     const permission = await sendRuntimeMessage<{ ok: boolean; allowed?: boolean; savedMessageCount?: number; reason?: string }>({
       type: "TNND_GET_FIRST_MESSAGE_PERMISSION", conversationRef
     });
@@ -518,6 +522,10 @@ async function startFirstMessage(expectedThreadKey: string): Promise<{ ok: boole
       return { ok: false, error: "The chat or permissions changed. First message not sent." };
     }
 
+    if (mode === "global-new") {
+      const global = await sendRuntimeMessage<{ ok: boolean; allowed?: boolean }>({ type: "TNND_GET_NEW_MATCH_SEND_PERMISSION", conversationRef });
+      if (!global?.allowed) return { ok: false, error: "New-match mode was stopped before Tinder send." };
+    }
     const attemptedAt = Date.now();
     freshState.processed[firstMessageAttemptKey(conversationRef)] = attemptedAt;
     freshState.dailyCount += 1;
@@ -549,12 +557,12 @@ async function startFirstMessage(expectedThreadKey: string): Promise<{ ok: boole
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (!message || typeof message !== "object") return false;
   const input = message as { type?: unknown; threadKey?: unknown };
-  if (input.type !== "TNND_START_FIRST_MESSAGE") return false;
+  if (input.type !== "TNND_START_FIRST_MESSAGE" && input.type !== "TNND_AUTO_START_NEW_MATCH") return false;
   if (sender.id !== chrome.runtime.id || typeof input.threadKey !== "string") {
     sendResponse({ ok: false, error: "Untrusted first-message request." });
     return false;
   }
-  void startFirstMessage(input.threadKey).then(sendResponse);
+  void startFirstMessage(input.threadKey, input.type === "TNND_AUTO_START_NEW_MATCH" ? "global-new" : "individual").then(sendResponse);
   return true;
 });
 
@@ -581,4 +589,5 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
 observer = new MutationObserver(scheduleScan);
 observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
 window.addEventListener("focus", scheduleScan);
+window.setInterval(() => { void observeNewMatchLinks().catch(() => undefined); }, 30_000);
 scheduleScan();

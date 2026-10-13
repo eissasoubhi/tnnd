@@ -1,30 +1,29 @@
-# Global existing conversations vs. new matches
+# TNND global AI: existing conversations and future matches
 
-Two independent workflows, preserving per-chat controls.
+These are **two independently controlled modes**. Individual per-chat controls remain effective for both. None is enabled by installing the extension.
 
-## 1. Existing conversations (implemented)
+## Existing conversations — Start/Stop
 
-TNND Web → **Conversation management** → **Existing conversations · global AI takeover**:
+1. TNND Web → Conversation management → **Start existing chats**. Review eligible/blocked counts and confirm. Chats marked Manual, Archived, Disabled, unsynced or requiring human attention are excluded.
+2. In the extension, enable the global automatic-reply switch and connect your TNND account.
+3. Extension popup → **Start global existing chat runner**. An inactive dedicated Tinder tab visits each previously synced, active, explicitly AI-managed conversation. TNND responds only when an incoming message is actually detected and re-checks authorization before sending.
+4. Stop with **Stop global existing runner**. Per-chat overrides and manual controls still apply; Chrome must stay open.
 
-- **Start existing chats**: inspect the eligible/blocked/excluded counts, confirm explicitly, bulk-enroll already synced conversations with messages (100 per server transaction), and Resume eligible paused chats one at a time.
-- **Stop existing chats**: confirm, then pause server automation for already AI-managed existing chats. Their AI-managed selections remain saved and can be Resumed individually.
-- Explicitly manual, archived/moved-off Tinder, disabled, unsynced, empty-history, and human-action-blocked chats are skipped when starting.
-- This enrollment does not send Tinder messages itself. To visit more than one chat, use the **extension popup → Existing conversations → Start global existing chat runner**. The runner opens an inactive, dedicated Tinder tab, cycles only active AI-managed chats with actual saved messages, and lets the per-chat extension engine independently validate each new incoming reply. Stop closes the managed Tinder tab and clears the recurring alarm. Chrome must remain open; browser timer throttling can delay processing.
-- Keep manual single-chat Start/Resume/Pause/Disable and Tinder popup per-chat enabled settings. Enable **automatic replies on Tinder** in extension Options before starting the dedicated runner. Runtime checks still enforce per-chat permission, quiet hours, and daily limits. The background runner never sends messages directly.
+## Future matches — separately enabled first AI message
 
-## 2. Future matches (read-only detection foundation, NOT sending)
+1. Open Tinder → **Matches** in the left sidebar. Let at least two existing match tiles load.
+2. Extension popup → **Start AI on future matches**. Confirm that this mode may send first Tinder messages, up to **five per day**.
+3. TNND records all *currently visible* match tiles as the baseline. They do not receive new messages because of this action. Leave Tinder's **Matches** sidebar visible in a tab with Chrome running. A new match tile must appear **at the front**, ahead of known tiles and remain visible on two scans at least 15 seconds apart. A profile tile appearing in the middle/end of the list is treated as old/lazy-loaded and **not** queued.
+4. A queued match is visited in a separate worker tab and linked to its exact Tinder conversation. TNND refuses sending unless the composer is found, the server message history is empty, existing manual/moved/archived choices are absent, and the account and per-chat settings permit AI. Gemini composes one opener using only observed profile details; a single durable send claim prevents duplicate attempts.
+5. After the first sent message, the match is AI managed on TNND; the normal conversation flow can answer future incoming messages. If Tinder refuses or the send status is uncertain, TNND does not blindly retry. Check Tinder and the extension popup status.
+6. **Stop new-match AI** turns off this mode and its alarm; the existing-chat runner remains independently controlled.
 
-Open Tinder, select **Matches** in the left sidebar, and open the TNND extension popup (the current conversation URL may remain unchanged):
+A newly displayed match tile cannot prove the match was created at that precise moment. The top-insertion and repeated-presence checks significantly narrow this ambiguity, but only a live Tinder test with a genuinely new match can validate real behavior. Do not start unsupervised at first: verify the first successful sending and check for unexpected Tinder UI changes or rate limits.
 
-- **Start detecting future matches** records a baseline of verified, visible, same-origin Tinder `matchListItem` tiles (never the Likes You promotional tile or Message rows) after confirmation.
-- Links appearing later are tracked as **newly observed**, not guaranteed newly created Tinder matches. DOM lazy loading can make an old chat appear for the first time.
-- **Stop detection** turns off monitoring without changing existing conversation automation.
-- No automatic first messages are sent by this detector. The pre-existing first-message button still works individually with its strict permission, empty-chat and duplicate-send gates.
+The two provided user diagnostic ZIPs showed that Tinder keeps a conversation URL while switching the left sidebar, with `a.messageListItem` rows on Messages and `a.matchListItem` tiles on Matches. The URLs, names, images and other private contents are **not** committed to this repository.
 
-**Next implementation milestone before any bulk new-match first message:** obtain a sanitized live Tinder DOM diagnostic from the user showing both the Matches tab and the Messages sidebar, with a known newly created match, and validate real creation-time evidence and stable thread identity. Only then connect a throttled, stateful, opt-in queue to the first-message send gate; never infer true match creation from a previously unseen link. Do not auto-send from fixture selectors alone.
+## Automated validation
 
-## Verification
+Run `npm run build`, `npm run test:new-match-observation`, `npm run test:global-new-match-runner`, and `cd apps/web && npm test`.
 
-`npm run build`, `npm run test:new-match-observation`, `npm run test:global-existing-runner`, `cd apps/web && npm test`, `cd apps/api && npm test`.
-
-CI uses synthetic records, not real Tinder sending.
+CI does **not** message real Tinder matches. Extension popup and tab state must be validated manually with Tinder.

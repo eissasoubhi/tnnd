@@ -3,7 +3,9 @@ import {
   observeNewMatchLinks, stopNewMatchObservation
 } from "./tinder-new-match-observation";
 
-const KEY = "tnnd.newMatchLinkObservation.v2";
+import { getBackendSession, getConfig } from "./storage";
+import { finishNewMatchAttempt } from "./tinder-new-match-observation";
+const KEY = "tnnd.newMatchLinkObservation.v3";
 
 type Request =
   | { type: "TNND_NEW_MATCH_OBSERVATION_STATE" }
@@ -29,11 +31,11 @@ function tinderSender(sender: chrome.runtime.MessageSender): boolean {
   } catch { return false; }
 }
 
-async function read() {
+export async function readNewMatchState() {
   const value = (await chrome.storage.local.get(KEY))[KEY];
   return isNewMatchObservationState(value) ? value : emptyNewMatchState();
 }
-async function write(value: ReturnType<typeof emptyNewMatchState>) {
+export async function saveNewMatchState(value: ReturnType<typeof emptyNewMatchState>) {
   await chrome.storage.local.set({ [KEY]: value });
   return value;
 }
@@ -44,25 +46,58 @@ function serialized<T>(job: () => Promise<T>): Promise<T> {
   return result;
 }
 
+/** Protected service worker queue operations, never directly exposed to Tinder pages. */
+export async function newMatchSendPermission(ref: string, tabId: number): Promise<boolean> {
+  const state = await readNewMatchState();
+  const session = await getBackendSession();
+  const stored = (await chrome.storage.local.get("tnnd.newMatchOwnedTab.v1"))["tnnd.newMatchOwnedTab.v1"] as { tabId?: number; ref?: string; userId?: string } | undefined;
+  return Boolean(state.enabled && state.autoSendEnabled && session?.user.id === state.userId
+    && state.pendingRefs.includes(ref) && stored?.tabId === tabId && stored?.ref === ref && stored?.userId === session?.user.id);
+}
+export async function updateNewMatchAttempt(ref: string, sent: boolean, result: string): Promise<void> {
+  await serialized(async () => {
+    const state = await readNewMatchState();
+    await saveNewMatchState(finishNewMatchAttempt(state, ref, sent, result));
+  });
+}
 chrome.runtime.onMessage.addListener((message: Request, sender, respond) => {
   if (!message || typeof message !== "object" || !("type" in message)) return false;
   const types = ["TNND_NEW_MATCH_OBSERVATION_STATE", "TNND_NEW_MATCH_OBSERVATION_START", "TNND_NEW_MATCH_OBSERVATION_STOP", "TNND_NEW_MATCH_LINKS_SEEN"];
   if (!types.includes(message.type)) return false;
   if (!trusted(sender)) { respond({ ok: false, error: "untrusted_sender" }); return false; }
   if (message.type === "TNND_NEW_MATCH_OBSERVATION_STATE") {
-    void read().then(state => respond({ ok: true, state })).catch(() => respond({ ok: false, error: "read_failed" }));
+    void readNewMatchState().then(state => respond({ ok: true, state })).catch(() => respond({ ok: false, error: "read_failed" }));
     return true;
   }
   if (message.type === "TNND_NEW_MATCH_OBSERVATION_START" && popupSender(sender)) {
     void serialized(async () => {
-      if (!Array.isArray(message.refs) || !message.refs.length || message.refs.length > 500) throw new Error("Open the Tinder Messages inbox with visible conversation links before starting.");
-      return write(armNewMatchObservation(message.refs));
+      if (!Array.isArray(message.refs) || message.refs.length < 2 || message.refs.length > 500) throw new Error("Select the Tinder Matches tab with at least two loaded match tiles before starting.");
+      const session = await getBackendSession();
+      const config = await getConfig();
+      if (!session) throw new Error("Connect your TNND account before enabling new-match messages.");
+      if (!config.automation.enabled) throw new Error("Enable automatic replies in TNND Options first.");
+      const next = await saveNewMatchState(armNewMatchObservation(message.refs, session.user.id));
+      await chrome.alarms.create("tnnd.globalNewMatches.cycle", { periodInMinutes: 1 });
+      return next;
     }).then(state => respond({ ok: true, state }))
       .catch(error => respond({ ok: false, error: error instanceof Error ? error.message : "arm_failed" }));
     return true;
   }
   if (message.type === "TNND_NEW_MATCH_OBSERVATION_STOP" && popupSender(sender)) {
-    void serialized(async () => write(stopNewMatchObservation(await read())))
+    void serialized(async () => {
+      const next = await saveNewMatchState(stopNewMatchObservation(await readNewMatchState()));
+      await chrome.alarms.clear("tnnd.globalNewMatches.cycle");
+      const ownedKey = "tnnd.newMatchOwnedTab.v1";
+      const owned = (await chrome.storage.local.get(ownedKey))[ownedKey] as { tabId?: number; ref?: string } | undefined;
+      if (owned?.tabId) {
+        try {
+          const tab = await chrome.tabs.get(owned.tabId);
+          if (tab.url === `https://tinder.com/app/messages/${encodeURIComponent(owned.ref ?? "")}`) await chrome.tabs.remove(owned.tabId);
+        } catch { /* already closed */ }
+      }
+      await chrome.storage.local.remove(ownedKey);
+      return next;
+    })
       .then(state => respond({ ok: true, state }))
       .catch(() => respond({ ok: false, error: "stop_failed" }));
     return true;
@@ -70,9 +105,10 @@ chrome.runtime.onMessage.addListener((message: Request, sender, respond) => {
   if (message.type === "TNND_NEW_MATCH_LINKS_SEEN" && tinderSender(sender)) {
     void serialized(async () => {
       if (!Array.isArray(message.refs) || message.refs.length > 500) throw new Error("invalid_refs");
-      const state = await read();
-      if (!state.enabled) return state;
-      return write(observeNewMatchLinks(state, message.refs));
+      const state = await readNewMatchState();
+      const session = await getBackendSession();
+      if (!state.enabled || !session || session.user.id !== state.userId) return state;
+      return saveNewMatchState(observeNewMatchLinks(state, message.refs));
     }).then(state => respond({ ok: true, pendingCount: state.pendingRefs.length }))
       .catch(() => respond({ ok: false, error: "observe_failed" }));
     return true;

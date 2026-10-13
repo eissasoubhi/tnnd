@@ -51,7 +51,8 @@ test("the first-message event is a user-triggered popup action, not a background
   const background = await readFile(new URL("../src/background.ts", import.meta.url), "utf8");
   assert.match(popup, /startFirstMessage\.addEventListener\("click"/);
   assert.match(popup, /window\.confirm\(/);
-  assert.match(content, /if \(input\.type !== "TNND_START_FIRST_MESSAGE"\) return false/);
+  assert.match(content, /input\.type !== "TNND_START_FIRST_MESSAGE"/);
+  assert.match(content, /input\.type !== "TNND_AUTO_START_NEW_MATCH"/);
   assert.match(content, /firstMessageAttemptKey\(conversationRef\)/);
   assert.match(content, /await saveState\(freshState\)/);
   assert.match(content, /await adapter\.send\(opener\)/);

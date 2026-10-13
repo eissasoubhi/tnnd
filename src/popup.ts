@@ -706,7 +706,7 @@ stopGlobalExisting.addEventListener("click", () => {
     .finally(() => void refreshGlobalExisting());
 });
 
-interface NewMatchObservationResponse { ok?: boolean; error?: string; state?: { enabled: boolean; seenRefs: string[]; pendingRefs: string[]; baselineReady: boolean } }
+interface NewMatchObservationResponse { ok?: boolean; error?: string; state?: { enabled: boolean; autoSendEnabled: boolean; seenRefs: string[]; pendingRefs: string[]; completedRefs: string[]; failedRefs: string[]; lastResult: string | null; baselineReady: boolean } }
 
 async function renderNewMatchObservation(): Promise<void> {
   const result = await chrome.runtime.sendMessage({ type: "TNND_NEW_MATCH_OBSERVATION_STATE" }) as NewMatchObservationResponse;
@@ -715,8 +715,8 @@ async function renderNewMatchObservation(): Promise<void> {
   startNewMatchObservation.disabled = state.enabled;
   stopNewMatchObservation.disabled = !state.enabled;
   newMatchObservationStatus.textContent = state.enabled
-    ? `Detection active · ${state.seenRefs.length} observed conversation links · ${state.pendingRefs.length} newly observed links for review. Automatic sending not enabled.`
-    : "Detection stopped. No new match automatic sending is enabled.";
+    ? `New-match AI active · ${state.seenRefs.length} known tiles · ${state.pendingRefs.length} queued · ${state.completedRefs.length} sent · ${state.failedRefs.length} skipped · maximum 5 first messages/day. ${state.lastResult ?? ""}`
+    : "New-match AI stopped. Existing chat automation is unaffected.";
 }
 
 startNewMatchObservation.addEventListener("click", () => {
@@ -724,8 +724,8 @@ startNewMatchObservation.addEventListener("click", () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id || !isTinderUrl(tab.url)) throw new Error("Open Tinder, select the Matches tab in the left sidebar, then reopen TNND.");
     const snapshot = await chrome.tabs.sendMessage(tab.id, { type: "TNND_GET_VISIBLE_THREAD_LINKS" }) as { ok?: boolean; refs?: string[]; error?: string };
-    if (!snapshot?.ok || !snapshot.refs?.length) throw new Error(snapshot?.error ?? "No verified Tinder match tiles are visible yet. Select the Matches tab and allow it to load.");
-    if (!window.confirm(`Track future Tinder conversation links after a baseline of ${snapshot.refs.length} currently visible match tiles? Detection is read-only; no messages will be sent automatically.`)) return;
+    if (!snapshot?.ok || !snapshot.refs?.length) throw new Error(snapshot?.error ?? "At least two verified Tinder match tiles are required. Select the Matches tab and let it load.");
+    if (!window.confirm(`Start AI first messages to FUTURE Tinder matches? ${snapshot.refs.length} existing tiles will be excluded. TNND may SEND one opener per later match confirmed twice (maximum five per day). Keep Matches visible, Chrome running, and review results.`)) return;
     const response = await chrome.runtime.sendMessage({ type: "TNND_NEW_MATCH_OBSERVATION_START", refs: snapshot.refs }) as NewMatchObservationResponse;
     if (!response?.ok) throw new Error(response?.error ?? "Could not start detection.");
     await renderNewMatchObservation();

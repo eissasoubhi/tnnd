@@ -3,16 +3,34 @@ import test from "node:test";
 import { armNewMatchObservation, emptyNewMatchState, isNewMatchObservationState, observeNewMatchLinks, stopNewMatchObservation } from "../src/tinder-new-match-observation.ts";
 import { classifyVisibleTinderSidebarRows } from "../src/tinder-visible-thread-links.ts";
 
-test("future observation has its own off-by-default mode and baseline", () => {
-  assert.equal(emptyNewMatchState().enabled,false);
-  const armed=armNewMatchObservation(["existing-1","existing-2","existing-1"]);
-  assert.deepEqual(armed.seenRefs,["existing-1","existing-2"]);
-  assert.deepEqual(armed.pendingRefs,[]);
-  assert.equal(isNewMatchObservationState(armed),true);
-  const observed=observeNewMatchLinks(armed,["existing-2","appeared-after-start"]);
-  assert.deepEqual(observed.pendingRefs,["appeared-after-start"]);
-  assert.deepEqual(observeNewMatchLinks(observed,["appeared-after-start"]).pendingRefs,["appeared-after-start"]);
-  assert.deepEqual(observeNewMatchLinks(stopNewMatchObservation(observed),["another"]).pendingRefs,["appeared-after-start"]);
+test("future-match mode must be armed by an identified user with visible old matches", () => {
+  assert.equal(emptyNewMatchState().enabled, false);
+  assert.throws(() => armNewMatchObservation(["old1"], "user-1"), /two visible match tiles/);
+  const armed = armNewMatchObservation(["old1", "old2", "old1"], "user-1");
+  assert.equal(armed.enabled, true);
+  assert.equal(armed.autoSendEnabled, true);
+  assert.equal(armed.userId, "user-1");
+  assert.deepEqual(armed.seenRefs, ["old1", "old2"]);
+  assert.equal(isNewMatchObservationState(armed), true);
+  assert.equal(stopNewMatchObservation(armed).autoSendEnabled, false);
+});
+
+test("only a stable new tile inserted at the front of the original match list becomes eligible", () => {
+  const armed = armNewMatchObservation(["old1", "old2", "old3"], "user-1", "2026-10-13T10:00:00Z");
+  const first = observeNewMatchLinks(armed, ["new1","old1","old2","old3"], "2026-10-13T10:01:00Z");
+  assert.deepEqual(first.pendingRefs, []);
+  assert.deepEqual(first.candidates.map(x => x.ref), ["new1"]);
+  const confirmed = observeNewMatchLinks(first, ["new1","old1","old2","old3"], "2026-10-13T10:01:20Z");
+  assert.deepEqual(confirmed.pendingRefs, ["new1"]);
+  assert.deepEqual(confirmed.candidates, []);
+  assert.deepEqual(observeNewMatchLinks(confirmed, ["new1","old1","old2"], "2026-10-13T10:02:00Z").pendingRefs, ["new1"]);
+});
+
+test("old lazy loaded or ambiguous match order is never queued for sending", () => {
+  const armed = armNewMatchObservation(["old1","old2"], "user-1");
+  assert.deepEqual(observeNewMatchLinks(armed, ["old1","old2","older-loaded"]).pendingRefs, []);
+  assert.deepEqual(observeNewMatchLinks(armed, ["unrelated"]).pendingRefs, []);
+  assert.deepEqual(observeNewMatchLinks(armed, ["new1","new2","new3","new4","old1"]).pendingRefs, []);
 });
 
 test("newly observed links cannot silently send messages", async () => {
