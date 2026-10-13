@@ -155,7 +155,11 @@ async function processNext(): Promise<void> {
       try {
         info = await chrome.tabs.sendMessage(tabId, { type: "TNND_GET_THREAD_INFO" });
         if (info?.composerFound && info.threadKey === threadKey) break;
-      } catch { /* content script still loading */ }
+      } catch (error) {
+        // The previous Tinder content script may have been invalidated by
+        // an extension reload. A missing receiver is not a send attempt.
+        if (isMissingTinderReceiver(error)) throw error;
+      }
       await new Promise(resolve => setTimeout(resolve, 1500));
     }
     if (!info?.composerFound || info.threadKey !== threadKey) throw new Error("Tinder composer/thread was not confirmed");
