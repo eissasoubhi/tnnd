@@ -22,6 +22,32 @@ expandable summaries, restoring their previous state. It **inspects** every
 visible enabled button (accessible label, geometry/overflow, 36px target
 warning) and checks duplicate IDs and in-page anchor destinations.
 
+### Functional failures, not just layout
+
+The extension's on-page diagnostics also record allowlisted action clicks
+(Generate draft, Test Gemini, Save preferences, etc.) and the outcome of TNND
+API calls. The UI audit JSON now contains `functionalFindings` with an
+operation category, optional HTTP status, stable error code, and a recovery
+step. It recognizes:
+
+- Network failures, CORS/fetch errors, HTTP 400/500 responses.
+- Machine-readable application error codes even if the server responds HTTP 200.
+- Explicit `connected: false` from the Gemini test endpoint and missing
+  generation payloads.
+- Visible draft-generation error state in the app, including `internal_error`.
+
+**Important:** Click correlation is best effort (recent operation + nearby
+request), not a proof that every button fulfilled its business outcome. The
+live audit does not run paid or destructive actions. It tests those against
+synthetic fixtures in CI and observes failures when the user triggers them.
+Reproduce the issue, then run the audit within about five minutes.
+
+Only stable error codes and endpoint categories are exported in functional
+findings, not API payloads. Diagnostics inspect a copy of the JSON response
+in-memory to extract the `error` code; no free-form reply, prompt, key or
+message body is stored. The Web diagnostic ZIP contains event metadata
+including sanitized URLs, not message contents.
+
 The live-account audit **never presses arbitrary save, send, approve, confirm,
 delete, revoke, AI generation or payment controls** because that could modify
 real user data. Those flows need a separate synthetic-fixture test or a
@@ -93,3 +119,13 @@ Each of these needs an explicit isolated test fixture or user-supervised
 verification before it can be marked as validated. New interactive controls
 should be accompanied by regression coverage rather than being counted
 as covered merely because the page renders.
+
+## 5. New user's five-step walkthrough
+
+Overview shows the optional guided start. A single main action takes users
+through account → Gemini/test → identity approval → read-only Tinder import →
+first generated draft. Each step explains the expected outcome. Use **Next
+step**, **Back**, or **Skip tutorial**; after completing, use **Need help?** in
+Overview to reopen it. The guide itself never saves settings or sends a
+message. Conversation advanced overrides and sent-confirmation options remain
+collapsed until requested.
