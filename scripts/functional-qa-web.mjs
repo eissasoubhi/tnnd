@@ -310,11 +310,20 @@ async function main() {
         const tabs = await chrome.tabs.query({});
         const tab = tabs.find(t => t.url?.startsWith("http://127.0.0.1:5173/")) ?? tabs.find(t => t.active && t.id) ?? tabs.find(t => t.id);
         if (!tab?.id) return {ok:false,error:"fixture_tab_not_found"};
-        try {
-          return await chrome.tabs.sendMessage(tab.id, {type:"TNND_RUN_WEB_UI_AUDIT"});
-        } catch (error) {
-          return {ok:false,error:String(error)};
+        let failure = "";
+        for (let attempt = 0; attempt < 10; attempt++) {
+          try {
+            return await chrome.tabs.sendMessage(tab.id, {type:"TNND_RUN_WEB_UI_AUDIT"});
+          } catch (error) {
+            failure = String(error);
+            // Headless Chrome sometimes finishes extension registration after
+            // its initial page navigation. Reload the fixture (never user data)
+            // once to allow normal content-script injection.
+            if (attempt === 0) await chrome.tabs.reload(tab.id);
+            await new Promise(done => setTimeout(done, 500));
+          }
         }
+        return {ok:false,error:failure,tabId:tab.id};
       })()`);
       assert.ok(audit?.ok && audit.report, "Extension-to-Web UI audit failed: " + JSON.stringify(audit));
       assert.equal(audit.report.sections, 7, "Expected all workspace sections");
