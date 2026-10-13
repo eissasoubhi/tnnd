@@ -100,7 +100,7 @@ async function serve(req, res) {
       } });
     }
     if (pathname === "/api/v1/ai/provider-settings") return json(res, 200, { configured: true, model: "fixture-model" });
-    if (pathname === "/api/v1/ai/provider-settings/test") return json(res, 200, { connected: true, model: "fixture-model" });
+    if (pathname === "/api/v1/ai/test-connection") return json(res, 200, { provider: "gemini", connected: true, model: "fixture-model" });
     if (pathname === "/api/v1/human-actions") return json(res, 200, { actions: [] });
     if (pathname === "/api/v1/personal-memories") return json(res, 200, { memories: [] });
     if (pathname === "/api/v1/profile/topic-coverage") return json(res, 200, { topics: [] });
@@ -272,6 +272,25 @@ async function main() {
     results.push({ name: "Resume conversation performs authenticated PATCH and updates controls", passed: true });
 
     await cdp.evaluate(`(() => {
+      const field = document.querySelector("#conversation-temporary-instruction");
+      field.value = "Keep the next reply concise.";
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      document.querySelector("[data-temporary-instruction-save]").click();
+    })()`);
+    for (let i = 0; i < 70 && !requests.some(x => x.path.endsWith("/instruction") && x.method === "PUT"); i++) await sleep(80);
+    assert.ok(requests.some(x => x.path.endsWith("/instruction") && x.method === "PUT"), "Save instruction button did not call API");
+    await waitFor(cdp, 'document.querySelector("[data-temporary-instruction-clear]") !== null');
+    await cdp.evaluate('document.querySelector("[data-temporary-instruction-clear]").click()');
+    for (let i = 0; i < 70 && !requests.some(x => x.path.endsWith("/instruction") && x.method === "DELETE"); i++) await sleep(80);
+    assert.ok(requests.some(x => x.path.endsWith("/instruction") && x.method === "DELETE"), "Clear instruction button did not call API");
+    results.push({ name: "Temporary instruction save and clear both reach the fixture API", passed: true });
+
+    await cdp.evaluate('document.querySelector("#ai-provider-test").click()');
+    await waitFor(cdp, 'document.querySelector("#ai-provider-message")?.textContent?.includes("connection succeeded")');
+    assert.ok(requests.some(x => x.path === "/api/v1/ai/test-connection" && x.method === "POST"), "Test Gemini button did not call API");
+    results.push({ name: "Test Gemini connection provides visible feedback", passed: true });
+
+    await cdp.evaluate(`(() => {
       const msg = document.querySelector("[data-generation-message]");
       if (msg) { msg.value = "How is your day?"; msg.dispatchEvent(new Event("input",{bubbles:true})); }
       document.querySelector("[data-generation-button]")?.click();
@@ -334,6 +353,12 @@ async function main() {
       issueCount: audit.report.issues.length
     });
     await writeFile(join(output, "extension-ui-audit.json"), JSON.stringify(audit.report, null, 2) + "\\n");
+    const issueCategories = Object.fromEntries(
+      [...new Set(audit.report.issues.map(issue => issue.code))].map(code => [
+        code, audit.report.issues.filter(issue => issue.code === code).length
+      ])
+    );
+    console.log("Extension audit issue categories:", JSON.stringify(issueCategories));
     console.log("PASS Compiled extension UI audit: " + audit.report.buttons.visible + " buttons, " +
       audit.report.navLinks + " navigation links and " + audit.report.disclosures + " disclosures");
 
