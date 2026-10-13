@@ -37,7 +37,7 @@ export async function generateConversationReply(
       "content-type": "application/json"
     },
     body: JSON.stringify({
-      latestMessage,
+      ...(latestMessage.trim() ? { latestMessage: latestMessage.trim() } : {}),
       ...(normalizedPreviewInstruction ? { previewInstruction: normalizedPreviewInstruction } : {})
     })
   });

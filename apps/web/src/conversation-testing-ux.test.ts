@@ -7,11 +7,12 @@ const root = dirname(fileURLToPath(import.meta.url));
 const panel = readFileSync(resolve(root,"conversation-panel.ts"),"utf8");
 const draft = readFileSync(resolve(root,"conversation-overrides-panel.ts"),"utf8");
 const client = readFileSync(resolve(root,"conversation-client.ts"),"utf8");
-test("draft generation refreshes the latest imported match message rather than requiring retyping", () => {
+test("draft generation asks the authenticated backend for latest imported message, with no required typing", () => {
  assert.doesNotMatch(draft,/Latest message required/);
- assert.match(draft,/await getConversation\(session, conversationId\)/);
- assert.match(draft,/replyTargetFromHistory\(detailSnapshot.messages\)/);
- assert.match(draft,/generationMessage.value = latestMessage/);
+ assert.match(draft,/Generate a reply from synced chat/);
+ assert.match(draft,/const latestMessage = generationMessage.value.trim\(\)/);
+ assert.doesNotMatch(draft,/await getConversation\(session, conversationId\)/);
+ assert.match(draft,/Advanced · Test another message manually \(optional\)/);
 });
 test("unknown Tinder profiles show a neutral avatar and optional user-saved name/age", () => {
  assert.match(panel,/conversation-display-name/);

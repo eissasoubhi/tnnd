@@ -1,6 +1,8 @@
 /** Map stable backend failures into user guidance, never display raw stack traces. */
 export function draftFailureGuidance(code: string, status?: number): string {
   switch (code) {
+    case "no_synced_incoming_message":
+      return "TNND cannot find a received message in this saved conversation. On Tinder, open this chat and use Import visible chat (read-only) in the extension, then try again. If the messages appear under the wrong sender or contain timestamps mixed into the text, export a Tinder diagnostic ZIP from the active chat for selector correction.";
     case "gemini_not_configured":
     case "ai_provider_settings_not_configured":
       return "Gemini is not configured for draft generation. Open Settings → Gemini, save a key and model, then test the connection.";
