@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseUserConversationIdentity } from "./conversation-display-identity-input";
+import { parseUserConversationIdentity } from "./conversation-display-identity-input.js";
 test("stores a user-confirmed name/age without inventing Tinder profile data", () => {
  assert.deepEqual(parseUserConversationIdentity({label:"  Sara  ",age:27}),{label:"Sara",age:27});
  assert.deepEqual(parseUserConversationIdentity({label:"",age:""}),{label:null,age:null});
