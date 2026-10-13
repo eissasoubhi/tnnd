@@ -46,6 +46,16 @@
         "http://localhost/*"
       ],
       "js": [
+        "assets/web-ui-audit-content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://127.0.0.1/*",
+        "http://localhost/*"
+      ],
+      "js": [
         "assets/web-diagnostic-bridge.js"
       ],
       "run_at": "document_start"
