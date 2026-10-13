@@ -116,6 +116,9 @@ const chatLangEn = document.getElementById("chatLangEn") as HTMLInputElement;
 const saveChat = document.getElementById("saveChat") as HTMLButtonElement;
 const chatStatus = document.getElementById("chatStatus")!;
 const syncCurrentChat = document.getElementById("syncCurrentChat") as HTMLButtonElement;
+const startNewMatchObservation = document.getElementById("startNewMatchObservation") as HTMLButtonElement;
+const stopNewMatchObservation = document.getElementById("stopNewMatchObservation") as HTMLButtonElement;
+const newMatchObservationStatus = document.getElementById("newMatchObservationStatus")!;
 const startFirstMessage = document.getElementById("startFirstMessage") as HTMLButtonElement;
 const firstMessageStatus = document.getElementById("firstMessageStatus")!;
 const importMatchName = document.getElementById("importMatchName") as HTMLInputElement;
@@ -663,6 +666,40 @@ exportButton.addEventListener("click", () => void exportDiagnostics().catch((err
   status.textContent = error instanceof Error ? error.message : "Could not export diagnostics.";
   exportButton.disabled = false;
 }));
+interface NewMatchObservationResponse { ok?: boolean; error?: string; state?: { enabled: boolean; seenRefs: string[]; pendingRefs: string[]; baselineReady: boolean } }
+
+async function renderNewMatchObservation(): Promise<void> {
+  const result = await chrome.runtime.sendMessage({ type: "TNND_NEW_MATCH_OBSERVATION_STATE" }) as NewMatchObservationResponse;
+  if (!result?.ok || !result.state) { newMatchObservationStatus.textContent = "Unable to read new match detection state."; return; }
+  const state = result.state;
+  startNewMatchObservation.disabled = state.enabled;
+  stopNewMatchObservation.disabled = !state.enabled;
+  newMatchObservationStatus.textContent = state.enabled
+    ? `Detection active · ${state.seenRefs.length} observed conversation links · ${state.pendingRefs.length} newly observed links for review. Automatic sending not enabled.`
+    : "Detection stopped. No new match automatic sending is enabled.";
+}
+
+startNewMatchObservation.addEventListener("click", () => {
+  void (async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id || !isTinderUrl(tab.url)) throw new Error("Open the Tinder Messages inbox, then reopen TNND.");
+    const snapshot = await chrome.tabs.sendMessage(tab.id, { type: "TNND_GET_VISIBLE_THREAD_LINKS" }) as { ok?: boolean; refs?: string[]; error?: string };
+    if (!snapshot?.ok || !snapshot.refs?.length) throw new Error(snapshot?.error ?? "No verified Tinder conversation links are visible yet. Load the Messages inbox first.");
+    if (!window.confirm(`Track future Tinder conversation links after a baseline of ${snapshot.refs.length} currently visible chats? Detection is read-only; no messages will be sent automatically.`)) return;
+    const response = await chrome.runtime.sendMessage({ type: "TNND_NEW_MATCH_OBSERVATION_START", refs: snapshot.refs }) as NewMatchObservationResponse;
+    if (!response?.ok) throw new Error(response?.error ?? "Could not start detection.");
+    await renderNewMatchObservation();
+  })().catch(e => { newMatchObservationStatus.textContent = e instanceof Error ? e.message : "New-match detection failed."; });
+});
+stopNewMatchObservation.addEventListener("click", () => {
+  void (async () => {
+    const response = await chrome.runtime.sendMessage({ type: "TNND_NEW_MATCH_OBSERVATION_STOP" }) as NewMatchObservationResponse;
+    if (!response?.ok) throw new Error(response?.error ?? "Could not stop detection.");
+    await renderNewMatchObservation();
+  })().catch(e => { newMatchObservationStatus.textContent = e instanceof Error ? e.message : "Stop failed."; });
+});
+
+void renderNewMatchObservation();
 void refreshBackendAuth();
 void loadCurrentChat();
 void loadDiagnosticView();
