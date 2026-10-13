@@ -199,13 +199,17 @@ function directionOf(element: HTMLElement): Direction {
     );
   }
   const hinted = directionFromTinderHints(tokens);
-  if (hinted !== "unknown") return hinted;
   const composer = findComposer();
-  if (!composer) return "unknown";
+  if (!composer) return hinted;
   const composerRect = composer.getBoundingClientRect();
   const bubbleRect = visibleBubbleRect(element, composerRect);
-  if (!bubbleRect) return "unknown";
-  return directionFromChatColumnGeometry(bubbleRect, composerRect);
+  const positioned = bubbleRect
+    ? directionFromChatColumnGeometry(bubbleRect, composerRect)
+    : "unknown";
+  // If a DOM class claims "outgoing" but the actual bubble is clearly on
+  // Tinder's incoming side (or vice versa), don't risk a false classification.
+  if (hinted !== "unknown" && positioned !== "unknown" && hinted !== positioned) return "unknown";
+  return hinted !== "unknown" ? hinted : positioned;
 }
 
 function candidateMessages(composer: HTMLElement): HTMLElement[] {
