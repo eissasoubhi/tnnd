@@ -8,6 +8,7 @@ export function generationErrorResponse(error: unknown): { status: number; body:
     };
   }
   const message = error instanceof Error ? error.message : "";
+  if (message === "no_synced_incoming_message") return { status: 409, body: { error: "no_synced_incoming_message" } };
   if (message === "gemini_not_configured") return { status: 422, body: { error: "gemini_not_configured" } };
   if (message === "gemini_output_truncated") return { status: 502, body: { error: "gemini_output_truncated" } };
   if (message === "gemini_invalid_output") return { status: 502, body: { error: "gemini_invalid_output" } };
