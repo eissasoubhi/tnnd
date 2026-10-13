@@ -1,5 +1,6 @@
 import { getBackendSession, getChatSettings, getConfig, saveChatSettings } from "./storage";
 import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
+import { partitionExistingChatPermissions } from "./tinder-existing-chat-settings-policy";
 import { eligibleExistingThreadRefs, nextExistingThreadRef } from "./tinder-global-existing-policy";
 
 const KEY = "tnnd.globalExistingRunner.v2";
@@ -126,15 +127,13 @@ async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[];
   }
 
   const authorized = eligibleExistingThreadRefs(records, summaries);
-  const refs: string[] = [];
-  const disabledRefs: string[] = [];
+  const settingsByRef = new Map<string, { enabled: boolean }>();
   for (const ref of authorized) {
     const threadKey = tinderThreadKeyFromPath("/app/messages/" + encodeURIComponent(ref));
-    const settings = await getChatSettings(threadKey);
-    if (settings.enabled === false) disabledRefs.push(ref);
-    else refs.push(ref);
+    settingsByRef.set(ref, await getChatSettings(threadKey));
   }
-  return { refs, disabledRefs, labels };
+  const { ready, disabled } = partitionExistingChatPermissions(authorized, settingsByRef);
+  return { refs: ready, disabledRefs: disabled, labels };
 }
 
 /** Reuse the EXISTING Tinder tab. Opening a second one can invalidate Tinder's
