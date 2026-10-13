@@ -33,12 +33,12 @@ function normalizeFirstMessageClaims(value: unknown): Record<string, number> {
     .slice(-1000)) as Record<string, number>;
 }
 
-async function checkFirstMessagePermission(ref: string): Promise<{
+async function checkFirstMessagePermission(ref: string, ignoreOwnClaim = false): Promise<{
   ok: boolean; allowed: boolean; reason?: string; savedMessageCount?: number;
 }> {
   const raw = await chrome.storage.local.get(FIRST_MESSAGE_CLAIMS_KEY);
   if (normalizeFirstMessageClaims(raw[FIRST_MESSAGE_CLAIMS_KEY])[ref]) return { ok: true, allowed: false, reason: "already_attempted" };
-  if (pendingFirstMessageClaims.has(ref)) return { ok: true, allowed: false, reason: "claim_in_progress" };
+  if (!ignoreOwnClaim && pendingFirstMessageClaims.has(ref)) return { ok: true, allowed: false, reason: "claim_in_progress" };
   const backend = await loadTinderConversationManagement(ref);
   if (!backend.conversationId || backend.conversationStatus !== "active" || !mayAutomaticallySendToTinder(backend)) {
     return { ok: true, allowed: false, reason: "ai_management_not_active" };
@@ -229,7 +229,7 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
       pendingFirstMessageClaims.add(ref);
       void (async () => {
         try {
-          const checked = await checkFirstMessagePermission(ref);
+          const checked = await checkFirstMessagePermission(ref, true);
           if (!checked.allowed) return { ok: true, claimed: false, reason: checked.reason };
           const stored = await chrome.storage.local.get(FIRST_MESSAGE_CLAIMS_KEY);
           const entries = normalizeFirstMessageClaims(stored[FIRST_MESSAGE_CLAIMS_KEY]);
