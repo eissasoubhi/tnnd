@@ -23,6 +23,9 @@ test("runner must click real Tinder links instead of full page tab navigation", 
  assert.match(content,/anchor\.click\(\)/);
  assert.match(content,/currentConversationRef\(\) !== expectedRef/);
  assert.match(content,/currentConversationRef\(\) === ref && adapter\.diagnose\(\)\.composerFound/);
+ assert.match(content,/window\.setTimeout\(scheduleScan, 1300\)/);
+ assert.match(content,/spaNavigationSettlesAt/);
+ assert.match(runner,/cursorRef: nextRef/);
  assert.match(runner,/chrome\.tabs\.sendMessage\(tabId/);
  assert.match(runner,/TNND_EXISTING_SPA_NAVIGATE/);
  assert.doesNotMatch(runner,/chrome\.tabs\.update\(tabId, \{ url:/);
