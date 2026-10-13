@@ -59,7 +59,7 @@ function installStyles(): void {
   style.id = "tnnd-management-panel-styles";
   style.textContent = `
     .conversation-management-explainer{padding:10px 14px;border:1px solid var(--nb-border,#c8d8cd);border-radius:12px;background:var(--nb-surface-soft,#edf4eb);font-size:12px;line-height:1.6}.conversation-management-explainer summary{cursor:pointer;font-weight:750}.conversation-management-explainer p{margin:8px 0 0}
-    .management-bulk-panel{padding:15px;border:1px solid var(--nb-border,#c8d8cd);border-radius:12px;background:var(--nb-surface-soft,#edf4eb);margin:14px 0}.management-bulk-panel h3{font-size:14px;margin:0 0 6px}.management-bulk-panel button{padding:8px 12px;margin-top:8px;cursor:pointer}.management-bulk-panel button:disabled{opacity:.5;cursor:not-allowed}.management-list{display:grid;gap:8px;margin-top:12px}.management-row{display:grid;grid-template-columns:minmax(0,1fr) 190px auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--border,#d4d4d8);border-radius:10px}.management-row-main{display:grid;gap:3px;min-width:0}.management-match-line{display:flex;align-items:center;gap:9px;min-width:0}.management-match-avatar{display:grid;flex:0 0 36px;place-items:center;width:36px;height:36px;border-radius:50%;object-fit:cover;background:var(--nb-mint,#d9efcc);color:var(--nb-primary,#264b40)}.management-row-main strong,.management-row-main small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.management-row small{opacity:.65}.management-row select{width:100%}.management-row button{width:auto;padding:7px 10px}.management-badge{font-size:10px;opacity:.72}.management-action-block{display:inline-flex;width:max-content;max-width:100%;font-size:11px;font-weight:700;padding:3px 7px;border-radius:999px;background:rgba(245,158,11,.14)}.management-action-block[data-severity="urgent"]{background:rgba(239,68,68,.16)}.management-note{margin-top:9px}.management-status{min-height:18px}.management-row[data-management-state="moved-off-tinder"]{border-style:dashed}.management-row[data-management-state="ai-managed"]{outline:1px solid currentColor;outline-offset:1px}.management-row[data-action-focus="true"]{box-shadow:0 0 0 3px rgba(99,102,241,.3)}@media(max-width:760px){.management-row{grid-template-columns:1fr}}
+    .management-bulk-actions{display:flex;gap:8px;flex-wrap:wrap}.management-bulk-panel{padding:15px;border:1px solid var(--nb-border,#c8d8cd);border-radius:12px;background:var(--nb-surface-soft,#edf4eb);margin:14px 0}.management-bulk-panel h3{font-size:14px;margin:0 0 6px}.management-bulk-panel button{padding:8px 12px;margin-top:8px;cursor:pointer}.management-bulk-panel button:disabled{opacity:.5;cursor:not-allowed}.management-list{display:grid;gap:8px;margin-top:12px}.management-row{display:grid;grid-template-columns:minmax(0,1fr) 190px auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--border,#d4d4d8);border-radius:10px}.management-row-main{display:grid;gap:3px;min-width:0}.management-match-line{display:flex;align-items:center;gap:9px;min-width:0}.management-match-avatar{display:grid;flex:0 0 36px;place-items:center;width:36px;height:36px;border-radius:50%;object-fit:cover;background:var(--nb-mint,#d9efcc);color:var(--nb-primary,#264b40)}.management-row-main strong,.management-row-main small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.management-row small{opacity:.65}.management-row select{width:100%}.management-row button{width:auto;padding:7px 10px}.management-badge{font-size:10px;opacity:.72}.management-action-block{display:inline-flex;width:max-content;max-width:100%;font-size:11px;font-weight:700;padding:3px 7px;border-radius:999px;background:rgba(245,158,11,.14)}.management-action-block[data-severity="urgent"]{background:rgba(239,68,68,.16)}.management-note{margin-top:9px}.management-status{min-height:18px}.management-row[data-management-state="moved-off-tinder"]{border-style:dashed}.management-row[data-management-state="ai-managed"]{outline:1px solid currentColor;outline-offset:1px}.management-row[data-action-focus="true"]{box-shadow:0 0 0 3px rgba(99,102,241,.3)}@media(max-width:760px){.management-row{grid-template-columns:1fr}}
   `;
   document.head.append(style);
 }
@@ -85,7 +85,7 @@ function mount(): { list: HTMLElement; status: HTMLElement } | null {
       <h3>Existing conversations · global AI takeover</h3>
       <p class="subtle">Applies to previously synced conversations with messages. Manual, blocked, disabled, archived, and unsynced chats are excluded. No first message is sent. Explicitly authorize the bulk operation below.</p>
       <p class="subtle" id="management-bulk-preview">Loading eligible conversations…</p>
-      <button type="button" id="management-bulk-enable">Enable AI on eligible existing chats</button>
+      <div class="management-bulk-actions"><button type="button" id="management-bulk-enable">Start existing chats</button><button type="button" id="management-bulk-pause">Stop existing chats</button></div>
       <p id="management-bulk-status" class="subtle" role="status" aria-live="polite"></p>
     </section>
     <div id="conversation-management-list" class="management-list"></div>
@@ -141,7 +141,30 @@ async function applyBulkExisting(): Promise<void> {
   } finally { bulkBusy = false; button.disabled = false; }
 }
 
+async function pauseBulkExisting(): Promise<void> {
+  const session = readSession();
+  const status = document.querySelector<HTMLElement>("#management-bulk-status");
+  const button = document.querySelector<HTMLButtonElement>("#management-bulk-pause");
+  if (!session || !status || !button || bulkBusy) return;
+  const byId = new Map(summariesCache.map(item => [item.id, item]));
+  const ids = records.filter(record => record.managementState === "ai-managed" && record.explicitlySelected
+    && byId.has(record.conversationId)
+    && !["paused", "disabled", "archived", "moved-off-tinder"].includes(byId.get(record.conversationId)!.status))
+    .map(record => record.conversationId);
+  if (!ids.length) { status.textContent = "No AI-managed active conversations to pause."; return; }
+  if (!window.confirm(`Pause ${ids.length} AI-managed existing conversations? This stops server-authorized automation but keeps individual AI management settings.`)) return;
+  bulkBusy = true;
+  button.disabled = true;
+  let paused = 0;
+  try {
+    for (const id of ids) { try { await updateConversationStatus(session, id, "paused"); paused++; } catch { /* continue with other conversations */ } }
+    status.textContent = `Paused ${paused}/${ids.length} existing AI-managed chats. Open a chat individually to Resume it later.`;
+    await refresh();
+  } finally { bulkBusy = false; button.disabled = false; }
+}
+
 document.querySelector("#management-bulk-enable")?.addEventListener("click", () => { void applyBulkExisting(); });
+document.querySelector("#management-bulk-pause")?.addEventListener("click", () => { void pauseBulkExisting(); });
 
 function render(): void {
   if (!elements) return;
