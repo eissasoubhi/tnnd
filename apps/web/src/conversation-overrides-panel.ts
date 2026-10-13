@@ -303,7 +303,9 @@ async function mountInlineEditor(): Promise<void> {
       const code = error instanceof DraftGenerationError ? error.code : error instanceof TypeError ? "network_error" : "generation_failed";
       const httpStatus = error instanceof DraftGenerationError ? error.httpStatus : undefined;
       generationStatus.textContent = "Unable to generate reply" + (httpStatus ? ` (HTTP ${httpStatus})` : "");
-      errorHelp.textContent = draftFailureGuidance(code, httpStatus);
+      const stage = error instanceof DraftGenerationError ? error.stage : undefined;
+      errorHelp.textContent = draftFailureGuidance(code, httpStatus) +
+        (stage && /^[a-z-]{2,32}$/.test(stage) ? ` Failed stage: ${stage}.` : "");
       errorHelp.hidden = false;
     } finally {
       if (section.isConnected) {
