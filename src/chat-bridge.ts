@@ -1,6 +1,6 @@
 import { TinderDomAdapter } from "./tinder-adapter";
 import { readVisibleTinderMatchIdentity } from "./tinder-chat-identity";
-import { visibleTinderThreadRefs } from "./tinder-visible-thread-links";
+import { detectVisibleTinderSidebarTab, visibleTinderThreadRefs } from "./tinder-visible-thread-links";
 import { detectTinderChat } from "./tinder-chat-detection";
 import { buildNormalizedMessageKeys } from "./tinder-message-key";
 import { classifyTinderPath } from "./tinder-state-machine";
@@ -17,12 +17,13 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
   const input = message as { type?: string; job?: unknown; jobId?: unknown; conversationRef?: unknown };
 
   if (input.type === "TNND_GET_VISIBLE_THREAD_LINKS") {
-    const state = classifyTinderPath(location.pathname);
-    if (state.state !== "inbox" && state.state !== "discovery") {
-      sendResponse({ ok: false, error: "Open Tinder Messages before arming new match detection." });
+    // A visible Matches tab can coexist with an opened Tinder conversation
+    // and still retain /app/messages/<thread> as the URL. Require real tiles.
+    if (detectVisibleTinderSidebarTab() !== "matches") {
+      sendResponse({ ok: false, error: "Select the Matches tab on Tinder before starting future-match detection." });
       return false;
     }
-    sendResponse({ ok: true, refs: visibleTinderThreadRefs() });
+    sendResponse({ ok: true, refs: visibleTinderThreadRefs(), sidebar: "matches" });
     return false;
   }
 
