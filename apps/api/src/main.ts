@@ -6,6 +6,7 @@ import { hashSessionToken } from "./auth.js";
 import { authenticateSession, listAccountSessions, loginWithPassword, registerAccount, revokeAccountSession, revokeSession } from "./auth-service.js";
 import { handleConversationGenerationRequest } from "./conversation-generation-controller.js";
 import { generationErrorResponse } from "./conversation-generation-error-response.js";
+import { handleAnalyticsRequest } from "./analytics-controller.js";
 import { bulkUpdateConversationManagement, isConversationManagementState, listConversationManagement, updateConversationManagement, type ConversationManagementUpdate } from "./conversation-management-service.js";
 import { handleOutgoingConfirmationRequest } from "./conversation-outgoing-confirmation-controller.js";
 import { clearConversationOverrides, getConversationOverrides, replaceConversationOverrides } from "./conversation-overrides-service.js";
@@ -223,6 +224,17 @@ const server = createServer(async (request, response) => {
         apiVersion: "v1",
         capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "account-data-export", "account-deletion", "individual-data-deletion", "texting-style-analysis", "identity-builder", "personal-memories", "token-budgeted-context", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-management", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "match-profiles", "human-actions", "human-action-manual-answer", "security-baseline"]
       });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/v1/analytics") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      const result = await handleAnalyticsRequest(session.user.id);
+      sendJson(response, result.status, result.body);
       return;
     }
 
