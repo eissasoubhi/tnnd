@@ -1,3 +1,6 @@
+// All supported browser API verbs, including PATCH for conversation status and management.
+export const CORS_ALLOW_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
+
 const localOrigins = new Set([
   "http://127.0.0.1:5173",
   "http://localhost:5173"

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveCorsOrigin } from "./cors.js";
+import { CORS_ALLOW_METHODS, resolveCorsOrigin } from "./cors.js";
 
 test("local Vite origins are allowed outside production", () => {
   assert.equal(resolveCorsOrigin("http://127.0.0.1:5173", "development", ""), "http://127.0.0.1:5173");
@@ -18,4 +18,11 @@ test("production requires an explicitly configured origin", () => {
 test("unknown origins stay blocked", () => {
   assert.equal(resolveCorsOrigin("https://evil.example", "development", ""), null);
   assert.equal(resolveCorsOrigin(undefined, "development", ""), null);
+});
+
+test("CORS preflight advertises every supported method including PATCH for conversation actions", () => {
+  assert.deepEqual(new Set(CORS_ALLOW_METHODS.split(",").map(item => item.trim())), new Set([
+    "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"
+  ]));
+  assert.equal(resolveCorsOrigin("http://127.0.0.1:5173", "development"), "http://127.0.0.1:5173");
 });

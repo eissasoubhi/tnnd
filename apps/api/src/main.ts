@@ -25,7 +25,7 @@ import { routeAuthenticatedPersonalMemoryRequest } from "./personal-memory-authe
 import { handleTextingStyleAnalysisRequest } from "./texting-style-analysis-controller.js";
 import { safeApiErrorLog } from "./safe-error-log.js";
 import { isAllowedRequestTransport } from "./transport-security.js";
-import { resolveCorsOrigin } from "./cors.js";
+import { CORS_ALLOW_METHODS, resolveCorsOrigin } from "./cors.js";
 
 const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? "127.0.0.1";
@@ -136,7 +136,7 @@ const server = createServer(async (request, response) => {
   if (corsOrigin) {
     response.setHeader("access-control-allow-origin", corsOrigin);
     response.setHeader("access-control-allow-headers", "authorization, content-type");
-    response.setHeader("access-control-allow-methods", "GET, POST, PUT, DELETE, OPTIONS");
+    response.setHeader("access-control-allow-methods", CORS_ALLOW_METHODS);
     response.setHeader("vary", "Origin");
   }
 

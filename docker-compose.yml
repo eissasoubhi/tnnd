@@ -75,7 +75,9 @@ services:
       api:
         condition: service_healthy
     environment:
-      VITE_TNND_API_BASE_URL: http://127.0.0.1:4000
+      # Keep browser requests same-origin at /api/*; Vite proxies to Docker's API.
+      VITE_TNND_API_BASE_URL: /
+      TNND_DEV_API_PROXY_TARGET: http://api:4000
       CHOKIDAR_USEPOLLING: "true"
     volumes:
       - ./:/workspace
