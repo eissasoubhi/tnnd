@@ -81,14 +81,14 @@ test("one opener becomes separate short grounded Tinder bubbles without fabricat
     ["salut", "bien ou bien ?"]
   );
   assert.deepEqual(
-    groundedOpenerFragments("Salut\\nBien ou bien ?\\nTon profil m'a fait sourire"),
+    groundedOpenerFragments("Salut\nBien ou bien ?\nTon profil m'a fait sourire"),
     ["Salut", "Bien ou bien ?"]
   );
-  assert.deepEqual(groundedOpenerFragments("Salut\\nÇa va ?"), ["Salut", "Ça va ?"]);
-  assert.deepEqual(groundedOpenerFragments("Salut\\nBien ou bien ?\\nTu fais quoi de beau ?"), ["Salut", "Bien ou bien ?", "Tu fais quoi de beau ?"]);
+  assert.deepEqual(groundedOpenerFragments("Salut\nÇa va ?"), ["Salut", "Ça va ?"]);
+  assert.deepEqual(groundedOpenerFragments("Salut\nBien ou bien ?\nTu fais quoi de beau ?"), ["Salut", "Bien ou bien ?", "Tu fais quoi de beau ?"]);
   assert.deepEqual(groundedOpenerFragments("Ton profil m'a fait sourire"), ["Salut", "Bien ou bien ?"]);
   assert.deepEqual(groundedOpenerFragments(""), ["Salut", "Bien ou bien ?"]);
-  assert.ok(groundedOpenerFragments("Hey\\nJ'ai adoré ta photo\\nHow's your day?").every(fragment => !fragment.includes("photo")));
+  assert.ok(groundedOpenerFragments("Hey\nJ'ai adoré ta photo\nHow's your day?").every(fragment => !fragment.includes("photo")));
 });
 
 test("burst stops if match replied, human sent a message, or transcript is unavailable", () => {
