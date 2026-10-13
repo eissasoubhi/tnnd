@@ -34,8 +34,7 @@ async function prepareNewMatch(ref: string, token: string): Promise<string> {
     if (!detail.ok || !Array.isArray(detail.data.conversation?.messages)
         || detail.data.conversation.messages.length > 0) throw new Error("Existing chat is not proven empty");
   }
-  const id = conversation?.id || (() => { return null; })();
-  let conversationId: string = id ?? "";
+  let conversationId: string = typeof conversation?.id === "string" ? conversation.id : "";
   if (!conversationId) {
     const created = await fetchBackend("/api/v1/conversations/sync", token, "POST", {
       externalThreadId: ref, status: "active", messages: []
