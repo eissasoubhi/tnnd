@@ -5,6 +5,9 @@ import { getBackendSession, getChatSettings, saveChatSettings } from "./storage"
 import { syncConversationDelta } from "./conversation-sync";
 import { loadTinderConversationManagement } from "./tinder-backend-management";
 import { prepareReadOnlyImport, type VisibleTinderMessage } from "./tinder-manual-import";
+import { buildReadOnlyProfileSource, hasMeaningfulVisibleProfileFields } from "./tinder-match-profile-capture";
+import { uploadVisibleMatchProfileCapture } from "./tinder-match-profile-backend";
+import type { VisibleTinderMatchIdentity } from "./tinder-chat-identity";
 import { visibleTranscriptSummary } from "./tinder-message-evidence";
 import { renderSyncStatus } from "./sync-status-panel";
 import type { UiAuditReport } from "./web-ui-audit";
@@ -55,6 +58,7 @@ interface VisibleThreadMessagesResponse {
   threadKey?: string | null;
   conversationRef?: string | null;
   messages?: VisibleTinderMessage[];
+  identity?: VisibleTinderMatchIdentity;
   error?: string;
 }
 
@@ -491,7 +495,25 @@ syncCurrentChat.addEventListener("click", () => {
       payload.nextCursor
     );
     let identityStatus = "";
-    if (matchName) {
+    const observed = buildReadOnlyProfileSource({
+      route: `/app/messages/${snapshot.conversationRef}`,
+      firstName: snapshot.identity?.firstName,
+      age: snapshot.identity?.age,
+      photoUrl: snapshot.identity?.photoUrl
+    });
+    const autoIdentity = Boolean(observed.visibleFields.firstName);
+    if (hasMeaningfulVisibleProfileFields(observed)) {
+      const session = await getBackendSession();
+      if (session) {
+        try {
+          await uploadVisibleMatchProfileCapture(session, observed, { conversationId: result.conversationId });
+          identityStatus = autoIdentity ? ` Tinder profile detected: ${observed.visibleFields.firstName}${observed.visibleFields.age ? ` ${observed.visibleFields.age}` : ""}.` : " Tinder profile photo saved.";
+        } catch {
+          identityStatus = " Profile was visible, but profile sync failed. Reopen the chat or export the Tinder diagnostic ZIP.";
+        }
+      }
+    }
+    if (!autoIdentity && matchName) {
       const session = await getBackendSession();
       if (!session) throw new Error("Import succeeded, but TNND session expired before saving the name. Reconnect and retry.");
       try {
