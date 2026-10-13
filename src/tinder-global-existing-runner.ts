@@ -1,7 +1,8 @@
 import { getBackendSession, getChatSettings, getConfig, saveChatSettings } from "./storage";
 import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import { partitionExistingChatPermissions } from "./tinder-existing-chat-settings-policy";
-import { eligibleExistingThreadRefs, nextExistingThreadRef } from "./tinder-global-existing-policy";
+import { eligibleExistingThreadRefs } from "./tinder-global-existing-policy";
+import { reconcileExistingIndex, markThreadChecked, observeUnreadThreads, nextIndexedExistingThread, isExistingThreadIndex, type ExistingThreadIndex } from "./tinder-existing-thread-index";
 
 const KEY = "tnnd.globalExistingRunner.v2";
 const ALARM = "tnnd.globalExistingRunner.cycle";
@@ -14,6 +15,7 @@ async function getCadenceSeconds(): Promise<number> {
 }
 const API = "http://127.0.0.1:4000";
 const LOG_LIMIT = 16;
+const WORK_INDEX_KEY = "tnnd.existingThreadWorkIndex.v1";
 const PHASES = ["starting", "checking", "loading", "waiting", "generating", "sending", "sent", "skipped", "error", "stopped"] as const;
 type RunnerPhase = typeof PHASES[number];
 
@@ -101,7 +103,7 @@ async function save(state: GlobalExistingRunnerState): Promise<GlobalExistingRun
   await chrome.storage.local.set({ [KEY]: state });
   return state;
 }
-async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[]; labels: Map<string, string> }> {
+async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[]; labels: Map<string, string>; messageTimes: Map<string, string | null> }> {
   const session = await getBackendSession();
   if (!session) throw new Error("TNND account is not connected.");
   const headers = { authorization: `Bearer ${session.token}` };
@@ -129,10 +131,14 @@ async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[];
       displayName: typeof record.displayName === "string" ? record.displayName : ""
     }));
   const ids = new Map(records.map(item => [item.id, item.externalThreadId]));
+  const messageTimes = new Map<string, string | null>();
   const labels = new Map<string, string>();
   for (const item of summaries) {
     const ref = ids.get(item.id);
-    if (ref) labels.set(ref, item.displayName && !item.displayName.startsWith("Conversation ") ? item.displayName : `Thread ${ref.slice(0, 8)}`);
+    if (ref) {
+      labels.set(ref, item.displayName && !item.displayName.startsWith("Conversation ") ? item.displayName : `Thread ${ref.slice(0, 8)}`);
+      messageTimes.set(ref, item.lastMessageAt);
+    }
   }
 
   const authorized = eligibleExistingThreadRefs(records, summaries);
@@ -142,7 +148,7 @@ async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[];
     settingsByRef.set(ref, await getChatSettings(threadKey));
   }
   const { ready, disabled } = partitionExistingChatPermissions(authorized, settingsByRef);
-  return { refs: ready, disabledRefs: disabled, labels };
+  return { refs: ready, disabledRefs: disabled, labels, messageTimes };
 }
 
 /** Reuse the EXISTING Tinder tab. Opening a second one can invalidate Tinder's
@@ -164,6 +170,13 @@ async function assertRunnerTab(state: GlobalExistingRunnerState): Promise<number
     throw new Error("Tinder tab changed to a different conversation. Stop runner or return to the managed chat.");
   }
   return state.tabId;
+}
+async function readWorkIndex(userId: string): Promise<ExistingThreadIndex | null> {
+  const stored = (await chrome.storage.local.get(WORK_INDEX_KEY))[WORK_INDEX_KEY];
+  return isExistingThreadIndex(stored) && stored.userId === userId ? stored : null;
+}
+async function saveWorkIndex(state: ExistingThreadIndex): Promise<void> {
+  await chrome.storage.local.set({ [WORK_INDEX_KEY]: state });
 }
 async function tick(): Promise<void> {
   if (busy) return;
@@ -197,11 +210,15 @@ async function tick(): Promise<void> {
       await save(activity(await load(), "waiting", "Automatic replies are OFF in TNND Options. Enable them to continue."));
       return;
     }
-    const { refs, labels } = await listEligible();
+    const { refs, labels, messageTimes } = await listEligible();
     if (!(await load()).enabled) return;
-    const nextRef = nextExistingThreadRef(refs, state.cursorRef);
+    const work = reconcileExistingIndex(await readWorkIndex(session.user.id), session.user.id,
+      refs.map(ref => ({ ref, lastMessageAt: messageTimes.get(ref) ?? null })));
+    await saveWorkIndex(work);
+    const nextRef = nextIndexedExistingThread(work);
     if (!nextRef) {
-      await save(activity({ ...await load(), eligibleCount: refs.length }, "waiting", "No eligible AI-managed conversations with synchronized messages. Authorize and sync them in TNND Web."));
+      await save(activity({ ...await load(), eligibleCount: refs.length }, "waiting",
+        `All ${refs.length} indexed chats checked. Waiting for new unread events or changed server message timestamps.`));
       return;
     }
     const current = await load();
@@ -219,6 +236,7 @@ async function tick(): Promise<void> {
       const latest = await load();
       const reason = result?.error ?? "spa_navigation_unconfirmed";
       if (reason === "thread_not_in_visible_sidebar") {
+        await saveWorkIndex(markThreadChecked(work, nextRef));
         await save(activity({ ...latest, cursorRef: nextRef, lastVisitAt: new Date().toISOString() },
           "skipped", `Cannot find ${label} in the currently loaded Tinder Messages sidebar. Scroll/load that chat to include it; no full-page reload.`, nextRef));
       } else if (reason === "conversation_processing_in_progress") {
@@ -233,6 +251,7 @@ async function tick(): Promise<void> {
     }
     const latest = await load();
     if (!latest.enabled) return;
+    await saveWorkIndex(markThreadChecked(work, nextRef));
     await save({ ...latest, lastRef: nextRef, cursorRef: nextRef, currentLabel: label, visitedCount: latest.visitedCount + 1,
       lastVisitAt: new Date().toISOString() });
     // Reply sending remains solely in Tinder content script, guarded by both
@@ -321,7 +340,7 @@ chrome.runtime.onStartup.addListener(() => {
 });
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (!message || typeof message !== "object") return false;
-  const input = message as { type?: unknown; phase?: unknown; detail?: unknown; ref?: unknown; enablePreviouslyDisabled?: unknown; cadenceSeconds?: unknown };
+  const input = message as { type?: unknown; phase?: unknown; detail?: unknown; ref?: unknown; refs?: unknown; enablePreviouslyDisabled?: unknown; cadenceSeconds?: unknown };
   if (input.type === "TNND_EXISTING_RUNNER_TAB_PAUSED") {
     const statePromise = load();
     void statePromise.then(state => sendResponse({
@@ -344,6 +363,19 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
           await save({ ...state, pausedOnStop: false });
         }
       }
+      return { ok: true };
+    })().then(sendResponse).catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+  if (input.type === "TNND_EXISTING_RUNNER_UNREAD") {
+    void (async () => {
+      const state = await load();
+      const session = await getBackendSession();
+      if (!state.enabled || !session || session.user.id !== state.userId || sender.tab?.id !== state.tabId
+        || !isTinderUrl(sender.url) || !Array.isArray(input.refs)) return { ok: false };
+      const current = await readWorkIndex(session.user.id);
+      if (!current) return { ok: false };
+      await saveWorkIndex(observeUnreadThreads(current, input.refs.filter((ref): ref is string => typeof ref === "string")));
       return { ok: true };
     })().then(sendResponse).catch(() => sendResponse({ ok: false }));
     return true;
