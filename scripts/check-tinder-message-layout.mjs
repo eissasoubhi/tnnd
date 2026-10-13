@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { directionFromChatColumnGeometry, messageBubbleSized } from "../src/tinder-message-layout.ts";
+import { directionFromChatColumnGeometry, directionFromVerifiedTinderClasses, messageBubbleSized } from "../src/tinder-message-layout.ts";
 import { directionFromTinderHints } from "../src/tinder-message-evidence.ts";
 import { unansweredStatus } from "../src/tinder-unanswered-backlog.ts";
 
@@ -46,4 +46,29 @@ test("adapter selects the text bubble and chat composer, never the main-page cen
   assert.match(adapter,/directionFromChatColumnGeometry\(bubbleRect, composerRect\)/);
   assert.match(adapter,/messageBubbleSized\(rect, composerRect\)/);
   assert.doesNotMatch(adapter,/rootCenter|document\.querySelector\("main"\) \?\? document\.body/);
+});
+
+test("verified Tinder DOM sends and received bubbles are identified by actual classes", () => {
+  const incoming = [
+    "msg BreakWord D(ib) C($c-ds-text-chat-bubble-receive) msg--received",
+    "msgBackground--received Bgc($c-ds-background-secondary)"
+  ];
+  const outgoing = [
+    "msg BreakWord D(ib) C($c-ds-text-chat-bubble-send)",
+    "Bgc($c-ds-background-chat-bubble-send)"
+  ];
+  assert.equal(directionFromVerifiedTinderClasses(incoming), "them");
+  assert.equal(directionFromVerifiedTinderClasses(outgoing), "me");
+  assert.equal(directionFromVerifiedTinderClasses([]), "unknown");
+  assert.equal(directionFromVerifiedTinderClasses([...incoming, ...outgoing]), "unknown");
+  assert.equal(unansweredStatus([{ direction: directionFromVerifiedTinderClasses(incoming), text:"Toi?" }]), "unanswered");
+});
+
+test("adapter reads one Tinder article message text without message timestamps or status wrappers", async () => {
+  const {readFile} = await import("node:fs/promises");
+  const adapter = await readFile(new URL("../src/tinder-adapter.ts",import.meta.url),"utf8");
+  assert.match(adapter, /ol\[aria-label="Messages" i\] \[role="article"\]/);
+  assert.match(adapter, /querySelector<HTMLElement>\('\.msg \.text'\)/);
+  assert.match(adapter, /directionFromVerifiedTinderClasses\(markers\)/);
+  assert.match(adapter, /return verified\.slice\(-40\)/);
 });
