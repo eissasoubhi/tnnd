@@ -85,6 +85,12 @@ function installStyles(): void {
     .conversation-inline-feedback{display:grid;gap:6px;padding:8px;border:1px solid var(--border,#d4d4d8);border-radius:8px}
     .conversation-inline-feedback button[aria-pressed="true"]{font-weight:700;outline:2px solid currentColor;outline-offset:1px}
     .conversation-inline-feedback textarea{min-height:60px}
+    .conversation-inline-feedback-options{gap:6px;min-width:0}
+    .conversation-inline-feedback-options button{width:auto;max-width:100%;min-height:34px;padding:7px 11px;font-size:12px;line-height:1.3;font-weight:650;border-radius:999px;overflow-wrap:anywhere;white-space:normal}
+    .conversation-inline-generation{min-width:0}
+    .conversation-inline-generation-preview{min-width:0;overflow-wrap:anywhere;font-size:15px;line-height:1.65}
+    .conversation-inline-generation-actions button{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+    .conversation-inline-feedback-summary{overflow-wrap:anywhere}
     .conversation-inline-generation-preview{white-space:pre-wrap;margin:0}
     .conversation-inline-generation-preview[data-approved="true"]{font-weight:600}
     .conversation-inline-generation-lifecycle{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px}

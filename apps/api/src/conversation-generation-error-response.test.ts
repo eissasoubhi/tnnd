@@ -25,3 +25,8 @@ test("other stage failure reveals no original exception or query", () => {
   const response = generationErrorResponse(new GenerationStageFailure("provider-settings", new Error("password@example.com")));
   assert.deepEqual(response, { status: 500, body: { error: "generation_context_unavailable", stage: "provider-settings" } });
 });
+
+test("maps unfinished structured output to safe provider errors", () => {
+  assert.deepEqual(generationErrorResponse(new Error("gemini_output_truncated")), {status:502,body:{error:"gemini_output_truncated"}});
+  assert.deepEqual(generationErrorResponse(new Error("gemini_invalid_output")), {status:502,body:{error:"gemini_invalid_output"}});
+});

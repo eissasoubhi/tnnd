@@ -10,6 +10,10 @@ export function draftFailureGuidance(code: string, status?: number): string {
       return "The selected Gemini model is unavailable. Change the model in Settings → Gemini and run Test connection.";
     case "gemini_rate_limited":
       return "Gemini's usage limit was reached. Wait a little, check your Google AI quota, then try again.";
+    case "gemini_output_truncated":
+      return "Gemini stopped before completing the reply. No draft was accepted. Try Generate again, or select a model with a larger output limit in Settings → Gemini.";
+    case "gemini_invalid_output":
+      return "Gemini returned an incomplete or malformed structured reply, so TNND refused to show or copy it. Try generating another draft.";
     case "gemini_empty_response":
       return "Gemini returned an empty draft. Try again; if it repeats, review the model and the API logs.";
     case "gemini_provider_unavailable":
