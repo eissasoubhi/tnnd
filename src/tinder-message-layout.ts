@@ -35,3 +35,15 @@ export function messageBubbleSized(bounds: HorizontalBounds, composer: Horizonta
     && bounds.width < composer.width * 0.78
     && bounds.right > bounds.left;
 }
+
+/** Confirmed by previously supplied redacted Tinder DOM captures:
+ * outgoing article has chat-bubble-send background/text styling;
+ * incoming article has msg--received / msgBackground--received markers.
+ * Mixed/missing markers are NOT permission to send. */
+export function directionFromVerifiedTinderClasses(classes: readonly string[]): TinderMessageDirection {
+  const joined = classes.join(" ");
+  const received = /msg--received|msgBackground--received|chat-bubble-receive/i.test(joined);
+  const sent = /chat-bubble-send/i.test(joined);
+  if (received === sent) return "unknown";
+  return received ? "them" : "me";
+}
