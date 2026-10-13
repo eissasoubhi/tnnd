@@ -6,6 +6,7 @@ import { syncConversationDelta } from "./conversation-sync";
 import { loadTinderConversationManagement } from "./tinder-backend-management";
 import { prepareReadOnlyImport, type VisibleTinderMessage } from "./tinder-manual-import";
 import { renderSyncStatus } from "./sync-status-panel";
+import type { UiAuditReport } from "./web-ui-audit";
 import type { ChatSettings, ConversationStage, Tone } from "./types";
 import { WEB_DIAGNOSTIC_STORAGE_KEY, analyzeWebDiagnosticState, isTnndLocalWebUrl, type WebDiagnosticStore, type WebDiagnosticTabState } from "./web-diagnostic-types";
 
@@ -72,6 +73,10 @@ const webDiagnosticDetail = document.getElementById("webDiagnosticDetail")!;
 const refreshWebDiagnostics = document.getElementById("refreshWebDiagnostics") as HTMLButtonElement;
 const resetWebDiagnostics = document.getElementById("resetWebDiagnostics") as HTMLButtonElement;
 const exportWebDiagnostics = document.getElementById("exportWebDiagnostics") as HTMLButtonElement;
+const runWebUiAudit = document.getElementById("runWebUiAudit") as HTMLButtonElement;
+const exportWebUiAudit = document.getElementById("exportWebUiAudit") as HTMLButtonElement;
+const webUiAuditSummary = document.getElementById("webUiAuditSummary")!;
+let latestWebUiAudit: UiAuditReport | null = null;
 const version = document.getElementById("extensionVersion")!;
 const status = document.getElementById("status")!;
 const diagnosticView = document.getElementById("diagnosticView")!;
@@ -497,6 +502,41 @@ saveChat.addEventListener("click", () => {
   }).finally(() => {
     saveChat.disabled = false;
   });
+});
+
+runWebUiAudit.addEventListener("click", () => {
+  void (async () => {
+    runWebUiAudit.disabled = true;
+    webUiAuditSummary.textContent = "Testing live TNND Web navigation and controls safely…";
+    const current = await currentWebDiagnosticState();
+    if (!current) throw new Error("Keep the TNND Web tab active and reopen the extension.");
+    const response = await chrome.tabs.sendMessage(current.tabId, { type: "TNND_RUN_WEB_UI_AUDIT" }) as {
+      ok?: boolean; report?: UiAuditReport; error?: string;
+    };
+    if (!response?.ok || !response.report) throw new Error(response?.error ?? "Could not run UI audit. Reload TNND Web and reopen the extension.");
+    latestWebUiAudit = response.report;
+    exportWebUiAudit.disabled = false;
+    const failures = response.report.checks.filter(check => check.result === "failed").length;
+    const errors = response.report.issues.filter(issue => issue.severity === "error").length;
+    const warnings = response.report.issues.filter(issue => issue.severity === "warning").length;
+    webUiAuditSummary.textContent =
+      `${response.report.buttons.visible} buttons inspected · ${response.report.navLinks} menu links clicked · ${response.report.disclosures} groups toggled. ${failures} failed checks; ${errors} errors; ${warnings} warnings. Save/delete/send buttons were not pressed. Export the JSON for details.`;
+  })().catch(error => {
+    webUiAuditSummary.textContent = error instanceof Error ? error.message : "UI audit failed.";
+  }).finally(() => {
+    runWebUiAudit.disabled = false;
+  });
+});
+
+exportWebUiAudit.addEventListener("click", () => {
+  if (!latestWebUiAudit) return;
+  const blob = new Blob([JSON.stringify(latestWebUiAudit, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `tnnd-ui-audit-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 });
 
 refreshWebDiagnostics.addEventListener("click", () => void renderWebDiagnostics());
