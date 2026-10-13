@@ -60,6 +60,11 @@ test("operational runner states are persisted and reported without Tinder messag
  assert.match(runner, /visitedCount/);
  assert.match(runner, /sentCount/);
  assert.match(runner, /TNND_EXISTING_RUNNER_EVENT/);
+ assert.match(runner, /pausedOnStop/);
+ assert.match(runner, /TNND_EXISTING_RUNNER_TAB_PAUSED/);
+ assert.match(runner, /TNND_EXISTING_RUNNER_CLEAR_PAUSE/);
+ assert.match(content, /await autoReplyPausedAfterGlobalStop\(conversationRef\)/);
+ assert.match(popup, /TNND_EXISTING_RUNNER_CLEAR_PAUSE/);
  assert.match(runner, /sender\.tab\.id !== state\.tabId/);
  assert.match(runner, /webReadOnlySender/);
  for (const phase of ["waiting", "generating", "sending", "sent", "skipped", "error"]) {
