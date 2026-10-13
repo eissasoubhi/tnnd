@@ -1,4 +1,5 @@
 import { readSession } from "./auth-client";
+import { listConversations } from "./conversation-client";
 import {
   conversationManagementStates,
   listConversationManagement,
@@ -55,6 +56,7 @@ function installStyles(): void {
   const style = document.createElement("style");
   style.id = "tnnd-management-panel-styles";
   style.textContent = `
+    .conversation-management-explainer{padding:10px 14px;border:1px solid var(--nb-border,#c8d8cd);border-radius:12px;background:var(--nb-surface-soft,#edf4eb);font-size:12px;line-height:1.6}.conversation-management-explainer summary{cursor:pointer;font-weight:750}.conversation-management-explainer p{margin:8px 0 0}
     .management-list{display:grid;gap:8px;margin-top:12px}.management-row{display:grid;grid-template-columns:minmax(0,1fr) 190px auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--border,#d4d4d8);border-radius:10px}.management-row-main{display:grid;gap:3px;min-width:0}.management-row-main strong,.management-row-main small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.management-row small{opacity:.65}.management-row select{width:100%}.management-row button{width:auto;padding:7px 10px}.management-badge{font-size:10px;opacity:.72}.management-action-block{display:inline-flex;width:max-content;max-width:100%;font-size:11px;font-weight:700;padding:3px 7px;border-radius:999px;background:rgba(245,158,11,.14)}.management-action-block[data-severity="urgent"]{background:rgba(239,68,68,.16)}.management-note{margin-top:9px}.management-status{min-height:18px}.management-row[data-management-state="moved-off-tinder"]{border-style:dashed}.management-row[data-management-state="ai-managed"]{outline:1px solid currentColor;outline-offset:1px}.management-row[data-action-focus="true"]{box-shadow:0 0 0 3px rgba(99,102,241,.3)}@media(max-width:760px){.management-row{grid-template-columns:1fr}}
   `;
   document.head.append(style);
@@ -72,7 +74,11 @@ function mount(): { list: HTMLElement; status: HTMLElement } | null {
       <div><p class="eyebrow">AI takeover</p><h2>Conversation management</h2></div>
       <span class="pill" id="conversation-management-status">Sign in required</span>
     </div>
-    <p class="subtle">Change who controls an existing Tinder conversation at any time. Unmanaged and manual chats never become AI-managed implicitly.</p>
+    <p class="subtle">Choose which chats TNND is allowed to manage. Existing Tinder conversations are not selected automatically.</p>
+    <details class="conversation-management-explainer"><summary>How do I let TNND handle a Tinder conversation?</summary>
+      <p><strong>1. Synced</strong> means that TNND received the messages; it does not mean continuous monitoring. <strong>2. AI managed</strong> permits TNND to manage only this chat, after your confirmation. <strong>3. Paused</strong> stops server-side automation even if the chat is AI managed. Resume separately in Conversations. <strong>4. Extension automation</strong> must also be enabled globally and for this chat. Check the Tinder tab and test a manual draft first.</p>
+      <p><strong>Keep manual</strong> means you write/send messages yourself. <strong>Unmanaged</strong> means TNND has no automation permission. A draft preview never sends a message.</p>
+    </details>
     <div id="conversation-management-list" class="management-list"></div>
     <p class="subtle management-note">Switching to AI managed requires an explicit confirmation before it is saved.</p>
     <p class="subtle management-status" id="conversation-management-message"></p>
@@ -86,6 +92,7 @@ function mount(): { list: HTMLElement; status: HTMLElement } | null {
 
 const elements = mount();
 let records: ConversationManagementRecord[] = [];
+let names = new Map<string, string>();
 
 function render(): void {
   if (!elements) return;
@@ -96,7 +103,7 @@ function render(): void {
   elements.list.innerHTML = records.map((record) => `
     <div class="management-row" data-management-row="${escapeHtml(record.conversationId)}" data-management-state="${record.managementState}">
       <div class="management-row-main">
-        <strong>${escapeHtml(record.externalThreadId)}</strong>
+        <strong>${escapeHtml(names.get(record.conversationId) ?? `Conversation ${record.conversationId.slice(0, 8)}`)}</strong>
         <small>${record.explicitlySelected ? "Explicitly selected" : "Not selected for AI takeover"} · Updated ${escapeHtml(new Date(record.updatedAt).toLocaleString())}</small>
         ${renderHumanActionBlock(record)}
       </div>
@@ -162,7 +169,12 @@ async function refresh(): Promise<void> {
   }
   elements.status.textContent = "Loading…";
   try {
-    records = await listConversationManagement(session);
+    const [management, summaries] = await Promise.all([
+      listConversationManagement(session),
+      listConversations(session)
+    ]);
+    records = management;
+    names = new Map(summaries.map(item => [item.id, item.displayName + (item.matchAge ? ` · ${item.matchAge}` : "")]));
     elements.status.textContent = `${records.length} conversations`;
     render();
   } catch (error) {
