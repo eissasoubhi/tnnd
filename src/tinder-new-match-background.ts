@@ -1,5 +1,5 @@
 import {
-  armNewMatchObservation, emptyNewMatchState, isNewMatchObservationState,
+  armNewMatchObservation, armExistingMatches, emptyNewMatchState, isNewMatchObservationState,
   observeNewMatchLinks, stopNewMatchObservation
 } from "./tinder-new-match-observation";
 
@@ -10,6 +10,7 @@ const KEY = "tnnd.newMatchLinkObservation.v3";
 type Request =
   | { type: "TNND_NEW_MATCH_OBSERVATION_STATE" }
   | { type: "TNND_NEW_MATCH_OBSERVATION_START"; refs: string[] }
+  | { type: "TNND_EXISTING_MATCHES_START"; refs: string[]; tabId: number }
   | { type: "TNND_NEW_MATCH_OBSERVATION_STOP" }
   | { type: "TNND_NEW_MATCH_LINKS_SEEN"; refs: string[] };
 
@@ -62,7 +63,7 @@ export async function updateNewMatchAttempt(ref: string, sent: boolean, result: 
 }
 chrome.runtime.onMessage.addListener((message: Request, sender, respond) => {
   if (!message || typeof message !== "object" || !("type" in message)) return false;
-  const types = ["TNND_NEW_MATCH_OBSERVATION_STATE", "TNND_NEW_MATCH_OBSERVATION_START", "TNND_NEW_MATCH_OBSERVATION_STOP", "TNND_NEW_MATCH_LINKS_SEEN"];
+  const types = ["TNND_NEW_MATCH_OBSERVATION_STATE", "TNND_NEW_MATCH_OBSERVATION_START", "TNND_EXISTING_MATCHES_START", "TNND_NEW_MATCH_OBSERVATION_STOP", "TNND_NEW_MATCH_LINKS_SEEN"];
   if (!types.includes(message.type)) return false;
   if (!trusted(sender)) { respond({ ok: false, error: "untrusted_sender" }); return false; }
   if (message.type === "TNND_NEW_MATCH_OBSERVATION_STATE") {
@@ -85,6 +86,25 @@ chrome.runtime.onMessage.addListener((message: Request, sender, respond) => {
       .catch(error => respond({ ok: false, error: error instanceof Error ? error.message : "arm_failed" }));
     return true;
   }
+  if (message.type === "TNND_EXISTING_MATCHES_START" && popupSender(sender)) {
+    void serialized(async () => {
+      if (!Array.isArray(message.refs) || message.refs.length < 1 || message.refs.length > 500) throw new Error("Select Matches to see the existing Tinder match tiles.");
+      const existing = (await chrome.storage.local.get("tnnd.globalExistingRunner.v2"))["tnnd.globalExistingRunner.v2"] as { enabled?: boolean } | undefined;
+      if (existing?.enabled) throw new Error("Stop global existing conversations before launching first messages to existing matches.");
+      const session = await getBackendSession();
+      const config = await getConfig();
+      if (!session || !config.automation.enabled) throw new Error("Connect TNND and enable automatic replies in Options first.");
+      const tinder = await chrome.tabs.query({ url: ["https://tinder.com/*", "https://www.tinder.com/*"] });
+      if (tinder.length !== 1 || tinder[0].id !== message.tabId) throw new Error("Only one existing Tinder tab can be used for this batch.");
+      const prior = await readNewMatchState();
+      const state = await saveNewMatchState(armExistingMatches(message.refs, session.user.id, prior));
+      await chrome.storage.local.set({ "tnnd.newMatchOwnedTab.v1": { tabId: message.tabId, userId: session.user.id, ref: null } });
+      await chrome.alarms.create("tnnd.globalNewMatches.cycle", { periodInMinutes: 0.5 });
+      return state;
+    }).then(state => respond({ ok: true, state }))
+      .catch(error => respond({ ok: false, error: error instanceof Error ? error.message : "start_existing_matches_failed" }));
+    return true;
+  }
   if (message.type === "TNND_NEW_MATCH_OBSERVATION_STOP" && popupSender(sender)) {
     void serialized(async () => {
       const next = await saveNewMatchState(stopNewMatchObservation(await readNewMatchState()));
@@ -94,7 +114,9 @@ chrome.runtime.onMessage.addListener((message: Request, sender, respond) => {
       if (owned?.tabId) {
         try {
           const tab = await chrome.tabs.get(owned.tabId);
-          if (tab.url === `https://tinder.com/app/messages/${encodeURIComponent(owned.ref ?? "")}`) await chrome.tabs.remove(owned.tabId);
+          // Never close the user\'s sole Tinder tab on Stop. Keep the existing
+          // session and chat visible; the worker permission is revoked below.
+          void tab;
         } catch { /* already closed */ }
       }
       await chrome.storage.local.remove(ownedKey);
