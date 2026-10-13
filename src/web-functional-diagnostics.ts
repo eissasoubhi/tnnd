@@ -16,13 +16,17 @@ const route = (url?: string): string => {
     const path = parsed.pathname;
     if (/^\/api\/v1\/conversations\/[^/]+\/generate$/.test(path)) return "conversation.generate";
     if (/^\/api\/v1\/ai\/test-connection$/.test(path)) return "gemini.test";
+    if (path === "/api/v1/analytics") return "analytics";
+    if (path === "/api/v1/profile/texting-style/source-examples") return "texting-style-retained-sources";
     if (/^\/api\/v1\/conversations\/[^/]+/.test(path)) return "conversation.other";
     if (path === "/api/v1/profile") return "profile";
     return path.startsWith("/api/v1/") ? "api.other" : "other";
   } catch { return "unknown"; }
 };
+// These 404s intentionally mean "optional resource not created yet".
 const expected = (finding: WebDiagnosticEvent): boolean =>
-  finding.status === 404 && ["profile", "conversation.other"].includes(route(finding.url)) && finding.method === "GET";
+  finding.status === 404 && finding.method === "GET" &&
+  ["profile", "conversation.other", "texting-style-retained-sources"].includes(route(finding.url));
 
 function nextStep(kind: FunctionalFinding["kind"], operation: string, code?: string): string {
   if (operation === "conversation.generate" && code === "gemini_not_configured") return "Go to Settings → Gemini, save a key, then Test connection.";
@@ -30,6 +34,10 @@ function nextStep(kind: FunctionalFinding["kind"], operation: string, code?: str
   if (operation === "conversation.generate" && code === "gemini_credentials_rejected") return "Replace the Gemini key and Test connection.";
   if (operation === "conversation.generate" && code === "gemini_rate_limited") return "Check Gemini quota or retry later.";
   if (operation === "conversation.generate" && code === "internal_error") return "Inspect Docker API logs around this request; share the sanitized diagnostics ZIP.";
+  if (operation === "conversation.generate" && code === "generation_schema_missing") return "The API database schema is missing tables or columns used by draft generation. Run the documented migrations, then retry.";
+  if (operation === "conversation.generate" && code === "generation_context_unavailable") return "Draft context could not be loaded. Check the API stage in the server logs and database connectivity.";
+  if (operation === "analytics" && kind === "http") return "The analytics endpoint did not respond successfully. Rebuild/restart the API and check its logs.";
+
   if (kind === "network") return "Check Docker API/Web services, the browser Network tab, and the proxy.";
   if (operation === "conversation.generate") return "Check Gemini settings and API logs; export the Web diagnostic ZIP.";
   return "Open the Network tab or Web diagnostic ZIP to inspect the failing API action.";
