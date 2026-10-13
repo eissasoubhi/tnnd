@@ -45,6 +45,7 @@ export function functionalFindings(events: readonly WebDiagnosticEvent[], now = 
     const isHttp = event.kind === "fetch-end" && (event.status ?? 0) >= 400 && !expected(event);
     const isApp = event.kind === "app-error" && Boolean(event.detail);
     if (!isNetwork && !isHttp && !isApp) continue;
+    if (expected(event)) continue;
     const op = route(event.url);
     if (op === "other" || op === "unknown") continue;
     const action = [...actions].reverse().find(a => a.at <= event.at && event.at - a.at < 30_000)?.detail;
