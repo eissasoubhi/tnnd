@@ -44,6 +44,9 @@ export interface AutomationConfig {
   replyDelaySeconds?: number;
   replyDelayMinSeconds?: number;
   replyDelayMaxSeconds?: number;
+  /** Delay between consecutive bubbles in one Tinder match opener (separate from replies). */
+  openerDelayMinSeconds?: number;
+  openerDelayMaxSeconds?: number;
   quietHoursEnabled: boolean;
   quietStart: string;
   quietEnd: string;
