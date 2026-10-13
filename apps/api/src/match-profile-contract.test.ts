@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeMatchProfile, parseMatchProfileSourceCapture, temporaryMatchProfileRetentionDaysFromProfile } from "./match-profile-contract.js";
+import { normalizeMatchProfile, normalizeTinderPhotoUrl, parseMatchProfileSourceCapture, temporaryMatchProfileRetentionDaysFromProfile } from "./match-profile-contract.js";
 
 const source = {
   schemaVersion: 1,
@@ -11,6 +11,7 @@ const source = {
   visibleFields: {
     firstName: "  Sam  ",
     age: 29,
+    photoUrl: "https://images-ssl.gotinder.com/synthetic.jpg",
     bio: "  Coffee   and hiking  ",
     interests: [" Hiking ", "", "Coffee"]
   }
@@ -20,8 +21,15 @@ test("normalizes a bounded read-only MatchProfile source capture", () => {
   const parsed = parseMatchProfileSourceCapture(source);
   assert.equal(parsed.captureMode, "read-only");
   assert.equal(parsed.visibleFields.firstName, "Sam");
+  assert.equal(parsed.visibleFields.photoUrl, "https://images-ssl.gotinder.com/synthetic.jpg");
   assert.equal(parsed.visibleFields.bio, "Coffee and hiking");
   assert.deepEqual(parsed.visibleFields.interests, ["Hiking", "Coffee"]);
+});
+
+test("rejects unrelated or unsafe photo hosts", () => {
+  assert.equal(normalizeTinderPhotoUrl("http://images-ssl.gotinder.com/photo"), undefined);
+  assert.equal(normalizeTinderPhotoUrl("https://images-ssl.gotinder.com.evil.test/photo"), undefined);
+  assert.equal(normalizeTinderPhotoUrl("javascript:alert(1)"), undefined);
 });
 
 test("keeps pre-match captures temporary", () => {
