@@ -754,7 +754,10 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
 window.setInterval(() => {
   if (!hasLiveExtensionContext() || spaNavigationBusy || busy) return;
   const ref = currentConversationRef();
-  if (ref) void sendRuntimeMessage({ type: "TNND_EXISTING_RUNNER_TICK", ref }).catch(() => undefined);
+  if (ref) {
+    void sendRuntimeMessage({ type: "TNND_EXISTING_RUNNER_TICK", ref }).catch(() => undefined);
+    void sendRuntimeMessage({ type: "TNND_MATCH_RUNNER_TICK", ref }).catch(() => undefined);
+  }
 }, 2500);
 
 function scheduleScan(): void {
