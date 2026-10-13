@@ -142,9 +142,9 @@ async function mountInlineEditor(): Promise<void> {
     <div class="conversation-inline-generation">
       <strong>AI reply draft</strong>
       <p class="draft-guidance">Start here: make one suggested reply. Nothing is sent to Tinder.</p>
-      <label class="draft-input-label" for="draft-latest-message">Step 1 · Latest message from your match</label>
+      <label class="draft-input-label" for="draft-latest-message">Step 1 · Latest incoming message (loaded from sync when available)</label>
       <textarea id="draft-latest-message" aria-describedby="draft-instructions" data-generation-message maxlength="4000" placeholder="Paste the latest incoming message"></textarea>
-      <p id="draft-instructions" class="subtle">Paste only the message you want TNND to answer. The saved conversation history will provide context.</p>
+      <p id="draft-instructions" class="subtle">TNND fills this from the latest synced incoming message when there is a new reply. Edit only to test another scenario. Nothing is sent automatically.</p>
       <div class="conversation-inline-generation-actions">
         <button type="button" data-generation-button>Step 2 · Generate a reply</button>
         <button type="button" data-generation-regenerate hidden disabled>Try another reply</button>
@@ -203,6 +203,12 @@ async function mountInlineEditor(): Promise<void> {
   const confirmationMessageId = section.querySelector<HTMLInputElement>("[data-confirmation-message-id]")!;
   const confirmationButton = section.querySelector<HTMLButtonElement>("[data-confirmation-button]")!;
   const confirmationStatus = section.querySelector<HTMLElement>("[data-confirmation-status]")!;
+  // Read the detail snapshot populated by the conversation list. We only
+  // prefill when the last actual message is incoming, never after our own reply.
+  generationMessage.value = detail.dataset.replyTarget ?? "";
+  const instruction = section.querySelector<HTMLElement>("#draft-instructions");
+  if (instruction) instruction.textContent = detail.dataset.replyTargetHint ??
+    "Import the visible Tinder chat first, or paste a message for a manual preview.";
   const session = readSession();
   let currentDraft: ConversationGeneration | null = null;
   let lifecycle = emptyConversationDraftLifecycle();

@@ -4,6 +4,7 @@ import { readCurrentTinderUiState } from "./tinder-runtime-state";
 import { isInboxReadableTinderState } from "./tinder-state-machine";
 import type { TinderScheduledJob } from "./tinder-scheduler";
 import { executeUnreadAwareTinderStep } from "./tinder-unread-executor";
+import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import type { AutomationConfig, GenerateRequest, GenerateResponse } from "./types";
 import { sendRuntimeMessageSafely } from "./extension-context";
 
@@ -112,6 +113,13 @@ async function getContentConfig(): Promise<ContentConfig | null> {
   if (!response) return null;
   if (!response.ok || !response.config) throw new Error(response.error ?? "Could not load TNND configuration.");
   return response.config;
+}
+
+async function backendAllowsAutomaticReply(conversationRef: string): Promise<boolean> {
+  const response = await sendRuntimeMessage<{ ok: boolean; allowed?: boolean }>({
+    type: "TNND_GET_BACKEND_AUTO_SEND_PERMISSION", conversationRef
+  });
+  return response?.ok === true && response.allowed === true;
 }
 
 async function getChatAutomationEnabled(threadKey: string): Promise<boolean | null> {
@@ -358,6 +366,11 @@ async function scan(): Promise<void> {
 
     const snapshot = adapter.read();
     if (!snapshot) return;
+    const conversationRef = currentConversationRef();
+    // Never send from a loosely classified Tinder view: route identity must
+    // match the chat snapshot and the backend must authorize this precise chat.
+    if (!conversationRef || tinderThreadKeyFromPath(location.pathname) !== snapshot.threadKey) return;
+    if (!await backendAllowsAutomaticReply(conversationRef)) return;
     const chatAutomationEnabled = await getChatAutomationEnabled(snapshot.threadKey);
     if (chatAutomationEnabled !== true) return;
 
@@ -374,12 +387,18 @@ async function scan(): Promise<void> {
 
     const currentSnapshot = adapter.read();
     if (!currentSnapshot || currentSnapshot.latestIncomingKey !== snapshot.latestIncomingKey || currentSnapshot.threadKey !== snapshot.threadKey) return;
+    if (currentConversationRef() !== conversationRef || !await backendAllowsAutomaticReply(conversationRef)) return;
     const stillEnabled = await getChatAutomationEnabled(currentSnapshot.threadKey);
     if (stillEnabled !== true) return;
 
     const reply = await generateReply(currentSnapshot.context, currentSnapshot.threadKey);
     if (!reply || !hasLiveExtensionContext()) return;
-
+    // Back-end state or the Tinder tab can change while Gemini is generating.
+    // Re-authorize immediately before the irreversible send operation.
+    if (currentConversationRef() !== conversationRef
+      || tinderThreadKeyFromPath(location.pathname) !== currentSnapshot.threadKey
+      || !await backendAllowsAutomaticReply(conversationRef)) return;
+    if (await getChatAutomationEnabled(currentSnapshot.threadKey) !== true) return;
     await adapter.send(reply);
     const freshState = await getState();
     if (!freshState) return;

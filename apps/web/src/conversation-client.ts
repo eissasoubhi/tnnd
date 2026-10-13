@@ -56,6 +56,7 @@ export interface TemporaryInstruction {
 export interface ConversationDetail {
   id: string;
   displayName: string;
+  matchAge?: number | null;
   status: ConversationStatus;
   currentTopic: string | null;
   topicState: ConversationTopicState;
@@ -138,6 +139,7 @@ function normalizeConversationDetail(value: unknown): ConversationDetail {
   return {
     id: input.id,
     displayName: input.displayName,
+    matchAge: typeof input.matchAge === "number" && Number.isInteger(input.matchAge) && input.matchAge >= 18 && input.matchAge <= 120 ? input.matchAge : null,
     status: input.status,
     currentTopic: typeof input.currentTopic === "string" ? input.currentTopic : null,
     topicState: normalizeTopicState(input.topicState),

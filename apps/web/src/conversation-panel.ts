@@ -10,6 +10,7 @@ import {
 } from "./conversation-client";
 import type { ConversationListItem, ConversationStatus } from "./conversation-contract";
 import { filterConversationSummaries } from "./conversation-list-filter";
+import { replyTargetFromHistory, replyTargetHint } from "./conversation-reply-target";
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>'"]/g, (char) => ({
@@ -32,7 +33,7 @@ function renderList(items: ConversationListItem[], selectedId?: string): string 
   return items.map((item) => `
     <button type="button" class="conversation-row${item.id === selectedId ? " selected" : ""}" data-conversation-id="${escapeHtml(item.id)}" aria-pressed="${item.id === selectedId}">
       <span class="conversation-row-main">
-        <strong>${escapeHtml(item.displayName)}</strong>
+        <span class="conversation-person-line"><span class="conversation-person-avatar" aria-hidden="true">${escapeHtml((item.displayName.startsWith("Conversation ") ? "?" : item.displayName[0] ?? "?").toUpperCase())}</span><strong>${escapeHtml(item.displayName)}${item.matchAge ? ` · ${item.matchAge}` : ""}</strong></span>
         <small>${escapeHtml(item.currentTopic ?? "No topic yet")}</small>
       </span>
       <span class="conversation-row-meta">
@@ -144,11 +145,12 @@ function renderDetail(detail: ConversationDetail): string {
   return `
     <div class="conversation-detail-heading">
       <div>
-        <strong>${escapeHtml(detail.displayName)}</strong>
+        <strong>${escapeHtml(detail.displayName)}${detail.matchAge ? ` · ${detail.matchAge}` : ""}</strong>
         <small>${escapeHtml(detail.currentTopic ?? "No current topic")}</small>
       </div>
       <span class="pill">${escapeHtml(detail.status)}</span>
     </div>
+    <details class="conversation-status-help"><summary>What do Synced, Unmanaged and Paused mean?</summary><p><strong>Synced</strong>: history is saved in TNND, not necessarily live. <strong>Unmanaged</strong>: AI has not been authorized to control the Tinder chat. <strong>Paused</strong>: server-side automation is stopped. Draft previews remain manual and do not send anything.</p><p>To allow AI to manage this chat, choose <strong>AI managed</strong> in Conversation management, confirm it, then Resume this chat. Separately enable automation for this chat and globally in the extension. Test generated drafts before allowing sends.</p><a href="#conversation-management-panel">Open conversation management →</a></details>
     <div class="conversation-status-actions" aria-label="Conversation controls">
       ${renderStatusActions(detail)}
     </div>
@@ -186,6 +188,7 @@ function installStyles(): void {
     .conversation-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:12px}.conversation-stat{display:grid;gap:2px;padding:9px 10px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:rgba(127,127,127,.05)}.conversation-stat strong{font-size:18px}.conversation-stat span{font-size:10px;opacity:.7}
     .conversation-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;flex-wrap:wrap}.conversation-filter{display:flex;align-items:center;gap:7px;font-size:12px}.conversation-filter select{width:auto;min-width:170px}.conversation-summary{font-size:11px;opacity:.7}
     .conversation-layout{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(280px,1.1fr);gap:14px;margin-top:14px}
+    .conversation-person-line{display:flex;align-items:center;gap:9px;min-width:0}.conversation-person-line strong{min-width:0;overflow-wrap:anywhere}.conversation-person-avatar{display:inline-grid;flex:0 0 34px;place-items:center;width:34px;height:34px;background:var(--nb-mint,#d9efcc);color:var(--nb-primary,#264b40);border-radius:50%;font-weight:800}.conversation-status-help{margin:0 0 12px;padding:10px 13px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:var(--nb-surface-soft,#edf4eb)}.conversation-status-help summary{cursor:pointer;font-size:12px;font-weight:750}.conversation-status-help p{font-size:12px;line-height:1.55}.conversation-status-help a{font-size:12px;font-weight:750;color:inherit;text-decoration:underline}
     .conversation-list{display:grid;gap:8px;align-content:start;max-height:430px;overflow:auto}
     .conversation-row{width:100%;display:flex;justify-content:space-between;gap:12px;text-align:left;padding:11px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:transparent;color:inherit;cursor:pointer}
     .conversation-row:hover{border-color:currentColor}.conversation-row.selected{outline:2px solid currentColor;outline-offset:1px}.conversation-row-main,.conversation-row-meta{display:grid;gap:4px}.conversation-row-meta{text-align:right;justify-items:end}.conversation-row small,.conversation-detail small,.conversation-message small{opacity:.65}
@@ -393,6 +396,10 @@ async function loadDetail(conversationId: string): Promise<void> {
     const detail = await getConversation(session, conversationId);
     if (requestId !== detailRequestSequence || selectedConversationId !== conversationId) return;
     elements.detail.innerHTML = renderDetail(detail);
+    // The draft editor is mounted lazily after the detail DOM changes.
+    // Keep the live reply target on its owning detail node, never in storage.
+    elements.detail.dataset.replyTarget = replyTargetFromHistory(detail.messages) ?? "";
+    elements.detail.dataset.replyTargetHint = replyTargetHint(detail.messages);
     bindStatusActions(conversationId);
     bindTemporaryInstructionActions(conversationId);
   } catch (error) {

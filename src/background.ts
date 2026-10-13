@@ -3,6 +3,8 @@ import "./tinder-checkpoint-background";
 import "./tinder-message-cursor-background";
 import "./tinder-unread-observation-background";
 import { generateSuggestions } from "./gemini";
+import { loadTinderConversationManagement } from "./tinder-backend-management";
+import { mayAutomaticallySendToTinder } from "./tinder-auto-send-gate";
 import { generateBackendSuggestions } from "./backend-session";
 import { getApiKey, getBackendSession, getChatSettings, getConfig, lockStorageToTrustedContexts, resolveEffectiveConfig } from "./storage";
 import type { AppConfig, GenerateRequest, GenerateResponse, PreviewOverrides } from "./types";
@@ -18,6 +20,7 @@ interface AutoState {
 type TrustedContentRequest =
   | { type: "TNND_GET_CONTENT_CONFIG" }
   | { type: "TNND_GET_CHAT_AUTOMATION"; threadKey: string }
+  | { type: "TNND_GET_BACKEND_AUTO_SEND_PERMISSION"; conversationRef: string }
   | { type: "TNND_GET_AUTO_STATE" }
   | { type: "TNND_SAVE_AUTO_STATE"; state: AutoState };
 
@@ -120,6 +123,26 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
     void getChatSettings(message.threadKey)
       .then((chat) => sendResponse({ ok: true, enabled: chat.enabled }))
       .catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : "Could not load TNND chat configuration." }));
+    return true;
+  }
+
+  if (message.type === "TNND_GET_BACKEND_AUTO_SEND_PERMISSION") {
+    const ref = message.conversationRef?.trim();
+    const senderPath = (() => {
+      try { return new URL(sender.url ?? "").pathname; } catch { return ""; }
+    })();
+    const expectedRef = senderPath.startsWith("/app/messages/")
+      ? decodeURIComponent(senderPath.slice("/app/messages/".length)).trim()
+      : "";
+    if (!ref || !expectedRef || expectedRef !== ref) {
+      sendResponse({ ok: true, allowed: false });
+      return false;
+    }
+    // Service worker has explicit localhost host permission. Keep the
+    // authorization lookup outside Tinder's page/CORS context.
+    void loadTinderConversationManagement(ref)
+      .then((backend) => sendResponse({ ok: true, allowed: mayAutomaticallySendToTinder(backend) }))
+      .catch(() => sendResponse({ ok: true, allowed: false }));
     return true;
   }
 

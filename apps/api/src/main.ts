@@ -1,3 +1,4 @@
+import { conversationDisplayName, matchIdentity } from "./conversation-display-identity.js";
 import "dotenv/config";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { deleteAccountWithPassword } from "./account-deletion-service.js";
@@ -77,10 +78,6 @@ async function authenticatedUser(request: IncomingMessage) {
 
 function stringField(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function conversationDisplayName(conversationId: string): string {
-  return `Conversation ${conversationId.slice(0, 8)}`;
 }
 
 function conversationSubresourceId(pathname: string, suffix: string): string | null {
@@ -463,7 +460,8 @@ const server = createServer(async (request, response) => {
       sendJson(response, 200, {
         conversations: conversations.map((conversation) => ({
           id: conversation.id,
-          displayName: conversationDisplayName(conversation.id),
+          displayName: conversationDisplayName(conversation.id, conversation.matchFirstName),
+          ...(matchIdentity(conversation.matchFirstName, conversation.matchAge).age ? { matchAge: matchIdentity(conversation.matchFirstName, conversation.matchAge).age } : {}),
           status: conversation.status,
           currentTopic: conversation.currentTopic ?? null,
           lastMessageAt: conversation.lastMessageAt ?? conversation.updatedAt,
@@ -682,7 +680,8 @@ const server = createServer(async (request, response) => {
       sendJson(response, 200, {
         conversation: {
           id: conversation.id,
-          displayName: conversationDisplayName(conversation.id),
+          displayName: conversationDisplayName(conversation.id, conversation.matchFirstName),
+          ...(matchIdentity(conversation.matchFirstName, conversation.matchAge).age ? { matchAge: matchIdentity(conversation.matchFirstName, conversation.matchAge).age } : {}),
           status: conversation.status,
           currentTopic: conversation.currentTopic ?? null,
           pendingHumanActions: conversation.pendingHumanActions ?? 0,
