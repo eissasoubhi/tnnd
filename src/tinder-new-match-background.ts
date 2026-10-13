@@ -5,6 +5,7 @@ import {
 
 import { getBackendSession, getConfig } from "./storage";
 import { finishNewMatchAttempt } from "./tinder-new-match-observation";
+import { recoverVerifiedPreSendFailures } from "./tinder-first-message-recovery";
 const KEY = "tnnd.newMatchLinkObservation.v3";
 
 type Request =
@@ -97,7 +98,40 @@ chrome.runtime.onMessage.addListener((message: Request, sender, respond) => {
       const tinder = await chrome.tabs.query({ url: ["https://tinder.com/*", "https://www.tinder.com/*"] });
       if (tinder.length !== 1 || tinder[0].id !== message.tabId) throw new Error("Only one existing Tinder tab can be used for this batch.");
       const prior = await readNewMatchState();
-      const state = await saveNewMatchState(armExistingMatches(message.refs, session.user.id, prior));
+      // Previous versions counted a denied SPA permission as a failed match,
+      // before any Tinder Send. Recover only when BOTH send journals prove that
+      // no first-message request was ever attempted. A fresh Start click is
+      // explicit consent, never an automatic background retry.
+      const journal = await chrome.storage.local.get([
+        "tnnd.firstMessageAttempts.v1", "tnnd.autoState", "tnnd.newMatchDailyAttempts.v1"
+      ]);
+      const claims = journal["tnnd.firstMessageAttempts.v1"];
+      const auto = journal["tnnd.autoState"];
+      const durable = new Set<string>(
+        claims && typeof claims === "object" && !Array.isArray(claims) ? Object.keys(claims) : []
+      );
+      const processed = new Set<string>(
+        auto && typeof auto === "object" && auto.processed
+          && typeof auto.processed === "object" ? Object.keys(auto.processed) : []
+      );
+      const recovery = prior.userId === session.user.id
+        ? recoverVerifiedPreSendFailures(prior, durable, processed)
+        : { prior, recovered: [] as string[] };
+      const daily = journal["tnnd.newMatchDailyAttempts.v1"] as { date?: string; refs?: string[] } | undefined;
+      if (recovery.recovered.length && daily && Array.isArray(daily.refs)) {
+        const recovered = new Set(recovery.recovered);
+        await chrome.storage.local.set({
+          "tnnd.newMatchDailyAttempts.v1": {
+            ...daily, refs: daily.refs.filter(ref => !recovered.has(ref))
+          }
+        });
+      }
+      const state = await saveNewMatchState({
+        ...armExistingMatches(message.refs, session.user.id, recovery.prior),
+        ...(recovery.recovered.length ? {
+          lastResult: `${recovery.recovered.length} previously skipped matches safely restored; no prior Send attempt found.`
+        } : {})
+      });
       await chrome.storage.local.set({ "tnnd.newMatchOwnedTab.v1": { tabId: message.tabId, userId: session.user.id, ref: null } });
       await chrome.alarms.create("tnnd.globalNewMatches.cycle", { periodInMinutes: 0.5 });
       return state;

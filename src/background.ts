@@ -5,6 +5,7 @@ import "./tinder-unread-observation-background";
 import "./tinder-new-match-background";
 import "./tinder-global-new-match-runner";
 import { newMatchSendPermission } from "./tinder-new-match-background";
+import { currentAuthorizedTinderThread } from "./tinder-sender-route-guard";
 import "./tinder-global-existing-runner";
 import { generateSuggestions } from "./gemini";
 import { loadTinderConversationManagement } from "./tinder-backend-management";
@@ -20,15 +21,6 @@ import type { AppConfig, GenerateRequest, GenerateResponse, PreviewOverrides } f
 const AUTO_STATE_KEY = "tnnd.autoState";
 const FIRST_MESSAGE_CLAIMS_KEY = "tnnd.firstMessageAttempts.v1";
 const pendingFirstMessageClaims = new Set<string>();
-
-function senderThreadRef(sender: chrome.runtime.MessageSender): string | null {
-  try {
-    const url = new URL(sender.url ?? "");
-    if (!["https://tinder.com", "https://www.tinder.com"].includes(url.origin)) return null;
-    if (!url.pathname.startsWith("/app/messages/")) return null;
-    return decodeURIComponent(url.pathname.slice("/app/messages/".length)).replace(/\/+$/, "");
-  } catch { return null; }
-}
 
 function normalizeFirstMessageClaims(value: unknown): Record<string, number> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -218,67 +210,60 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
 
   if (message.type === "TNND_GET_NEW_MATCH_SEND_PERMISSION") {
     const ref = message.conversationRef?.trim();
-    if (!ref || senderThreadRef(sender) !== ref || typeof sender.tab?.id !== "number") {
-      sendResponse({ ok: true, allowed: false });
-      return false;
-    }
-    void newMatchSendPermission(ref, sender.tab.id)
-      .then(allowed => sendResponse({ ok: true, allowed }))
-      .catch(() => sendResponse({ ok: true, allowed: false }));
+    void (async () => {
+      if (!ref || !await currentAuthorizedTinderThread(sender, ref)) {
+        return { ok: true, allowed: false, reason: "live_tinder_thread_mismatch" };
+      }
+      return { ok: true, allowed: await newMatchSendPermission(ref, sender.tab!.id!) };
+    })().then(sendResponse).catch(() => sendResponse({ ok: true, allowed: false, reason: "permission_check_failed" }));
     return true;
   }
 
   if (message.type === "TNND_GET_FIRST_MESSAGE_PERMISSION" || message.type === "TNND_CLAIM_FIRST_MESSAGE") {
     const ref = message.conversationRef?.trim();
-    const senderRef = senderThreadRef(sender);
-    if (!ref || senderRef !== ref) {
-      sendResponse({ ok: true, allowed: false, reason: "wrong_thread" });
-      return false;
-    }
-    if (message.type === "TNND_GET_FIRST_MESSAGE_PERMISSION") {
-      void checkFirstMessagePermission(ref).then(sendResponse)
-        .catch(() => sendResponse({ ok: true, allowed: false, reason: "backend_unavailable" }));
-    } else {
+    void (async () => {
+      if (!ref || !await currentAuthorizedTinderThread(sender, ref)) {
+        return { ok: true, allowed: false, claimed: false, reason: "wrong_live_thread" };
+      }
+      if (message.type === "TNND_GET_FIRST_MESSAGE_PERMISSION") {
+        return checkFirstMessagePermission(ref);
+      }
       // In-memory lock serializes claims across Tinder tabs in this worker.
       // Persistent record survives reload/crash and forbids blind retries.
       if (pendingFirstMessageClaims.has(ref)) {
-        sendResponse({ ok: true, claimed: false, reason: "already_attempted" });
-        return false;
+        return { ok: true, claimed: false, reason: "already_attempted" };
       }
       pendingFirstMessageClaims.add(ref);
-      void (async () => {
-        try {
-          const checked = await checkFirstMessagePermission(ref, true);
-          if (!checked.allowed) return { ok: true, claimed: false, reason: checked.reason };
-          const stored = await chrome.storage.local.get(FIRST_MESSAGE_CLAIMS_KEY);
-          const entries = normalizeFirstMessageClaims(stored[FIRST_MESSAGE_CLAIMS_KEY]);
-          if (entries[ref]) return { ok: true, claimed: false, reason: "already_attempted" };
-          const attempts = { ...entries, [ref]: Date.now() };
-          await chrome.storage.local.set({ [FIRST_MESSAGE_CLAIMS_KEY]: attempts });
-          return { ok: true, claimed: true };
-        } finally { pendingFirstMessageClaims.delete(ref); }
-      })().then(sendResponse).catch(() => sendResponse({ ok: true, claimed: false, reason: "claim_failed" }));
-    }
+      try {
+        const checked = await checkFirstMessagePermission(ref, true);
+        if (!checked.allowed) return { ok: true, claimed: false, reason: checked.reason };
+        // Validate again after asynchronous DB reads; a different Tinder
+        // conversation might have been opened while checks were running.
+        if (!await currentAuthorizedTinderThread(sender, ref)) {
+          return { ok: true, claimed: false, reason: "thread_changed_during_claim" };
+        }
+        const stored = await chrome.storage.local.get(FIRST_MESSAGE_CLAIMS_KEY);
+        const entries = normalizeFirstMessageClaims(stored[FIRST_MESSAGE_CLAIMS_KEY]);
+        if (entries[ref]) return { ok: true, claimed: false, reason: "already_attempted" };
+        const attempts = { ...entries, [ref]: Date.now() };
+        await chrome.storage.local.set({ [FIRST_MESSAGE_CLAIMS_KEY]: attempts });
+        return { ok: true, claimed: true };
+      } finally { pendingFirstMessageClaims.delete(ref); }
+    })().then(sendResponse).catch(() => sendResponse({ ok: true, allowed: false, claimed: false, reason: "permission_check_failed" }));
     return true;
   }
 
   if (message.type === "TNND_GET_BACKEND_AUTO_SEND_PERMISSION") {
     const ref = message.conversationRef?.trim();
-    const senderPath = (() => {
-      try { return new URL(sender.url ?? "").pathname; } catch { return ""; }
-    })();
-    const expectedRef = senderPath.startsWith("/app/messages/")
-      ? decodeURIComponent(senderPath.slice("/app/messages/".length)).trim()
-      : "";
-    if (!ref || !expectedRef || expectedRef !== ref) {
-      sendResponse({ ok: true, allowed: false });
-      return false;
-    }
-    // Service worker has explicit localhost host permission. Keep the
-    // authorization lookup outside Tinder's page/CORS context.
-    void loadTinderConversationManagement(ref)
-      .then((backend) => sendResponse({ ok: true, allowed: mayAutomaticallySendToTinder(backend) }))
-      .catch(() => sendResponse({ ok: true, allowed: false }));
+    // The sender's document URL can be an OLD SPA chat after Tinder navigates.
+    // Trust only the current Chrome tab route + main-frame + origin.
+    void (async () => {
+      if (!ref || !await currentAuthorizedTinderThread(sender, ref)) {
+        return { ok: true, allowed: false };
+      }
+      const backend = await loadTinderConversationManagement(ref);
+      return { ok: true, allowed: mayAutomaticallySendToTinder(backend) };
+    })().then(sendResponse).catch(() => sendResponse({ ok: true, allowed: false }));
     return true;
   }
 
