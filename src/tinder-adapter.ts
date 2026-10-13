@@ -235,12 +235,17 @@ function messageText(element: HTMLElement): string {
 }
 
 function candidateMessages(composer: HTMLElement): HTMLElement[] {
-  // Prioritize the observed Tinder transcript, one article per message.
-  // Broad aria-label selectors alone can pick wrappers or date/status labels.
-  const verified = Array.from(document.querySelectorAll<HTMLElement>(
-    'ol[aria-label="Messages" i] [role="article"]'
-  )).filter(element => visible(element) && !element.contains(composer) && Boolean(messageText(element)));
-  if (verified.length) return verified.slice(-40);
+  // A visible, recognized Tinder transcript is authoritative even when EMPTY.
+  // Falling back to document-wide "message" labels in that case can mistake
+  // the Messages sidebar for a chat bubble and block legitimate empty matches.
+  const transcript = Array.from(document.querySelectorAll<HTMLElement>(
+    'ol[aria-label="Messages" i]'
+  )).find(element => visible(element) && !element.contains(composer) && !composer.contains(element));
+  if (transcript) {
+    const verified = Array.from(transcript.querySelectorAll<HTMLElement>('[role="article"]'))
+      .filter(element => visible(element) && !element.contains(composer) && Boolean(messageText(element)));
+    return verified.slice(-40);
+  }
 
   const seen = new Set<HTMLElement>();
   const candidates: HTMLElement[] = [];

@@ -67,8 +67,20 @@ test("verified Tinder DOM sends and received bubbles are identified by actual cl
 test("adapter reads one Tinder article message text without message timestamps or status wrappers", async () => {
   const {readFile} = await import("node:fs/promises");
   const adapter = await readFile(new URL("../src/tinder-adapter.ts",import.meta.url),"utf8");
-  assert.match(adapter, /ol\[aria-label="Messages" i\] \[role="article"\]/);
+  assert.match(adapter, /ol\[aria-label="Messages" i\]/);
+  assert.match(adapter, /transcript\.querySelectorAll<HTMLElement>\('\[role="article"\]'\)/);
   assert.match(adapter, /querySelector<HTMLElement>\('\.msg \.text'\)/);
   assert.match(adapter, /directionFromVerifiedTinderClasses\(markers\)/);
   assert.match(adapter, /return verified\.slice\(-40\)/);
+});
+
+test("an empty verified transcript never falls back to page-wide Messages sidebar candidates", async () => {
+  const {readFile} = await import("node:fs/promises");
+  const source = await readFile(new URL("../src/tinder-adapter.ts", import.meta.url), "utf8");
+  const candidateFn = source.slice(source.indexOf("function candidateMessages("), source.indexOf("function simpleHash("));
+  assert.match(candidateFn, /if \(transcript\) \{/);
+  assert.match(candidateFn, /return verified\.slice\(-40\);/);
+  assert.match(candidateFn, /for \(const selector of MESSAGE_SELECTORS\)/);
+  assert.ok(candidateFn.indexOf("return verified.slice(-40)") < candidateFn.indexOf("for (const selector of MESSAGE_SELECTORS)"));
+  assert.match(candidateFn, /visible\(element\) && !element\.contains\(composer\)/);
 });

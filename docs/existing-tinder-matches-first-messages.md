@@ -37,3 +37,9 @@ After installing/reloading TNND and refreshing the existing Tinder tab, click **
 ## Live verification
 
 Check the first genuine Tinder match manually: a completed click is not guaranteed delivery. Pause at any sign of wrong conversation, unexpected message direction, duplicate attempts or Tinder restrictions. CI does not send Tinder messages.
+
+## Verified empty transcript versus sidebar labels
+
+For a Tinder chat with a visible `ol[aria-label="Messages"]` transcript, TNND now counts only visible message articles **inside that transcript**. If it has no message articles, a generic `Messages` sidebar label must not be counted as a chat message. A genuinely nonempty transcript still blocks the first-message opener. When Tinder does not expose the verified transcript, existing conservative fallback checks remain in place; do not bypass a `messages_present` warning blindly.
+
+If the popup still reports `messages_present` on a visibly empty thread after rebuilding/reloading the extension and reconnecting Tinder, capture TNND's redacted selector diagnostics (candidate counts and selectors, no message texts) and report the exact Tinder view. This regression is only synthetic/static-tested in CI; live Tinder behavior requires supervised validation.
