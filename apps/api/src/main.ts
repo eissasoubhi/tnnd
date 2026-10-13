@@ -680,7 +680,8 @@ const server = createServer(async (request, response) => {
       sendJson(response, 200, {
         conversation: {
           id: conversation.id,
-          displayName: conversationDisplayName(conversation.id),
+          displayName: conversationDisplayName(conversation.id, conversation.matchFirstName),
+          ...(matchIdentity(conversation.matchFirstName, conversation.matchAge).age ? { matchAge: matchIdentity(conversation.matchFirstName, conversation.matchAge).age } : {}),
           status: conversation.status,
           currentTopic: conversation.currentTopic ?? null,
           pendingHumanActions: conversation.pendingHumanActions ?? 0,
