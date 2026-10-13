@@ -1,7 +1,7 @@
 import { hashTinderThreadKey, tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import { classifyTinderPath } from "./tinder-state-machine";
 import { directionFromTinderHints } from "./tinder-message-evidence";
-import { directionFromChatColumnGeometry, messageBubbleSized } from "./tinder-message-layout";
+import { directionFromChatColumnGeometry, directionFromVerifiedTinderClasses, messageBubbleSized } from "./tinder-message-layout";
 import { unansweredStatus, lastUnansweredEvidence, type UnansweredStatus } from "./tinder-unanswered-backlog";
 export interface ConversationSnapshot {
   threadKey: string;
@@ -189,6 +189,18 @@ function visibleBubbleRect(element: HTMLElement, composerRect: DOMRect): DOMRect
 }
 
 function directionOf(element: HTMLElement): Direction {
+  // Tinder's actual Messages DOM (from redacted user diagnostics) uses
+  // <ol aria-label="Messages"><li><div role="article"> containing
+  // .msg--received for them vs chat-bubble-send styling for me.
+  // Those are stronger evidence than page geometry or broad wrappers.
+  const article = element.closest<HTMLElement>('[role="article"]');
+  if (article?.closest('ol[aria-label="Messages" i]')) {
+    const markers = Array.from(article.querySelectorAll<HTMLElement>(
+      '.msg, .msgBackground--received, [class*="chat-bubble"]'
+    )).map(node => node.className?.toString() ?? "");
+    const direction = directionFromVerifiedTinderClasses(markers);
+    if (direction !== "unknown") return direction;
+  }
   let current: HTMLElement | null = element;
   const tokens: string[] = [];
   for (let i = 0; current && i < 4; i++, current = current.parentElement) {
@@ -212,13 +224,30 @@ function directionOf(element: HTMLElement): Direction {
   return hinted !== "unknown" ? hinted : positioned;
 }
 
+function messageText(element: HTMLElement): string {
+  // Exact message text, excluding article timestamps, hidden accessibility
+  // metadata, delivery statuses and profile UI.
+  if (element.matches('[role="article"]') && element.closest('ol[aria-label="Messages" i]')) {
+    const body = element.querySelector<HTMLElement>('.msg .text');
+    return body ? textOf(body) : "";
+  }
+  return textOf(element);
+}
+
 function candidateMessages(composer: HTMLElement): HTMLElement[] {
+  // Prioritize the observed Tinder transcript, one article per message.
+  // Broad aria-label selectors alone can pick wrappers or date/status labels.
+  const verified = Array.from(document.querySelectorAll<HTMLElement>(
+    'ol[aria-label="Messages" i] [role="article"]'
+  )).filter(element => visible(element) && !element.contains(composer) && Boolean(messageText(element)));
+  if (verified.length) return verified.slice(-40);
+
   const seen = new Set<HTMLElement>();
   const candidates: HTMLElement[] = [];
   for (const selector of MESSAGE_SELECTORS) {
     for (const element of Array.from(document.querySelectorAll<HTMLElement>(selector))) {
       if (seen.has(element) || element.contains(composer) || composer.contains(element) || element.offsetParent === null) continue;
-      const text = textOf(element);
+      const text = messageText(element);
       if (!text || text.length > 1200) continue;
       seen.add(element);
       candidates.push(element);
@@ -412,7 +441,7 @@ export class TinderDomAdapter {
     const composer = findComposer();
     if (!composer) return [];
     return candidateMessages(composer)
-      .map((element) => ({ text: textOf(element), direction: directionOf(element) }))
+      .map((element) => ({ text: messageText(element), direction: directionOf(element) }))
       .filter((message): message is TinderVisibleMessage =>
         (message.direction === "me" || message.direction === "them") && Boolean(message.text)
       );
@@ -425,7 +454,7 @@ export class TinderDomAdapter {
     const composer = findComposer();
     if (!composer) return { status: "composer-missing", snapshot: null };
     const messages = candidateMessages(composer)
-      .map(element => ({ text: textOf(element), direction: directionOf(element) }));
+      .map(element => ({ text: messageText(element), direction: directionOf(element) }));
     const status = unansweredStatus(messages);
     if (status !== "unanswered") return { status, snapshot: null };
     const evidence = lastUnansweredEvidence(messages);
