@@ -1,4 +1,5 @@
 import { getBackendSession, getChatSettings, getConfig, saveChatSettings } from "./storage";
+import { waitForTinderContentBridge, isMissingTinderReceiver, describeTinderBridgeError } from "./tinder-tab-connection";
 import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import { partitionExistingChatPermissions } from "./tinder-existing-chat-settings-policy";
 import { eligibleExistingThreadRefs } from "./tinder-global-existing-policy";
@@ -258,7 +259,17 @@ async function tick(): Promise<void> {
     // server management and per-chat settings. Runner never calls Send.
   } catch (error) {
     const latest = await load();
-    if (latest.enabled) await save(activity(latest, "error", error instanceof Error ? error.message : "Runner failed."));
+    if (latest.enabled) {
+      if (isMissingTinderReceiver(error)) {
+        const failed = activity(latest, "error", describeTinderBridgeError(error));
+        // Pause, preserve the tab and leave the error visible instead of
+        // accumulating failures on every 30-second alarm.
+        await save({ ...failed, enabled: false, userId: null, pausedOnStop: true });
+        await chrome.alarms.clear(ALARM);
+      } else {
+        await save(activity(latest, "error", error instanceof Error ? error.message : "Runner failed."));
+      }
+    }
   } finally { busy = false; }
 }
 export async function startExistingRunner(enablePreviouslyDisabled = false): Promise<GlobalExistingRunnerState> {
@@ -283,6 +294,9 @@ export async function startExistingRunner(enablePreviouslyDisabled = false): Pro
     }
     // Check Tinder tabs before modifying per-chat settings.
     const tab = await findSingleTinderTab();
+    // Fail BEFORE enabling any per-chat settings or the global runner.
+    // A stale Tinder page after reloading the extension has no receiver.
+    await waitForTinderContentBridge(tab.id);
     if (enablePreviouslyDisabled) {
       // Only backend-confirmed AI-managed active existing chats enter this list.
       // Manual, archived, disabled and human-action-blocked chats stay excluded.

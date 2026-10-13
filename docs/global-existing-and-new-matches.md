@@ -25,6 +25,17 @@ A newly displayed match tile cannot prove the match was created at that precise 
 
 The two provided user diagnostic ZIPs showed that Tinder keeps a conversation URL while switching the left sidebar, with `a.messageListItem` rows on Messages and `a.matchListItem` tiles on Matches. The URLs, names, images and other private contents are **not** committed to this repository.
 
+## Connection repair after updating the TNND extension
+
+Chrome's `Could not establish connection. Receiving end does not exist.` means the currently opened Tinder document no longer has a live TNND content-script listener (common after reloading an unpacked extension). This is an **extension-to-tab connection error**, not an AI/Gemini error.
+
+1. In `chrome://extensions`, press **Reload** for TNND after updating its build.
+2. Open the **same, single Tinder tab**, then use the TNND popup → **Reconnect Tinder tab**. Confirm that TNND may stop both global runners and **reload this one Tinder page once**. It waits for the new script's versioned handshake; it does not open another tab or send any message.
+3. After the popup says the connection is restored, select **Matches** and start **AI on existing matches** (or start **Global existing chat runner** for old unanswered messages).
+4. If it still fails, check that TNND is enabled in Chrome and has permission to run on `tinder.com`, then report the new status. Stop automation while reconnecting.
+
+On disconnect, the existing-chat runner now **stops after one actionable error** instead of looping. The existing-matches worker preserves its pending list and does **not consume the daily first-message claim** if Tinder had no content listener **before any send request**. After a send was requested, delivery may be uncertain and TNND still forbids blind retries.
+
 ## Automated validation
 
 Run `npm run build`, `npm run test:new-match-observation`, `npm run test:global-new-match-runner`, and `cd apps/web && npm test`.

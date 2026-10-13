@@ -10,6 +10,7 @@ import { uploadVisibleMatchProfileCapture } from "./tinder-match-profile-backend
 import type { VisibleTinderMatchIdentity } from "./tinder-chat-identity";
 import { visibleTranscriptSummary } from "./tinder-message-evidence";
 import { renderSyncStatus } from "./sync-status-panel";
+import { assertTinderContentBridge, waitForTinderContentBridge, describeTinderBridgeError } from "./tinder-tab-connection";
 import type { UiAuditReport } from "./web-ui-audit";
 import { functionalFindings } from "./web-functional-diagnostics";
 import type { ChatSettings, ConversationStage, Tone } from "./types";
@@ -872,10 +873,40 @@ async function renderNewMatchObservation(): Promise<void> {
     : "New-match AI stopped. Existing chat automation is unaffected.";
 }
 
+/** Manual recovery only: stop both automation modes BEFORE refreshing the
+ * already-open Tinder tab; never open a second session or auto-send. */
+(document.getElementById("reconnectTinderTab") as HTMLButtonElement).addEventListener("click", () => {
+  void (async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id || !isTinderUrl(tab.url)) {
+      throw new Error("Select your existing Tinder tab in Chrome before reconnecting.");
+    }
+    if (!window.confirm("Stop both TNND runners and refresh this ONE Tinder tab to reconnect the extension? No messages will be sent during recovery.")) return;
+    const status = document.getElementById("tinderBridgeStatus")!;
+    status.textContent = "Stopping both TNND runners safely…";
+    const oldRunner = await chrome.runtime.sendMessage({ type: "TNND_GLOBAL_EXISTING_STOP" }) as { ok?: boolean; error?: string };
+    const matchRunner = await chrome.runtime.sendMessage({ type: "TNND_NEW_MATCH_OBSERVATION_STOP" }) as { ok?: boolean; error?: string };
+    if (!oldRunner?.ok || !matchRunner?.ok) {
+      throw new Error("Could not stop all runners; Tinder was not reloaded. "
+        + (oldRunner?.error ?? matchRunner?.error ?? "Unknown error."));
+    }
+    status.textContent = "Refreshing the existing Tinder tab once…";
+    await chrome.tabs.reload(tab.id);
+    status.textContent = "Waiting for the TNND Tinder content script…";
+    await waitForTinderContentBridge(tab.id);
+    status.textContent = "Tinder connection restored. Select Matches again if needed, then restart the desired runner.";
+    await refreshGlobalExisting();
+    await renderNewMatchObservation();
+  })().catch(error => {
+    document.getElementById("tinderBridgeStatus")!.textContent = describeTinderBridgeError(error);
+  });
+});
+
 (document.getElementById("startExistingMatchBatch") as HTMLButtonElement).addEventListener("click", () => {
   void (async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id || !isTinderUrl(tab.url)) throw new Error("Open Tinder → Matches in the only Tinder tab first.");
+    await assertTinderContentBridge(tab.id);
     const snapshot = await chrome.tabs.sendMessage(tab.id, { type: "TNND_GET_VISIBLE_THREAD_LINKS" }) as {
       ok?: boolean; refs?: string[]; error?: string
     };
@@ -887,7 +918,7 @@ async function renderNewMatchObservation(): Promise<void> {
     if (!response?.ok) throw new Error(response?.error ?? "Could not start existing match opener.");
     await renderNewMatchObservation();
   })().catch(error => {
-    newMatchObservationStatus.textContent = error instanceof Error ? error.message : "Existing match opener failed.";
+    newMatchObservationStatus.textContent = describeTinderBridgeError(error);
   });
 });
 
@@ -895,13 +926,14 @@ startNewMatchObservation.addEventListener("click", () => {
   void (async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id || !isTinderUrl(tab.url)) throw new Error("Open Tinder, select the Matches tab in the left sidebar, then reopen TNND.");
+    await assertTinderContentBridge(tab.id);
     const snapshot = await chrome.tabs.sendMessage(tab.id, { type: "TNND_GET_VISIBLE_THREAD_LINKS" }) as { ok?: boolean; refs?: string[]; error?: string };
     if (!snapshot?.ok || !snapshot.refs?.length) throw new Error(snapshot?.error ?? "At least two verified Tinder match tiles are required. Select the Matches tab and let it load.");
     if (!window.confirm(`Start AI first messages to FUTURE Tinder matches? ${snapshot.refs.length} existing tiles will be excluded. TNND may SEND one opener per later match confirmed twice (maximum five per day). Keep Matches visible, Chrome running, and review results.`)) return;
     const response = await chrome.runtime.sendMessage({ type: "TNND_NEW_MATCH_OBSERVATION_START", refs: snapshot.refs }) as NewMatchObservationResponse;
     if (!response?.ok) throw new Error(response?.error ?? "Could not start detection.");
     await renderNewMatchObservation();
-  })().catch(e => { newMatchObservationStatus.textContent = e instanceof Error ? e.message : "New-match detection failed."; });
+  })().catch(e => { newMatchObservationStatus.textContent = describeTinderBridgeError(e); });
 });
 stopNewMatchObservation.addEventListener("click", () => {
   void (async () => {

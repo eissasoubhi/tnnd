@@ -1,4 +1,5 @@
 import { TinderDomAdapter } from "./tinder-adapter";
+import { TINDER_BRIDGE_PROTOCOL } from "./tinder-tab-connection";
 import { readVisibleTinderMatchIdentity } from "./tinder-chat-identity";
 import { detectVisibleTinderSidebarTab, visibleTinderThreadRefs } from "./tinder-visible-thread-links";
 import { detectTinderChat } from "./tinder-chat-detection";
@@ -32,6 +33,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     const chat = detectTinderChat(location.pathname, diagnostics.composerFound);
     sendResponse({
       ok: true,
+      bridgeProtocol: TINDER_BRIDGE_PROTOCOL,
       threadKey: chat.threadKey,
       threadKeyHash: chat.threadKey ? diagnostics.threadKeyHash : null,
       source: chat.source,
