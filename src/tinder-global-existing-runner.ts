@@ -73,8 +73,12 @@ async function ensureOwnedTab(savedId: number | null, lastRef: string | null): P
   if (savedId !== null) {
     try {
       const tab = await chrome.tabs.get(savedId);
-      if (tab.id && tab.url && tab.url === expectedOwnedUrl(lastRef)) return tab.id;
-    } catch { /* tab was closed */ }
+      if (tab.id && tab.url === expectedOwnedUrl(lastRef)) return tab.id;
+      if (tab.id) throw new Error("Dedicated Tinder tab has navigated elsewhere. Stop the global runner before restarting it.");
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Dedicated Tinder tab")) throw error;
+      // The dedicated tab was closed, so a replacement is allowed.
+    }
   }
   const tab = await chrome.tabs.create({ url: "https://tinder.com/app/messages", active: false });
   if (!tab.id) throw new Error("Could not create dedicated Tinder tab.");
