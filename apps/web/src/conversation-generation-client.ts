@@ -1,3 +1,4 @@
+import { cleanDraftText } from "./conversation-draft-text";
 import type { AuthSession } from "./auth-client";
 
 const apiBase = (import.meta.env.VITE_TNND_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "http://127.0.0.1:4000";
@@ -44,5 +45,11 @@ export async function generateConversationReply(
   if (!response.ok || !payload?.generation) {
     throw new DraftGenerationError(payload?.error ?? "generation_failed", response.status, payload?.stage);
   }
-  return payload.generation;
+  // Validate even successful API responses: old API versions could place
+  // truncated JSON directly in generation.text and accidentally copy it.
+  try {
+    return { ...payload.generation, text: cleanDraftText(payload.generation.text) };
+  } catch {
+    throw new DraftGenerationError("gemini_invalid_output", 502);
+  }
 }
