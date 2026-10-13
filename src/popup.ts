@@ -794,11 +794,30 @@ async function refreshGlobalExisting(): Promise<void> {
 });
 startGlobalExisting.addEventListener("click", () => {
   void (async () => {
-    if (!window.confirm("Use your EXISTING Tinder tab for global replies? TNND will navigate that tab through AI-managed existing chats, and can send replies to new incoming messages. Your tab will NOT be closed on Stop. If new-match AI is active, stop it first.")) return;
+    const preflight = await chrome.runtime.sendMessage({ type: "TNND_GLOBAL_EXISTING_PREFLIGHT" }) as {
+      ok?: boolean; error?: string; readyCount?: number; disabledCount?: number; totalAuthorizedCount?: number
+    };
+    if (!preflight?.ok) throw new Error(preflight?.error ?? "Cannot verify existing chat permissions.");
+    const ready = preflight.readyCount ?? 0;
+    const disabled = preflight.disabledCount ?? 0;
+    if (ready + disabled === 0) throw new Error("No eligible AI-managed existing conversations. Check TNND Web first.");
+    if (!window.confirm("Start global replies on your existing Tinder tab? " + ready
+      + " chats are ready and " + disabled + " have individually disabled auto-replies. The runner will answer eligible old unanswered and future incoming messages. Continue?")) return;
+    // An additional explicit consent is required before overwriting ANY saved
+    // per-chat disabled flag. Cancel preserves all per-chat exclusions.
+    const includeDisabled = disabled > 0 && window.confirm(
+      disabled + " AI-managed existing chat(s) have Automatic replies OFF. Do you explicitly authorize re-enabling ALL "
+      + disabled + " of them for this global run? This changes their saved per-chat ON/OFF settings. "
+      + "Choose Cancel to KEEP them disabled; those chats will be skipped. Manual/archived/blocked chats stay excluded either way."
+    );
+    if (!ready && !includeDisabled) {
+      globalExistingStatus.textContent = "All eligible chats remain individually disabled. Nothing started. Re-enable selected chats or explicitly confirm bulk reactivation.";
+      return;
+    }
     globalRunnerUiError = null;
     startGlobalExisting.disabled = true;
     globalExistingStatus.textContent = "Checking authorization and locating your Tinder tab…";
-    const response = await chrome.runtime.sendMessage({ type: "TNND_GLOBAL_EXISTING_START" }) as GlobalExistingControlResponse;
+    const response = await chrome.runtime.sendMessage({ type: "TNND_GLOBAL_EXISTING_START", enablePreviouslyDisabled: includeDisabled }) as GlobalExistingControlResponse;
     if (!response?.ok) throw new Error(response?.error ?? "Could not start existing chat runner.");
     if (response.state) displayRunnerState(response.state);
   })().catch(error => {
