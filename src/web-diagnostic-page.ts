@@ -107,6 +107,15 @@ if (isTnndLocalWebUrl(window.location.href)) {
               ? (value as { error?: unknown }).error : undefined;
             if (typeof code === "string" && /^[a-z][a-z0-9_:-]{1,63}$/.test(code)) {
               emit("app-error", { id, url, method, status: response.status, detail: code });
+            } else if (response.ok && value && typeof value === "object") {
+              // A 200 response can still be functionally unsuccessful.
+              const result = value as { connected?: unknown; generation?: unknown };
+              if (pathname === "/api/v1/ai/test-connection" && result.connected === false) {
+                emit("app-error", { id, url, method, status: response.status, detail: "gemini_connection_failed" });
+              }
+              if (/^\\/api\\/v1\\/conversations\\/[^/]+\\/generate$/.test(pathname) && !result.generation) {
+                emit("app-error", { id, url, method, status: response.status, detail: "generation_payload_missing" });
+              }
             }
           }).catch(() => undefined);
         }
