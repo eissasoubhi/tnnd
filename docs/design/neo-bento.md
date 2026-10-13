@@ -131,3 +131,22 @@ The CI workflow installs Chrome and runs this smoke test on pull requests. It re
 5. Browser screenshots (desktop/mobile, light/dark), test/build/CI, release gate and merge only when green.
 
 **Important:** GitHub CI checks do not replace visual browser QA. Root `README.md` remains exactly zero bytes per repository convention.
+
+## Always-visible Web build identity
+
+The sticky left rail includes a compact **Web vX.Y.Z (gitsha)** indicator under the
+TNND brand. On mobile it stays at the beginning of the horizontal navigation.
+This distinguishes the loaded Web frontend from the separately versioned Chrome
+extension.
+
+- `X.Y.Z` comes from `apps/web/package.json` and changes when we deliberately
+  release a Web version (independent of the root extension's version).
+- The commit hash comes from the actual Git checkout at Vite startup / bundle
+  build (CI `GITHUB_SHA` or explicit `TNND_WEB_GIT_SHA` can override it).
+- Node reads loose refs, packed refs or detached HEAD directly: Docker's
+  `node:alpine` container does not need a Git executable.
+- If the repository metadata is not available, show `(unknown)` **instead of
+  inventing a commit**. Hovering the label explains the full revision and source.
+- **After `git pull` restart Web**, e.g. `docker compose up -d --force-recreate
+  web`, and hard-reload the page. The displayed commit is the version that Vite
+  started with, not a live check against GitHub.

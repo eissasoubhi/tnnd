@@ -8,6 +8,7 @@ import { fetchProfile, saveProfile } from "./profile-client";
 import { downloadProfile, parseImportedProfile, type ImportedProfile } from "./profile-import";
 import { datingGoals, disclosureStrategies, readEditablePreferences, writeEditablePreferences } from "./profile-preferences";
 import { initWorkspaceScrollNavigation } from "./workspace-scroll-navigation";
+import { webBuildInfo } from "./web-build-label";
 
 let optionalPanelsLoaded = false;
 
@@ -164,6 +165,15 @@ app.innerHTML = `
     </section>
   </section>
 `;
+
+const build = webBuildInfo();
+const buildBadge = document.createElement("small");
+buildBadge.id = "web-build-version";
+buildBadge.className = "workspace-build-version";
+buildBadge.textContent = build.label;
+buildBadge.title = build.description;
+buildBadge.setAttribute("aria-label", build.description);
+document.querySelector<HTMLElement>(".workspace-nav")?.prepend(buildBadge);
 
 void import("./auth-panel").then(() => loadOptionalPanels()).catch((error) => {
   console.error("Unable to load TNND authentication panel", error);
