@@ -10,6 +10,7 @@ import type { TinderScheduledJob } from "./tinder-scheduler";
 import { executeUnreadAwareTinderStep } from "./tinder-unread-executor";
 import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import { selectVisibleTinderChatLink } from "./tinder-spa-conversation-navigation";
+import { discoverUnreadThreadCandidates } from "./tinder-unread-queue";
 import type { AutomationConfig, GenerateRequest, GenerateResponse } from "./types";
 import { sendRuntimeMessageSafely } from "./extension-context";
 
@@ -751,9 +752,18 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   return true;
 });
 
+let lastUnreadFingerprint = "";
 window.setInterval(() => {
   if (!hasLiveExtensionContext() || spaNavigationBusy || busy) return;
   const ref = currentConversationRef();
+  const unreadRefs = discoverUnreadThreadCandidates().map(item => item.conversationRef);
+  const fingerprint = JSON.stringify([...unreadRefs].sort());
+  if (fingerprint !== lastUnreadFingerprint) {
+    lastUnreadFingerprint = fingerprint;
+    if (unreadRefs.length) void sendRuntimeMessage({
+      type: "TNND_EXISTING_RUNNER_UNREAD", refs: unreadRefs
+    }).catch(() => undefined);
+  }
   if (ref) {
     void sendRuntimeMessage({ type: "TNND_EXISTING_RUNNER_TICK", ref }).catch(() => undefined);
     void sendRuntimeMessage({ type: "TNND_MATCH_RUNNER_TICK", ref }).catch(() => undefined);
