@@ -1,50 +1,105 @@
-/** Tracks newly observed Tinder thread links without asserting they are newly
- * created matches. A newly loaded old sidebar row is NOT proof of a new match.
- * Observations are read-only until real Tinder DOM evidence confirms age/status. */
+/** A true new-match claim requires an observed new tile *ahead* of a stable
+ * known Tinder Matches baseline on TWO observations separated in time.
+ * Links first seen in the middle/end of a lazy-loaded list are never queued. */
+export interface NewMatchCandidate {
+  ref: string;
+  firstSeenAt: string;
+  observations: number;
+}
 export interface NewMatchObservationState {
-  schemaVersion: 2;
+  schemaVersion: 3;
   enabled: boolean;
+  userId: string | null;
+  autoSendEnabled: boolean;
   baselineReady: boolean;
   seenRefs: string[];
   pendingRefs: string[];
+  candidates: NewMatchCandidate[];
+  completedRefs: string[];
+  failedRefs: string[];
+  lastAttemptAt: string | null;
+  lastResult: string | null;
   updatedAt: string;
 }
-
-export function emptyNewMatchState(): NewMatchObservationState {
-  return { schemaVersion: 2, enabled: false, baselineReady: false, seenRefs: [], pendingRefs: [], updatedAt: "" };
-}
-
+export const NEW_MATCH_MIN_CONFIRM_MS = 15000;
+const LIMIT = 500;
 function clean(refs: readonly string[]): string[] {
-  return [...new Set(refs.map(x => x.trim()).filter(x => x.length > 0 && x.length <= 512))].slice(0, 500);
+  return [...new Set(refs.filter(ref => typeof ref === "string")
+    .map(ref => ref.trim()).filter(ref => ref.length > 0 && ref.length <= 512 && !ref.includes("/")))].slice(0, LIMIT);
 }
-
-export function armNewMatchObservation(refs: readonly string[], now = new Date().toISOString()): NewMatchObservationState {
-  return { schemaVersion: 2, enabled: true, baselineReady: true, seenRefs: clean(refs), pendingRefs: [], updatedAt: now };
+export function emptyNewMatchState(): NewMatchObservationState {
+  return { schemaVersion: 3, enabled: false, userId: null, autoSendEnabled: false,
+    baselineReady: false, seenRefs: [], pendingRefs: [], candidates: [],
+    completedRefs: [], failedRefs: [], lastAttemptAt: null, lastResult: null, updatedAt: "" };
 }
-
+export function armNewMatchObservation(
+  refs: readonly string[], userId: string, now = new Date().toISOString()
+): NewMatchObservationState {
+  const known = clean(refs);
+  if (!userId.trim() || known.length < 2) throw new Error("At least two visible match tiles are required for a safe baseline.");
+  return { ...emptyNewMatchState(), enabled: true, userId, autoSendEnabled: true, baselineReady: true, seenRefs: known, updatedAt: now };
+}
 export function stopNewMatchObservation(state: NewMatchObservationState): NewMatchObservationState {
-  return { ...state, enabled: false };
+  return { ...state, enabled: false, autoSendEnabled: false };
 }
-
-export function observeNewMatchLinks(state: NewMatchObservationState, refs: readonly string[], now = new Date().toISOString()): NewMatchObservationState {
+export function observeNewMatchLinks(
+  state: NewMatchObservationState, refs: readonly string[], now = new Date().toISOString()
+): NewMatchObservationState {
   if (!state.enabled || !state.baselineReady) return state;
   const current = clean(refs);
-  const seen = new Set(state.seenRefs);
+  if (current.length < 2) return state;
+  const previouslySeen = new Set(state.seenRefs);
+  const firstKnownIndex = current.findIndex(ref => previouslySeen.has(ref));
+  const freshPrefix = firstKnownIndex > 0 && firstKnownIndex <= 3
+    ? current.slice(0, firstKnownIndex).filter(ref => !previouslySeen.has(ref))
+    : [];
+  const candidateByRef = new Map(state.candidates.map(c => [c.ref, c]));
   const pending = new Set(state.pendingRefs);
-  for (const ref of current) if (!seen.has(ref)) pending.add(ref);
-  return {
-    ...state,
-    seenRefs: clean([...state.seenRefs, ...current]),
+  const completed = new Set([...state.completedRefs, ...state.failedRefs]);
+  for (const ref of freshPrefix) {
+    if (completed.has(ref) || pending.has(ref)) continue;
+    const existing = candidateByRef.get(ref);
+    const candidate = existing
+      ? { ...existing, observations: existing.observations + 1 }
+      : { ref, firstSeenAt: now, observations: 1 };
+    if (candidate.observations >= 2 && Date.parse(now) - Date.parse(candidate.firstSeenAt) >= NEW_MATCH_MIN_CONFIRM_MS) {
+      pending.add(ref);
+      candidateByRef.delete(ref);
+    } else {
+      candidateByRef.set(ref, candidate);
+    }
+  }
+  // Candidates must remain at the start of the SAME Matches view, not a
+  // newly loaded old tile at the bottom or another user's tab.
+  for (const [ref] of candidateByRef) {
+    if (!freshPrefix.includes(ref)) candidateByRef.delete(ref);
+  }
+  return { ...state,
+    seenRefs: clean([...state.seenRefs, ...current.filter(ref => !candidateByRef.has(ref))]),
     pendingRefs: clean([...pending]),
+    candidates: [...candidateByRef.values()].slice(0, 6),
     updatedAt: now
   };
 }
-
+export function finishNewMatchAttempt(
+  state: NewMatchObservationState, ref: string, sent: boolean, reason: string,
+  now = new Date().toISOString()
+): NewMatchObservationState {
+  return { ...state, pendingRefs: state.pendingRefs.filter(x => x !== ref),
+    completedRefs: sent ? clean([...state.completedRefs, ref]) : state.completedRefs,
+    failedRefs: sent ? state.failedRefs : clean([...state.failedRefs, ref]),
+    lastAttemptAt: now, lastResult: reason, updatedAt: now };
+}
 export function isNewMatchObservationState(value: unknown): value is NewMatchObservationState {
   if (!value || typeof value !== "object") return false;
   const v = value as Partial<NewMatchObservationState>;
-  return v.schemaVersion === 2 && typeof v.enabled === "boolean" && typeof v.baselineReady === "boolean"
+  return v.schemaVersion === 3 && typeof v.enabled === "boolean"
+    && typeof v.autoSendEnabled === "boolean" && (v.userId === null || typeof v.userId === "string")
+    && typeof v.baselineReady === "boolean"
     && Array.isArray(v.seenRefs) && v.seenRefs.every(x => typeof x === "string")
     && Array.isArray(v.pendingRefs) && v.pendingRefs.every(x => typeof x === "string")
+    && Array.isArray(v.candidates) && v.candidates.every(x => Boolean(x && typeof x.ref === "string" && typeof x.firstSeenAt === "string" && typeof x.observations === "number"))
+    && Array.isArray(v.completedRefs) && v.completedRefs.every(x => typeof x === "string")
+    && Array.isArray(v.failedRefs) && v.failedRefs.every(x => typeof x === "string")
     && typeof v.updatedAt === "string";
 }
