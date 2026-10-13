@@ -1,5 +1,5 @@
 import type { NewMatchObservationState } from "./tinder-new-match-observation";
-import { firstMessageAttemptKey } from "./tinder-first-message";
+import { firstMessageAttemptKey } from "./tinder-first-message.ts";
 
 /** After an explicit NEW user click on Start, only requeue failed openers
  * whose first-message attempt is provably absent from BOTH durable journals.
