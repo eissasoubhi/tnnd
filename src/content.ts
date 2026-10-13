@@ -410,6 +410,13 @@ function reportExistingRunner(phase: "waiting" | "generating" | "sending" | "sen
   void sendRuntimeMessage({ type: "TNND_EXISTING_RUNNER_EVENT", ref, phase, detail }).catch(() => undefined);
 }
 
+async function autoReplyPausedAfterGlobalStop(conversationRef: string): Promise<boolean> {
+  const response = await sendRuntimeMessage<{ ok: boolean; paused?: boolean }>({
+    type: "TNND_EXISTING_RUNNER_TAB_PAUSED", ref: conversationRef
+  });
+  return response?.paused === true;
+}
+
 async function scan(): Promise<void> {
   if (busy || !hasLiveExtensionContext()) return;
 
@@ -433,6 +440,10 @@ async function scan(): Promise<void> {
     const conversationRef = currentConversationRef();
     // Never send from a loosely classified Tinder view: route identity must
     // match the chat snapshot and the backend must authorize this precise chat.
+    if (conversationRef && await autoReplyPausedAfterGlobalStop(conversationRef)) {
+      reportExistingRunner("skipped", "Runner was stopped · no more auto replies on this tab until manually re-enabled.");
+      return;
+    }
     if (!conversationRef || tinderThreadKeyFromPath(location.pathname) !== snapshot.threadKey) {
       reportExistingRunner("skipped", "Thread identity mismatch; no message sent.");
       return;
@@ -478,7 +489,7 @@ async function scan(): Promise<void> {
     // Re-authorize immediately before the irreversible send operation.
     if (currentConversationRef() !== conversationRef
       || tinderThreadKeyFromPath(location.pathname) !== currentSnapshot.threadKey
-      || !await backendAllowsAutomaticReply(conversationRef)) return;
+      || !await backendAllowsAutomaticReply(conversationRef) || await autoReplyPausedAfterGlobalStop(conversationRef)) return;
     if (await getChatAutomationEnabled(currentSnapshot.threadKey) !== true) return;
     reportExistingRunner("sending", "AI reply ready · attempting Tinder send…");
     await adapter.send(reply);
