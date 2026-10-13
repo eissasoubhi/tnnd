@@ -42,7 +42,7 @@ export function safeMatchPhotoUrl(value: unknown): string | null {
   try {
     const url = new URL(value);
     return url.protocol === "https:" && !url.username && !url.password
-      && /(^|\\.)(?:gotinder|tinder)\\.com$/i.test(url.hostname) ? url.href : null;
+      && /(^|\.)(?:gotinder|tinder)\.com$/i.test(url.hostname) ? url.href : null;
   } catch { return null; }
 }
 
