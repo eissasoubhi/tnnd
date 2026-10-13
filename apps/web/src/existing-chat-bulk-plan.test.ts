@@ -21,6 +21,7 @@ test("explicit bulk mode only targets existing conversations with verified synce
   const plan=planExistingChatTakeover(records,list);
   assert.deepEqual(plan.eligible,["eligible"]);
   assert.deepEqual(plan.resume,["eligible"]);
+  assert.equal(plan.alreadyReady, 1);
   assert.deepEqual(plan.skipped,{manual:1,archived:1,blocked:1,unsynced:1,disabled:1});
 });
 
@@ -32,4 +33,23 @@ test("never enroll conversations with no actual messages or pending human-action
   assert.deepEqual(plan.resume,[]);
   assert.equal(plan.skipped.unsynced,1);
   assert.equal(plan.skipped.blocked,1);
+});
+
+test("already AI-authorized active chats show ready count but do not trigger backend mutations", () => {
+  const records = [management("srim","ai-managed"), management("youssra","ai-managed")];
+  records.forEach(record => { record.explicitlySelected = true; });
+  const list = [summary("srim","active"), summary("youssra","waiting-for-them")];
+  const plan = planExistingChatTakeover(records, list);
+  assert.equal(plan.alreadyReady, 2);
+  assert.deepEqual(plan.eligible, []);
+  assert.deepEqual(plan.resume, []);
+});
+
+test("UI must explain that Web authorization is not the global Tinder runner", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const panel = await readFile(new URL("./conversation-management-panel.ts", import.meta.url), "utf8");
+  assert.match(panel, /Start global existing chat runner/);
+  assert.match(panel, /already authorized for AI/);
+  assert.match(panel, /Authorize eligible chats/);
+  assert.doesNotMatch(panel, /Nothing to change: eligible chats are already activated/);
 });
