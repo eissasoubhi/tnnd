@@ -4,6 +4,10 @@ import "./tinder-message-cursor-background";
 import "./tinder-unread-observation-background";
 import { generateSuggestions } from "./gemini";
 import { loadTinderConversationManagement } from "./tinder-backend-management";
+import { syncConversationDelta } from "./conversation-sync";
+import { syncObservedMatchProfile } from "./tinder-match-profile-runtime";
+import { buildReadOnlyProfileSource, hasMeaningfulVisibleProfileFields } from "./tinder-match-profile-capture";
+import type { VisibleTinderMatchIdentity } from "./tinder-chat-identity";
 import { mayAutomaticallySendToTinder } from "./tinder-auto-send-gate";
 import { generateBackendSuggestions } from "./backend-session";
 import { getApiKey, getBackendSession, getChatSettings, getConfig, lockStorageToTrustedContexts, resolveEffectiveConfig } from "./storage";
@@ -21,6 +25,7 @@ type TrustedContentRequest =
   | { type: "TNND_GET_CONTENT_CONFIG" }
   | { type: "TNND_GET_CHAT_AUTOMATION"; threadKey: string }
   | { type: "TNND_GET_BACKEND_AUTO_SEND_PERMISSION"; conversationRef: string }
+  | { type: "TNND_SYNC_VISIBLE_MATCH_IDENTITY"; conversationRef: string; identity: VisibleTinderMatchIdentity }
   | { type: "TNND_GET_AUTO_STATE" }
   | { type: "TNND_SAVE_AUTO_STATE"; state: AutoState };
 
@@ -110,6 +115,39 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
   if (!senderAllowed(sender)) {
     sendResponse({ ok: false, error: "TNND rejected a request from an unexpected page." });
     return false;
+  }
+
+  if (message.type === "TNND_SYNC_VISIBLE_MATCH_IDENTITY") {
+    // Identity comes only from the Tinder tab showing this exact conversation.
+    // This path never enables AI management, generation, or sending.
+    const senderRef = (() => {
+      try {
+        const url = new URL(sender.url ?? "");
+        if (!["https://tinder.com", "https://www.tinder.com"].includes(url.origin)) return null;
+        return url.pathname.startsWith("/app/messages/") ? decodeURIComponent(url.pathname.slice(14)).replace(/\\/+$/, "") : null;
+      } catch { return null; }
+    })();
+    if (!senderRef || senderRef !== message.conversationRef || !message.identity?.firstName) {
+      sendResponse({ ok: false, error: "tinder_thread_identity_mismatch" });
+      return false;
+    }
+    void (async () => {
+      const session = await getBackendSession();
+      if (!session) return { ok: true, synced: false, reason: "not-connected" };
+      const source = buildReadOnlyProfileSource({
+        route: `/app/messages/${senderRef}`,
+        firstName: message.identity.firstName,
+        age: message.identity.age,
+        photoUrl: message.identity.photoUrl
+      });
+      if (!source.visibleFields.firstName || !hasMeaningfulVisibleProfileFields(source)) return { ok: false, error: "invalid_visible_identity" };
+      const existing = await loadTinderConversationManagement(senderRef);
+      const conversationId = existing.conversationId
+        ?? (await syncConversationDelta(senderRef, [], "paused")).conversationId;
+      const result = await syncObservedMatchProfile(session, `chat-${senderRef}`, source, { conversationId });
+      return { ok: true, synced: true, result: result.status };
+    })().then(sendResponse).catch(error => sendResponse({ ok: false, error: error instanceof Error ? error.message : "identity_sync_failed" }));
+    return true;
   }
 
   if (message.type === "TNND_GET_CONTENT_CONFIG") {
