@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run typecheck && npm run test:identity-setup && npm run test:readme && npm run test:extension-version && npm run test:extension-neo-bento && npm run test:preview-feedback && npm run test:texting-style && npm run test:chat-detection && npm run test:first-message && npm run test:auto-send-gate && npm run test:manual-chat-import && npm run test:tinder-message-evidence && npm run test:tinder-message-layout && npm run test:tinder-chat-identity && npm run test:new-match-observation && npm run test:global-new-match-runner && npm run test:global-existing-runner && npm run test:tinder-spa-runner && npm run test:existing-chat-bulk-optin && npm run test:unanswered-backlog && npm run test:tinder-state && npm run test:extension-context && npm run test:web-diagnostics && npm run test:functional-diagnostics && npm run test:human-action-resume && npm run test:match-profile-capture && node scripts/build.mjs",
+    "build": "npm run typecheck && npm run test:identity-setup && npm run test:readme && npm run test:extension-version && npm run test:extension-neo-bento && npm run test:preview-feedback && npm run test:texting-style && npm run test:chat-detection && npm run test:first-message && npm run test:auto-send-gate && npm run test:manual-chat-import && npm run test:tinder-message-evidence && npm run test:tinder-message-layout && npm run test:tinder-chat-identity && npm run test:new-match-observation && npm run test:global-new-match-runner && npm run test:existing-match-opener && npm run test:global-existing-runner && npm run test:tinder-spa-runner && npm run test:existing-chat-bulk-optin && npm run test:unanswered-backlog && npm run test:tinder-state && npm run test:extension-context && npm run test:web-diagnostics && npm run test:functional-diagnostics && npm run test:human-action-resume && npm run test:match-profile-capture && node scripts/build.mjs",
     "dev": "node scripts/build.mjs --watch",
     "typecheck": "tsc --noEmit",
     "test:readme": "node scripts/check-public-readme.mjs",
@@ -28,6 +28,7 @@
     "test:tinder-chat-identity": "node --experimental-strip-types --test scripts/check-tinder-chat-identity.mjs",
     "test:new-match-observation": "node --experimental-strip-types --test scripts/check-new-match-observation.mjs",
     "test:global-new-match-runner": "node --experimental-strip-types --test scripts/check-global-new-match-runner.mjs",
+    "test:existing-match-opener": "node --experimental-strip-types --test scripts/check-existing-match-opener.mjs",
     "test:global-existing-runner": "node --experimental-strip-types --test scripts/check-global-existing-runner.mjs",
     "test:tinder-spa-runner": "node --experimental-strip-types --test scripts/check-tinder-spa-runner.mjs",
     "test:existing-chat-bulk-optin": "node --experimental-strip-types --test scripts/check-existing-chat-bulk-optin.mjs",
