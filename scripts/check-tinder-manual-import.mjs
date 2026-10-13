@@ -4,7 +4,7 @@ import { prepareReadOnlyImport } from "../src/tinder-manual-import.ts";
 const messages = [
   { key: "m1", direction: "them", text: "Salut !" },
   { key: "m2", direction: "me", text: "Hello !" }
-] as const;
+];
 
 test("new visible chat import stays paused and preserves direction", () => {
   const payload = prepareReadOnlyImport(messages, false, "2026-10-13T01:00:00Z");
