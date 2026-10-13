@@ -666,7 +666,9 @@ async function navigateExistingSpa(ref: string, expectedRef: string | null): Pro
     while (Date.now() < deadline) {
       if (currentConversationRef() === ref && adapter.diagnose().composerFound) {
         spaNavigationSettlesAt = Date.now() + 1200;
-        scheduleScan();
+        // A premature scan during SPA settling would return without retrying.
+        // Schedule once more after the new chat DOM has had time to render.
+        window.setTimeout(scheduleScan, 1300);
         return { ok: true, currentRef: ref };
       }
       await new Promise(resolve => setTimeout(resolve, 200));
