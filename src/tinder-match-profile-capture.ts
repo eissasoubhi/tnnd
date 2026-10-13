@@ -1,7 +1,10 @@
+import { safeTinderPhotoUrl } from "./tinder-chat-identity";
+
 export type TinderProfileCaptureInput = {
   route: string;
   firstName?: string | null;
   age?: number | null;
+  photoUrl?: string | null;
   bio?: string | null;
   job?: string | null;
   education?: string | null;
@@ -19,6 +22,7 @@ export type TinderVisibleProfileSource = {
   visibleFields: {
     firstName?: string;
     age?: number;
+    photoUrl?: string;
     bio?: string;
     job?: string;
     education?: string;
@@ -68,6 +72,7 @@ export function buildReadOnlyProfileSource(
     visibleFields: {
       firstName: boundedText(input.firstName),
       age: boundedAge(input.age),
+      photoUrl: safeTinderPhotoUrl(input.photoUrl),
       bio: boundedText(input.bio),
       job: boundedText(input.job),
       education: boundedText(input.education),
@@ -82,6 +87,7 @@ export function hasMeaningfulVisibleProfileFields(source: TinderVisibleProfileSo
   const fields = source.visibleFields;
   return Boolean(
     fields.firstName
+    || fields.photoUrl
     || fields.age
     || fields.bio
     || fields.job
@@ -101,6 +107,7 @@ export function buildProfileCaptureDedupeKey(source: TinderVisibleProfileSource)
     fields: {
       firstName: fields.firstName ?? null,
       age: fields.age ?? null,
+      photoUrl: fields.photoUrl ?? null,
       bio: fields.bio ?? null,
       job: fields.job ?? null,
       education: fields.education ?? null,
