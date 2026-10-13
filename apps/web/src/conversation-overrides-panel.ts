@@ -1,6 +1,4 @@
 import { readSession } from "./auth-client";
-import { getConversation } from "./conversation-client";
-import { replyTargetFromHistory, replyTargetHint } from "./conversation-reply-target";
 import {
   draftLifecycleLabel,
   draftPreviewInstruction,
@@ -144,11 +142,15 @@ async function mountInlineEditor(): Promise<void> {
     <div class="conversation-inline-generation">
       <strong>AI reply draft</strong>
       <p class="draft-guidance">Start here: make one suggested reply. Nothing is sent to Tinder.</p>
-      <label class="draft-input-label" for="draft-latest-message">Step 1 · Latest incoming message (loaded from sync when available)</label>
-      <textarea id="draft-latest-message" aria-describedby="draft-instructions" data-generation-message maxlength="4000" placeholder="Latest imported match message appears here automatically"></textarea>
-      <p id="draft-instructions" class="subtle">TNND fills this from the latest synced incoming message when there is a new reply. Edit only to test another scenario. Nothing is sent automatically.</p>
+      <p class="draft-guidance" id="draft-instructions">TNND reads the last received message directly from this chat's saved history when you generate. You do not need to paste it. Nothing is sent to Tinder.</p>
+      <details class="draft-manual-override">
+        <summary>Advanced · Test another message manually (optional)</summary>
+        <label class="draft-input-label" for="draft-latest-message">Custom message to preview</label>
+        <textarea id="draft-latest-message" aria-describedby="draft-instructions" data-generation-message maxlength="4000" placeholder="Leave empty to use the latest synced incoming message"></textarea>
+        <small class="subtle">This changes only the draft preview, not your saved Tinder conversation.</small>
+      </details>
       <div class="conversation-inline-generation-actions">
-        <button type="button" data-generation-button>Step 2 · Generate a reply</button>
+        <button type="button" data-generation-button>Generate a reply from synced chat</button>
         <button type="button" data-generation-regenerate hidden disabled>Try another reply</button>
         <button type="button" data-generation-copy hidden disabled>Step 3 · Copy reply</button>
         <button type="button" data-generation-approve hidden disabled>Approve draft</button>
@@ -205,12 +207,8 @@ async function mountInlineEditor(): Promise<void> {
   const confirmationMessageId = section.querySelector<HTMLInputElement>("[data-confirmation-message-id]")!;
   const confirmationButton = section.querySelector<HTMLButtonElement>("[data-confirmation-button]")!;
   const confirmationStatus = section.querySelector<HTMLElement>("[data-confirmation-status]")!;
-  // Read the detail snapshot populated by the conversation list. We only
-  // prefill when the last actual message is incoming, never after our own reply.
-  generationMessage.value = detail.dataset.replyTarget ?? "";
-  const instruction = section.querySelector<HTMLElement>("#draft-instructions");
-  if (instruction) instruction.textContent = detail.dataset.replyTargetHint ??
-    "Import the visible Tinder chat first, or paste a message for a manual preview.";
+  // No form field is required for the normal case. Backend chooses the latest
+  // incoming saved message on each request, avoiding stale tab state.
   const session = readSession();
   let currentDraft: ConversationGeneration | null = null;
   let lifecycle = emptyConversationDraftLifecycle();
@@ -281,32 +279,15 @@ async function mountInlineEditor(): Promise<void> {
   }
 
   const generateDraft = async (regenerate = false) => {
-    let latestMessage = generationMessage.value.trim();
-    if (!latestMessage) {
-      generationStatus.textContent = "Checking synced messages…";
-      try {
-        // Handle stale editors mounted before a conversation detail load.
-        const detailSnapshot = await getConversation(session, conversationId);
-        if (!section.isConnected || selectedConversationId() !== conversationId) return;
-        latestMessage = replyTargetFromHistory(detailSnapshot.messages) ?? "";
-        if (latestMessage) {
-          generationMessage.value = latestMessage;
-          const hint = section.querySelector<HTMLElement>("#draft-instructions");
-          if (hint) hint.textContent = replyTargetHint(detailSnapshot.messages);
-        }
-      } catch {
-        generationStatus.textContent = "Could not refresh conversation history. Verify TNND Web is connected to the API.";
-        return;
-      }
-    }
-    if (!latestMessage) {
-      generationStatus.textContent = "No received message was imported. Open this chat on Tinder and press Import visible chat (read-only) in the TNND extension, then refresh TNND Web.";
-      return;
-    }
+    // Blank means: let the authenticated API read the last incoming synced
+    // message. The textarea is only an explicit optional preview override.
+    const latestMessage = generationMessage.value.trim();
     const previewInstruction = regenerate ? draftPreviewInstruction(lifecycle) : null;
     generationButton.disabled = true;
     regenerateButton.disabled = true;
-    generationStatus.textContent = regenerate ? "Regenerating…" : "Generating…";
+    generationStatus.textContent = regenerate ? "Regenerating…" : latestMessage
+      ? "Generating from your optional custom message…"
+      : "Looking up the latest match message in synced history…";
     errorHelp.hidden = true;
     errorHelp.textContent = "";
     try {
