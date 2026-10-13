@@ -82,7 +82,7 @@ function responseText(value: unknown): string {
  * used to be passed through verbatim into the draft UI.
  */
 export function parseGenerationOutput(raw: string, personalMemoryIds: readonly string[]): { text: string; usedPersonalMemoryId?: string } {
-  const cleaned = raw.trim().replace(/^\`\`\`(?:json)?\\s*/i, "").replace(/\\s*\`\`\`$/, "").trim();
+  const cleaned = raw.trim().replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/, "").trim();
   let parsed: unknown;
   try {
     parsed = JSON.parse(cleaned);
@@ -100,7 +100,7 @@ export function parseGenerationOutput(raw: string, personalMemoryIds: readonly s
 
   // Do not accept a recursively wrapped JSON payload as a user-visible reply.
   const reply = text.trim();
-  if (/^\\{\\s*"(?:text|usedPersonalMemoryId)"\\s*:/.test(reply)) {
+  if (/^\{\s*"(?:text|usedPersonalMemoryId)"\s*:/.test(reply)) {
     return parseGenerationOutput(reply, personalMemoryIds);
   }
   if (reply.startsWith('{"text"') || reply.startsWith('{"usedPersonalMemoryId"')) throw new Error("gemini_invalid_output");
