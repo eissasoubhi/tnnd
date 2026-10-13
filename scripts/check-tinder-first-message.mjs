@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { firstMessageAttemptKey, firstMessageBlocker, firstMessageContext } from "../src/tinder-first-message.ts";
+import { groundedOpenerFragments, sameOpenerThreadUninterrupted } from "../src/tinder-opener-fragments.ts";
+import { buildSystemInstruction, buildUserPrompt } from "../src/prompt.ts";
+import { DEFAULT_CONFIG } from "../src/storage.ts";
 
 const ready = {
   sameThread: true,
@@ -55,11 +58,63 @@ test("the first-message event is a user-triggered popup action, not a background
   assert.match(content, /input\.type !== "TNND_AUTO_START_NEW_MATCH"/);
   assert.match(content, /firstMessageAttemptKey\(conversationRef\)/);
   assert.match(content, /await saveState\(freshState\)/);
-  assert.match(content, /await adapter\.send\(opener\)/);
+  assert.match(content, /await adapter\.send\(part\)/);
+  assert.match(content, /const openerParts = groundedOpenerFragments\(opener\)/);
+  assert.match(content, /sameOpenerThreadUninterrupted\(adapter\.readVisibleMessages\(\)/);
+  assert.match(content, /randomCadenceSeconds\(config\.automation\)/);
+  assert.match(content, /tnnd-opener-\$\{attemptedAt\}-\$\{index \+ 1\}/);
   assert.match(background, /TNND_GET_FIRST_MESSAGE_PERMISSION/);
   assert.match(background, /backend\.conversationStatus !== "active"/);
   assert.match(background, /savedMessageCount === 0/);
   assert.match(content, /TNND_CLAIM_FIRST_MESSAGE/);
   assert.match(background, /FIRST_MESSAGE_CLAIMS_KEY/);
   assert.doesNotMatch(content.slice(content.indexOf("async function scan()"), content.indexOf("async function startFirstMessage(")), /startFirstMessage\(/);
+});
+
+test("one opener becomes separate short grounded Tinder bubbles without fabricated admiration", () => {
+  assert.deepEqual(
+    groundedOpenerFragments("salut, bien ou bien ? ton profil m'a fait sourire"),
+    ["salut", "bien ou bien ?"]
+  );
+  assert.deepEqual(
+    groundedOpenerFragments("Salut\\nBien ou bien ?\\nTon profil m'a fait sourire"),
+    ["Salut", "Bien ou bien ?"]
+  );
+  assert.deepEqual(groundedOpenerFragments("Salut\\nÇa va ?"), ["Salut", "Ça va ?"]);
+  assert.deepEqual(groundedOpenerFragments("Salut\\nBien ou bien ?\\nTu fais quoi de beau ?"), ["Salut", "Bien ou bien ?", "Tu fais quoi de beau ?"]);
+  assert.deepEqual(groundedOpenerFragments("Ton profil m'a fait sourire"), ["Salut", "Bien ou bien ?"]);
+  assert.deepEqual(groundedOpenerFragments(""), ["Salut", "Bien ou bien ?"]);
+  assert.ok(groundedOpenerFragments("Hey\\nJ'ai adoré ta photo\\nHow's your day?").every(fragment => !fragment.includes("photo")));
+});
+
+test("burst stops if match replied, human sent a message, or transcript is unavailable", () => {
+  assert.equal(sameOpenerThreadUninterrupted([{ direction: "me", text: "Salut" }], "Salut"), true);
+  assert.equal(sameOpenerThreadUninterrupted([{ direction: "me", text: "Salut" }, { direction: "them", text: "Coucou" }], "Salut"), false);
+  assert.equal(sameOpenerThreadUninterrupted([{ direction: "me", text: "Autre message" }], "Salut"), false);
+  assert.equal(sameOpenerThreadUninterrupted([], "Salut"), false);
+});
+
+test("opener Gemini prompts demand sequential fragments, forbid fabricated profile reactions", async () => {
+  const built = buildSystemInstruction(DEFAULT_CONFIG, 1, "opener");
+  const user = buildUserPrompt("No visible match bio", "opener");
+  assert.match(built, /2 or 3 very short fragments/);
+  assert.match(built, /ton profil m'a fait sourire/);
+  assert.match(user, /2 or 3 short lines/);
+  assert.match(user, /profile reaction/);
+  const api = await (await import("node:fs/promises")).readFile(new URL("../apps/api/src/extension-suggestions.ts", import.meta.url),"utf8");
+  assert.match(api, /The lines will be sent as separate Tinder bubbles/);
+  assert.match(api, /profile made the sender smile/);
+});
+
+test("opener burst is one pre-send claim, then each bubble is synchronized and gated before continuation", async () => {
+  const content = await (await import("node:fs/promises")).readFile(new URL("../src/content.ts", import.meta.url),"utf8");
+  const code = content.slice(content.indexOf("async function startFirstMessage("), content.indexOf("chrome.runtime.onMessage.addListener", content.indexOf("async function startFirstMessage(")));
+  assert.equal(code.match(/TNND_CLAIM_FIRST_MESSAGE/g)?.length, 1);
+  assert.match(code, /for \(const \[index, part\] of openerParts.entries\(\)\)/);
+  assert.match(code, /sameOpenerThreadUninterrupted\(adapter.readVisibleMessages\(\), openerParts\[index - 1\]\)/);
+  assert.match(code, /await backendAllowsAutomaticReply\(conversationRef\)/);
+  assert.match(code, /await getChatAutomationEnabled\(threadKey\)/);
+  assert.match(code, /await syncConversationDelta\(conversationRef, \[\{/);
+  assert.match(code, /new Promise\(\(resolve\) => setTimeout\(resolve, gap \* 1000\)\)/);
+  assert.doesNotMatch(code, /freshState.dailyCount\s*\+=\s*1/);
 });
