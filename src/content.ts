@@ -439,7 +439,8 @@ async function scan(): Promise<void> {
         "no-messages": "No readable Tinder message bubbles. Cannot identify old unanswered messages; check Tinder DOM diagnostics.",
         "unrecognized-direction": "Message direction uncertain. Refusing to send until incoming/outgoing messages can be identified.",
         "already-replied": "Last visible message was sent by you · no unanswered message here.",
-        "no-incoming": "No incoming message found in the visible chat."
+        "no-incoming": "No incoming message found in the visible chat.",
+        "unanswered": "Last incoming message could not be read safely; no reply sent."
       }[inspection.status] ?? "Cannot identify an unanswered message.";
       reportExistingRunner(inspection.status === "unrecognized-direction" ? "skipped" : "waiting", explanation);
       return;
