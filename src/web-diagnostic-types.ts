@@ -1,4 +1,4 @@
-import { functionalFindings } from "./web-functional-diagnostics";
+import { functionalFindings } from "./web-functional-diagnostics.ts";
 export const WEB_DIAGNOSTIC_CHANNEL = "tnnd-web-diagnostic-v1";
 export const WEB_DIAGNOSTIC_REQUEST_CHANNEL = "tnnd-web-diagnostic-request-v1";
 export const WEB_DIAGNOSTIC_STORAGE_KEY = "tnnd.webDiagnostics.v1";
