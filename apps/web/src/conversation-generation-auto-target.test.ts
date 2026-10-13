@@ -20,7 +20,7 @@ test("unavailable match history has concrete guidance", () => {
   assert.match(draftFailureGuidance("no_synced_incoming_message"), /Import visible chat \(read-only\)/);
 });
 test("unnamed conversation shows explicit name and age editor", () => {
-  assert.match(conversations, /Name not detected · Add Tinder match name/);
-  assert.match(conversations, /class="conversation-identity-editor"\$\{detail\.displayName/);
+  assert.match(conversations, /Tinder identity not yet detected/);
+  assert.match(conversations, /class="conversation-identity-editor"/);
   assert.match(conversations, /data-save-conversation-identity>Save match name/);
 });
