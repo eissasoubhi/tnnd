@@ -813,3 +813,35 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
   #app .guide-primary, #app .guide-actions button { flex: 1 1 100%; justify-content: center; }
   #app .guide-actions { gap: 7px; }
 }
+
+/* Web version stays visible under the brand in the sticky desktop rail and
+ * at the start of the scrollable mobile navigation. It is informational, not
+ * a navigation item. */
+#app .workspace-nav .workspace-build-version {
+  display: block;
+  align-self: flex-start;
+  margin: -4px 13px 10px;
+  max-width: calc(100% - 26px);
+  color: var(--nb-text-muted);
+  font: 600 10px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: 0;
+  white-space: nowrap;
+  opacity: .78;
+}
+@media (max-width: 840px) {
+  #app .workspace-nav .workspace-build-version {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    align-self: center;
+    max-width: none;
+    margin: 0 5px 0 0;
+    padding: 8px 10px;
+    border-right: 1px solid var(--nb-border);
+    border-radius: 8px;
+    background: var(--nb-surface);
+  }
+}
