@@ -78,6 +78,15 @@ async function serve(req, res) {
       if (req.method === "PUT") storedProfile = body.profile;
       return json(res, 200, { profile: storedProfile, updatedAt: now });
     }
+    if (pathname === "/api/v1/analytics") {
+      return json(res, 200, {
+        generatedAt: now,
+        operational: {
+          active: 0, waitingForThem: 0, waitingForUser: 0, actionRequired: 0,
+          paused: 1, disabled: 0, movedOffTinder: 0, stale: 0, archived: 0
+        }, topics: [], memoryCoverage: []
+      });
+    }
     if (pathname === "/api/v1/conversations") return json(res, 200, { conversations: [conversationSummary()] });
     if (pathname === "/api/v1/conversations/management") return json(res, 200, { conversations: [management()] });
     if (pathname === "/api/v1/conversations/" + conversationId) {
@@ -225,6 +234,10 @@ async function main() {
     await step(cdp, "A synced fixture conversation opens with real messages",
       'document.querySelector("#conversation-detail")?.textContent?.includes("Hi! How are you?")',
       Boolean);
+    await waitFor(cdp, 'document.querySelector("#analytics-refresh-status")?.textContent?.includes("Insights are up to date")', 150);
+    await step(cdp, "Analytics loads real fixture data and reports success only after rendering",
+      'document.querySelector("#analytics-dashboard-panel")?.dataset.analyticsLoadedAt != null', Boolean);
+    assert.ok(requests.some(x => x.path === "/api/v1/analytics" && x.method === "GET"));
     await step(cdp, "Default paused state renders Resume action",
       '!!document.querySelector("[data-conversation-status-action=active]")',
       Boolean);

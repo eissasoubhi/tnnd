@@ -19,3 +19,26 @@ test("detects server 500, network errors and 200 application failures after clic
 test("ignores expected profile 404 and unrelated traffic",()=>{
  assert.deepEqual(functionalFindings([{kind:"fetch-end",at,pageSessionId:"p",status:404,method:"GET",url:"http://localhost:5173/api/v1/profile"}],at),[]);
 });
+
+test("missing optional texting-style source examples does not count as a broken feature", () => {
+  const events = [
+    {kind:"fetch-end",at,pageSessionId:"p",status:404,method:"GET",id:"styles",url:"http://localhost:5173/api/v1/profile/texting-style/source-examples"},
+    {kind:"app-error",at:at+1,pageSessionId:"p",status:404,method:"GET",id:"styles",url:"http://localhost:5173/api/v1/profile/texting-style/source-examples",detail:"texting_style_source_examples_not_found"}
+  ];
+  assert.deepEqual(functionalFindings(events,at+300),[]);
+});
+
+test("missing /analytics route is treated as a real functional API failure", () => {
+  const findings = functionalFindings([{kind:"fetch-end",at,pageSessionId:"p",status:404,method:"GET",id:"analytics",url:"http://localhost:5173/api/v1/analytics"}],at);
+  assert.equal(findings[0]?.operation,"analytics");
+  assert.match(findings[0]?.nextStep ?? "",/API/);
+});
+
+test("reports only fixed generation stage identifiers, never freeform server errors", () => {
+  const base = {kind:"app-error",at,pageSessionId:"p",status:500,method:"POST",id:"g",url:"http://localhost:5173/api/v1/conversations/[conversation]/generate",detail:"generation_schema_missing"};
+  const known = functionalFindings([{...base,phase:"summary"}],at);
+  assert.equal(known[0]?.stage,"summary");
+  const untrusted = functionalFindings([{...base,phase:"private user content and token"}],at);
+  assert.equal(untrusted[0]?.stage,undefined);
+  assert.ok(!JSON.stringify(untrusted).includes("private"));
+});

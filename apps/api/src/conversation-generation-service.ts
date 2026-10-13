@@ -1,3 +1,4 @@
+import { withGenerationStage } from "./conversation-generation-stage.js";
 import { loadAiProviderSettings } from "./ai-provider-settings-service.js";
 import { listConversationFacts } from "./conversation-fact-service.js";
 import { getConversation } from "./conversation-service.js";
@@ -40,10 +41,10 @@ export async function generateConversationReply(
   if (normalizedPreviewInstruction.length > 1000) throw new Error("invalid_preview_instruction");
 
   const [conversation, generationProfile, conversationSummary, durableFacts] = await Promise.all([
-    getConversation(userId, conversationId),
-    loadGenerationProfile(userId),
-    getConversationSummary(conversationId),
-    listConversationFacts(conversationId, 20)
+    withGenerationStage("conversation", () => getConversation(userId, conversationId)),
+    withGenerationStage("profile", () => loadGenerationProfile(userId)),
+    withGenerationStage("summary", () => getConversationSummary(conversationId)),
+    withGenerationStage("facts", () => listConversationFacts(conversationId, 20))
   ]);
   if (!conversation) return null;
   const topicState = conversation.topicState;
@@ -56,8 +57,8 @@ export async function generateConversationReply(
       }
     : null;
   const [context, supplementalContext] = await Promise.all([
-    loadGeminiConversationPayload(userId, conversationId, generationProfile.defaults, temporaryInstruction),
-    loadGenerationSupplementalContext(userId, conversationId, conversation.externalThreadId)
+    withGenerationStage("effective-context", () => loadGeminiConversationPayload(userId, conversationId, generationProfile.defaults, temporaryInstruction)),
+    withGenerationStage("supplemental", () => loadGenerationSupplementalContext(userId, conversationId, conversation.externalThreadId))
   ]);
   if (!context) return null;
   const topicTerms = [
@@ -66,10 +67,10 @@ export async function generateConversationReply(
     ...topicState.secondaryTopics.flatMap((topic) => [topic.topic, topic.subtopic]),
     ...topicState.recentTopics.slice(0, 5).flatMap((topic) => [topic.topic, topic.subtopic])
   ].filter((value): value is string => Boolean(value));
-  const rankedMemories = await retrievePersonalMemories(userId, {
+  const rankedMemories = await withGenerationStage("memories", () => retrievePersonalMemories(userId, {
     context: [normalizedMessage, ...new Set(topicTerms)].join("\n"),
     limit: 2
-  });
+  }));
   const personalMemories = rankedMemories.map(({ memory }) => ({
     id: memory.id,
     title: memory.structuredAnalysis.title.slice(0, 120),
@@ -109,12 +110,12 @@ export async function generateConversationReply(
   // The env-based provider remains a fallback for deployments with no user
   // configuration. Explicit injected test providers are never replaced.
   const savedProvider = provider === callGeminiConversationProvider
-    ? await loadAiProviderSettings(userId)
+    ? await withGenerationStage("provider-settings", () => loadAiProviderSettings(userId))
     : null;
   const generate = savedProvider
     ? createGeminiConversationProvider(savedProvider)
     : provider;
-  const generated = await generate({
+  const generated = await withGenerationStage("provider", () => generate({
     context: effectiveContext,
     latestMessage: normalizedMessage,
     topics,
@@ -126,12 +127,12 @@ export async function generateConversationReply(
     ...(supplementalContext.humanActions.length ? { humanActions: supplementalContext.humanActions } : {}),
     ...(personalMemories.length ? { personalMemories } : {}),
     ...(normalizedPreviewInstruction ? { previewInstruction: normalizedPreviewInstruction } : {})
-  });
+  }));
   const candidateIds = personalMemories.map((memory) => memory.id);
   const usedId = generated.usedPersonalMemoryId && candidateIds.includes(generated.usedPersonalMemoryId)
     ? generated.usedPersonalMemoryId
     : null;
-  if (usedId) await markPersonalMemoriesUsed(userId, [usedId]);
+  if (usedId) await withGenerationStage("memory-usage", () => markPersonalMemoriesUsed(userId, [usedId]));
   return {
     conversationId,
     ...generated,
