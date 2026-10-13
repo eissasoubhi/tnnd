@@ -16,7 +16,7 @@ export interface ConversationGeneration {
 }
 
 export class DraftGenerationError extends Error {
-  constructor(readonly code: string, readonly httpStatus: number | undefined) {
+  constructor(readonly code: string, readonly httpStatus: number | undefined, readonly stage?: string) {
     super(code);
     this.name = "DraftGenerationError";
   }
@@ -40,9 +40,9 @@ export async function generateConversationReply(
       ...(normalizedPreviewInstruction ? { previewInstruction: normalizedPreviewInstruction } : {})
     })
   });
-  const payload = await response.json().catch(() => null) as { generation?: ConversationGeneration; error?: string; details?: string } | null;
+  const payload = await response.json().catch(() => null) as { generation?: ConversationGeneration; error?: string; details?: string; stage?: string } | null;
   if (!response.ok || !payload?.generation) {
-    throw new DraftGenerationError(payload?.error ?? "generation_failed", response.status);
+    throw new DraftGenerationError(payload?.error ?? "generation_failed", response.status, payload?.stage);
   }
   return payload.generation;
 }
