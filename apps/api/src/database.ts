@@ -20,7 +20,8 @@ export const migrationFiles = [
   "0013_conversation_facts.sql",
   "0014_conversation_fact_analysis_state.sql",
   "0015_ai_provider_settings.sql",
-  "0016_texting_style_source_examples.sql"
+  "0016_texting_style_source_examples.sql",
+  "0017_conversation_display_identity.sql"
 ] as const;
 
 export function getDatabaseConfig(env: NodeJS.ProcessEnv = process.env): DatabaseConfig {
