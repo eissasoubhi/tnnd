@@ -1,4 +1,4 @@
-import { safeTinderPhotoUrl } from "./tinder-chat-identity";
+import { safeTinderPhotoUrl } from "./tinder-chat-identity.ts";
 
 export type TinderProfileCaptureInput = {
   route: string;
