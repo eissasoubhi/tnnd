@@ -173,9 +173,9 @@ export async function generateExtensionSuggestions(
       : "",
     avoidInstruction,
     request.purpose === "opener"
-      ? "Write exactly one opening Tinder message to start a new conversation. No earlier messages exist. Never pretend the other person has spoken, invent profile facts, or imply false familiarity."
+      ? "Write ONE opening Tinder turn with 2 or 3 short lines separated by newline characters inside one JSON array string. The lines will be sent as separate Tinder bubbles, NOT alternative messages. No previous messages exist. Do not invent profile facts, feelings, compliments or reactions (for example claiming their profile made the sender smile). Only the match name/age explicitly shown in the conversation context are verified. No profile photo, bio or appearance is verified. A neutral greeting and one natural question are better than fake personalization."
       : "Use the recent conversation flow, answer what was actually said, and avoid abruptly changing subject.",
-    "If context is incomplete, stay generic rather than inventing details.",
+    "If context is incomplete, stay generic rather than inventing details. Never claim an unverified reaction to a match profile.",
     `Conversation context:\n${request.context.slice(-9000)}`,
     `Return only a valid JSON array containing exactly ${request.count} distinct message string${request.count === 1 ? "" : "s"}. No markdown, explanation or labels.`
   ].filter(Boolean).join("\n\n");

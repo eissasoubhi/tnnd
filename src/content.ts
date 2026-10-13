@@ -2,6 +2,7 @@ import { TinderDomAdapter } from "./tinder-adapter";
 import { readVisibleTinderMatchIdentity } from "./tinder-chat-identity";
 import { detectVisibleTinderSidebarTab, visibleTinderThreadRefs } from "./tinder-visible-thread-links";
 import { firstMessageAttemptKey, firstMessageBlocker, firstMessageContext } from "./tinder-first-message";
+import { groundedOpenerFragments, sameOpenerThreadUninterrupted } from "./tinder-opener-fragments";
 import { syncConversationDelta } from "./conversation-sync";
 import { observeTinderRuntime } from "./tinder-runtime-observation";
 import { readCurrentTinderUiState } from "./tinder-runtime-state";
@@ -540,6 +541,7 @@ async function scan(): Promise<void> {
 async function startFirstMessage(expectedThreadKey: string, mode: "individual" | "global-new" = "individual"): Promise<{ ok: boolean; error?: string; sent?: boolean }> {
   if (busy) return { ok: false, error: "TNND is already processing a message. Try again later." };
   busy = true;
+  let sentParts = 0;
   try {
     const conversationRef = currentConversationRef();
     const config = await getContentConfig();
@@ -581,6 +583,8 @@ async function startFirstMessage(expectedThreadKey: string, mode: "individual" |
     });
     const opener = response?.suggestions?.[0]?.trim();
     if (!response?.ok || !opener) return { ok: false, error: response?.error ?? "Gemini did not return a first message." };
+    // One generation/one authorization; output is 2–3 safe sequential bubbles.
+    const openerParts = groundedOpenerFragments(opener);
 
     // Re-check all gates after generation. A newly received message or status
     // change must stop the opener before any irreversible Tinder action.
@@ -614,20 +618,62 @@ async function startFirstMessage(expectedThreadKey: string, mode: "individual" |
       type: "TNND_CLAIM_FIRST_MESSAGE", conversationRef
     });
     if (!claim?.ok || !claim.claimed) return { ok: false, error: `First message not sent: ${claim?.reason ?? "claim_failed"}.` };
-    await adapter.send(opener);
-    try {
-      await syncConversationDelta(conversationRef, [{
-        externalMessageId: `tnnd-opener-${attemptedAt}`,
-        direction: "outgoing",
-        text: opener,
-        sentAt: new Date(attemptedAt).toISOString()
-      }], null);
-    } catch {
-      return { ok: true, sent: true, error: "Sent on Tinder, but server history sync failed. Re-import the visible chat." };
+    const partial = (reason: string): { ok: boolean; sent: boolean; error: string } => ({
+      ok: true,
+      sent: sentParts > 0,
+      error: `${sentParts}/${openerParts.length} opener bubbles sent. ${reason} No automatic retry; check the Tinder conversation.`
+    });
+    for (const [index, part] of openerParts.entries()) {
+      if (index > 0) {
+        // The user's existing reply-delay window governs messages in ONE chat.
+        // Conversation-switch cadence is separate, and no new match may start
+        // until this burst has finished or has been safely cancelled.
+        const gap = randomCadenceSeconds(config.automation);
+        await new Promise((resolve) => setTimeout(resolve, gap * 1000));
+        if (!hasLiveExtensionContext()
+          || currentConversationRef() !== conversationRef
+          || expectedThreadKey !== tinderThreadKeyFromPath(location.pathname)
+          || !adapter.diagnose().composerFound) return partial("Tinder tab or chat changed.");
+        // Only our immediately previous outbound bubble may be the latest.
+        // An incoming response, manual send, or unknown transcript stops.
+        if (!sameOpenerThreadUninterrupted(adapter.readVisibleMessages(), openerParts[index - 1])) {
+          return partial("Another message appeared or the previous bubble was not verified.");
+        }
+        const continuing = await getContentConfig();
+        if (!continuing?.automation.enabled
+          || (continuing.automation.quietHoursEnabled
+            && insideQuietHours(continuing.automation.quietStart, continuing.automation.quietEnd))
+          || await getChatAutomationEnabled(threadKey) !== true
+          || !await backendAllowsAutomaticReply(conversationRef)) return partial("AI management or automation was paused.");
+        if (mode === "global-new") {
+          const global = await sendRuntimeMessage<{ ok: boolean; allowed?: boolean }>({
+            type: "TNND_GET_NEW_MATCH_SEND_PERMISSION", conversationRef
+          });
+          if (!global?.allowed) return partial("New-match runner was stopped.");
+        }
+        if (currentConversationRef() !== conversationRef
+          || !sameOpenerThreadUninterrupted(adapter.readVisibleMessages(), openerParts[index - 1])) {
+          return partial("Chat content changed before the next bubble.");
+        }
+      }
+      await adapter.send(part);
+      sentParts++;
+      try {
+        // Distinct stable message keys: one opener quota claim per match,
+        // but each actual Tinder bubble is synchronized as its own message.
+        await syncConversationDelta(conversationRef, [{
+          externalMessageId: `tnnd-opener-${attemptedAt}-${index + 1}`,
+          direction: "outgoing",
+          text: part,
+          sentAt: new Date().toISOString()
+        }], null);
+      } catch {
+        return partial("Tinder accepted a send action but backend sync could not be confirmed.");
+      }
     }
     return { ok: true, sent: true };
   } catch (error) {
-    return { ok: false, error: `First message not confirmed. Check Tinder before retrying: ${error instanceof Error ? error.message : "unknown error"}` };
+    return { ok: sentParts > 0, sent: sentParts > 0, error: `Opener ${sentParts > 0 ? `partially sent (${sentParts} bubble(s))` : "not confirmed"}. No automatic retry. Check Tinder: ${error instanceof Error ? error.message : "unknown error"}` };
   } finally {
     busy = false;
   }

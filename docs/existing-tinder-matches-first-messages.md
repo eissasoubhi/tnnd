@@ -14,7 +14,7 @@ This is different from **Start AI on future matches** and **Start global existin
 
 ## How the three delays differ
 
-- **Minimum/Maximum reply delay (Options):** a random 20–60 seconds by default, before responding to a detected incoming message *inside one conversation*.
+- **Minimum/Maximum reply delay (Options):** a random 20–60 seconds by default, before responding to a detected incoming message *inside one conversation*, and between the 2–3 bubbles of one opening turn.
 - **Time per conversation (popup):** a separate minimum dwell, 10/15/30/60/120 seconds, before visiting the next chat.
 - **First-message daily cap (Options):** five attempted first messages daily by default, configurable between 1 and 100. This applies across existing-match batches, future matches and manually started first AI messages; it is separate from the daily automatic-reply counter. The cap counts durable send claims, including uncertain delivery, and resets at UTC midnight.
 
@@ -49,3 +49,11 @@ If the popup still reports `messages_present` on a visibly empty thread after re
 A sanitized Tinder diagnostic showed a **genuinely empty match** with no `ol[aria-label="Messages"]` and zero message articles, but a `button[aria-label="Send message"]`. The previous broad fallback `[aria-label*="message"]` counted that Send control as one outgoing message and blocked the opener with `messages_present`.
 
 TNND now excludes message composer form controls and navigation elements from fallback message candidates, and when the known `.chat` pane exists it ignores elements outside that pane. Existing verified message articles still count. The backend empty-history, conversation identity, management permission and durable no-retry checks remain mandatory; the patch does **not** bypass them. After updating, reload the Chrome extension and the Tinder tab, stop the previous new-match run and manually start the existing-match batch again. Only previously skipped matches with **no durable send attempt** may be requeued. Verify a first live send yourself; CI uses synthetic data only.
+
+## Short, grounded opening messages (v0.2.16)
+
+A first message to a match is now **one opener composed of two or three separate short Tinder bubbles**, not a long paragraph. Gemini is asked for a **single** candidate containing line breaks; TNND splits it into short bubbles, discards unsupported claims about unseen profile photos/bio or invented feelings (for example `ton profil m'a fait sourire`) and falls back to the neutral `Salut` / `Bien ou bien ?` if necessary. TNND does not claim to have inspected the match's profile when only their visible name/age were available.
+
+The configured **minimum/maximum reply delay** (20–60s by default) is also used between bubbles in this *same* conversation. The separate time-per-conversation setting is not overridden. Immediately before each additional bubble, TNND confirms the same chat is open, that the previous bubble is really the last recognized outgoing message, and that the match has not replied. If any check fails or the runner is stopped, no further bubble is sent and the opener remains claimed as a single match attempt. Each successfully submitted bubble is synchronized individually; no automatic retries of partial/uncertain sends.
+
+The **daily first-message quota is per match opened**, not per fragment; two or three consecutive opener bubbles consume only one of the five default daily attempts.

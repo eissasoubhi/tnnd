@@ -87,6 +87,7 @@ export function buildSystemInstruction(config: AppConfig, count: number, purpose
     avoided.length ? `Avoid these words or expressions: ${avoided.join(", ")}.` : "",
     config.extraInstructions ? `Global conversation instructions: ${config.extraInstructions}` : "",
     perChatGuidance(chat),
+    purpose === "opener" ? "For the opener, make ONE natural turn containing 2 or 3 very short fragments separated by newline characters inside a single JSON string. Example: Salut then Bien ou bien ? as separate lines. These are sequential Tinder bubbles, NOT independent alternatives. Do not write 'ton profil m'a fait sourire', claims about photos/looks or inferred personality. A plain greeting and one genuine question are better than imagined compliments. No repeated questions or pressure." : "",
     `Return only a valid JSON array containing exactly ${count} distinct message string${count === 1 ? "" : "s"}. No markdown, explanation or labels.`
   ].filter(Boolean).join("\n");
 }
@@ -94,10 +95,10 @@ export function buildSystemInstruction(config: AppConfig, count: number, purpose
 export function buildUserPrompt(context: string, purpose: GeneratePurpose): string {
   return [
     purpose === "opener"
-      ? "Write the very first Tinder message in a new chat. There is no incoming message to answer. Never imply you already talked."
+      ? "Write a very first Tinder turn with 2 or 3 short lines intended as separate chat bubbles. There is no incoming message to answer; do not imply prior conversation or claim an emotional reaction to a profile."
       : purpose === "auto" ? "Write the next reply to the latest incoming Tinder message." : "Draft the next dating-app message from this conversation/profile context.",
     "Use the recent conversation flow, answer what was actually said, and avoid abruptly changing subject.",
-    "If there is no conversation yet, use something specific from the profile context instead of a generic hello.",
+    purpose === "opener" ? "Only the match name/age explicitly listed in the current Tinder context are verified. No photo, bio, appearance, interests or feelings are known. A simple hello is better than inventing a profile reaction." : "Use only grounded conversation context; never infer unseen profile details.",
     "If context is incomplete, stay generic rather than inventing details.",
     "\n--- context ---",
     context.trim().slice(-9000),
