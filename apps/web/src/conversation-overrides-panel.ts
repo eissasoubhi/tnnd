@@ -10,7 +10,8 @@ import {
   setDraftPreviewPreset,
   toggleDraftFeedbackTag
 } from "./conversation-draft-lifecycle";
-import { generateConversationReply, type ConversationGeneration } from "./conversation-generation-client";
+import { DraftGenerationError, generateConversationReply, type ConversationGeneration } from "./conversation-generation-client";
+import { draftFailureGuidance } from "./draft-failure-guidance";
 import { confirmConversationOutgoingMessage } from "./conversation-outgoing-confirmation-client";
 import {
   clearConversationOverrides,
@@ -134,14 +135,19 @@ async function mountInlineEditor(): Promise<void> {
     </details>
     <div class="conversation-inline-generation">
       <strong>AI reply draft</strong>
-      <small><strong>1.</strong> Paste the latest message · <strong>2.</strong> Generate a reply · <strong>3.</strong> Copy it and decide yourself whether to send it on Tinder. Nothing is sent automatically.</small>
-      <textarea data-generation-message maxlength="4000" placeholder="Paste the latest incoming message"></textarea>
+      <p class="draft-guidance">Start here: make one suggested reply. Nothing is sent to Tinder.</p>
+      <label class="draft-input-label" for="draft-latest-message">Step 1 · Latest message from your match</label>
+      <textarea id="draft-latest-message" aria-describedby="draft-instructions" data-generation-message maxlength="4000" placeholder="Paste the latest incoming message"></textarea>
+      <p id="draft-instructions" class="subtle">Paste only the message you want TNND to answer. The saved conversation history will provide context.</p>
       <div class="conversation-inline-generation-actions">
-        <button type="button" data-generation-button>Generate draft</button>
-        <button type="button" data-generation-regenerate disabled>Regenerate</button>
-        <button type="button" data-generation-copy disabled>Copy</button>
-        <button type="button" data-generation-approve disabled>Approve draft</button>
-        <span class="subtle" data-generation-status></span>
+        <button type="button" data-generation-button>Step 2 · Generate a reply</button>
+        <button type="button" data-generation-regenerate hidden disabled>Try another reply</button>
+        <button type="button" data-generation-copy hidden disabled>Step 3 · Copy reply</button>
+        <button type="button" data-generation-approve hidden disabled>Approve draft</button>
+        </div>
+      <p data-generation-status role="status" aria-live="polite" class="subtle"></p>
+      <p data-generation-error-help role="alert" hidden class="draft-error-help"></p>
+      <div class="conversation-inline-generation-actions">
       </div>
       <div class="conversation-inline-feedback" data-generation-feedback hidden>
         <small><strong>Regeneration feedback</strong> — choose one preset, useful tags, and optionally add your own instruction.</small>
@@ -181,6 +187,7 @@ async function mountInlineEditor(): Promise<void> {
   const copyButton = section.querySelector<HTMLButtonElement>("[data-generation-copy]")!;
   const approveButton = section.querySelector<HTMLButtonElement>("[data-generation-approve]")!;
   const generationStatus = section.querySelector<HTMLElement>("[data-generation-status]")!;
+  const errorHelp = section.querySelector<HTMLElement>("[data-generation-error-help]")!;
   const generationLifecycle = section.querySelector<HTMLElement>("[data-generation-lifecycle]")!;
   const generationPreview = section.querySelector<HTMLElement>("[data-generation-preview]")!;
   const generationProvenance = section.querySelector<HTMLElement>("[data-generation-provenance]")!;
@@ -240,8 +247,11 @@ async function mountInlineEditor(): Promise<void> {
     const hasDraft = Boolean(currentDraft?.text);
     const approved = lifecycle.phase === "approved";
     regenerateButton.disabled = !hasDraft;
+    regenerateButton.hidden = !hasDraft;
     copyButton.disabled = !hasDraft;
+    copyButton.hidden = !hasDraft;
     approveButton.disabled = !hasDraft || approved || lifecycle.phase === "confirmed-sent";
+    approveButton.hidden = !hasDraft || approved || lifecycle.phase === "confirmed-sent";
     confirmationMessageId.disabled = !approved;
     confirmationButton.disabled = !approved || !confirmationMessageId.value.trim();
     generationPreview.dataset.approved = String(approved || lifecycle.phase === "confirmed-sent");
@@ -268,6 +278,8 @@ async function mountInlineEditor(): Promise<void> {
     generationButton.disabled = true;
     regenerateButton.disabled = true;
     generationStatus.textContent = regenerate ? "Regenerating…" : "Generating…";
+    errorHelp.hidden = true;
+    errorHelp.textContent = "";
     try {
       const result = await generateConversationReply(session, conversationId, latestMessage, previewInstruction ?? undefined);
       if (!section.isConnected) return;
@@ -290,7 +302,11 @@ async function mountInlineEditor(): Promise<void> {
       generationProvenance.textContent = `${sources}Persistent instruction: ${result.provenance.hasPersistentInstruction ? "yes" : "no"}; temporary instruction: ${result.provenance.hasTemporaryInstruction ? "yes" : "no"}; preview steering: ${result.provenance.hasPreviewInstruction ? "yes" : "no"}. Model: ${result.model}. ${adaptedText ? "Effective style for this reply: " + adaptedText : ""}`;
       generationStatus.textContent = regenerate && previewInstruction ? "Draft regenerated with preview feedback" : "Draft ready";
     } catch (error) {
-      generationStatus.textContent = error instanceof Error ? error.message : "Unable to generate draft.";
+      const code = error instanceof DraftGenerationError ? error.code : error instanceof TypeError ? "network_error" : "generation_failed";
+      const httpStatus = error instanceof DraftGenerationError ? error.httpStatus : undefined;
+      generationStatus.textContent = "Unable to generate reply" + (httpStatus ? ` (HTTP ${httpStatus})` : "");
+      errorHelp.textContent = draftFailureGuidance(code, httpStatus);
+      errorHelp.hidden = false;
     } finally {
       if (section.isConnected) {
         generationButton.disabled = false;
