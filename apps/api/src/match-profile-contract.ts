@@ -1,6 +1,7 @@
 export type MatchProfileVisibleFields = {
   firstName?: string;
   age?: number;
+  photoUrl?: string;
   bio?: string;
   job?: string;
   education?: string;
@@ -69,6 +70,16 @@ function normalizeAge(value: unknown): number | undefined {
   return Number.isInteger(value) && Number(value) >= 18 && Number(value) <= 120 ? Number(value) : undefined;
 }
 
+/** Avoid javascript/data/blob URLs or off-domain third-party tracking images. */
+export function normalizeTinderPhotoUrl(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value || value.length > 1600) return undefined;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password || !/(^|\\.)(?:gotinder|tinder)\\.com$/i.test(url.hostname)) return undefined;
+    return url.href;
+  } catch { return undefined; }
+}
+
 function normalizeFields(value: unknown): MatchProfileVisibleFields {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const input = value as Record<string, unknown>;
@@ -79,6 +90,7 @@ function normalizeFields(value: unknown): MatchProfileVisibleFields {
   return {
     firstName: normalizeText(input.firstName),
     age: normalizeAge(input.age),
+    photoUrl: normalizeTinderPhotoUrl(input.photoUrl),
     bio: normalizeText(input.bio),
     job: normalizeText(input.job),
     education: normalizeText(input.education),
