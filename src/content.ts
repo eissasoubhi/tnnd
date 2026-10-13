@@ -1,5 +1,7 @@
 import { TinderDomAdapter } from "./tinder-adapter";
 import { readVisibleTinderMatchIdentity } from "./tinder-chat-identity";
+import { firstMessageAttemptKey, firstMessageBlocker, firstMessageContext } from "./tinder-first-message";
+import { syncConversationDelta } from "./conversation-sync";
 import { observeTinderRuntime } from "./tinder-runtime-observation";
 import { readCurrentTinderUiState } from "./tinder-runtime-state";
 import { isInboxReadableTinderState } from "./tinder-state-machine";
@@ -435,6 +437,106 @@ async function scan(): Promise<void> {
     busy = false;
   }
 }
+
+/** One explicitly confirmed first message, never triggered by the observation loop.
+ * Send attempts are persisted before clicking Tinder, so uncertain sends are
+ * never repeated automatically. Live Tinder selector verification is required. */
+async function startFirstMessage(expectedThreadKey: string): Promise<{ ok: boolean; error?: string; sent?: boolean }> {
+  if (busy) return { ok: false, error: "TNND is already processing a message. Try again later." };
+  busy = true;
+  try {
+    const conversationRef = currentConversationRef();
+    const config = await getContentConfig();
+    const threadKey = tinderThreadKeyFromPath(location.pathname);
+    const diagnostic = adapter.diagnose();
+    const state = await getState();
+    if (!conversationRef || !config || !state) return { ok: false, error: "Open the Tinder chat and connect TNND first." };
+
+    const permission = await sendRuntimeMessage<{ ok: boolean; allowed?: boolean; savedMessageCount?: number; reason?: string }>({
+      type: "TNND_GET_FIRST_MESSAGE_PERMISSION", conversationRef
+    });
+    const perChatEnabled = await getChatAutomationEnabled(threadKey);
+    const check = () => firstMessageBlocker({
+      sameThread: expectedThreadKey === threadKey && currentConversationRef() === conversationRef,
+      composerFound: adapter.diagnose().composerFound,
+      visibleMessageCandidates: adapter.diagnose().visibleCandidateCount,
+      savedConversationMessages: permission?.allowed ? 0 : Math.max(1, permission?.savedMessageCount ?? 1),
+      aiManagedAndActive: permission?.ok === true && permission.allowed === true,
+      globalAutomationEnabled: config.automation.enabled,
+      chatAutomationEnabled: perChatEnabled === true,
+      insideQuietHours: config.automation.quietHoursEnabled && insideQuietHours(config.automation.quietStart, config.automation.quietEnd),
+      belowDailyLimit: state.dailyCount < config.automation.maxAutoRepliesPerDay,
+      alreadyAttempted: Boolean(state.processed[firstMessageAttemptKey(conversationRef)])
+    });
+    const blocker = check();
+    if (blocker) return { ok: false, error: `First message blocked: ${permission?.reason ?? blocker}. Confirm AI managed, Resume and extension automation settings; check that this chat is empty.` };
+
+    const identity = readVisibleTinderMatchIdentity(conversationRef);
+    const response = await sendRuntimeMessage<GenerateResponse>({
+      type: "GENERATE_SUGGESTIONS",
+      purpose: "opener",
+      replyCount: 1,
+      threadKey,
+      context: firstMessageContext(identity.firstName, identity.age)
+    });
+    const opener = response?.suggestions?.[0]?.trim();
+    if (!response?.ok || !opener) return { ok: false, error: response?.error ?? "Gemini did not return a first message." };
+
+    // Re-check all gates after generation. A newly received message or status
+    // change must stop the opener before any irreversible Tinder action.
+    const freshPermission = await sendRuntimeMessage<{ ok: boolean; allowed?: boolean }>({
+      type: "TNND_GET_FIRST_MESSAGE_PERMISSION", conversationRef
+    });
+    const freshConfig = await getContentConfig();
+    const freshState = await getState();
+    if (!freshConfig || !freshState || !freshPermission?.allowed
+      || expectedThreadKey !== tinderThreadKeyFromPath(location.pathname)
+      || currentConversationRef() !== conversationRef
+      || !adapter.diagnose().composerFound
+      || adapter.diagnose().visibleCandidateCount !== 0
+      || !freshConfig.automation.enabled
+      || (freshConfig.automation.quietHoursEnabled && insideQuietHours(freshConfig.automation.quietStart, freshConfig.automation.quietEnd))
+      || await getChatAutomationEnabled(threadKey) !== true
+      || freshState.dailyCount >= freshConfig.automation.maxAutoRepliesPerDay
+      || freshState.processed[firstMessageAttemptKey(conversationRef)]) {
+      return { ok: false, error: "The chat or permissions changed. First message not sent." };
+    }
+
+    const attemptedAt = Date.now();
+    freshState.processed[firstMessageAttemptKey(conversationRef)] = attemptedAt;
+    freshState.dailyCount += 1;
+    if (!await saveState(freshState)) return { ok: false, error: "Could not record the opener attempt safely; nothing sent." };
+    // No automatic retry even if Tinder's UI acknowledgement is ambiguous.
+    await adapter.send(opener);
+    try {
+      await syncConversationDelta(conversationRef, [{
+        externalMessageId: `tnnd-opener-${attemptedAt}`,
+        direction: "outgoing",
+        text: opener,
+        sentAt: new Date(attemptedAt).toISOString()
+      }], null);
+    } catch {
+      return { ok: true, sent: true, error: "Sent on Tinder, but server history sync failed. Re-import the visible chat." };
+    }
+    return { ok: true, sent: true };
+  } catch (error) {
+    return { ok: false, error: `First message not confirmed. Check Tinder before retrying: ${error instanceof Error ? error.message : "unknown error"}` };
+  } finally {
+    busy = false;
+  }
+}
+
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (!message || typeof message !== "object") return false;
+  const input = message as { type?: unknown; threadKey?: unknown };
+  if (input.type !== "TNND_START_FIRST_MESSAGE") return false;
+  if (sender.id !== chrome.runtime.id || typeof input.threadKey !== "string") {
+    sendResponse({ ok: false, error: "Untrusted first-message request." });
+    return false;
+  }
+  void startFirstMessage(input.threadKey).then(sendResponse);
+  return true;
+});
 
 function scheduleScan(): void {
   if (!hasLiveExtensionContext()) return;
