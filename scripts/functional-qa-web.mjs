@@ -240,10 +240,13 @@ async function main() {
     await step(cdp, "Goal example button fills the correct field",
       'document.querySelector("#dating-goal-details")?.value?.includes("meeting new people")',
       Boolean);
+    await waitFor(cdp, 'document.querySelector("#preferences-save")?.disabled === false');
     await cdp.evaluate('document.querySelector("#preferences-save").click()');
-    await waitFor(cdp, 'document.querySelector("#profile-message")?.textContent?.includes("Preferences saved")');
-    assert.equal(requests.filter(x => x.path === "/api/v1/profile" && x.method === "PUT").length, 1);
-    results.push({ name: "Save preferences calls the API exactly once", passed: true });
+    for (let i = 0; i < 80 && !requests.some(x => x.path === "/api/v1/profile" && x.method === "PUT"); i++) await sleep(100);
+    const profileWrites = requests.filter(x => x.path === "/api/v1/profile" && x.method === "PUT");
+    assert.equal(profileWrites.length, 1, "Save preferences should make one API request.");
+    assert.match(storedProfile.datingIntent?.datingGoalDetails ?? "", /meeting new people/, "Example must survive backend save.");
+    results.push({ name: "Save preferences persists the example exactly once via API", passed: true });
 
     await cdp.evaluate(`(() => {
       document.querySelector("#conversation-search").value = "not-a-match";
