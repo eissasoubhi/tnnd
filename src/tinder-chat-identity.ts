@@ -22,7 +22,7 @@ export function safeTinderPhotoUrl(value: unknown): string | undefined {
 }
 
 export function parseVisibleMatchHeading(value: unknown): { firstName?: string; age?: number } {
-  if (typeof value !== "string") return {};
+  if (typeof value !== "string" || /[\r\n]/.test(value)) return {};
   const normalized = value.replace(/\s+/g, " ").trim();
   const matched = /^(.+?)(?:\s+(\d{2,3}))?$/.exec(normalized);
   if (!matched) return {};
