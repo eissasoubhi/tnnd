@@ -38,7 +38,10 @@ export function prepareReadOnlyImport(
       externalMessageId: key,
       direction: message.direction === "me" ? "outgoing" : "incoming",
       text,
-      // The source DOM has no verified sent time. Preserve *observed order*\n      // deterministically instead of assigning the same timestamp to every\n      // message (which caused the API's sort-by-time fallback to scramble it).\n      sentAt: new Date(Date.parse(importedAt) + index).toISOString()
+      // The source DOM has no verified sent time. Preserve *observed order*
+      // deterministically instead of assigning the same timestamp to every
+      // message (which caused the API's sort-by-time fallback to scramble it).
+      sentAt: new Date(Date.parse(importedAt) + index).toISOString()
     };
   });
   return {
