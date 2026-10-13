@@ -741,3 +741,48 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
   #profile-settings .dating-goal-editor { padding: 13px; }
   #profile-settings .dating-goal-example-actions button { flex: 1 1 auto; }
 }
+
+/* Interaction QA / progressive disclosure: the draft is primary; advanced
+   overrides and manual send confirmation remain available on demand. */
+#app .conversation-advanced-settings,
+#app .conversation-confirmation-details {
+  min-width: 0;
+  margin: 14px 0;
+  border: 1px solid var(--nb-border);
+  border-radius: var(--nb-radius-md);
+  background: var(--nb-surface-soft);
+}
+#app .conversation-advanced-settings > summary,
+#app .conversation-confirmation-details > summary {
+  cursor: pointer;
+  padding: 13px 15px;
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--nb-text);
+  overflow-wrap: anywhere;
+}
+#app .conversation-advanced-settings > summary:hover,
+#app .conversation-confirmation-details > summary:hover {
+  background: var(--nb-mint);
+  border-radius: var(--nb-radius-md);
+}
+#app .conversation-advanced-settings-content {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  padding: 6px 14px 15px;
+}
+#app .conversation-confirmation-details .conversation-inline-confirmation,
+#app .conversation-confirmation-details [data-confirmation-status] {
+  margin: 8px 14px 12px;
+}
+#app .conversation-inline-generation > small {
+  display: block;
+  line-height: 1.6;
+  color: var(--nb-text-muted);
+}
+#app .conversation-inline-generation-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+#app .conversation-inline-generation-actions > button { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  #app .conversation-inline-generation-actions > button { flex: 1 1 44%; }
+}
