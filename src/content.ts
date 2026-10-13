@@ -418,7 +418,8 @@ async function autoReplyPausedAfterGlobalStop(conversationRef: string): Promise<
 }
 
 async function scan(): Promise<void> {
-  if (busy || !hasLiveExtensionContext()) return;
+  // Never infer message sender from stale DOM during a React route change.
+  if (spaNavigationBusy || Date.now() < spaNavigationSettlesAt || busy || !hasLiveExtensionContext()) return;
 
   try {
     const config = await getContentConfig();
@@ -647,6 +648,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
  * across a SPA transition, unlike chrome.tabs.update({url}) full navigations.
  */
 let spaNavigationBusy = false;
+let spaNavigationSettlesAt = 0;
 async function navigateExistingSpa(ref: string, expectedRef: string | null): Promise<{
   ok: boolean; error?: string; currentRef?: string
 }> {
@@ -658,10 +660,12 @@ async function navigateExistingSpa(ref: string, expectedRef: string | null): Pro
   if (!anchor) return { ok: false, error: "thread_not_in_visible_sidebar" };
   spaNavigationBusy = true;
   try {
+    spaNavigationSettlesAt = Date.now() + 1800;
     anchor.click();
     const deadline = Date.now() + 8000;
     while (Date.now() < deadline) {
       if (currentConversationRef() === ref && adapter.diagnose().composerFound) {
+        spaNavigationSettlesAt = Date.now() + 1200;
         scheduleScan();
         return { ok: true, currentRef: ref };
       }
