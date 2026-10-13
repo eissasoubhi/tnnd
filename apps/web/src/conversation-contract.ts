@@ -16,6 +16,7 @@ export interface ConversationListItem {
   id: string;
   displayName: string;
   matchAge?: number | null;
+  matchPhotoUrl?: string | null;
   status: ConversationStatus;
   currentTopic?: string | null;
   lastMessageAt?: string | null;
@@ -36,6 +37,15 @@ export function isConversationStatus(value: unknown): value is ConversationStatu
   return typeof value === "string" && (CONVERSATION_STATUSES as readonly string[]).includes(value);
 }
 
+export function safeMatchPhotoUrl(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > 1600) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password
+      && /(^|\.)(?:gotinder|tinder)\.com$/i.test(url.hostname) ? url.href : null;
+  } catch { return null; }
+}
+
 export function normalizeConversationListItem(value: unknown): ConversationListItem {
   if (!value || typeof value !== "object") throw new Error("Conversation must be an object");
   const input = value as Record<string, unknown>;
@@ -46,6 +56,7 @@ export function normalizeConversationListItem(value: unknown): ConversationListI
   return {
     id: input.id,
     displayName: input.displayName,
+    matchPhotoUrl: safeMatchPhotoUrl(input.matchPhotoUrl),
     matchAge: typeof input.matchAge === "number" && Number.isInteger(input.matchAge) && input.matchAge >= 18 && input.matchAge <= 120 ? input.matchAge : null,
     status: input.status,
     currentTopic: typeof input.currentTopic === "string" ? input.currentTopic : null,

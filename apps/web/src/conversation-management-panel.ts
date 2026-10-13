@@ -57,7 +57,7 @@ function installStyles(): void {
   style.id = "tnnd-management-panel-styles";
   style.textContent = `
     .conversation-management-explainer{padding:10px 14px;border:1px solid var(--nb-border,#c8d8cd);border-radius:12px;background:var(--nb-surface-soft,#edf4eb);font-size:12px;line-height:1.6}.conversation-management-explainer summary{cursor:pointer;font-weight:750}.conversation-management-explainer p{margin:8px 0 0}
-    .management-list{display:grid;gap:8px;margin-top:12px}.management-row{display:grid;grid-template-columns:minmax(0,1fr) 190px auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--border,#d4d4d8);border-radius:10px}.management-row-main{display:grid;gap:3px;min-width:0}.management-row-main strong,.management-row-main small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.management-row small{opacity:.65}.management-row select{width:100%}.management-row button{width:auto;padding:7px 10px}.management-badge{font-size:10px;opacity:.72}.management-action-block{display:inline-flex;width:max-content;max-width:100%;font-size:11px;font-weight:700;padding:3px 7px;border-radius:999px;background:rgba(245,158,11,.14)}.management-action-block[data-severity="urgent"]{background:rgba(239,68,68,.16)}.management-note{margin-top:9px}.management-status{min-height:18px}.management-row[data-management-state="moved-off-tinder"]{border-style:dashed}.management-row[data-management-state="ai-managed"]{outline:1px solid currentColor;outline-offset:1px}.management-row[data-action-focus="true"]{box-shadow:0 0 0 3px rgba(99,102,241,.3)}@media(max-width:760px){.management-row{grid-template-columns:1fr}}
+    .management-list{display:grid;gap:8px;margin-top:12px}.management-row{display:grid;grid-template-columns:minmax(0,1fr) 190px auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--border,#d4d4d8);border-radius:10px}.management-row-main{display:grid;gap:3px;min-width:0}.management-match-line{display:flex;align-items:center;gap:9px;min-width:0}.management-match-avatar{display:grid;flex:0 0 36px;place-items:center;width:36px;height:36px;border-radius:50%;object-fit:cover;background:var(--nb-mint,#d9efcc);color:var(--nb-primary,#264b40)}.management-row-main strong,.management-row-main small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.management-row small{opacity:.65}.management-row select{width:100%}.management-row button{width:auto;padding:7px 10px}.management-badge{font-size:10px;opacity:.72}.management-action-block{display:inline-flex;width:max-content;max-width:100%;font-size:11px;font-weight:700;padding:3px 7px;border-radius:999px;background:rgba(245,158,11,.14)}.management-action-block[data-severity="urgent"]{background:rgba(239,68,68,.16)}.management-note{margin-top:9px}.management-status{min-height:18px}.management-row[data-management-state="moved-off-tinder"]{border-style:dashed}.management-row[data-management-state="ai-managed"]{outline:1px solid currentColor;outline-offset:1px}.management-row[data-action-focus="true"]{box-shadow:0 0 0 3px rgba(99,102,241,.3)}@media(max-width:760px){.management-row{grid-template-columns:1fr}}
   `;
   document.head.append(style);
 }
@@ -93,6 +93,7 @@ function mount(): { list: HTMLElement; status: HTMLElement } | null {
 const elements = mount();
 let records: ConversationManagementRecord[] = [];
 let names = new Map<string, string>();
+let photos = new Map<string, string>();
 
 function render(): void {
   if (!elements) return;
@@ -103,7 +104,10 @@ function render(): void {
   elements.list.innerHTML = records.map((record) => `
     <div class="management-row" data-management-row="${escapeHtml(record.conversationId)}" data-management-state="${record.managementState}">
       <div class="management-row-main">
-        <strong>${escapeHtml(names.get(record.conversationId) ?? `Conversation ${record.conversationId.slice(0, 8)}`)}</strong>
+        <div class="management-match-line">
+          ${photos.get(record.conversationId) ? `<img class="management-match-avatar" src="${escapeHtml(photos.get(record.conversationId)!)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="management-match-avatar" aria-hidden="true">●</span>'}
+          <strong>${escapeHtml(names.get(record.conversationId) ?? "Profil Tinder à synchroniser")}</strong>
+        </div>
         <small>${record.explicitlySelected ? "Explicitly selected" : "Not selected for AI takeover"} · Updated ${escapeHtml(new Date(record.updatedAt).toLocaleString())}</small>
         ${renderHumanActionBlock(record)}
       </div>
@@ -174,7 +178,8 @@ async function refresh(): Promise<void> {
       listConversations(session)
     ]);
     records = management;
-    names = new Map(summaries.map(item => [item.id, item.displayName + (item.matchAge ? ` · ${item.matchAge}` : "")]));
+    names = new Map(summaries.map(item => [item.id, `${item.displayName.startsWith("Conversation ") ? "Profil Tinder à synchroniser" : item.displayName}${item.matchAge ? ` ${item.matchAge}` : ""}`]));
+    photos = new Map(summaries.filter(item => item.matchPhotoUrl).map(item => [item.id, item.matchPhotoUrl!]));
     elements.status.textContent = `${records.length} conversations`;
     render();
   } catch (error) {

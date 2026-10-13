@@ -1,4 +1,5 @@
 import { TinderDomAdapter } from "./tinder-adapter";
+import { readVisibleTinderMatchIdentity } from "./tinder-chat-identity";
 import { observeTinderRuntime } from "./tinder-runtime-observation";
 import { readCurrentTinderUiState } from "./tinder-runtime-state";
 import { isInboxReadableTinderState } from "./tinder-state-machine";
@@ -12,6 +13,9 @@ const adapter = new TinderDomAdapter();
 let busy = false;
 let scanTimer: number | undefined;
 let runtimeReadBusy = false;
+let identitySyncBusy = false;
+let lastIdentityFingerprint = "";
+let lastIdentityAttemptAt = 0;
 let contentRuntimeAlive = true;
 let observer: MutationObserver | null = null;
 let runtimeObservedJobs: TinderScheduledJob[] = [];
@@ -296,6 +300,25 @@ function currentConversationRef(): string | null {
   }
 }
 
+/** Match metadata is captured from the active, matched sidebar row only.
+ * No Tinder interaction or AI takeover happens here. */
+async function observeVisibleIdentity(): Promise<void> {
+  const ref = currentConversationRef();
+  if (!ref || identitySyncBusy || !hasLiveExtensionContext()) return;
+  const identity = readVisibleTinderMatchIdentity(ref);
+  if (!identity.firstName) return;
+  const fingerprint = JSON.stringify({ ref, identity });
+  if (fingerprint === lastIdentityFingerprint || Date.now() - lastIdentityAttemptAt < 30000) return;
+  identitySyncBusy = true;
+  lastIdentityAttemptAt = Date.now();
+  try {
+    const result = await sendRuntimeMessage<{ ok: boolean; synced?: boolean }>({
+      type: "TNND_SYNC_VISIBLE_MATCH_IDENTITY", conversationRef: ref, identity
+    });
+    if (result?.ok && result.synced) lastIdentityFingerprint = fingerprint;
+  } finally { identitySyncBusy = false; }
+}
+
 async function observeRuntimeReadMode(): Promise<void> {
   if (runtimeReadBusy || !hasLiveExtensionContext()) return;
   const observation = observeTinderRuntime(adapter);
@@ -416,6 +439,7 @@ async function scan(): Promise<void> {
 function scheduleScan(): void {
   if (!hasLiveExtensionContext()) return;
   void observeRuntimeReadMode();
+  void observeVisibleIdentity().catch(() => undefined);
   if (scanTimer) window.clearTimeout(scanTimer);
   scanTimer = window.setTimeout(() => {
     if (!hasLiveExtensionContext()) return;

@@ -1,5 +1,5 @@
 import type { AuthSession } from "./auth-client";
-import { isConversationStatus, normalizeConversationListItem, type ConversationListItem, type ConversationStatus } from "./conversation-contract";
+import { isConversationStatus, normalizeConversationListItem, safeMatchPhotoUrl, type ConversationListItem, type ConversationStatus } from "./conversation-contract";
 
 const apiBase = (import.meta.env.VITE_TNND_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "http://127.0.0.1:4000";
 
@@ -59,6 +59,7 @@ export interface ConversationDetail {
   userDisplayLabel?: string | null;
   userDisplayAge?: number | null;
   matchAge?: number | null;
+  matchPhotoUrl?: string | null;
   status: ConversationStatus;
   currentTopic: string | null;
   topicState: ConversationTopicState;
@@ -144,6 +145,7 @@ function normalizeConversationDetail(value: unknown): ConversationDetail {
     userDisplayLabel: typeof input.userDisplayLabel === "string" ? input.userDisplayLabel : null,
     userDisplayAge: typeof input.userDisplayAge === "number" && Number.isInteger(input.userDisplayAge) && input.userDisplayAge >= 18 && input.userDisplayAge <= 120 ? input.userDisplayAge : null,
     matchAge: typeof input.matchAge === "number" && Number.isInteger(input.matchAge) && input.matchAge >= 18 && input.matchAge <= 120 ? input.matchAge : null,
+    matchPhotoUrl: safeMatchPhotoUrl(input.matchPhotoUrl),
     status: input.status,
     currentTopic: typeof input.currentTopic === "string" ? input.currentTopic : null,
     topicState: normalizeTopicState(input.topicState),

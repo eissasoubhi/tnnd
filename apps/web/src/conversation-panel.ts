@@ -29,12 +29,22 @@ function formatDate(value?: string | null): string {
   return Number.isNaN(date.getTime()) ? "Unknown date" : date.toLocaleString();
 }
 
+function matchLabel(displayName: string, age?: number | null): string {
+  const name = displayName.startsWith("Conversation ") ? "Profil Tinder à synchroniser" : displayName;
+  return `${name}${age ? ` ${age}` : ""}`;
+}
+
+function matchAvatar(displayName: string, photoUrl?: string | null): string {
+  const initial = displayName.startsWith("Conversation ") ? "●" : displayName[0]?.toUpperCase() ?? "●";
+  return `<span class="conversation-person-avatar" aria-hidden="true">${photoUrl ? `<img src="${escapeHtml(photoUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : escapeHtml(initial)}</span>`;
+}
+
 function renderList(items: ConversationListItem[], selectedId?: string): string {
   if (!items.length) return '<p class="workspace-empty">No conversations match your search or status filter.</p>';
   return items.map((item) => `
     <button type="button" class="conversation-row${item.id === selectedId ? " selected" : ""}" data-conversation-id="${escapeHtml(item.id)}" aria-pressed="${item.id === selectedId}">
       <span class="conversation-row-main">
-        <span class="conversation-person-line"><span class="conversation-person-avatar" aria-hidden="true">${escapeHtml((item.displayName.startsWith("Conversation ") ? "●" : item.displayName[0] ?? "●").toUpperCase())}</span><strong>${escapeHtml(item.displayName)}${item.matchAge ? ` · ${item.matchAge}` : ""}</strong></span>
+        <span class="conversation-person-line">${matchAvatar(item.displayName, item.matchPhotoUrl)}<strong>${escapeHtml(matchLabel(item.displayName, item.matchAge))}</strong></span>
         <small>${escapeHtml(item.currentTopic ?? "No topic yet")}</small>
       </span>
       <span class="conversation-row-meta">
@@ -145,15 +155,16 @@ function renderDetail(detail: ConversationDetail): string {
 
   return `
     <div class="conversation-detail-heading">
+      ${matchAvatar(detail.displayName, detail.matchPhotoUrl)}
       <div>
-        <strong>${escapeHtml(detail.displayName)}${detail.matchAge ? ` · ${detail.matchAge}` : ""}</strong>
+        <strong>${escapeHtml(matchLabel(detail.displayName, detail.matchAge))}</strong>
         <small>${escapeHtml(detail.currentTopic ?? "No current topic")}</small>
       </div>
       <span class="pill">${escapeHtml(detail.status)}</span>
     </div>
-    <details class="conversation-identity-editor"${detail.displayName.startsWith("Conversation ") ? " open" : ""}>
-      <summary>${detail.displayName.startsWith("Conversation ") ? "Name not detected · Add Tinder match name" : "Edit chat name & age"} <span class="subtle">(saved on your account)</span></summary>
-      <p class="subtle">This chat is imported, but its Tinder profile name was not captured. Give it the visible Tinder name and age below to replace the generic ID in your list. This does not change Tinder. Automatic profile capture needs a diagnostic from the live Tinder chat.</p>
+    <details class="conversation-identity-editor">
+      <summary>${detail.displayName.startsWith("Conversation ") ? "Tinder identity not yet detected" : "Advanced · Override chat identity"} <span class="subtle">(optional)</span></summary>
+      <p class="subtle">The extension automatically reads the name, age and avatar from the matching visible Tinder conversation when available. Open this chat on Tinder with the extension running, then refresh TNND Web. Manual override below is an optional fallback and does not change Tinder.</p>
       <div class="conversation-identity-controls">
         <label for="conversation-display-name">Name <input id="conversation-display-name" maxlength="80" autocomplete="off" placeholder="e.g. Sara" value="${escapeHtml(detail.userDisplayLabel ?? "")}"></label>
         <label for="conversation-display-age">Age <input id="conversation-display-age" type="number" min="18" max="120" placeholder="Optional" value="${detail.userDisplayAge ?? ""}"></label>
@@ -200,7 +211,7 @@ function installStyles(): void {
     .conversation-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;flex-wrap:wrap}.conversation-filter{display:flex;align-items:center;gap:7px;font-size:12px}.conversation-filter select{width:auto;min-width:170px}.conversation-summary{font-size:11px;opacity:.7}
     .conversation-layout{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(280px,1.1fr);gap:14px;margin-top:14px}
     .conversation-identity-editor{margin:0 0 12px;padding:10px 13px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:var(--nb-surface-soft,#edf4eb)}.conversation-identity-editor summary{cursor:pointer;font-size:12px;font-weight:750}.conversation-identity-editor>p{font-size:12px;line-height:1.5}.conversation-identity-controls{display:flex;align-items:flex-end;flex-wrap:wrap;gap:9px}.conversation-identity-controls label{display:grid;gap:5px;flex:1 1 130px;font-size:12px}.conversation-identity-controls label:nth-child(2){flex:0 1 115px}.conversation-identity-controls input{min-width:0;max-width:100%}.conversation-identity-controls button{max-width:100%;width:auto;white-space:normal}
-    .conversation-person-line{display:flex;align-items:center;gap:9px;min-width:0}.conversation-person-line strong{min-width:0;overflow-wrap:anywhere}.conversation-person-avatar{display:inline-grid;flex:0 0 34px;place-items:center;width:34px;height:34px;background:var(--nb-mint,#d9efcc);color:var(--nb-primary,#264b40);border-radius:50%;font-weight:800}.conversation-status-help{margin:0 0 12px;padding:10px 13px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:var(--nb-surface-soft,#edf4eb)}.conversation-status-help summary{cursor:pointer;font-size:12px;font-weight:750}.conversation-status-help p{font-size:12px;line-height:1.55}.conversation-status-help a{font-size:12px;font-weight:750;color:inherit;text-decoration:underline}
+    .conversation-person-line{display:flex;align-items:center;gap:9px;min-width:0}.conversation-person-line strong{min-width:0;overflow-wrap:anywhere} .conversation-person-avatar{display:inline-grid;flex:0 0 40px;place-items:center;width:40px;height:40px;background:var(--nb-mint,#d9efcc);color:var(--nb-primary,#264b40);border-radius:50%;font-weight:800;overflow:hidden}.conversation-person-avatar img{display:block;width:100%;height:100%;object-fit:cover}.conversation-detail-heading>.conversation-person-avatar{width:48px;height:48px;flex-basis:48px}.conversation-status-help{margin:0 0 12px;padding:10px 13px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:var(--nb-surface-soft,#edf4eb)}.conversation-status-help summary{cursor:pointer;font-size:12px;font-weight:750}.conversation-status-help p{font-size:12px;line-height:1.55}.conversation-status-help a{font-size:12px;font-weight:750;color:inherit;text-decoration:underline}
     .conversation-list{display:grid;gap:8px;align-content:start;max-height:430px;overflow:auto}
     .conversation-row{width:100%;display:flex;justify-content:space-between;gap:12px;text-align:left;padding:11px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:transparent;color:inherit;cursor:pointer}
     .conversation-row:hover{border-color:currentColor}.conversation-row.selected{outline:2px solid currentColor;outline-offset:1px}.conversation-row-main,.conversation-row-meta{display:grid;gap:4px}.conversation-row-meta{text-align:right;justify-items:end}.conversation-row small,.conversation-detail small,.conversation-message small{opacity:.65}

@@ -1,4 +1,5 @@
 import { TinderDomAdapter } from "./tinder-adapter";
+import { readVisibleTinderMatchIdentity } from "./tinder-chat-identity";
 import { detectTinderChat } from "./tinder-chat-detection";
 import { buildNormalizedMessageKeys } from "./tinder-message-key";
 import { classifyTinderPath } from "./tinder-state-machine";
@@ -52,6 +53,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       ok: true,
       threadKey: detectTinderChat(location.pathname, true).threadKey,
       conversationRef: route.conversationRef,
+      identity: readVisibleTinderMatchIdentity(route.conversationRef),
       messages: normalized.map(message => ({
         key: message.key,
         direction: message.direction,
