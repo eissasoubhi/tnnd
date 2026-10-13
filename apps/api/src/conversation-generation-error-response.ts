@@ -1,5 +1,12 @@
+import { GenerationStageFailure } from "./conversation-generation-stage.js";
 /** Public, stable categories only. No upstream Gemini response bodies or credentials. */
-export function generationErrorResponse(error: unknown): { status: number; body: { error: string } } {
+export function generationErrorResponse(error: unknown): { status: number; body: { error: string; stage?: string } } {
+  if (error instanceof GenerationStageFailure) {
+    return {
+      status: 500,
+      body: { error: error.schemaMissing ? "generation_schema_missing" : "generation_context_unavailable", stage: error.stage }
+    };
+  }
   const message = error instanceof Error ? error.message : "";
   if (message === "gemini_not_configured") return { status: 422, body: { error: "gemini_not_configured" } };
   if (message === "gemini_empty_response") return { status: 502, body: { error: "gemini_empty_response" } };
