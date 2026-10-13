@@ -35,7 +35,7 @@ test("existing-match worker reuses one tab, checks empty thread and honors first
  assert.match(runner,/conversation\.messages\.length > 0/);
  assert.match(runner,/newMatchSendPermission\(ref, tabId\)/);
  assert.match(runner,/TNND_AUTO_START_NEW_MATCH/);
- assert.match(runner,/MAX_NEW_OPENERS_PER_DAY = 5/);
+ assert.match(runner,/firstMessageDailyLimit\(config\.automation\.maxFirstMessagesPerDay\)/);
  assert.match(runner,/startExistingRunner\(\)/);
  assert.match(runner,/dwellSeconds/);
  assert.match(content,/matches_tab_not_accessible/);
