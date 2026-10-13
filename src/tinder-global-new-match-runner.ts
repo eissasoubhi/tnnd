@@ -1,5 +1,7 @@
 import { getBackendSession, getConfig, getChatSettings } from "./storage";
-import { readNewMatchState, updateNewMatchAttempt, newMatchSendPermission } from "./tinder-new-match-background";
+import { readNewMatchState, saveNewMatchState, updateNewMatchAttempt, newMatchSendPermission } from "./tinder-new-match-background";
+import { stopNewMatchObservation } from "./tinder-new-match-observation";
+import { startExistingRunner } from "./tinder-global-existing-runner";
 import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
 
 const ALARM = "tnnd.globalNewMatches.cycle";
@@ -79,6 +81,32 @@ async function ownedTab(ref: string, userId: string): Promise<number> {
   return tab.id;
 }
 
+/** Explicitly authorized automatic handoff after an existing-match batch.
+ * One Tinder tab cannot host both global runner modes simultaneously.
+ */
+async function finishExistingMatchBatch(state: Awaited<ReturnType<typeof readNewMatchState>>, reason: string): Promise<void> {
+  if (state.mode !== "existing" || !state.enabled) return;
+  await saveNewMatchState({
+    ...stopNewMatchObservation(state),
+    lastResult: reason + " · starting existing-conversation monitoring…"
+  });
+  await chrome.alarms.clear(ALARM);
+  await chrome.storage.local.remove(OWNED_TAB);
+  try {
+    await startExistingRunner();
+    const current = await readNewMatchState();
+    await saveNewMatchState({
+      ...current, lastResult: reason + " · existing-conversation AI runner now active."
+    });
+  } catch (error) {
+    const current = await readNewMatchState();
+    await saveNewMatchState({
+      ...current, lastResult: reason + " · first-message batch stopped. Could not start reply monitoring: "
+        + (error instanceof Error ? error.message : "unknown")
+    });
+  }
+}
+
 async function processNext(): Promise<void> {
   if (busy) return;
   busy = true;
@@ -86,7 +114,11 @@ async function processNext(): Promise<void> {
   let sent = false;
   try {
     const state = await readNewMatchState();
-    if (!state.enabled || !state.autoSendEnabled || !state.pendingRefs.length) return;
+    if (!state.enabled || !state.autoSendEnabled) return;
+    if (!state.pendingRefs.length) {
+      await finishExistingMatchBatch(state, "First-message batch completed");
+      return;
+    }
     const session = await getBackendSession();
     if (!session || session.user.id !== state.userId) return;
     const config = await getConfig();
@@ -97,7 +129,10 @@ async function processNext(): Promise<void> {
     const today = new Date().toISOString().slice(0, 10);
     const stored = (await chrome.storage.local.get("tnnd.newMatchDailyAttempts.v1"))["tnnd.newMatchDailyAttempts.v1"] as { date: string; refs: string[] } | undefined;
     const used = stored?.date === today && Array.isArray(stored.refs) ? stored.refs : [];
-    if (used.length >= MAX_NEW_OPENERS_PER_DAY) return;
+    if (used.length >= MAX_NEW_OPENERS_PER_DAY) {
+      await finishExistingMatchBatch(state, "Daily first-message limit reached; remaining matches can be resumed later");
+      return;
+    }
     ref = state.pendingRefs.find(item => !used.includes(item)) ?? null;
     if (!ref) return;
     const threadKey = tinderThreadKeyFromPath(`/app/messages/${encodeURIComponent(ref)}`);
