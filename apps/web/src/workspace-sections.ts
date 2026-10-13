@@ -14,6 +14,7 @@ export const workspaceCopy: Record<WorkspaceView, { title: string; subtitle: str
 const groups: Record<string, WorkspaceView> = {
   "workspace-overview": "overview",
   "setup-guidance-panel": "overview",
+  "first-run-guide-panel": "overview",
   "conversation-panel": "conversations",
   "conversation-management-panel": "conversations",
   "conversation-takeover-panel": "conversations",
