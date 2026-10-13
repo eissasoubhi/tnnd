@@ -221,6 +221,10 @@ async function tick(): Promise<void> {
       if (reason === "thread_not_in_visible_sidebar") {
         await save(activity({ ...latest, cursorRef: nextRef, lastVisitAt: new Date().toISOString() },
           "skipped", `Cannot find ${label} in the currently loaded Tinder Messages sidebar. Scroll/load that chat to include it; no full-page reload.`, nextRef));
+      } else if (reason === "conversation_processing_in_progress") {
+        // A reply or manual send is still being processed on the Tinder tab.
+        // Keep the current conversation, then try the next one in a later tick.
+        await save(activity(latest, "waiting", "Current chat is busy replying; switching delayed until it is safe."));
       } else {
         await save(activity(latest, "error", `Navigation to ${label} stopped: ${reason}. Tinder was not reloaded.`, nextRef));
         await stop("Runner paused because in-page chat navigation was not confirmed.");
