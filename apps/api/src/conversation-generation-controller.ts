@@ -5,7 +5,7 @@ import {
 import type { GeminiConversationProvider } from "./gemini-provider.js";
 
 export interface ConversationGenerationRequest {
-  latestMessage: string;
+  latestMessage?: string;
   previewInstruction?: string;
 }
 
@@ -19,9 +19,8 @@ export function validateConversationGenerationRequest(value: unknown): Conversat
     throw new Error("generation_body_must_be_object");
   }
   const latestMessage = (value as { latestMessage?: unknown }).latestMessage;
-  if (typeof latestMessage !== "string") throw new Error("latest_message_must_be_string");
-  const normalized = latestMessage.trim();
-  if (!normalized) throw new Error("latest_message_required");
+  if (latestMessage !== undefined && typeof latestMessage !== "string") throw new Error("latest_message_must_be_string");
+  const normalized = latestMessage?.trim() ?? "";
   if (normalized.length > 4000) throw new Error("latest_message_too_long");
 
   const rawPreviewInstruction = (value as { previewInstruction?: unknown }).previewInstruction;
@@ -32,7 +31,7 @@ export function validateConversationGenerationRequest(value: unknown): Conversat
   if (previewInstruction.length > 1000) throw new Error("preview_instruction_too_long");
 
   return {
-    latestMessage: normalized,
+    ...(normalized ? { latestMessage: normalized } : {}),
     ...(previewInstruction ? { previewInstruction } : {})
   };
 }
@@ -59,7 +58,7 @@ export async function handleConversationGenerationRequest(
   const generation = await generateConversationReply(
     userId,
     conversationId,
-    request.latestMessage,
+    request.latestMessage ?? "",
     provider,
     request.previewInstruction
   );
