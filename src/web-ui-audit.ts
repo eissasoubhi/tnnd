@@ -1,3 +1,4 @@
+import type { FunctionalFinding } from "./web-functional-diagnostics";
 /**
  * Safe interactive QA on TNND Web.
  *
@@ -36,6 +37,7 @@ export interface UiAuditReport {
   disclosures: number;
   checks: UiAuditCheck[];
   issues: UiAuditIssue[];
+  functionalFindings?: FunctionalFinding[];
   limitations: string[];
 }
 
@@ -103,6 +105,17 @@ export async function runWebUiAudit(): Promise<UiAuditReport> {
   checks.push({ name: "Internal anchor targets", result: issues.some(i => i.code === "broken-anchor") ? "failed" : "passed", details: internalLinks.length + " visible anchor targets checked." });
   checks.push({ name: "Horizontal viewport overflow", result: wide > 2 ? "failed" : "passed", details: Math.round(wide) + "px of document overflow." });
 
+  // Recognize a visible application failure without clicking a paid action
+  // or exporting any free-form status text.
+  const draftStatus = document.querySelector<HTMLElement>("[data-generation-status]");
+  const draftError = document.querySelector<HTMLElement>("[data-generation-error-help]");
+  if (draftStatus && (/internal_error|Unable to generate reply/i).test(draftStatus.textContent ?? "")) {
+    add("functional-generate-failed", "error", draftStatus, "Generate draft displayed an application failure; inspect the Web diagnostic events for HTTP and error codes.");
+  } else if (draftError && !draftError.hidden && visible(draftError)) {
+    add("functional-generate-failed", "error", draftError, "Generate draft displayed an error even though its click handler ran.");
+  }
+  checks.push({ name: "Visible Generate draft result", result: issues.some(issue => issue.code === "functional-generate-failed") ? "failed" : "passed", details: "Checks visible application error state without starting generation or sending anything." });
+
   const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('.workspace-nav a[href^="#"]')).filter(visible);
   const locationBefore = location.pathname + location.search + location.hash;
   const yBefore = window.scrollY;
@@ -117,13 +130,16 @@ export async function runWebUiAudit(): Promise<UiAuditReport> {
       if (!hash || !document.getElementById(hash.slice(1))) continue;
       testedNav++;
       link.click();
-      await settle();
+      // The Scroll Spy may still reflect the section physically on screen
+      // during smooth scrolling. Test click routing synchronously; do not
+      // mislabel in-flight scroll animation as broken navigation.
       const hashMatch = location.hash === hash;
       const activeMatch = link.getAttribute("aria-current") === "location";
+      await settle();
       if (hashMatch && activeMatch) passedNav++;
-      else add("navigation-not-responsive", "error", link, "Click did not update the URL and active section indicator.");
+      else add("navigation-not-responsive", "error", link, "Click did not route to the correct hash and update the active indicator.");
     }
-    checks.push({ name: "Click each workspace navigation link", result: testedNav && testedNav === passedNav ? "passed" : "failed", details: passedNav + "/" + testedNav + " navigation clicks updated hash and active marker." });
+    checks.push({ name: "Click each workspace navigation link", result: testedNav && testedNav === passedNav ? "passed" : "failed", details: passedNav + "/" + testedNav + " navigation clicks immediately updated hash and active marker (smooth scroll may still be running)." });
 
     const disclosures = Array.from(document.querySelectorAll<HTMLDetailsElement>("details")).filter(visible);
     for (const details of disclosures.slice(0, 40)) {

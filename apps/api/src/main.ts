@@ -5,6 +5,7 @@ import { handleAccountDataExportRoute } from "./account-data-export-route.js";
 import { hashSessionToken } from "./auth.js";
 import { authenticateSession, listAccountSessions, loginWithPassword, registerAccount, revokeAccountSession, revokeSession } from "./auth-service.js";
 import { handleConversationGenerationRequest } from "./conversation-generation-controller.js";
+import { generationErrorResponse } from "./conversation-generation-error-response.js";
 import { bulkUpdateConversationManagement, isConversationManagementState, listConversationManagement, updateConversationManagement, type ConversationManagementUpdate } from "./conversation-management-service.js";
 import { handleOutgoingConfirmationRequest } from "./conversation-outgoing-confirmation-controller.js";
 import { clearConversationOverrides, getConversationOverrides, replaceConversationOverrides } from "./conversation-overrides-service.js";
@@ -529,8 +530,15 @@ const server = createServer(async (request, response) => {
         sendJson(response, 401, { error: "invalid_or_expired_session" });
         return;
       }
-      const result = await handleConversationGenerationRequest(session.user.id, generationConversationId, await readJsonBody(request));
-      sendJson(response, result.status, result.body);
+      try {
+        const result = await handleConversationGenerationRequest(session.user.id, generationConversationId, await readJsonBody(request));
+        sendJson(response, result.status, result.body);
+      } catch (error) {
+        // The public response is sanitized; server retains a safe error log.
+        console.error(safeApiErrorLog(error));
+        const failure = generationErrorResponse(error);
+        sendJson(response, failure.status, failure.body);
+      }
       return;
     }
 

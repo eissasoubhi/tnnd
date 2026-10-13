@@ -484,6 +484,7 @@ function organizeProfilePreferences(): void {
 
 organizeProfilePreferences();
 initWorkspaceScrollNavigation();
+void import("./first-run-guide").catch(error => console.error("Unable to open TNND guide", error));
 if (actionCenter) bindActionCenter(actionCenter, refreshActionCounts);
 void refreshActionCenter();
 void refreshProfile();

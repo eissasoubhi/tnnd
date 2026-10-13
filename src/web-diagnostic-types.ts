@@ -1,3 +1,4 @@
+import { functionalFindings } from "./web-functional-diagnostics.ts";
 export const WEB_DIAGNOSTIC_CHANNEL = "tnnd-web-diagnostic-v1";
 export const WEB_DIAGNOSTIC_REQUEST_CHANNEL = "tnnd-web-diagnostic-request-v1";
 export const WEB_DIAGNOSTIC_STORAGE_KEY = "tnnd.webDiagnostics.v1";
@@ -11,6 +12,8 @@ export type WebDiagnosticEventKind =
   | "fetch-start"
   | "fetch-end"
   | "fetch-error"
+  | "ui-click"
+  | "app-error"
   | "ws-create"
   | "ws-open"
   | "ws-close"
@@ -97,7 +100,9 @@ export function sanitizeWebDiagnosticUrl(value: string): string {
     url.password = "";
     url.search = "";
     url.hash = "";
-    return `${url.origin}${url.pathname}`;
+    const safePath = url.pathname.replace(/(\/api\/v1\/conversations\/)[^/]+/g, "$1[conversation]")
+      .replace(/(\/api\/v1\/auth\/sessions\/)[^/]+/g, "$1[session]");
+    return `${url.origin}${safePath}`;
   } catch {
     return "[invalid-url]";
   }
@@ -166,6 +171,16 @@ export function analyzeWebDiagnosticState(state: WebDiagnosticTabState | null | 
       level: "warning",
       summary: `Une longue tâche bloque le thread principal (~${Math.round(longestTask)} ms).`,
       evidence
+    };
+  }
+
+  const functional = functionalFindings(recent, now);
+  if (functional.length) {
+    const last = functional[functional.length - 1];
+    return {
+      level: "warning",
+      summary: `${functional.length} recent API/function failure(s) detected, even if the page still responds.`,
+      evidence: [...evidence, `Last affected operation: ${last.operation}.`, last.nextStep]
     };
   }
 

@@ -92,10 +92,11 @@ function parseGenerationOutput(raw: string, personalMemoryIds: string[]): { text
   }
 }
 
-export const callGeminiConversationProvider: GeminiConversationProvider = async (input) => {
-  const apiKey = (process.env.GEMINI_API_KEY ?? "").trim();
+export function createGeminiConversationProvider(credentials?: { apiKey: string; model: string }): GeminiConversationProvider {
+  return async (input) => {
+  const apiKey = (credentials?.apiKey ?? process.env.GEMINI_API_KEY ?? "").trim();
   if (!apiKey) throw new Error("gemini_not_configured");
-  const model = configuredModel();
+  const model = credentials?.model.trim() || configuredModel();
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   const promptParts = [
     "You are generating one concise dating-chat reply for TNND.",
@@ -182,4 +183,7 @@ export const callGeminiConversationProvider: GeminiConversationProvider = async 
   if (!raw) throw new Error("gemini_empty_response");
   const generated = parseGenerationOutput(raw, input.personalMemories?.map((memory) => memory.id) ?? []);
   return { text: generated.text.slice(0, 4000), model, ...(generated.usedPersonalMemoryId ? { usedPersonalMemoryId: generated.usedPersonalMemoryId } : {}) };
-};
+  };
+}
+
+export const callGeminiConversationProvider: GeminiConversationProvider = createGeminiConversationProvider();

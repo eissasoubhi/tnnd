@@ -786,3 +786,30 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
 @media (max-width: 560px) {
   #app .conversation-inline-generation-actions > button { flex: 1 1 44%; }
 }
+
+/* Beginner mode: one action, one expected outcome, optional at every stage. */
+#app .first-run-guide-panel {
+  background: var(--nb-surface);
+  border: 2px solid var(--nb-primary);
+  overflow: hidden;
+}
+#app .guide-main { display: grid; gap: 12px; max-width: 760px; padding-top: 18px; }
+#app .guide-main h3 { font-size: clamp(19px, 2vw, 25px); margin: 0; color: var(--nb-text); }
+#app .guide-main p { margin: 0; color: var(--nb-text-muted); line-height: 1.6; }
+#app .guide-expected { padding: 12px 15px; border-radius: var(--nb-radius-md); background: var(--nb-mint); color: var(--nb-text) !important; }
+#app .guide-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; min-width: 0; }
+#app .guide-primary { display: inline-flex; align-items: center; min-height: 44px; border-radius: var(--nb-radius-sm); padding: 11px 15px; background: var(--nb-primary); color: var(--nb-on-primary); font-weight: 800; text-decoration: none; overflow-wrap: anywhere; }
+#app .guide-actions button { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+#app .guide-reopen { display: inline-block; font-size: 12px; font-weight: 700; margin-top: 12px; }
+#app .draft-input-label { display: block; margin: 12px 0 6px; font-size: 14px; font-weight: 800; color: var(--nb-text); }
+#app .draft-guidance { color: var(--nb-text-muted); line-height: 1.6; }
+#app .draft-error-help {
+  padding: 12px 15px; border-radius: var(--nb-radius-md); border: 1px solid var(--nb-danger-text);
+  color: var(--nb-danger-text); background: var(--nb-danger-soft); overflow-wrap: anywhere; line-height: 1.55;
+}
+#app .conversation-inline-generation-actions [hidden],
+#app .draft-error-help[hidden] { display: none !important; }
+@media(max-width: 560px) {
+  #app .guide-primary, #app .guide-actions button { flex: 1 1 100%; justify-content: center; }
+  #app .guide-actions { gap: 7px; }
+}

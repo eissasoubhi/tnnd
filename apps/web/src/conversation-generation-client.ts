@@ -15,6 +15,13 @@ export interface ConversationGeneration {
   };
 }
 
+export class DraftGenerationError extends Error {
+  constructor(readonly code: string, readonly httpStatus: number | undefined) {
+    super(code);
+    this.name = "DraftGenerationError";
+  }
+}
+
 export async function generateConversationReply(
   session: AuthSession,
   conversationId: string,
@@ -35,7 +42,7 @@ export async function generateConversationReply(
   });
   const payload = await response.json().catch(() => null) as { generation?: ConversationGeneration; error?: string; details?: string } | null;
   if (!response.ok || !payload?.generation) {
-    throw new Error(payload?.details ?? payload?.error ?? "Unable to generate a reply.");
+    throw new DraftGenerationError(payload?.error ?? "generation_failed", response.status);
   }
   return payload.generation;
 }
