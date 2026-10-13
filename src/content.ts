@@ -541,6 +541,7 @@ async function scan(): Promise<void> {
 async function startFirstMessage(expectedThreadKey: string, mode: "individual" | "global-new" = "individual"): Promise<{ ok: boolean; error?: string; sent?: boolean }> {
   if (busy) return { ok: false, error: "TNND is already processing a message. Try again later." };
   busy = true;
+  let sentParts = 0;
   try {
     const conversationRef = currentConversationRef();
     const config = await getContentConfig();
@@ -617,7 +618,6 @@ async function startFirstMessage(expectedThreadKey: string, mode: "individual" |
       type: "TNND_CLAIM_FIRST_MESSAGE", conversationRef
     });
     if (!claim?.ok || !claim.claimed) return { ok: false, error: `First message not sent: ${claim?.reason ?? "claim_failed"}.` };
-    let sentParts = 0;
     const partial = (reason: string): { ok: boolean; sent: boolean; error: string } => ({
       ok: true,
       sent: sentParts > 0,
@@ -673,7 +673,7 @@ async function startFirstMessage(expectedThreadKey: string, mode: "individual" |
     }
     return { ok: true, sent: true };
   } catch (error) {
-    return { ok: false, error: `First message not confirmed. Check Tinder before retrying: ${error instanceof Error ? error.message : "unknown error"}` };
+    return { ok: sentParts > 0, sent: sentParts > 0, error: `Opener ${sentParts > 0 ? `partially sent (${sentParts} bubble(s))` : "not confirmed"}. No automatic retry. Check Tinder: ${error instanceof Error ? error.message : "unknown error"}` };
   } finally {
     busy = false;
   }
