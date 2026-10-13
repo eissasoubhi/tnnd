@@ -56,6 +56,8 @@ export interface TemporaryInstruction {
 export interface ConversationDetail {
   id: string;
   displayName: string;
+  userDisplayLabel?: string | null;
+  userDisplayAge?: number | null;
   matchAge?: number | null;
   status: ConversationStatus;
   currentTopic: string | null;
@@ -139,6 +141,8 @@ function normalizeConversationDetail(value: unknown): ConversationDetail {
   return {
     id: input.id,
     displayName: input.displayName,
+    userDisplayLabel: typeof input.userDisplayLabel === "string" ? input.userDisplayLabel : null,
+    userDisplayAge: typeof input.userDisplayAge === "number" && Number.isInteger(input.userDisplayAge) && input.userDisplayAge >= 18 && input.userDisplayAge <= 120 ? input.userDisplayAge : null,
     matchAge: typeof input.matchAge === "number" && Number.isInteger(input.matchAge) && input.matchAge >= 18 && input.matchAge <= 120 ? input.matchAge : null,
     status: input.status,
     currentTopic: typeof input.currentTopic === "string" ? input.currentTopic : null,
@@ -214,4 +218,22 @@ export async function clearTemporaryInstruction(session: AuthSession, conversati
   if (!response.ok) {
     throw new ConversationApiError(payload?.error ?? "Unable to clear temporary instruction.", response.status);
   }
+}
+/** This is a user-provided label, never claimed as a Tinder-confirmed profile. */
+export async function saveConversationDisplayIdentity(
+  session: AuthSession,
+  conversationId: string,
+  label: string,
+  age: number | null
+): Promise<void> {
+  const response = await fetch(`${apiBase}/api/v1/conversations/${encodeURIComponent(conversationId)}/identity`, {
+    method: "PUT",
+    headers: {
+      authorization: `Bearer ${session.token}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ label, age })
+  });
+  const payload = await parseJson<{ error?: string }>(response);
+  if (!response.ok) throw new ConversationApiError(payload?.error ?? "Unable to save chat name.", response.status);
 }
