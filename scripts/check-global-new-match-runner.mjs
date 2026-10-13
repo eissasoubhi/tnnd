@@ -35,5 +35,7 @@ test("new-match sending is account-scoped, individually gated, and stopped synch
   assert.match(content,/mode === "global-new"/);
   assert.match(content,/TNND_GET_NEW_MATCH_SEND_PERMISSION/);
   assert.match(content,/TNND_CLAIM_FIRST_MESSAGE/);
-  assert.match(content,/await adapter\.send\(opener\)/);
+  assert.match(content,/await adapter\.send\(part\)/);
+  assert.match(content,/sameOpenerThreadUninterrupted/);
+  assert.match(content,/groundedOpenerFragments/);
 });
