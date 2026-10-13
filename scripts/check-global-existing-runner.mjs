@@ -36,7 +36,9 @@ test("the runner reuses the sole existing Tinder tab and never closes user tabs"
  assert.match(runner, /mode: "reused"/);
  assert.match(runner, /chrome\.tabs\.create\(/);
  assert.match(runner, /active: true/);
- assert.match(runner, /chrome\.tabs\.update\(/);
+ assert.match(runner, /TNND_EXISTING_SPA_NAVIGATE/);
+ assert.match(runner, /chrome\.tabs\.sendMessage\(/);
+ assert.doesNotMatch(runner, /chrome\.tabs\.update\(tabId, \{ url:/);
  assert.doesNotMatch(runner, /chrome\.tabs\.remove\(/);
  assert.match(runner, /eligibleExistingThreadRefs/);
  assert.match(runner, /chrome\.alarms\.clear/);

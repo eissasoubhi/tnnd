@@ -681,6 +681,7 @@ interface GlobalRunnerActivity { at: string; phase: string; detail: string; conv
 interface GlobalRunnerState {
   enabled: boolean;
   tabId: number | null;
+  dwellSeconds: number;
   tabMode: "reused" | "created" | null;
   phase: string;
   phaseDetail: string;
@@ -716,6 +717,8 @@ function displayRunnerState(state: GlobalRunnerState): void {
   lastGlobalExistingState = state;
   startGlobalExisting.disabled = state.enabled;
   stopGlobalExisting.disabled = !state.enabled;
+  const cadence = document.getElementById("globalExistingCadence") as HTMLSelectElement;
+  if (document.activeElement !== cadence) cadence.value = String(state.dwellSeconds ?? 15);
   const phase = document.getElementById("globalExistingPhase")!;
   phase.textContent = runnerPhaseLabels[state.phase] ?? state.phase;
   phase.dataset.phase = state.phase;
@@ -775,6 +778,16 @@ async function refreshGlobalExisting(): Promise<void> {
   } finally { globalRunnerRequestBusy = false; }
 }
 
+(document.getElementById("globalExistingCadence") as HTMLSelectElement).addEventListener("change", () => {
+  void (async () => {
+    const cadence = document.getElementById("globalExistingCadence") as HTMLSelectElement;
+    const seconds = Number(cadence.value);
+    const response = await chrome.runtime.sendMessage({ type: "TNND_GLOBAL_EXISTING_SET_CADENCE", cadenceSeconds: seconds }) as { ok?: boolean; error?: string };
+    if (!response?.ok) throw new Error(response?.error ?? "Runner speed could not be saved.");
+    globalRunnerUiError = null;
+    await refreshGlobalExisting();
+  })().catch(error => { globalExistingStatus.textContent = error instanceof Error ? error.message : "Could not change runner speed."; });
+});
 (document.getElementById("refreshGlobalExistingStatus") as HTMLButtonElement).addEventListener("click", () => {
   globalRunnerUiError = null;
   void refreshGlobalExisting();
