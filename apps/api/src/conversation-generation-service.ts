@@ -1,4 +1,5 @@
 import { withGenerationStage } from "./conversation-generation-stage.js";
+import { resolveReplyTarget } from "./conversation-reply-target.js";
 import { loadAiProviderSettings } from "./ai-provider-settings-service.js";
 import { listConversationFacts } from "./conversation-fact-service.js";
 import { getConversation } from "./conversation-service.js";
@@ -35,8 +36,8 @@ export async function generateConversationReply(
   provider: GeminiConversationProvider = callGeminiConversationProvider,
   previewInstruction?: string
 ): Promise<ConversationGenerationResult | null> {
-  const normalizedMessage = latestMessage.trim();
-  if (!normalizedMessage || normalizedMessage.length > 4000) throw new Error("invalid_generation_message");
+  const manualMessage = latestMessage.trim();
+  if (manualMessage.length > 4000) throw new Error("invalid_generation_message");
   const normalizedPreviewInstruction = previewInstruction?.trim() ?? "";
   if (normalizedPreviewInstruction.length > 1000) throw new Error("invalid_preview_instruction");
 
@@ -47,6 +48,10 @@ export async function generateConversationReply(
     withGenerationStage("facts", () => listConversationFacts(conversationId, 20))
   ]);
   if (!conversation) return null;
+  // Single source of truth: resolve from the authenticated user's persisted
+  // conversation, not an editable browser field. This is preview-only.
+  const normalizedMessage = resolveReplyTarget(manualMessage, conversation.messages);
+  if (normalizedMessage.length > 4000) throw new Error("invalid_generation_message");
   const topicState = conversation.topicState;
 
   const temporaryInstruction = conversation.temporaryInstruction
