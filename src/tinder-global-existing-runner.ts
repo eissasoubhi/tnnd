@@ -19,6 +19,7 @@ interface GlobalExistingRunnerState {
   userId: string | null;
   tabId: number | null;
   tabMode: "reused" | "created" | null;
+  pausedOnStop: boolean;
   phase: RunnerPhase;
   phaseDetail: string;
   currentLabel: string | null;
@@ -35,7 +36,7 @@ interface GlobalExistingRunnerState {
   activity: RunnerActivity[];
 }
 const initial = (): GlobalExistingRunnerState => ({
-  enabled: false, userId: null, tabId: null, tabMode: null,
+  enabled: false, userId: null, tabId: null, tabMode: null, pausedOnStop: false,
   phase: "stopped", phaseDetail: "Runner stopped.", currentLabel: null,
   eligibleCount: 0, visitedCount: 0, sentCount: 0, skippedCount: 0, errorCount: 0,
   lastRef: null, startedAt: null, lastActionAt: null, lastVisitAt: null,
@@ -218,7 +219,7 @@ async function stop(reason = "Runner stopped. Tinder tab kept open."): Promise<G
   const state = await load();
   // Do not close a reused or newly created tab; it belongs to the user after
   // taking over the sole Tinder session. Never force logout by opening another.
-  const next = activity({ ...state, enabled: false, userId: null }, "stopped", reason);
+  const next = activity({ ...state, enabled: false, userId: null, pausedOnStop: state.tabId !== null && state.lastRef !== null }, "stopped", reason);
   await save(next);
   await chrome.alarms.clear(ALARM);
   return next;
@@ -251,6 +252,29 @@ chrome.runtime.onStartup.addListener(() => {
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (!message || typeof message !== "object") return false;
   const input = message as { type?: unknown; phase?: unknown; detail?: unknown; ref?: unknown };
+  if (input.type === "TNND_EXISTING_RUNNER_TAB_PAUSED") {
+    const statePromise = load();
+    void statePromise.then(state => sendResponse({
+      ok: true,
+      paused: !state.enabled && state.pausedOnStop && sender.tab?.id === state.tabId
+        && typeof input.ref === "string" && input.ref === state.lastRef && tinderRefFromUrl(sender.url) === state.lastRef
+    })).catch(() => sendResponse({ ok: true, paused: false }));
+    return true;
+  }
+  if (input.type === "TNND_EXISTING_RUNNER_CLEAR_PAUSE") {
+    if (!popupSender(sender)) {
+      sendResponse({ ok: false, error: "manual_override_requires_popup" });
+      return false;
+    }
+    void (async () => {
+      const state = await load();
+      if (!state.enabled && state.pausedOnStop && input.ref === state.lastRef) {
+        await save({ ...state, pausedOnStop: false });
+      }
+      return { ok: true };
+    })().then(sendResponse).catch(() => sendResponse({ ok: false }));
+    return true;
+  }
   if (input.type === "TNND_EXISTING_RUNNER_EVENT") {
     if (sender.id !== chrome.runtime.id || !isTinderUrl(sender.url)) return false;
     void contentEvent(sender, input).then(() => sendResponse({ ok: true }))
