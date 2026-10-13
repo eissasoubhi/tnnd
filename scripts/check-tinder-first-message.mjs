@@ -3,7 +3,11 @@ import test from "node:test";
 import { firstMessageAttemptKey, firstMessageBlocker, firstMessageContext } from "../src/tinder-first-message.ts";
 import { groundedOpenerFragments, sameOpenerThreadUninterrupted } from "../src/tinder-opener-fragments.ts";
 import { buildSystemInstruction, buildUserPrompt } from "../src/prompt.ts";
-import { DEFAULT_CONFIG } from "../src/storage.ts";
+const promptTestConfig = {
+  tone: "warm", flirtLevel: 1, humorLevel: 20, emojiLevel: "low", messageLength: "short",
+  languages: { fr: 100, darija: 0, en: 0 }, preferredWords: "", avoidedWords: "",
+  extraInstructions: "", identity: { contactPreference: "stay-on-tinder", instagram: "", whatsapp: "" }
+};
 
 const ready = {
   sameThread: true,
@@ -95,7 +99,7 @@ test("burst stops if match replied, human sent a message, or transcript is unava
 });
 
 test("opener Gemini prompts demand sequential fragments, forbid fabricated profile reactions", async () => {
-  const built = buildSystemInstruction(DEFAULT_CONFIG, 1, "opener");
+  const built = buildSystemInstruction(promptTestConfig, 1, "opener");
   const user = buildUserPrompt("No visible match bio", "opener");
   assert.match(built, /2 or 3 very short fragments/);
   assert.match(built, /ton profil m'a fait sourire/);
