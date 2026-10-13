@@ -147,8 +147,6 @@ async function mountInlineEditor(): Promise<void> {
         </div>
       <p data-generation-status role="status" aria-live="polite" class="subtle"></p>
       <p data-generation-error-help role="alert" hidden class="draft-error-help"></p>
-      <div class="conversation-inline-generation-actions">
-      </div>
       <div class="conversation-inline-feedback" data-generation-feedback hidden>
         <small><strong>Regeneration feedback</strong> — choose one preset, useful tags, and optionally add your own instruction.</small>
         <div class="conversation-inline-feedback-options" data-generation-presets aria-label="Preview regeneration presets"></div>
