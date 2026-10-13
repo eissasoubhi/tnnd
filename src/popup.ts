@@ -5,6 +5,7 @@ import { getBackendSession, getChatSettings, saveChatSettings } from "./storage"
 import { syncConversationDelta } from "./conversation-sync";
 import { loadTinderConversationManagement } from "./tinder-backend-management";
 import { prepareReadOnlyImport, type VisibleTinderMessage } from "./tinder-manual-import";
+import { visibleTranscriptSummary } from "./tinder-message-evidence";
 import { renderSyncStatus } from "./sync-status-panel";
 import type { UiAuditReport } from "./web-ui-audit";
 import { functionalFindings } from "./web-functional-diagnostics";
@@ -480,6 +481,7 @@ syncCurrentChat.addEventListener("click", () => {
       throw new Error("Match name must be under 80 characters; age must be between 18 and 120.");
     }
     if (matchAge !== null && !matchName) throw new Error("Enter a match name when providing an age.");
+    const summary = visibleTranscriptSummary(snapshot.messages);
     const existing = await loadTinderConversationManagement(snapshot.conversationRef);
     const payload = prepareReadOnlyImport(snapshot.messages, Boolean(existing.conversationId), new Date().toISOString());
     const result = await syncConversationDelta(
@@ -504,7 +506,12 @@ syncCurrentChat.addEventListener("click", () => {
         identityStatus = " Messages imported, but the name could not be saved. Use Set chat name & age in TNND Web.";
       }
     }
-    manualSyncStatus.textContent = `Imported ${payload.messages.length} visible messages to TNND Web. Conversation status: ${result.status}.${identityStatus} AI takeover is not enabled. Refresh TNND Web → Conversations to inspect drafts.`;
+    const replyHint = summary.received === 0
+      ? " Warning: zero received messages were identified. AI drafts cannot use the chat automatically yet. Check Tinder direction detection and export a diagnostic ZIP."
+      : summary.last === "me"
+        ? " Your own message appears last, so TNND will not automatically reply to a previous incoming message."
+        : " TNND can use the last received message for a draft without manual copying.";
+    manualSyncStatus.textContent = `Imported ${payload.messages.length} visible messages (${summary.received} received, ${summary.sent} sent) to TNND Web. Conversation status: ${result.status}.${identityStatus}${replyHint} AI takeover is not enabled. Refresh TNND Web → Conversations to inspect drafts.`;
     await renderSyncStatus();
   })().catch(error => {
     manualSyncStatus.textContent = error instanceof Error ? error.message : "Read-only import failed.";
