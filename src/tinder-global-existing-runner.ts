@@ -7,13 +7,14 @@ const API = "http://127.0.0.1:4000";
 
 interface GlobalExistingRunnerState {
   enabled: boolean;
+  userId: string | null;
   tabId: number | null;
   lastRef: string | null;
   lastVisitAt: string | null;
   lastError: string | null;
 }
 const emptyState = (): GlobalExistingRunnerState => ({
-  enabled: false, tabId: null, lastRef: null, lastVisitAt: null, lastError: null
+  enabled: false, userId: null, tabId: null, lastRef: null, lastVisitAt: null, lastError: null
 });
 let busy = false;
 const popupSender = (sender: chrome.runtime.MessageSender): boolean =>
@@ -24,6 +25,7 @@ async function load(): Promise<GlobalExistingRunnerState> {
   if (!data || data.enabled !== true) return { ...emptyState(), tabId: typeof data?.tabId === "number" ? data.tabId : null };
   return {
     enabled: true,
+    userId: typeof data.userId === "string" ? data.userId : null,
     tabId: typeof data.tabId === "number" && Number.isInteger(data.tabId) ? data.tabId : null,
     lastRef: typeof data.lastRef === "string" ? data.lastRef : null,
     lastVisitAt: typeof data.lastVisitAt === "string" ? data.lastVisitAt : null,
@@ -92,6 +94,12 @@ async function tick(): Promise<void> {
     const state = await load();
     if (!state.enabled) return;
     const config = await getConfig();
+    const session = await getBackendSession();
+    if (!session || session.user.id !== state.userId) {
+      await save({ ...state, enabled: false, lastError: "TNND account changed. Start the global runner again." });
+      await chrome.alarms.clear(ALARM);
+      return;
+    }
     // The user's global master switch is still a hard stop.
     if (!config.automation.enabled) {
       await save({ ...state, lastError: "Enable automatic replies in TNND extension Options first." });
@@ -128,7 +136,7 @@ async function start(): Promise<GlobalExistingRunnerState> {
   if (!config.automation.enabled) throw new Error("Turn on 'Enable automatic replies on Tinder' in extension Options before starting global existing chats.");
   const session = await getBackendSession();
   if (!session) throw new Error("Connect your TNND backend account before starting.");
-  await save({ ...(await load()), enabled: true, lastError: null });
+  await save({ ...(await load()), enabled: true, userId: session.user.id, lastError: null });
   const maxDelay = Math.max(60, Math.min(3600, Number(config.automation.replyDelayMaxSeconds) || 60));
   await chrome.alarms.create(ALARM, { periodInMinutes: Math.max(3, Math.ceil((maxDelay + 120) / 60)) });
   void tick();
@@ -146,7 +154,7 @@ async function stop(): Promise<GlobalExistingRunnerState> {
       if (tab.url === expectedOwnedUrl(state.lastRef)) await chrome.tabs.remove(state.tabId);
     } catch { /* already closed */ }
   }
-  const after = { ...state, enabled: false, tabId: null, lastError: null };
+  const after = { ...state, enabled: false, userId: null, tabId: null, lastError: null };
   await save(after);
   return after;
 }
