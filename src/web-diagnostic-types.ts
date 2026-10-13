@@ -11,6 +11,8 @@ export type WebDiagnosticEventKind =
   | "fetch-start"
   | "fetch-end"
   | "fetch-error"
+  | "ui-click"
+  | "app-error"
   | "ws-create"
   | "ws-open"
   | "ws-close"
@@ -97,7 +99,9 @@ export function sanitizeWebDiagnosticUrl(value: string): string {
     url.password = "";
     url.search = "";
     url.hash = "";
-    return `${url.origin}${url.pathname}`;
+    const safePath = url.pathname.replace(/(\/api\/v1\/conversations\/)[^/]+/g, "$1[conversation]")
+      .replace(/(\/api\/v1\/auth\/sessions\/)[^/]+/g, "$1[session]");
+    return `${url.origin}${safePath}`;
   } catch {
     return "[invalid-url]";
   }
