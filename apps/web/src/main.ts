@@ -96,6 +96,7 @@ app.innerHTML = `
           <span class="pill" id="profile-status">No profile</span>
         </div>
         <p>Import a schema-versioned TNND profile JSON. Secrets such as Gemini API keys do not belong in this file.</p>
+        <label for="profile-file">Profile JSON file</label>
         <input id="profile-file" type="file" accept="application/json,.json" />
         <button id="profile-export" type="button">Export current profile</button>
         <p class="subtle" id="profile-message" role="status"></p>
