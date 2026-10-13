@@ -28,7 +28,7 @@ export async function withGenerationStage<T>(stage: GenerationStage, task: () =>
     // Known provider errors already have a safe dedicated mapping.
     if (error instanceof Error && (error.message === "gemini_not_configured"
       || error.message === "gemini_empty_response"
-      || /^gemini_provider_error:\\d{3}$/.test(error.message))) throw error;
+      || /^gemini_provider_error:\d{3}$/.test(error.message))) throw error;
     throw new GenerationStageFailure(stage, error);
   }
 }
@@ -42,7 +42,7 @@ export function safeGenerationFailureLog(error: unknown): string {
     });
   }
   const msg = error instanceof Error ? error.message : "";
-  const reason = /^gemini_provider_error:\\d{3}$/.test(msg)
+  const reason = /^gemini_provider_error:\d{3}$/.test(msg)
     ? "gemini_provider_error" : msg === "gemini_not_configured" || msg === "gemini_empty_response"
       ? msg : "unclassified";
   return JSON.stringify({ event: "conversation_generation_failed", stage: "provider-or-other", reason });
