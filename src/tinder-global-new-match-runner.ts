@@ -6,6 +6,8 @@ const ALARM = "tnnd.globalNewMatches.cycle";
 const OWNED_TAB = "tnnd.newMatchOwnedTab.v1";
 const BASE = "http://127.0.0.1:4000";
 const MAX_NEW_OPENERS_PER_DAY = 5;
+const CADENCE_KEY = "tnnd.globalExistingRunner.cadenceSeconds.v1";
+const ALLOWED_CADENCES = new Set([10, 15, 30, 60, 120]);
 let busy = false;
 
 async function fetchBackend(path: string, token: string, method = "GET", body?: unknown): Promise<{ ok: boolean; status: number; data: Record<string, any> }> {
@@ -89,6 +91,9 @@ async function processNext(): Promise<void> {
     if (!session || session.user.id !== state.userId) return;
     const config = await getConfig();
     if (!config.automation.enabled) return;
+    const dwell = (await chrome.storage.local.get(CADENCE_KEY))[CADENCE_KEY];
+    const dwellSeconds = typeof dwell === "number" && ALLOWED_CADENCES.has(dwell) ? dwell : 15;
+    if (state.lastAttemptAt && Date.now() - Date.parse(state.lastAttemptAt) < dwellSeconds * 1000) return;
     const today = new Date().toISOString().slice(0, 10);
     const stored = (await chrome.storage.local.get("tnnd.newMatchDailyAttempts.v1"))["tnnd.newMatchDailyAttempts.v1"] as { date: string; refs: string[] } | undefined;
     const used = stored?.date === today && Array.isArray(stored.refs) ? stored.refs : [];
@@ -127,6 +132,20 @@ async function processNext(): Promise<void> {
     if (ref) await updateNewMatchAttempt(ref, false, `Skipped (no automatic retries): ${error instanceof Error ? error.message : "unknown error"}`);
   } finally { busy = false; }
 }
+
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (!message || typeof message !== "object" || (message as { type?: unknown }).type !== "TNND_MATCH_RUNNER_TICK") return false;
+  void (async () => {
+    const state = await readNewMatchState();
+    if (!state.enabled || !state.autoSendEnabled || sender.id !== chrome.runtime.id) return;
+    const owner = (await chrome.storage.local.get(OWNED_TAB))[OWNED_TAB] as { tabId?: number; userId?: string } | undefined;
+    const session = await getBackendSession();
+    if (owner?.tabId !== sender.tab?.id || session?.user.id !== state.userId
+      || owner.userId !== state.userId) return;
+    await processNext();
+  })().then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
+  return true;
+});
 
 chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === ALARM) void processNext();
