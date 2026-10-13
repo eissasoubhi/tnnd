@@ -1,7 +1,8 @@
 import { strToU8, zipSync } from "fflate";
 import { loginBackend, logoutBackend, validateBackendSession } from "./backend-session";
 import { renderExtensionSetupProgress } from "./setup-extension-panel";
-import { getBackendSession, getChatSettings, saveChatSettings } from "./storage";
+import { getBackendSession, getChatSettings, getConfig, saveChatSettings } from "./storage";
+import { firstMessageDailyLimit } from "./tinder-first-message-daily-limit";
 import { syncConversationDelta } from "./conversation-sync";
 import { loadTinderConversationManagement } from "./tinder-backend-management";
 import { prepareReadOnlyImport, type VisibleTinderMessage } from "./tinder-manual-import";
@@ -865,11 +866,13 @@ async function renderNewMatchObservation(): Promise<void> {
   const result = await chrome.runtime.sendMessage({ type: "TNND_NEW_MATCH_OBSERVATION_STATE" }) as NewMatchObservationResponse;
   if (!result?.ok || !result.state) { newMatchObservationStatus.textContent = "Unable to read new match detection state."; return; }
   const state = result.state;
+  const cap = firstMessageDailyLimit((await getConfig()).automation.maxFirstMessagesPerDay);
+  document.getElementById("newMatchLimitHint")!.textContent = `Maximum ${cap} first-message attempts/day, shared across existing matches, future matches and individual starts. Change in Settings; no automatic retry.`;
   startNewMatchObservation.disabled = state.enabled;
   (document.getElementById("startExistingMatchBatch") as HTMLButtonElement).disabled = state.enabled;
   stopNewMatchObservation.disabled = !state.enabled;
   newMatchObservationStatus.textContent = state.enabled
-    ? `${state.mode === "existing" ? "Existing-match opener" : "Future-match detector"} active · ${state.seenRefs.length} known match IDs · ${state.pendingRefs.length} queued · ${state.completedRefs.length} sent · ${state.failedRefs.length} skipped · maximum 5 first messages/day. ${state.lastResult ?? ""}`
+    ? `${state.mode === "existing" ? "Existing-match opener" : "Future-match detector"} active · ${state.seenRefs.length} known match IDs · ${state.pendingRefs.length} queued · ${state.completedRefs.length} sent · ${state.failedRefs.length} skipped · maximum ${cap} first messages/day. ${state.lastResult ?? ""}`
     : "New-match AI stopped. Existing chat automation is unaffected.";
 }
 
@@ -911,7 +914,8 @@ async function renderNewMatchObservation(): Promise<void> {
       ok?: boolean; refs?: string[]; error?: string
     };
     if (!snapshot?.ok || !snapshot.refs?.length) throw new Error(snapshot?.error ?? "No visible Tinder match tiles found.");
-    if (!window.confirm(`START first AI messages to up to five ALREADY EXISTING Tinder Matches per day? ${snapshot.refs.length} visible match IDs found. TNND will inspect each exact chat and send ONLY if it is empty and authorized. Existing conversations, manual exclusions and uncertain sends are skipped. The other global runner must be stopped.`)) return;
+    const cap = firstMessageDailyLimit((await getConfig()).automation.maxFirstMessagesPerDay);
+    if (!window.confirm(`START first AI messages to up to ${cap} ALREADY EXISTING Tinder Matches per day? ${snapshot.refs.length} visible match IDs found. TNND will inspect each exact chat and send ONLY if it is empty and authorized. Existing conversations, manual exclusions and uncertain sends are skipped. The other global runner must be stopped.`)) return;
     const response = await chrome.runtime.sendMessage({
       type: "TNND_EXISTING_MATCHES_START", tabId: tab.id, refs: snapshot.refs
     }) as NewMatchObservationResponse;
@@ -929,7 +933,8 @@ startNewMatchObservation.addEventListener("click", () => {
     await assertTinderContentBridge(tab.id);
     const snapshot = await chrome.tabs.sendMessage(tab.id, { type: "TNND_GET_VISIBLE_THREAD_LINKS" }) as { ok?: boolean; refs?: string[]; error?: string };
     if (!snapshot?.ok || !snapshot.refs?.length) throw new Error(snapshot?.error ?? "At least two verified Tinder match tiles are required. Select the Matches tab and let it load.");
-    if (!window.confirm(`Start AI first messages to FUTURE Tinder matches? ${snapshot.refs.length} existing tiles will be excluded. TNND may SEND one opener per later match confirmed twice (maximum five per day). Keep Matches visible, Chrome running, and review results.`)) return;
+    const cap = firstMessageDailyLimit((await getConfig()).automation.maxFirstMessagesPerDay);
+    if (!window.confirm(`Start AI first messages to FUTURE Tinder matches? ${snapshot.refs.length} existing tiles will be excluded. TNND may SEND one opener per later match confirmed twice (maximum ${cap} per day). Keep Matches visible, Chrome running, and review results.`)) return;
     const response = await chrome.runtime.sendMessage({ type: "TNND_NEW_MATCH_OBSERVATION_START", refs: snapshot.refs }) as NewMatchObservationResponse;
     if (!response?.ok) throw new Error(response?.error ?? "Could not start detection.");
     await renderNewMatchObservation();
