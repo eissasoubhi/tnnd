@@ -292,7 +292,7 @@ chrome.runtime.onStartup.addListener(() => {
 });
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (!message || typeof message !== "object") return false;
-  const input = message as { type?: unknown; phase?: unknown; detail?: unknown; ref?: unknown };
+  const input = message as { type?: unknown; phase?: unknown; detail?: unknown; ref?: unknown; enablePreviouslyDisabled?: unknown };
   if (input.type === "TNND_EXISTING_RUNNER_TAB_PAUSED") {
     const statePromise = load();
     void statePromise.then(state => sendResponse({
