@@ -124,7 +124,7 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
       try {
         const url = new URL(sender.url ?? "");
         if (!["https://tinder.com", "https://www.tinder.com"].includes(url.origin)) return null;
-        return url.pathname.startsWith("/app/messages/") ? decodeURIComponent(url.pathname.slice(14)).replace(/\\/+$/, "") : null;
+        return url.pathname.startsWith("/app/messages/") ? decodeURIComponent(url.pathname.slice(14)).replace(/\/+$/, "") : null;
       } catch { return null; }
     })();
     if (!senderRef || senderRef !== message.conversationRef || !message.identity?.firstName) {
