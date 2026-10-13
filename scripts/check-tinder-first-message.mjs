@@ -60,5 +60,5 @@ test("the first-message event is a user-triggered popup action, not a background
   assert.match(background, /savedMessageCount === 0/);
   assert.match(content, /TNND_CLAIM_FIRST_MESSAGE/);
   assert.match(background, /FIRST_MESSAGE_CLAIMS_KEY/);
-  assert.doesNotMatch(content.slice(content.indexOf("async function scan()"), content.indexOf("function scheduleScan()")), /startFirstMessage\(/);
+  assert.doesNotMatch(content.slice(content.indexOf("async function scan()"), content.indexOf("async function startFirstMessage(")), /startFirstMessage\(/);
 });
