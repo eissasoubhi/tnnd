@@ -10,7 +10,7 @@ export const TINDER_BRIDGE_MISSING =
 
 export function isMissingTinderReceiver(error: unknown): boolean {
   const text = error instanceof Error ? error.message : String(error ?? "");
-  return /Receiving end does not exist|Could not establish connection.*Receiving end|No tab with id/i.test(text);
+  return /Receiving end does not exist|Could not establish connection.*Receiving end|No tab with id|TNND cannot reach its content script|TNND Tinder content script is not responding/i.test(text);
 }
 
 export function describeTinderBridgeError(error: unknown): string {
