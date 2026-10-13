@@ -191,7 +191,9 @@ async function processNext(): Promise<void> {
       type: "TNND_AUTO_START_NEW_MATCH", threadKey
     }) as { ok?: boolean; sent?: boolean; error?: string };
     sent = result?.sent === true;
-    await updateNewMatchAttempt(ref, sent, sent ? "First message sent via Tinder" : result?.error ?? "No send confirmed; check Tinder");
+    await updateNewMatchAttempt(ref, sent, sent
+      ? (result?.error ? `Partial opener: ${result.error}` : "First message sent via Tinder")
+      : result?.error ?? "No send confirmed; check Tinder");
   } catch (error) {
     if (isMissingTinderReceiver(error) && !sendRequested) {
       // No content receiver means no Tinder Send was requested. Pause and
