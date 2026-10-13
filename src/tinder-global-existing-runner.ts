@@ -45,6 +45,12 @@ let busy = false;
 let starting = false;
 const popupSender = (sender: chrome.runtime.MessageSender): boolean =>
   sender.id === chrome.runtime.id && sender.url === `chrome-extension://${chrome.runtime.id}/popup.html`;
+const webReadOnlySender = (sender: chrome.runtime.MessageSender): boolean => {
+  if (sender.id !== chrome.runtime.id) return false;
+  try {
+    return ["http://127.0.0.1:5173", "http://localhost:5173"].includes(new URL(sender.url ?? "").origin);
+  } catch { return false; }
+};
 
 function isTinderUrl(value: string | undefined): boolean {
   try {
@@ -252,14 +258,14 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     return true;
   }
   if (!["TNND_GLOBAL_EXISTING_STATE", "TNND_GLOBAL_EXISTING_START", "TNND_GLOBAL_EXISTING_STOP"].includes(String(input.type))) return false;
-  if (!popupSender(sender)) {
-    sendResponse({ ok: false, error: "Global existing controls require the TNND extension popup." });
-    return false;
-  }
-  if (input.type === "TNND_GLOBAL_EXISTING_STATE") {
+  if (input.type === "TNND_GLOBAL_EXISTING_STATE" && (popupSender(sender) || webReadOnlySender(sender))) {
     void load().then(state => sendResponse({ ok: true, state }))
       .catch(() => sendResponse({ ok: false, error: "state_unavailable" }));
     return true;
+  }
+  if (!popupSender(sender)) {
+    sendResponse({ ok: false, error: "Runner Start/Stop requires the TNND extension popup." });
+    return false;
   }
   void (input.type === "TNND_GLOBAL_EXISTING_START" ? start() : stop())
     .then(state => sendResponse({ ok: true, state }))
