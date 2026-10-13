@@ -15,6 +15,7 @@ export type ConversationStatus = (typeof CONVERSATION_STATUSES)[number];
 export interface ConversationListItem {
   id: string;
   displayName: string;
+  matchAge?: number | null;
   status: ConversationStatus;
   currentTopic?: string | null;
   lastMessageAt?: string | null;
@@ -45,6 +46,7 @@ export function normalizeConversationListItem(value: unknown): ConversationListI
   return {
     id: input.id,
     displayName: input.displayName,
+    matchAge: typeof input.matchAge === "number" && Number.isInteger(input.matchAge) && input.matchAge >= 18 && input.matchAge <= 120 ? input.matchAge : null,
     status: input.status,
     currentTopic: typeof input.currentTopic === "string" ? input.currentTopic : null,
     lastMessageAt: typeof input.lastMessageAt === "string" ? input.lastMessageAt : null,
