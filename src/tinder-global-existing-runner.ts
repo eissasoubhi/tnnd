@@ -5,6 +5,13 @@ import { eligibleExistingThreadRefs, nextExistingThreadRef } from "./tinder-glob
 
 const KEY = "tnnd.globalExistingRunner.v2";
 const ALARM = "tnnd.globalExistingRunner.cycle";
+const CADENCE_KEY = "tnnd.globalExistingRunner.cadenceSeconds.v1";
+const ALLOWED_CADENCES = [10, 15, 30, 60, 120] as const;
+const DEFAULT_CADENCE = 15;
+async function getCadenceSeconds(): Promise<number> {
+  const stored = (await chrome.storage.local.get(CADENCE_KEY))[CADENCE_KEY];
+  return typeof stored === "number" && ALLOWED_CADENCES.some(n => n === stored) ? stored : DEFAULT_CADENCE;
+}
 const API = "http://127.0.0.1:4000";
 const LOG_LIMIT = 16;
 const PHASES = ["starting", "checking", "loading", "waiting", "generating", "sending", "sent", "skipped", "error", "stopped"] as const;
@@ -23,6 +30,7 @@ interface GlobalExistingRunnerState {
   tabMode: "reused" | "created" | null;
   pausedOnStop: boolean;
   phase: RunnerPhase;
+  dwellSeconds: number;
   phaseDetail: string;
   currentLabel: string | null;
   eligibleCount: number;
@@ -39,7 +47,7 @@ interface GlobalExistingRunnerState {
 }
 const initial = (): GlobalExistingRunnerState => ({
   enabled: false, userId: null, tabId: null, tabMode: null, pausedOnStop: false,
-  phase: "stopped", phaseDetail: "Runner stopped.", currentLabel: null,
+  phase: "stopped", dwellSeconds: DEFAULT_CADENCE, phaseDetail: "Runner stopped.", currentLabel: null,
   eligibleCount: 0, visitedCount: 0, sentCount: 0, skippedCount: 0, errorCount: 0,
   lastRef: null, startedAt: null, lastActionAt: null, lastVisitAt: null,
   lastError: null, activity: []
@@ -162,6 +170,8 @@ async function tick(): Promise<void> {
   try {
     const state = await load();
     if (!state.enabled) return;
+    const dwellSeconds = await getCadenceSeconds();
+    if (state.lastVisitAt && Date.now() - Date.parse(state.lastVisitAt) < dwellSeconds * 1000) return;
     // A loaded old conversation can still be waiting for the configured cadence
     // or Gemini. Do not navigate away before that pending reply completes.
     const configForLease = await getConfig();
@@ -200,7 +210,23 @@ async function tick(): Promise<void> {
     const target = `https://tinder.com/app/messages/${encodeURIComponent(nextRef)}`;
     await save(activity({ ...current, tabId, eligibleCount: refs.length, currentLabel: label },
       "loading", `Opening ${label} · visit ${current.visitedCount + 1}…`, nextRef));
-    await chrome.tabs.update(tabId, { url: target });
+    const tab = await chrome.tabs.get(tabId);
+    const expectedRef = tinderRefFromUrl(tab.url);
+    const result = await chrome.tabs.sendMessage(tabId, {
+      type: "TNND_EXISTING_SPA_NAVIGATE", ref: nextRef, expectedRef
+    }) as { ok?: boolean; error?: string; currentRef?: string };
+    if (!result?.ok || result.currentRef !== nextRef) {
+      const latest = await load();
+      const reason = result?.error ?? "spa_navigation_unconfirmed";
+      if (reason === "thread_not_in_visible_sidebar") {
+        await save(activity({ ...latest, lastRef: nextRef, lastVisitAt: new Date().toISOString() },
+          "skipped", `Cannot find ${label} in the currently loaded Tinder Messages sidebar. Scroll/load that chat to include it; no full-page reload.`, nextRef));
+      } else {
+        await save(activity(latest, "error", `Navigation to ${label} stopped: ${reason}. Tinder was not reloaded.`, nextRef));
+        await stop("Runner paused because in-page chat navigation was not confirmed.");
+      }
+      return;
+    }
     const latest = await load();
     if (!latest.enabled) return;
     await save({ ...latest, lastRef: nextRef, currentLabel: label, visitedCount: latest.visitedCount + 1,
@@ -247,11 +273,12 @@ async function start(enablePreviouslyDisabled = false): Promise<GlobalExistingRu
     if (!refs.length) throw new Error("No chat is enabled after checking current permissions.");
     let next = initial();
     next = activity({ ...next, enabled: true, userId: session.user.id, tabId: tab.id, tabMode: tab.mode,
-      eligibleCount: refs.length, startedAt: new Date().toISOString() },
+      eligibleCount: refs.length, dwellSeconds: await getCadenceSeconds(), startedAt: new Date().toISOString() },
       "starting", `Using ${tab.mode === "reused" ? "the existing" : "a newly opened"} Tinder tab · ${refs.length} eligible chats.`);
     await save(next);
-    const maxDelay = Math.max(60, Math.min(3600, Number(config.automation.replyDelayMaxSeconds) || 60));
-    await chrome.alarms.create(ALARM, { periodInMinutes: Math.max(3, Math.ceil((maxDelay + 120) / 60)) });
+    // Chrome alarms provide a 30s fallback. The open Tinder content script
+    // requests faster rotation every ~2.5s, bounded by saved dwellSeconds.
+    await chrome.alarms.create(ALARM, { periodInMinutes: 0.5 });
     void tick();
     return load();
   } finally { starting = false; }
@@ -285,14 +312,12 @@ chrome.alarms.onAlarm.addListener(alarm => {
 chrome.runtime.onStartup.addListener(() => {
   void load().then(async state => {
     if (!state.enabled) return;
-    const config = await getConfig();
-    const maxDelay = Math.max(60, Math.min(3600, Number(config.automation.replyDelayMaxSeconds) || 60));
-    await chrome.alarms.create(ALARM, { periodInMinutes: Math.max(3, Math.ceil((maxDelay + 120) / 60)) });
+    await chrome.alarms.create(ALARM, { periodInMinutes: 0.5 });
   });
 });
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (!message || typeof message !== "object") return false;
-  const input = message as { type?: unknown; phase?: unknown; detail?: unknown; ref?: unknown; enablePreviouslyDisabled?: unknown };
+  const input = message as { type?: unknown; phase?: unknown; detail?: unknown; ref?: unknown; enablePreviouslyDisabled?: unknown; cadenceSeconds?: unknown };
   if (input.type === "TNND_EXISTING_RUNNER_TAB_PAUSED") {
     const statePromise = load();
     void statePromise.then(state => sendResponse({
@@ -319,15 +344,25 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     })().then(sendResponse).catch(() => sendResponse({ ok: false }));
     return true;
   }
+  if (input.type === "TNND_EXISTING_RUNNER_TICK") {
+    void load().then(state => {
+      if (sender.id === chrome.runtime.id && sender.tab?.id === state.tabId && state.enabled
+        && typeof input.ref === "string" && input.ref === state.lastRef && tinderRefFromUrl(sender.url) === state.lastRef) {
+        void tick();
+      }
+      sendResponse({ ok: true });
+    }).catch(() => sendResponse({ ok: false }));
+    return true;
+  }
   if (input.type === "TNND_EXISTING_RUNNER_EVENT") {
     if (sender.id !== chrome.runtime.id || !isTinderUrl(sender.url)) return false;
     void contentEvent(sender, input).then(() => sendResponse({ ok: true }))
       .catch(() => sendResponse({ ok: false }));
     return true;
   }
-  if (!["TNND_GLOBAL_EXISTING_STATE", "TNND_GLOBAL_EXISTING_PREFLIGHT", "TNND_GLOBAL_EXISTING_START", "TNND_GLOBAL_EXISTING_STOP"].includes(String(input.type))) return false;
+  if (!["TNND_GLOBAL_EXISTING_STATE", "TNND_GLOBAL_EXISTING_PREFLIGHT", "TNND_GLOBAL_EXISTING_SET_CADENCE", "TNND_GLOBAL_EXISTING_START", "TNND_GLOBAL_EXISTING_STOP"].includes(String(input.type))) return false;
   if (input.type === "TNND_GLOBAL_EXISTING_STATE" && (popupSender(sender) || webReadOnlySender(sender))) {
-    void load().then(state => sendResponse({ ok: true, state }))
+    void Promise.all([load(), getCadenceSeconds()]).then(([state, dwellSeconds]) => sendResponse({ ok: true, state: { ...state, dwellSeconds } }))
       .catch(() => sendResponse({ ok: false, error: "state_unavailable" }));
     return true;
   }
@@ -335,6 +370,20 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   if (!popupSender(sender)) {
     sendResponse({ ok: false, error: "Runner Start/Stop requires the TNND extension popup." });
     return false;
+  }
+  if (input.type === "TNND_GLOBAL_EXISTING_SET_CADENCE") {
+    const next = input.cadenceSeconds;
+    if (typeof next !== "number" || !ALLOWED_CADENCES.some(seconds => seconds === next)) {
+      sendResponse({ ok: false, error: "Invalid chat switching interval." });
+      return false;
+    }
+    void (async () => {
+      await chrome.storage.local.set({ [CADENCE_KEY]: next });
+      const state = await load();
+      await save({ ...state, dwellSeconds: next });
+      return { ok: true, dwellSeconds: next };
+    })().then(sendResponse).catch(() => sendResponse({ ok: false, error: "Unable to save runner speed." }));
+    return true;
   }
   if (input.type === "TNND_GLOBAL_EXISTING_PREFLIGHT") {
     void listEligible().then(({ refs, disabledRefs }) => sendResponse({
