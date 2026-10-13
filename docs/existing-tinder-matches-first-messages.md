@@ -22,6 +22,12 @@ This is different from **Start AI on future matches** and **Start global existin
 
 A Tinder conversation is keyed by `externalThreadId`, not the sidebar row position. Messages and matches may jump to the top of Tinder after an outgoing message. The existing-chat runner has a persistent account-scoped work index with last checked timestamps and unread hints; it inspects newly changed chats without using a list index. The work index is currently in Chrome extension local storage. Conversation messages and latest synchronized timestamps are stored in TNND's database.
 
+## Already AI-managed match with no first message
+
+A previous TNND run may have persisted an **AI managed + explicitly selected** conversation before the first Tinder Send action, leaving the chat empty. The existing-match opener now **reuses that active authorization** instead of treating it as an exclusion. It still verifies the backend and Tinder thread are the same, that the backend message history is empty and that the first-message attempt has not been claimed.
+
+A match marked **manual, archived, moved-off-Tinder, disabled, paused, waiting-for-user/action-required or not explicitly AI-authorized** is *not* silently reactivated. The global batch never resets existing status/management to active to evade exclusions. If a match was skipped before any send attempt, clicking **Start AI on existing matches** again can requeue it after checking both send-attempt journals. Never clear extension storage to force retries.
+
 ## Troubleshooting: queued matches but none sent
 
 If the popup shows many queued matches and `Global new-match automation was stopped or the tab is not authorized`, Tinder may have changed chats using SPA navigation while Chrome's `MessageSender.url` still refers to the original document. The updated extension verifies the **live Tinder tab URL** and stable thread ID instead, for both global first-message and subsequent reply permissions.
