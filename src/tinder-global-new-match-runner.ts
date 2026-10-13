@@ -1,6 +1,7 @@
 import { getBackendSession, getConfig, getChatSettings } from "./storage";
 import { readNewMatchState, saveNewMatchState, updateNewMatchAttempt, newMatchSendPermission } from "./tinder-new-match-background";
 import { stopNewMatchObservation } from "./tinder-new-match-observation";
+import { assertTinderContentBridge, isMissingTinderReceiver, describeTinderBridgeError } from "./tinder-tab-connection";
 import { startExistingRunner } from "./tinder-global-existing-runner";
 import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
 
@@ -66,6 +67,7 @@ async function ownedTab(ref: string, userId: string): Promise<number> {
   }
   const tab = candidates[0];
   const tabId = tab.id!;
+  await assertTinderContentBridge(tabId);
   const existing = (await chrome.storage.local.get(OWNED_TAB))[OWNED_TAB] as {
     tabId?: number; userId?: string; ref?: string | null
   } | undefined;
@@ -113,6 +115,7 @@ async function processNext(): Promise<void> {
   busy = true;
   let ref: string | null = null;
   let sent = false;
+  let sendRequested = false;
   try {
     const state = await readNewMatchState();
     if (!state.enabled || !state.autoSendEnabled) return;
@@ -141,8 +144,8 @@ async function processNext(): Promise<void> {
       await updateNewMatchAttempt(ref, false, "Individual automation disabled for this match");
       return;
     }
-    // Persist a per-day claim before opening Tinder; no blind replays.
-    await chrome.storage.local.set({ "tnnd.newMatchDailyAttempts.v1": { date: today, refs: [...used, ref] } });
+    // Tinder navigation is read-only. Do not consume a daily send claim when
+    // the updated extension cannot communicate with this tab.
     const tabId = await ownedTab(ref, session.user.id);
     if (!await newMatchSendPermission(ref, tabId)) return;
     // Wait until Tinder's actual matching conversation route/content is ready.
@@ -159,13 +162,31 @@ async function processNext(): Promise<void> {
     // The sender must remain the same verified, empty conversation before authorizing.
     await prepareNewMatch(ref, session.token);
     if (!await newMatchSendPermission(ref, tabId)) return;
+    // Store durable intent immediately BEFORE the irreversible Send request.
+    await chrome.storage.local.set({ "tnnd.newMatchDailyAttempts.v1": { date: today, refs: [...used, ref] } });
+    sendRequested = true;
     const result = await chrome.tabs.sendMessage(tabId, {
       type: "TNND_AUTO_START_NEW_MATCH", threadKey
     }) as { ok?: boolean; sent?: boolean; error?: string };
     sent = result?.sent === true;
     await updateNewMatchAttempt(ref, sent, sent ? "First message sent via Tinder" : result?.error ?? "No send confirmed; check Tinder");
   } catch (error) {
-    if (ref) await updateNewMatchAttempt(ref, false, `Skipped (no automatic retries): ${error instanceof Error ? error.message : "unknown error"}`);
+    if (isMissingTinderReceiver(error) && !sendRequested) {
+      // No content receiver means no Tinder Send was requested. Pause and
+      // preserve ALL pending refs; retry only after an explicit restart.
+      const current = await readNewMatchState();
+      await saveNewMatchState({
+        ...stopNewMatchObservation(current),
+        lastResult: describeTinderBridgeError(error)
+      });
+      await chrome.alarms.clear(ALARM);
+      await chrome.storage.local.remove(OWNED_TAB);
+    } else if (ref) {
+      // A missing reply after Send was requested could mean unknown delivery.
+      // Never replay automatically once the click might have happened.
+      await updateNewMatchAttempt(ref, false,
+        `Skipped (no automatic retries): ${error instanceof Error ? error.message : "unknown error"}`);
+    }
   } finally { busy = false; }
 }
 
