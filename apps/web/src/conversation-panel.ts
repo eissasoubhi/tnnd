@@ -4,6 +4,7 @@ import {
   getConversation,
   listConversations,
   saveTemporaryInstruction,
+  saveConversationDisplayIdentity,
   updateConversationStatus,
   type ConversationDetail,
   type TemporaryInstructionScope
@@ -33,7 +34,7 @@ function renderList(items: ConversationListItem[], selectedId?: string): string 
   return items.map((item) => `
     <button type="button" class="conversation-row${item.id === selectedId ? " selected" : ""}" data-conversation-id="${escapeHtml(item.id)}" aria-pressed="${item.id === selectedId}">
       <span class="conversation-row-main">
-        <span class="conversation-person-line"><span class="conversation-person-avatar" aria-hidden="true">${escapeHtml((item.displayName.startsWith("Conversation ") ? "?" : item.displayName[0] ?? "?").toUpperCase())}</span><strong>${escapeHtml(item.displayName)}${item.matchAge ? ` · ${item.matchAge}` : ""}</strong></span>
+        <span class="conversation-person-line"><span class="conversation-person-avatar" aria-hidden="true">${escapeHtml((item.displayName.startsWith("Conversation ") ? "●" : item.displayName[0] ?? "●").toUpperCase())}</span><strong>${escapeHtml(item.displayName)}${item.matchAge ? ` · ${item.matchAge}` : ""}</strong></span>
         <small>${escapeHtml(item.currentTopic ?? "No topic yet")}</small>
       </span>
       <span class="conversation-row-meta">
@@ -150,6 +151,16 @@ function renderDetail(detail: ConversationDetail): string {
       </div>
       <span class="pill">${escapeHtml(detail.status)}</span>
     </div>
+    <details class="conversation-identity-editor">
+      <summary>Set chat name & age <span class="subtle">(optional · saved on your account)</span></summary>
+      <p class="subtle">TNND has not automatically verified this person's Tinder name. You can label this chat to distinguish it from generic IDs. This does not edit their Tinder profile.</p>
+      <div class="conversation-identity-controls">
+        <label for="conversation-display-name">Name <input id="conversation-display-name" maxlength="80" autocomplete="off" placeholder="e.g. Sara" value="${escapeHtml(detail.userDisplayLabel ?? "")}"></label>
+        <label for="conversation-display-age">Age <input id="conversation-display-age" type="number" min="18" max="120" placeholder="Optional" value="${detail.userDisplayAge ?? ""}"></label>
+        <button type="button" data-save-conversation-identity>Save name</button>
+      </div>
+      <p data-conversation-identity-status class="subtle" role="status"></p>
+    </details>
     <details class="conversation-status-help"><summary>What do Synced, Unmanaged and Paused mean?</summary><p><strong>Synced</strong>: history is saved in TNND, not necessarily live. <strong>Unmanaged</strong>: AI has not been authorized to control the Tinder chat. <strong>Paused</strong>: server-side automation is stopped. Draft previews remain manual and do not send anything.</p><p>To allow AI to manage this chat, choose <strong>AI managed</strong> in Conversation management, confirm it, then Resume this chat. Separately enable automation for this chat and globally in the extension. Test generated drafts before allowing sends.</p><a href="#conversation-management-panel">Open conversation management →</a></details>
     <div class="conversation-status-actions" aria-label="Conversation controls">
       ${renderStatusActions(detail)}
@@ -188,6 +199,7 @@ function installStyles(): void {
     .conversation-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:12px}.conversation-stat{display:grid;gap:2px;padding:9px 10px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:rgba(127,127,127,.05)}.conversation-stat strong{font-size:18px}.conversation-stat span{font-size:10px;opacity:.7}
     .conversation-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;flex-wrap:wrap}.conversation-filter{display:flex;align-items:center;gap:7px;font-size:12px}.conversation-filter select{width:auto;min-width:170px}.conversation-summary{font-size:11px;opacity:.7}
     .conversation-layout{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(280px,1.1fr);gap:14px;margin-top:14px}
+    .conversation-identity-editor{margin:0 0 12px;padding:10px 13px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:var(--nb-surface-soft,#edf4eb)}.conversation-identity-editor summary{cursor:pointer;font-size:12px;font-weight:750}.conversation-identity-editor>p{font-size:12px;line-height:1.5}.conversation-identity-controls{display:flex;align-items:flex-end;flex-wrap:wrap;gap:9px}.conversation-identity-controls label{display:grid;gap:5px;flex:1 1 130px;font-size:12px}.conversation-identity-controls label:nth-child(2){flex:0 1 115px}.conversation-identity-controls input{min-width:0;max-width:100%}.conversation-identity-controls button{max-width:100%;width:auto;white-space:normal}
     .conversation-person-line{display:flex;align-items:center;gap:9px;min-width:0}.conversation-person-line strong{min-width:0;overflow-wrap:anywhere}.conversation-person-avatar{display:inline-grid;flex:0 0 34px;place-items:center;width:34px;height:34px;background:var(--nb-mint,#d9efcc);color:var(--nb-primary,#264b40);border-radius:50%;font-weight:800}.conversation-status-help{margin:0 0 12px;padding:10px 13px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:var(--nb-surface-soft,#edf4eb)}.conversation-status-help summary{cursor:pointer;font-size:12px;font-weight:750}.conversation-status-help p{font-size:12px;line-height:1.55}.conversation-status-help a{font-size:12px;font-weight:750;color:inherit;text-decoration:underline}
     .conversation-list{display:grid;gap:8px;align-content:start;max-height:430px;overflow:auto}
     .conversation-row{width:100%;display:flex;justify-content:space-between;gap:12px;text-align:left;padding:11px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:transparent;color:inherit;cursor:pointer}
@@ -308,6 +320,33 @@ async function applyStatus(conversationId: string, status: ConversationStatus): 
   }
 }
 
+function bindDisplayIdentityActions(conversationId: string): void {
+  if (!elements) return;
+  const save = elements.detail.querySelector<HTMLButtonElement>("[data-save-conversation-identity]");
+  const name = elements.detail.querySelector<HTMLInputElement>("#conversation-display-name");
+  const age = elements.detail.querySelector<HTMLInputElement>("#conversation-display-age");
+  const status = elements.detail.querySelector<HTMLElement>("[data-conversation-identity-status]");
+  if (!save || !name || !age || !status) return;
+  save.addEventListener("click", () => {
+    void (async () => {
+      const session = readSession();
+      if (!session) throw new Error("Sign in first.");
+      const label = name.value.replace(/\\s+/g, " ").trim();
+      const numericAge = age.value.trim() ? Number(age.value) : null;
+      if (label.length > 80 || (numericAge !== null && (!Number.isInteger(numericAge) || numericAge < 18 || numericAge > 120))) {
+        throw new Error("Enter a name under 80 characters and an optional age between 18 and 120.");
+      }
+      save.disabled = true;
+      status.textContent = "Saving…";
+      await saveConversationDisplayIdentity(session, conversationId, label, numericAge);
+      status.textContent = "Saved.";
+      await refresh();
+    })().catch(error => {
+      status.textContent = error instanceof Error ? error.message : "Unable to save the name.";
+    }).finally(() => { save.disabled = false; });
+  });
+}
+
 function bindStatusActions(conversationId: string): void {
   if (!elements) return;
   elements.detail.querySelectorAll<HTMLButtonElement>("[data-conversation-status-action]").forEach((button) => {
@@ -400,6 +439,7 @@ async function loadDetail(conversationId: string): Promise<void> {
     // Keep the live reply target on its owning detail node, never in storage.
     elements.detail.dataset.replyTarget = replyTargetFromHistory(detail.messages) ?? "";
     elements.detail.dataset.replyTargetHint = replyTargetHint(detail.messages);
+    bindDisplayIdentityActions(conversationId);
     bindStatusActions(conversationId);
     bindTemporaryInstructionActions(conversationId);
   } catch (error) {

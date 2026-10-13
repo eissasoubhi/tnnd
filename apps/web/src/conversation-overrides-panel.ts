@@ -1,4 +1,6 @@
 import { readSession } from "./auth-client";
+import { getConversation } from "./conversation-client";
+import { replyTargetFromHistory, replyTargetHint } from "./conversation-reply-target";
 import {
   draftLifecycleLabel,
   draftPreviewInstruction,
@@ -143,7 +145,7 @@ async function mountInlineEditor(): Promise<void> {
       <strong>AI reply draft</strong>
       <p class="draft-guidance">Start here: make one suggested reply. Nothing is sent to Tinder.</p>
       <label class="draft-input-label" for="draft-latest-message">Step 1 · Latest incoming message (loaded from sync when available)</label>
-      <textarea id="draft-latest-message" aria-describedby="draft-instructions" data-generation-message maxlength="4000" placeholder="Paste the latest incoming message"></textarea>
+      <textarea id="draft-latest-message" aria-describedby="draft-instructions" data-generation-message maxlength="4000" placeholder="Latest imported match message appears here automatically"></textarea>
       <p id="draft-instructions" class="subtle">TNND fills this from the latest synced incoming message when there is a new reply. Edit only to test another scenario. Nothing is sent automatically.</p>
       <div class="conversation-inline-generation-actions">
         <button type="button" data-generation-button>Step 2 · Generate a reply</button>
@@ -279,9 +281,26 @@ async function mountInlineEditor(): Promise<void> {
   }
 
   const generateDraft = async (regenerate = false) => {
-    const latestMessage = generationMessage.value.trim();
+    let latestMessage = generationMessage.value.trim();
     if (!latestMessage) {
-      generationStatus.textContent = "Latest message required";
+      generationStatus.textContent = "Checking synced messages…";
+      try {
+        // Handle stale editors mounted before a conversation detail load.
+        const detailSnapshot = await getConversation(session, conversationId);
+        if (!section.isConnected || selectedConversationId() !== conversationId) return;
+        latestMessage = replyTargetFromHistory(detailSnapshot.messages) ?? "";
+        if (latestMessage) {
+          generationMessage.value = latestMessage;
+          const hint = section.querySelector<HTMLElement>("#draft-instructions");
+          if (hint) hint.textContent = replyTargetHint(detailSnapshot.messages);
+        }
+      } catch {
+        generationStatus.textContent = "Could not refresh conversation history. Verify TNND Web is connected to the API.";
+        return;
+      }
+    }
+    if (!latestMessage) {
+      generationStatus.textContent = "No received message was imported. Open this chat on Tinder and press Import visible chat (read-only) in the TNND extension, then refresh TNND Web.";
       return;
     }
     const previewInstruction = regenerate ? draftPreviewInstruction(lifecycle) : null;
