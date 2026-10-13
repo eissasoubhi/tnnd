@@ -113,7 +113,7 @@ if (isTnndLocalWebUrl(window.location.href)) {
               if (pathname === "/api/v1/ai/test-connection" && result.connected === false) {
                 emit("app-error", { id, url, method, status: response.status, detail: "gemini_connection_failed" });
               }
-              if (/^\\/api\\/v1\\/conversations\\/[^/]+\\/generate$/.test(pathname) && !result.generation) {
+              if (pathname.startsWith("/api/v1/conversations/") && pathname.endsWith("/generate") && !result.generation) {
                 emit("app-error", { id, url, method, status: response.status, detail: "generation_payload_missing" });
               }
             }
