@@ -1,5 +1,6 @@
 import { DEFAULT_CONFIG } from "./storage";
 import type { AppConfig } from "./types";
+import { firstMessageDailyLimit } from "./tinder-first-message-daily-limit";
 
 export const PROFILE_SCHEMA_VERSION = 1;
 
@@ -30,7 +31,7 @@ export function normalizeImportedConfig(value: unknown): AppConfig {
     ...raw,
     languages: { ...DEFAULT_CONFIG.languages, ...languages },
     identity: { ...DEFAULT_CONFIG.identity, ...identity },
-    automation: { ...DEFAULT_CONFIG.automation, ...automation }
+    automation: { ...DEFAULT_CONFIG.automation, ...automation, maxFirstMessagesPerDay: firstMessageDailyLimit(automation.maxFirstMessagesPerDay) }
   } as AppConfig;
 }
 
