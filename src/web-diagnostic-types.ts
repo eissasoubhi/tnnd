@@ -183,7 +183,7 @@ export function analyzeWebDiagnosticState(state: WebDiagnosticTabState | null | 
     return {
       level: "warning",
       summary: `${functional.length} recent API/function failure(s) detected, even if the page still responds.`,
-      evidence: [...evidence, `Last affected operation: ${last.operation}.`, last.nextStep]
+      evidence: [...evidence, `Last affected operation: ${last.operation}.`, ...(last.stage ? [`Failed stage: ${last.stage}.`] : []), last.nextStep]
     };
   }
 
