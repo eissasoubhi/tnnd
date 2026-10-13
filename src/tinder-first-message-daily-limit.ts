@@ -14,8 +14,11 @@ export function firstMessageDailyLimit(value: unknown): number {
 export function firstMessageClaimsToday(claims: Record<string, number>, now = Date.now()): number {
   if (!Number.isFinite(now)) return 0;
   const date = new Date(now).toISOString().slice(0, 10);
-  return Object.values(claims).filter(timestamp => typeof timestamp === "number"
-    && Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === date).length;
+  return Object.values(claims).filter(timestamp => {
+    if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) return false;
+    const claimedAt = new Date(timestamp);
+    return Number.isFinite(claimedAt.getTime()) && claimedAt.toISOString().slice(0, 10) === date;
+  }).length;
 }
 
 export function hasReachedFirstMessageDailyLimit(claims: Record<string, number>, value: unknown, now = Date.now()): boolean {
