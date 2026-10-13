@@ -1,8 +1,6 @@
-import { mayAiTakeOverTinderConversation } from "./tinder-ai-takeover-policy";
-import {
-  conversationStatusAllowsTinderAutomation,
-  type TinderBackendConversationManagement
-} from "./tinder-backend-management";
+import { mayAiTakeOverTinderConversation } from "./tinder-ai-takeover-policy.ts";
+import { conversationStatusAllowsTinderAutomation } from "./tinder-conversation-automation-status.ts";
+import type { TinderBackendConversationManagement } from "./tinder-backend-management";
 
 /** Fail closed. A global toggle or chat-local toggle alone NEVER authorizes a send. */
 export function mayAutomaticallySendToTinder(
