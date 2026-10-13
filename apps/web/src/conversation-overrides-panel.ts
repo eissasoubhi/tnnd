@@ -114,6 +114,9 @@ async function mountInlineEditor(): Promise<void> {
   section.dataset.conversationId = conversationId;
   section.setAttribute("aria-label", "Conversation-specific controls");
   section.innerHTML = `
+    <details class="conversation-advanced-settings">
+      <summary>Advanced · Customize this conversation <span class="subtle">(optional)</span></summary>
+      <div class="conversation-advanced-settings-content">
     <div class="conversation-inline-overrides-heading">
       <div>
         <strong>Conversation overrides</strong>
@@ -127,9 +130,11 @@ async function mountInlineEditor(): Promise<void> {
       <p class="subtle" data-inline-effective-values>Resolving global and chat values…</p>
     </div>
     <div data-inline-overrides-editor><p class="subtle">Loading chat overrides…</p></div>
+      </div>
+    </details>
     <div class="conversation-inline-generation">
       <strong>AI reply draft</strong>
-      <small>Draft only. Generate, regenerate, copy or approve here; none of these actions sends anything to Tinder.</small>
+      <small><strong>1.</strong> Paste the latest message · <strong>2.</strong> Generate a reply · <strong>3.</strong> Copy it and decide yourself whether to send it on Tinder. Nothing is sent automatically.</small>
       <textarea data-generation-message maxlength="4000" placeholder="Paste the latest incoming message"></textarea>
       <div class="conversation-inline-generation-actions">
         <button type="button" data-generation-button>Generate draft</button>
@@ -145,11 +150,14 @@ async function mountInlineEditor(): Promise<void> {
         <textarea data-generation-feedback-note maxlength="500" placeholder="Optional: say exactly what should change in the next draft" aria-label="Freeform preview feedback"></textarea>
         <small class="subtle" data-generation-feedback-summary>No regeneration steering selected.</small>
       </div>
+      <details class="conversation-confirmation-details">
+        <summary>Advanced · Record a message already sent on Tinder</summary>
       <div class="conversation-inline-confirmation">
         <input data-confirmation-message-id maxlength="500" placeholder="Confirmed Tinder message ID" aria-label="Confirmed Tinder message ID" disabled>
         <button type="button" data-confirmation-button disabled>Confirm sent</button>
       </div>
       <small class="subtle" data-confirmation-status>Confirmation records an already-sent Tinder message; it never sends one.</small>
+      </details>
       <div class="conversation-inline-generation-lifecycle">
         <span class="pill" data-generation-lifecycle>No draft</span>
         <span class="subtle">Generated → Approved locally → Confirmed sent</span>
