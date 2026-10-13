@@ -39,6 +39,7 @@ interface GlobalExistingRunnerState {
   skippedCount: number;
   errorCount: number;
   lastRef: string | null;
+  cursorRef: string | null;
   startedAt: string | null;
   lastActionAt: string | null;
   lastVisitAt: string | null;
@@ -49,7 +50,7 @@ const initial = (): GlobalExistingRunnerState => ({
   enabled: false, userId: null, tabId: null, tabMode: null, pausedOnStop: false,
   phase: "stopped", dwellSeconds: DEFAULT_CADENCE, phaseDetail: "Runner stopped.", currentLabel: null,
   eligibleCount: 0, visitedCount: 0, sentCount: 0, skippedCount: 0, errorCount: 0,
-  lastRef: null, startedAt: null, lastActionAt: null, lastVisitAt: null,
+  lastRef: null, cursorRef: null, startedAt: null, lastActionAt: null, lastVisitAt: null,
   lastError: null, activity: []
 });
 let busy = false;
@@ -198,7 +199,7 @@ async function tick(): Promise<void> {
     }
     const { refs, labels } = await listEligible();
     if (!(await load()).enabled) return;
-    const nextRef = nextExistingThreadRef(refs, state.lastRef);
+    const nextRef = nextExistingThreadRef(refs, state.cursorRef);
     if (!nextRef) {
       await save(activity({ ...await load(), eligibleCount: refs.length }, "waiting", "No eligible AI-managed conversations with synchronized messages. Authorize and sync them in TNND Web."));
       return;
@@ -207,7 +208,6 @@ async function tick(): Promise<void> {
     const tabId = await assertRunnerTab(current);
     if (!(await load()).enabled) return;
     const label = labels.get(nextRef) ?? `Thread ${nextRef.slice(0, 8)}`;
-    const target = `https://tinder.com/app/messages/${encodeURIComponent(nextRef)}`;
     await save(activity({ ...current, tabId, eligibleCount: refs.length, currentLabel: label },
       "loading", `Opening ${label} · visit ${current.visitedCount + 1}…`, nextRef));
     const tab = await chrome.tabs.get(tabId);
@@ -219,7 +219,7 @@ async function tick(): Promise<void> {
       const latest = await load();
       const reason = result?.error ?? "spa_navigation_unconfirmed";
       if (reason === "thread_not_in_visible_sidebar") {
-        await save(activity({ ...latest, lastRef: nextRef, lastVisitAt: new Date().toISOString() },
+        await save(activity({ ...latest, cursorRef: nextRef, lastVisitAt: new Date().toISOString() },
           "skipped", `Cannot find ${label} in the currently loaded Tinder Messages sidebar. Scroll/load that chat to include it; no full-page reload.`, nextRef));
       } else {
         await save(activity(latest, "error", `Navigation to ${label} stopped: ${reason}. Tinder was not reloaded.`, nextRef));
@@ -229,7 +229,7 @@ async function tick(): Promise<void> {
     }
     const latest = await load();
     if (!latest.enabled) return;
-    await save({ ...latest, lastRef: nextRef, currentLabel: label, visitedCount: latest.visitedCount + 1,
+    await save({ ...latest, lastRef: nextRef, cursorRef: nextRef, currentLabel: label, visitedCount: latest.visitedCount + 1,
       lastVisitAt: new Date().toISOString() });
     // Reply sending remains solely in Tinder content script, guarded by both
     // server management and per-chat settings. Runner never calls Send.
