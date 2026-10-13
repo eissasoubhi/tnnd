@@ -295,7 +295,19 @@ async function main() {
       if (msg) { msg.value = "How is your day?"; msg.dispatchEvent(new Event("input",{bubbles:true})); }
       document.querySelector("[data-generation-button]")?.click();
     })()`);
-    await waitFor(cdp, 'document.querySelector("[data-generation-status]")?.textContent?.includes("Draft ready")', 100);
+    try {
+      await waitFor(cdp, 'document.querySelector("[data-generation-status]")?.textContent?.includes("Draft ready")', 100);
+    } catch (error) {
+      console.log("DRAFT_TEST_DIAGNOSTIC", JSON.stringify(await cdp.evaluate(`(() => ({
+        status: document.querySelector("[data-generation-status]")?.textContent,
+        guidance: document.querySelector("[data-generation-error-help]")?.textContent,
+        rendered: !!document.querySelector("[data-generation-button]"),
+        disabled: document.querySelector("[data-generation-button]")?.disabled
+      }))()`)));
+      console.log("DRAFT_API_REQUESTS", JSON.stringify(requests.filter(x => x.path.includes("/generate"))));
+      console.log("DRAFT_JS_ERRORS", JSON.stringify(cdp.runtimeExceptions));
+      throw error;
+    }
     await step(cdp, "Gemini draft generation shows synthetic response and enables approval",
       'document.querySelector("[data-generation-preview]")?.textContent?.includes("Fixture reply") && !document.querySelector("[data-generation-approve]")?.disabled',
       Boolean);
