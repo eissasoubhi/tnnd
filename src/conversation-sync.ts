@@ -73,14 +73,16 @@ export async function getConversationRef(externalThreadId: string): Promise<{ co
 export async function syncConversationDelta(
   externalThreadId: string,
   messages: ConversationMessageDelta[],
-  requestedStatus?: ConversationStatus,
+  requestedStatus?: ConversationStatus | null,
   nextCursor?: string
 ): Promise<ConversationSyncResult> {
   const session = await getBackendSession();
   if (!session) throw new Error("TNND account is not connected.");
   const refs = await loadThreadRefs();
   const previous = refs[externalThreadId];
-  const status = requestedStatus ?? inferConversationStatus(messages);
+  // null means preserve an existing backend status (read-only import). Undefined
+  // retains the original automatic-sync status inference behavior.
+  const status = requestedStatus === null ? undefined : requestedStatus ?? inferConversationStatus(messages);
   const input = {
     externalThreadId,
     ...(previous?.conversationId ? { knownConversationId: previous.conversationId } : {}),

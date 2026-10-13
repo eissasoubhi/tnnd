@@ -1,7 +1,10 @@
 import { strToU8, zipSync } from "fflate";
 import { loginBackend, logoutBackend, validateBackendSession } from "./backend-session";
 import { renderExtensionSetupProgress } from "./setup-extension-panel";
-import { getChatSettings, saveChatSettings } from "./storage";
+import { getBackendSession, getChatSettings, saveChatSettings } from "./storage";
+import { syncConversationDelta } from "./conversation-sync";
+import { loadTinderConversationManagement } from "./tinder-backend-management";
+import { prepareReadOnlyImport, type VisibleTinderMessage } from "./tinder-manual-import";
 import { renderSyncStatus } from "./sync-status-panel";
 import type { ChatSettings, ConversationStage, Tone } from "./types";
 import { WEB_DIAGNOSTIC_STORAGE_KEY, analyzeWebDiagnosticState, isTnndLocalWebUrl, type WebDiagnosticStore, type WebDiagnosticTabState } from "./web-diagnostic-types";
@@ -42,6 +45,14 @@ interface DiagnosticTraceEntry {
   previousView: TinderViewState | null;
   path: string;
   signalCount: number;
+}
+
+interface VisibleThreadMessagesResponse {
+  ok: boolean;
+  threadKey?: string | null;
+  conversationRef?: string | null;
+  messages?: VisibleTinderMessage[];
+  error?: string;
 }
 
 interface ThreadInfoResponse {
@@ -93,6 +104,8 @@ const chatLangDarija = document.getElementById("chatLangDarija") as HTMLInputEle
 const chatLangEn = document.getElementById("chatLangEn") as HTMLInputElement;
 const saveChat = document.getElementById("saveChat") as HTMLButtonElement;
 const chatStatus = document.getElementById("chatStatus")!;
+const syncCurrentChat = document.getElementById("syncCurrentChat") as HTMLButtonElement;
+const manualSyncStatus = document.getElementById("manualSyncStatus")!;
 let currentThreadKey: string | null = null;
 
 version.textContent = `v${chrome.runtime.getManifest().version}`;
@@ -276,6 +289,7 @@ async function refreshBackendAuth(): Promise<void> {
 
 async function loadCurrentChat(): Promise<void> {
   currentThreadKey = null;
+  syncCurrentChat.disabled = true;
   chatEditor.classList.add("hidden");
   chatUnavailable.classList.remove("hidden");
   const hint = chatUnavailable.querySelector("p");
@@ -295,6 +309,7 @@ async function loadCurrentChat(): Promise<void> {
       return;
     }
     currentThreadKey = response.threadKey;
+    syncCurrentChat.disabled = response.composerFound === false;
     applyChatSettings(await getChatSettings(currentThreadKey));
     chatUnavailable.classList.add("hidden");
     chatEditor.classList.remove("hidden");
@@ -428,6 +443,46 @@ backendLogout.addEventListener("click", () => {
   }).finally(() => {
     backendLogout.disabled = false;
   });
+});
+
+syncCurrentChat.addEventListener("click", () => {
+  void (async () => {
+    const canonicalKey = currentThreadKey;
+    if (!canonicalKey) throw new Error("Open and detect a Tinder conversation first.");
+    if (!(await getBackendSession())) throw new Error("Connect your TNND backend account first.");
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id || !isTinderUrl(tab.url)) throw new Error("Open Tinder in the active tab.");
+    // Re-validate the tab after user interaction, so switching conversations
+    // cannot accidentally import a different person's transcript.
+    const snapshot = await chrome.tabs.sendMessage(tab.id, { type: "TNND_GET_VISIBLE_THREAD_MESSAGES" }) as VisibleThreadMessagesResponse;
+    if (!snapshot?.ok) {
+      const reason: Record<string, string> = {
+        not_conversation_route: "Open a specific Tinder conversation (/app/messages/...).",
+        composer_not_found: "The Tinder message editor is not recognized yet. Export a diagnostic ZIP so its selector can be inspected.",
+        no_recognized_messages: "No readable messages were found. Open the chat history and export a diagnostic ZIP for selector verification."
+      };
+      throw new Error(reason[snapshot?.error ?? ""] ?? "TNND could not read this Tinder conversation. Reload Tinder and retry.");
+    }
+    if (snapshot.threadKey !== canonicalKey || !snapshot.conversationRef || !snapshot.messages?.length) {
+      throw new Error("The Tinder conversation changed or no messages were detected. Reopen TNND on that chat.");
+    }
+    const existing = await loadTinderConversationManagement(snapshot.conversationRef);
+    const payload = prepareReadOnlyImport(snapshot.messages, Boolean(existing.conversationId), new Date().toISOString());
+    const result = await syncConversationDelta(
+      snapshot.conversationRef,
+      payload.messages,
+      payload.requestedStatus,
+      payload.nextCursor
+    );
+    manualSyncStatus.textContent = `Imported ${payload.messages.length} visible messages to TNND Web. Conversation status: ${result.status}. AI takeover is not enabled. Refresh TNND Web → Conversations to inspect drafts.`;
+    await renderSyncStatus();
+  })().catch(error => {
+    manualSyncStatus.textContent = error instanceof Error ? error.message : "Read-only import failed.";
+  }).finally(() => {
+    syncCurrentChat.disabled = !currentThreadKey;
+  });
+  syncCurrentChat.disabled = true;
+  manualSyncStatus.textContent = "Importing visible chat messages…";
 });
 
 saveChat.addEventListener("click", () => {

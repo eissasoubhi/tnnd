@@ -1,5 +1,7 @@
 import { TinderDomAdapter } from "./tinder-adapter";
 import { detectTinderChat } from "./tinder-chat-detection";
+import { buildNormalizedMessageKeys } from "./tinder-message-key";
+import { classifyTinderPath } from "./tinder-state-machine";
 import { executeBoundedTinderRead } from "./tinder-bounded-read-handlers";
 import { planCurrentTinderJob, readCurrentTinderUiState } from "./tinder-runtime-state";
 import { executeTinderSingleTabStep } from "./tinder-single-tab-executor";
@@ -22,6 +24,40 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       source: chat.source,
       composerFound: diagnostics.composerFound,
       route: diagnostics.view
+    });
+    return false;
+  }
+
+  if (input.type === "TNND_GET_VISIBLE_THREAD_MESSAGES") {
+    // Only a direct user interaction in the popup asks for message contents.
+    // No navigation, no send and no implicit background upload is performed.
+    const route = classifyTinderPath(location.pathname);
+    if (route.state !== "conversation" || !route.conversationRef) {
+      sendResponse({ ok: false, error: "not_conversation_route" });
+      return false;
+    }
+    const diagnostics = adapter.diagnose();
+    if (!diagnostics.composerFound) {
+      sendResponse({ ok: false, error: "composer_not_found", view: diagnostics.view });
+      return false;
+    }
+    const messages = adapter.readVisibleMessages();
+    if (!messages.length) {
+      sendResponse({ ok: false, error: "no_recognized_messages", view: diagnostics.view });
+      return false;
+    }
+    const context = messages.map(message => `${message.direction === "me" ? "Me" : "Them"}: ${message.text}`).join("\n");
+    const normalized = buildNormalizedMessageKeys(context, diagnostics.threadKeyHash);
+    sendResponse({
+      ok: true,
+      threadKey: detectTinderChat(location.pathname, true).threadKey,
+      conversationRef: route.conversationRef,
+      messages: normalized.map(message => ({
+        key: message.key,
+        direction: message.direction,
+        text: message.text.slice(0, 4000)
+      })),
+      composerFound: true
     });
     return false;
   }
