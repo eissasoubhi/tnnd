@@ -1,3 +1,4 @@
+import { parseUserConversationIdentity } from "./conversation-display-identity-input.js";
 import { conversationDisplayName, matchIdentity } from "./conversation-display-identity.js";
 import "dotenv/config";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -12,7 +13,7 @@ import { handleAnalyticsRequest } from "./analytics-controller.js";
 import { bulkUpdateConversationManagement, isConversationManagementState, listConversationManagement, updateConversationManagement, type ConversationManagementUpdate } from "./conversation-management-service.js";
 import { handleOutgoingConfirmationRequest } from "./conversation-outgoing-confirmation-controller.js";
 import { clearConversationOverrides, getConversationOverrides, replaceConversationOverrides } from "./conversation-overrides-service.js";
-import { clearConversationTemporaryInstruction, getConversation, listConversations, setConversationTemporaryInstruction, syncConversation, updateConversationStatus, type TemporaryInstructionScope } from "./conversation-service.js";
+import { clearConversationTemporaryInstruction, getConversation, listConversations, setConversationTemporaryInstruction, syncConversation, updateConversationStatus, updateConversationDisplayIdentity, type TemporaryInstructionScope } from "./conversation-service.js";
 import { isConversationStatus, validateConversationSyncRequest } from "./conversation-sync-contract.js";
 import { conversationSyncErrorResponse } from "./conversation-sync-error-response.js";
 import { handleConversationThreadLookupRequest } from "./conversation-thread-lookup-controller.js";
@@ -461,6 +462,8 @@ const server = createServer(async (request, response) => {
         conversations: conversations.map((conversation) => ({
           id: conversation.id,
           displayName: conversationDisplayName(conversation.id, conversation.matchFirstName),
+          ...(conversation.userDisplayLabel !== undefined ? { userDisplayLabel: conversation.userDisplayLabel } : {}),
+          ...(conversation.userDisplayAge !== undefined ? { userDisplayAge: conversation.userDisplayAge } : {}),
           ...(matchIdentity(conversation.matchFirstName, conversation.matchAge).age ? { matchAge: matchIdentity(conversation.matchFirstName, conversation.matchAge).age } : {}),
           status: conversation.status,
           currentTopic: conversation.currentTopic ?? null,
@@ -641,6 +644,27 @@ const server = createServer(async (request, response) => {
       }
       const deleted = await deleteConversationData(session.user.id, deleteConversationId);
       sendJson(response, deleted ? 200 : 404, deleted ? { deleted: true } : { error: "conversation_not_found" });
+      return;
+    }
+
+    const displayIdentityId = conversationSubresourceId(url.pathname, "/identity");
+    if (displayIdentityId && request.method === "PUT") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      try {
+        const identity = parseUserConversationIdentity(await readJsonBody(request));
+        const saved = await updateConversationDisplayIdentity(session.user.id, displayIdentityId, identity.label, identity.age);
+        sendJson(response, saved ? 200 : 404, saved ? { ok: true } : { error: "conversation_not_found" });
+      } catch (error) {
+        if (error instanceof Error && error.message === "invalid_conversation_identity") {
+          sendJson(response, 400, { error: "invalid_conversation_identity" });
+        } else {
+          throw error;
+        }
+      }
       return;
     }
 
