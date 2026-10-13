@@ -96,8 +96,7 @@ async function tick(): Promise<void> {
     const config = await getConfig();
     const session = await getBackendSession();
     if (!session || session.user.id !== state.userId) {
-      await save({ ...state, enabled: false, lastError: "TNND account changed. Start the global runner again." });
-      await chrome.alarms.clear(ALARM);
+      await stop();
       return;
     }
     // The user's global master switch is still a hard stop.
