@@ -116,6 +116,9 @@ const chatLangEn = document.getElementById("chatLangEn") as HTMLInputElement;
 const saveChat = document.getElementById("saveChat") as HTMLButtonElement;
 const chatStatus = document.getElementById("chatStatus")!;
 const syncCurrentChat = document.getElementById("syncCurrentChat") as HTMLButtonElement;
+const startGlobalExisting = document.getElementById("startGlobalExisting") as HTMLButtonElement;
+const stopGlobalExisting = document.getElementById("stopGlobalExisting") as HTMLButtonElement;
+const globalExistingStatus = document.getElementById("globalExistingStatus")!;
 const startNewMatchObservation = document.getElementById("startNewMatchObservation") as HTMLButtonElement;
 const stopNewMatchObservation = document.getElementById("stopNewMatchObservation") as HTMLButtonElement;
 const newMatchObservationStatus = document.getElementById("newMatchObservationStatus")!;
@@ -666,6 +669,43 @@ exportButton.addEventListener("click", () => void exportDiagnostics().catch((err
   status.textContent = error instanceof Error ? error.message : "Could not export diagnostics.";
   exportButton.disabled = false;
 }));
+interface GlobalExistingControlResponse {
+  ok?: boolean;
+  error?: string;
+  state?: { enabled: boolean; tabId: number | null; lastRef: string | null; lastVisitAt: string | null; lastError: string | null };
+}
+
+async function refreshGlobalExisting(): Promise<void> {
+  const response = await chrome.runtime.sendMessage({ type: "TNND_GLOBAL_EXISTING_STATE" }) as GlobalExistingControlResponse;
+  if (!response?.ok || !response.state) { globalExistingStatus.textContent = response?.error ?? "Cannot read global existing state."; return; }
+  const current = response.state;
+  startGlobalExisting.disabled = current.enabled;
+  stopGlobalExisting.disabled = !current.enabled;
+  globalExistingStatus.textContent = current.enabled
+    ? `Global runner active · dedicated Tinder tab ${current.tabId ?? "starting"} · last visit ${current.lastVisitAt ? new Date(current.lastVisitAt).toLocaleString() : "not yet"}${current.lastError ? ` · ${current.lastError}` : ""}. Chrome must stay open.`
+    : "Global runner stopped. Individual chat auto-replies remain controlled by their own settings.";
+}
+
+startGlobalExisting.addEventListener("click", () => {
+  void (async () => {
+    if (!window.confirm("Start a dedicated background Tinder tab cycling through your AI-managed active existing conversations? TNND can SEND replies to new incoming messages in eligible chats. Manual/blocked chats remain excluded. Chrome must stay open.")) return;
+    startGlobalExisting.disabled = true;
+    const response = await chrome.runtime.sendMessage({ type: "TNND_GLOBAL_EXISTING_START" }) as GlobalExistingControlResponse;
+    if (!response?.ok) throw new Error(response?.error ?? "Could not start existing conversation runner.");
+    await refreshGlobalExisting();
+  })().catch(error => { globalExistingStatus.textContent = error instanceof Error ? error.message : "Start failed."; })
+    .finally(() => void refreshGlobalExisting());
+});
+stopGlobalExisting.addEventListener("click", () => {
+  void (async () => {
+    stopGlobalExisting.disabled = true;
+    const response = await chrome.runtime.sendMessage({ type: "TNND_GLOBAL_EXISTING_STOP" }) as GlobalExistingControlResponse;
+    if (!response?.ok) throw new Error(response?.error ?? "Could not stop existing conversation runner.");
+    await refreshGlobalExisting();
+  })().catch(error => { globalExistingStatus.textContent = error instanceof Error ? error.message : "Stop failed."; })
+    .finally(() => void refreshGlobalExisting());
+});
+
 interface NewMatchObservationResponse { ok?: boolean; error?: string; state?: { enabled: boolean; seenRefs: string[]; pendingRefs: string[]; baselineReady: boolean } }
 
 async function renderNewMatchObservation(): Promise<void> {
@@ -700,6 +740,7 @@ stopNewMatchObservation.addEventListener("click", () => {
 });
 
 void renderNewMatchObservation();
+void refreshGlobalExisting();
 void refreshBackendAuth();
 void loadCurrentChat();
 void loadDiagnosticView();
