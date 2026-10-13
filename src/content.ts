@@ -448,7 +448,6 @@ async function startFirstMessage(expectedThreadKey: string): Promise<{ ok: boole
     const conversationRef = currentConversationRef();
     const config = await getContentConfig();
     const threadKey = tinderThreadKeyFromPath(location.pathname);
-    const diagnostic = adapter.diagnose();
     const state = await getState();
     if (!conversationRef || !config || !state) return { ok: false, error: "Open the Tinder chat and connect TNND first." };
 
@@ -460,7 +459,7 @@ async function startFirstMessage(expectedThreadKey: string): Promise<{ ok: boole
       sameThread: expectedThreadKey === threadKey && currentConversationRef() === conversationRef,
       composerFound: adapter.diagnose().composerFound,
       visibleMessageCandidates: adapter.diagnose().visibleCandidateCount,
-      savedConversationMessages: permission?.allowed ? 0 : Math.max(1, permission?.savedMessageCount ?? 1),
+      savedConversationMessages: permission?.savedMessageCount ?? 0,
       aiManagedAndActive: permission?.ok === true && permission.allowed === true,
       globalAutomationEnabled: config.automation.enabled,
       chatAutomationEnabled: perChatEnabled === true,
