@@ -587,8 +587,16 @@ saveChat.addEventListener("click", () => {
     if (!currentThreadKey) throw new Error("No Tinder conversation is currently detected.");
     saveChat.disabled = true;
     chatStatus.textContent = "Saving chat instructions…";
-    await saveChatSettings(currentThreadKey, readChatSettings());
-    chatStatus.textContent = "Chat-specific instructions saved.";
+    const settings = readChatSettings();
+    await saveChatSettings(currentThreadKey, settings);
+    if (settings.enabled) {
+      const ref = (() => {
+        try { return decodeURIComponent(new URL(currentThreadKey, "https://tinder.com").pathname.slice("/app/messages/".length)); }
+        catch { return ""; }
+      })();
+      if (ref) await chrome.runtime.sendMessage({ type: "TNND_EXISTING_RUNNER_CLEAR_PAUSE", ref });
+    }
+    chatStatus.textContent = "Chat-specific instructions saved. If automatic replies were enabled, a previous runner stop lock was cleared for this chat.";
   })().catch((error) => {
     chatStatus.textContent = error instanceof Error ? error.message : "Could not save chat settings.";
   }).finally(() => {
