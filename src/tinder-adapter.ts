@@ -1,9 +1,15 @@
 import { hashTinderThreadKey, tinderThreadKeyFromPath } from "./tinder-thread-identity";
+import { classifyTinderPath } from "./tinder-state-machine";
 export interface ConversationSnapshot {
   threadKey: string;
   context: string;
   latestIncomingKey: string;
   latestIncomingText: string;
+}
+
+export interface TinderVisibleMessage {
+  direction: "me" | "them";
+  text: string;
 }
 
 export type TinderViewState = "discovery" | "inbox" | "conversation" | "unknown";
@@ -270,7 +276,15 @@ function detectView(composer: HTMLElement | null): { view: TinderViewState; sign
 
   if (composer) {
     signals.push("visible-message-composer");
-    if (/message|chat|match/.test(path)) signals.push(`path:${path}`);
+    if (/message|chat|match/.test(path)) signals.push("conversation-path");
+    return { view: "conversation", signals };
+  }
+  // A confirmed thread route identifies the conversation even if Tinder has
+  // hidden or replaced the composer. Message extraction still requires
+  // independently recognized selectors; never infer sending safety here.
+  if (classifyTinderPath(path).state === "conversation") {
+    signals.push("conversation-path");
+    signals.push("composer-missing");
     return { view: "conversation", signals };
   }
 
@@ -356,6 +370,22 @@ function navigationCandidates(): TinderNavigationCandidate[] {
 }
 
 export class TinderDomAdapter {
+  /**
+   * Visible transcript extraction, independent from whether the last message
+   * was incoming. This is read-only, uses existing observed selectors and
+   * refuses unknown message directions.
+   */
+  readVisibleMessages(): TinderVisibleMessage[] {
+    if (classifyTinderPath(location.pathname).state !== "conversation") return [];
+    const composer = findComposer();
+    if (!composer) return [];
+    return candidateMessages(composer)
+      .map((element) => ({ text: textOf(element), direction: directionOf(element) }))
+      .filter((message): message is TinderVisibleMessage =>
+        (message.direction === "me" || message.direction === "them") && Boolean(message.text)
+      );
+  }
+
   read(): ConversationSnapshot | null {
     const composer = findComposer();
     if (!composer) return null;
