@@ -1,6 +1,7 @@
 import { hashTinderThreadKey, tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import { classifyTinderPath } from "./tinder-state-machine";
 import { directionFromTinderHints } from "./tinder-message-evidence";
+import { directionFromChatColumnGeometry, directionFromVerifiedTinderClasses, messageBubbleSized } from "./tinder-message-layout";
 import { unansweredStatus, lastUnansweredEvidence, type UnansweredStatus } from "./tinder-unanswered-backlog";
 export interface ConversationSnapshot {
   threadKey: string;
@@ -165,7 +166,41 @@ function findComposer(): HTMLElement | null {
   return findComposerMatch()?.element ?? null;
 }
 
+/** A Tinder message list item may occupy the FULL chat width even though
+ * the visible text bubble is anchored to the left or right. Look for a
+ * message-sized descendant before using geometry; never infer authorship
+ * from the main/page center (which may include Tinder's profile panel).
+ */
+function visibleBubbleRect(element: HTMLElement, composerRect: DOMRect): DOMRect | null {
+  const fullText = textOf(element);
+  if (!fullText) return null;
+  const nodes = [element, ...Array.from(element.querySelectorAll<HTMLElement>("span, p, div, [role='paragraph']"))];
+  const possible: DOMRect[] = [];
+  for (const node of nodes.slice(0, 120)) {
+    if (!visible(node) || textOf(node) !== fullText) continue;
+    const rect = node.getBoundingClientRect();
+    if (!messageBubbleSized(rect, composerRect) || rect.height < 2) continue;
+    possible.push(rect);
+  }
+  // Prefer the actual small text/bubble over a broad enclosing row.
+  // An unresolvable full-width row intentionally remains "unknown".
+  possible.sort((a, b) => a.width - b.width);
+  return possible[0] ?? null;
+}
+
 function directionOf(element: HTMLElement): Direction {
+  // Tinder's actual Messages DOM (from redacted user diagnostics) uses
+  // <ol aria-label="Messages"><li><div role="article"> containing
+  // .msg--received for them vs chat-bubble-send styling for me.
+  // Those are stronger evidence than page geometry or broad wrappers.
+  const article = element.closest<HTMLElement>('[role="article"]');
+  if (article?.closest('ol[aria-label="Messages" i]')) {
+    const markers = Array.from(article.querySelectorAll<HTMLElement>(
+      '.msg, .msgBackground--received, [class*="chat-bubble"]'
+    )).map(node => node.className?.toString() ?? "");
+    const direction = directionFromVerifiedTinderClasses(markers);
+    if (direction !== "unknown") return direction;
+  }
   let current: HTMLElement | null = element;
   const tokens: string[] = [];
   for (let i = 0; current && i < 4; i++, current = current.parentElement) {
@@ -175,29 +210,44 @@ function directionOf(element: HTMLElement): Direction {
       current.getAttribute("aria-label") ?? ""
     );
   }
-  // A shared bubble wrapper can mention "Sent at" or "sender" for any
-  // message; those generic strings must never imply a message is ours.
-  const direction = directionFromTinderHints(tokens);
-  if (direction !== "unknown") return direction;
+  const hinted = directionFromTinderHints(tokens);
+  const composer = findComposer();
+  if (!composer) return hinted;
+  const composerRect = composer.getBoundingClientRect();
+  const bubbleRect = visibleBubbleRect(element, composerRect);
+  const positioned = bubbleRect
+    ? directionFromChatColumnGeometry(bubbleRect, composerRect)
+    : "unknown";
+  // If a DOM class claims "outgoing" but the actual bubble is clearly on
+  // Tinder's incoming side (or vice versa), don't risk a false classification.
+  if (hinted !== "unknown" && positioned !== "unknown" && hinted !== positioned) return "unknown";
+  return hinted !== "unknown" ? hinted : positioned;
+}
 
-  const root = document.querySelector("main") ?? document.body;
-  const rootRect = root.getBoundingClientRect();
-  const rect = element.getBoundingClientRect();
-  const center = rect.left + rect.width / 2;
-  const rootCenter = rootRect.left + rootRect.width / 2;
-  const threshold = Math.max(24, rootRect.width * 0.08);
-  if (center > rootCenter + threshold) return "me";
-  if (center < rootCenter - threshold) return "them";
-  return "unknown";
+function messageText(element: HTMLElement): string {
+  // Exact message text, excluding article timestamps, hidden accessibility
+  // metadata, delivery statuses and profile UI.
+  if (element.matches('[role="article"]') && element.closest('ol[aria-label="Messages" i]')) {
+    const body = element.querySelector<HTMLElement>('.msg .text');
+    return body ? textOf(body) : "";
+  }
+  return textOf(element);
 }
 
 function candidateMessages(composer: HTMLElement): HTMLElement[] {
+  // Prioritize the observed Tinder transcript, one article per message.
+  // Broad aria-label selectors alone can pick wrappers or date/status labels.
+  const verified = Array.from(document.querySelectorAll<HTMLElement>(
+    'ol[aria-label="Messages" i] [role="article"]'
+  )).filter(element => visible(element) && !element.contains(composer) && Boolean(messageText(element)));
+  if (verified.length) return verified.slice(-40);
+
   const seen = new Set<HTMLElement>();
   const candidates: HTMLElement[] = [];
   for (const selector of MESSAGE_SELECTORS) {
     for (const element of Array.from(document.querySelectorAll<HTMLElement>(selector))) {
       if (seen.has(element) || element.contains(composer) || composer.contains(element) || element.offsetParent === null) continue;
-      const text = textOf(element);
+      const text = messageText(element);
       if (!text || text.length > 1200) continue;
       seen.add(element);
       candidates.push(element);
@@ -391,7 +441,7 @@ export class TinderDomAdapter {
     const composer = findComposer();
     if (!composer) return [];
     return candidateMessages(composer)
-      .map((element) => ({ text: textOf(element), direction: directionOf(element) }))
+      .map((element) => ({ text: messageText(element), direction: directionOf(element) }))
       .filter((message): message is TinderVisibleMessage =>
         (message.direction === "me" || message.direction === "them") && Boolean(message.text)
       );
@@ -404,7 +454,7 @@ export class TinderDomAdapter {
     const composer = findComposer();
     if (!composer) return { status: "composer-missing", snapshot: null };
     const messages = candidateMessages(composer)
-      .map(element => ({ text: textOf(element), direction: directionOf(element) }));
+      .map(element => ({ text: messageText(element), direction: directionOf(element) }));
     const status = unansweredStatus(messages);
     if (status !== "unanswered") return { status, snapshot: null };
     const evidence = lastUnansweredEvidence(messages);
