@@ -26,7 +26,7 @@ export function prepareReadOnlyImport(
   if (!Number.isFinite(Date.parse(importedAt))) throw new Error("invalid_import_timestamp");
   if (!rawMessages.length || rawMessages.length > 40) throw new Error("invalid_message_count");
   const unique = new Set<string>();
-  const messages: ConversationMessageDelta[] = rawMessages.map(message => {
+  const messages: ConversationMessageDelta[] = rawMessages.map((message, index) => {
     if (message.direction !== "me" && message.direction !== "them") throw new Error("unknown_message_direction");
     const key = message.key.trim();
     const text = message.text.trim();
@@ -38,7 +38,10 @@ export function prepareReadOnlyImport(
       externalMessageId: key,
       direction: message.direction === "me" ? "outgoing" : "incoming",
       text,
-      sentAt: importedAt
+      // The source DOM has no verified sent time. Preserve *observed order*
+      // deterministically instead of assigning the same timestamp to every
+      // message (which caused the API's sort-by-time fallback to scramble it).
+      sentAt: new Date(Date.parse(importedAt) + index).toISOString()
     };
   });
   return {

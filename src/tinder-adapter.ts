@@ -189,17 +189,23 @@ function directionOf(element: HTMLElement): Direction {
 
 function candidateMessages(composer: HTMLElement): HTMLElement[] {
   const seen = new Set<HTMLElement>();
-  const result: HTMLElement[] = [];
+  const candidates: HTMLElement[] = [];
   for (const selector of MESSAGE_SELECTORS) {
     for (const element of Array.from(document.querySelectorAll<HTMLElement>(selector))) {
       if (seen.has(element) || element.contains(composer) || composer.contains(element) || element.offsetParent === null) continue;
       const text = textOf(element);
       if (!text || text.length > 1200) continue;
       seen.add(element);
-      result.push(element);
+      candidates.push(element);
     }
   }
-  return result.slice(-40);
+  // Multiple broad selectors may match the same bubble *and its wrappers*.
+  // Importing both creates duplicated, concatenated messages and scrambles the
+  // "last received" calculation. Keep only the deepest matched element.
+  const atomic = candidates.filter(element => !candidates.some(other => other !== element && element.contains(other)));
+  // Selector priority is not chronological order. Preserve actual DOM order.
+  atomic.sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
+  return atomic.slice(-40);
 }
 
 function simpleHash(value: string): string {

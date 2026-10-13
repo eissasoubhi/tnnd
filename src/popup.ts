@@ -111,6 +111,8 @@ const chatLangEn = document.getElementById("chatLangEn") as HTMLInputElement;
 const saveChat = document.getElementById("saveChat") as HTMLButtonElement;
 const chatStatus = document.getElementById("chatStatus")!;
 const syncCurrentChat = document.getElementById("syncCurrentChat") as HTMLButtonElement;
+const importMatchName = document.getElementById("importMatchName") as HTMLInputElement;
+const importMatchAge = document.getElementById("importMatchAge") as HTMLInputElement;
 const manualSyncStatus = document.getElementById("manualSyncStatus")!;
 let currentThreadKey: string | null = null;
 
@@ -472,6 +474,12 @@ syncCurrentChat.addEventListener("click", () => {
     if (snapshot.threadKey !== canonicalKey || !snapshot.conversationRef || !snapshot.messages?.length) {
       throw new Error("The Tinder conversation changed or no messages were detected. Reopen TNND on that chat.");
     }
+    const matchName = importMatchName.value.replace(/\s+/g, " ").trim();
+    const matchAge = importMatchAge.value.trim() ? Number(importMatchAge.value) : null;
+    if (matchName.length > 80 || (matchAge !== null && (!Number.isInteger(matchAge) || matchAge < 18 || matchAge > 120))) {
+      throw new Error("Match name must be under 80 characters; age must be between 18 and 120.");
+    }
+    if (matchAge !== null && !matchName) throw new Error("Enter a match name when providing an age.");
     const existing = await loadTinderConversationManagement(snapshot.conversationRef);
     const payload = prepareReadOnlyImport(snapshot.messages, Boolean(existing.conversationId), new Date().toISOString());
     const result = await syncConversationDelta(
@@ -480,7 +488,23 @@ syncCurrentChat.addEventListener("click", () => {
       payload.requestedStatus,
       payload.nextCursor
     );
-    manualSyncStatus.textContent = `Imported ${payload.messages.length} visible messages to TNND Web. Conversation status: ${result.status}. AI takeover is not enabled. Refresh TNND Web → Conversations to inspect drafts.`;
+    let identityStatus = "";
+    if (matchName) {
+      const session = await getBackendSession();
+      if (!session) throw new Error("Import succeeded, but TNND session expired before saving the name. Reconnect and retry.");
+      try {
+        const identityResponse = await fetch(`http://127.0.0.1:4000/api/v1/conversations/${encodeURIComponent(result.conversationId)}/identity`, {
+          method: "PUT",
+          headers: { authorization: `Bearer ${session.token}`, "content-type": "application/json" },
+          body: JSON.stringify({ label: matchName, age: matchAge })
+        });
+        if (!identityResponse.ok) throw new Error("Unable to save match identity.");
+        identityStatus = ` Match label saved: ${matchName}${matchAge ? ` · ${matchAge}` : ""}.`;
+      } catch {
+        identityStatus = " Messages imported, but the name could not be saved. Use Set chat name & age in TNND Web.";
+      }
+    }
+    manualSyncStatus.textContent = `Imported ${payload.messages.length} visible messages to TNND Web. Conversation status: ${result.status}.${identityStatus} AI takeover is not enabled. Refresh TNND Web → Conversations to inspect drafts.`;
     await renderSyncStatus();
   })().catch(error => {
     manualSyncStatus.textContent = error instanceof Error ? error.message : "Read-only import failed.";
