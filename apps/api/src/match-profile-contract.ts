@@ -75,7 +75,7 @@ export function normalizeTinderPhotoUrl(value: unknown): string | undefined {
   if (typeof value !== "string" || !value || value.length > 1600) return undefined;
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" || url.username || url.password || !/(^|\\.)(?:gotinder|tinder)\\.com$/i.test(url.hostname)) return undefined;
+    if (url.protocol !== "https:" || url.username || url.password || !/(^|\.)(?:gotinder|tinder)\.com$/i.test(url.hostname)) return undefined;
     return url.href;
   } catch { return undefined; }
 }
