@@ -858,18 +858,38 @@ window.setInterval(() => {
   void refreshGlobalExisting().catch(() => { /* Keep last known operational state. */ });
 }, 3_000);
 
-interface NewMatchObservationResponse { ok?: boolean; error?: string; state?: { enabled: boolean; autoSendEnabled: boolean; seenRefs: string[]; pendingRefs: string[]; completedRefs: string[]; failedRefs: string[]; lastResult: string | null; baselineReady: boolean } }
+interface NewMatchObservationResponse { ok?: boolean; error?: string; state?: { enabled: boolean; mode?: "existing" | "future"; autoSendEnabled: boolean; seenRefs: string[]; pendingRefs: string[]; completedRefs: string[]; failedRefs: string[]; lastResult: string | null; baselineReady: boolean } }
 
 async function renderNewMatchObservation(): Promise<void> {
   const result = await chrome.runtime.sendMessage({ type: "TNND_NEW_MATCH_OBSERVATION_STATE" }) as NewMatchObservationResponse;
   if (!result?.ok || !result.state) { newMatchObservationStatus.textContent = "Unable to read new match detection state."; return; }
   const state = result.state;
   startNewMatchObservation.disabled = state.enabled;
+  (document.getElementById("startExistingMatchBatch") as HTMLButtonElement).disabled = state.enabled;
   stopNewMatchObservation.disabled = !state.enabled;
   newMatchObservationStatus.textContent = state.enabled
-    ? `New-match AI active · ${state.seenRefs.length} known tiles · ${state.pendingRefs.length} queued · ${state.completedRefs.length} sent · ${state.failedRefs.length} skipped · maximum 5 first messages/day. ${state.lastResult ?? ""}`
+    ? `${state.mode === "existing" ? "Existing-match opener" : "Future-match detector"} active · ${state.seenRefs.length} known match IDs · ${state.pendingRefs.length} queued · ${state.completedRefs.length} sent · ${state.failedRefs.length} skipped · maximum 5 first messages/day. ${state.lastResult ?? ""}`
     : "New-match AI stopped. Existing chat automation is unaffected.";
 }
+
+(document.getElementById("startExistingMatchBatch") as HTMLButtonElement).addEventListener("click", () => {
+  void (async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id || !isTinderUrl(tab.url)) throw new Error("Open Tinder → Matches in the only Tinder tab first.");
+    const snapshot = await chrome.tabs.sendMessage(tab.id, { type: "TNND_GET_VISIBLE_THREAD_LINKS" }) as {
+      ok?: boolean; refs?: string[]; error?: string
+    };
+    if (!snapshot?.ok || !snapshot.refs?.length) throw new Error(snapshot?.error ?? "No visible Tinder match tiles found.");
+    if (!window.confirm(`START first AI messages to up to five ALREADY EXISTING Tinder Matches per day? ${snapshot.refs.length} visible match IDs found. TNND will inspect each exact chat and send ONLY if it is empty and authorized. Existing conversations, manual exclusions and uncertain sends are skipped. The other global runner must be stopped.`)) return;
+    const response = await chrome.runtime.sendMessage({
+      type: "TNND_EXISTING_MATCHES_START", tabId: tab.id, refs: snapshot.refs
+    }) as NewMatchObservationResponse;
+    if (!response?.ok) throw new Error(response?.error ?? "Could not start existing match opener.");
+    await renderNewMatchObservation();
+  })().catch(error => {
+    newMatchObservationStatus.textContent = error instanceof Error ? error.message : "Existing match opener failed.";
+  });
+});
 
 startNewMatchObservation.addEventListener("click", () => {
   void (async () => {
