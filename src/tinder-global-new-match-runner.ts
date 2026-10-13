@@ -4,6 +4,7 @@ import { stopNewMatchObservation } from "./tinder-new-match-observation";
 import { assertTinderContentBridge, isMissingTinderReceiver, describeTinderBridgeError } from "./tinder-tab-connection";
 import { startExistingRunner } from "./tinder-global-existing-runner";
 import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
+import { classifyExistingMatchPreparation } from "./tinder-existing-match-preparation-policy";
 
 const ALARM = "tnnd.globalNewMatches.cycle";
 const OWNED_TAB = "tnnd.newMatchOwnedTab.v1";
@@ -29,31 +30,36 @@ async function prepareNewMatch(ref: string, token: string): Promise<string> {
   const lookup = await fetchBackend(`/api/v1/conversations/by-external-thread?externalThreadId=${encodeURIComponent(ref)}`, token);
   if (!lookup.ok && lookup.status !== 404) throw new Error("Cannot verify server conversation");
   const conversation = lookup.ok ? lookup.data.conversation : null;
+  let conversationId = "";
+  let needsAuthorization = false;
   if (conversation) {
-    if (!conversation.id) throw new Error("Server conversation has no ID");
-    if (conversation.explicitlySelected || !["unmanaged", undefined].includes(conversation.managementState)
-        || ["disabled", "archived", "moved-off-tinder", "action-required", "waiting-for-user"].includes(conversation.status)) {
-      throw new Error("Chat was already assigned or explicitly excluded; will not override individual settings");
-    }
+    if (typeof conversation.id !== "string" || !conversation.id) throw new Error("Server conversation has no ID");
+    if (conversation.externalThreadId !== ref) throw new Error("Existing conversation has a different Tinder thread ID");
+    const decision = classifyExistingMatchPreparation(conversation);
+    if (decision.kind === "blocked") throw new Error(decision.reason);
     const detail = await fetchBackend(`/api/v1/conversations/${encodeURIComponent(conversation.id)}`, token);
     if (!detail.ok || !Array.isArray(detail.data.conversation?.messages)
         || detail.data.conversation.messages.length > 0) throw new Error("Existing chat is not proven empty");
-  }
-  let conversationId: string = typeof conversation?.id === "string" ? conversation.id : "";
-  if (!conversationId) {
+    conversationId = conversation.id;
+    // Reuse a previously authorized AI-managed match without resetting its
+    // selectedAt, status or management settings. No status PATCH is needed.
+    needsAuthorization = decision.kind === "authorize-unmanaged";
+  } else {
     const created = await fetchBackend("/api/v1/conversations/sync", token, "POST", {
       externalThreadId: ref, status: "active", messages: []
     });
     if (!created.ok || typeof created.data.conversationId !== "string") throw new Error("Could not create new Tinder match conversation");
     conversationId = created.data.conversationId;
-  } else {
-    const activated = await fetchBackend(`/api/v1/conversations/${encodeURIComponent(conversationId)}`, token, "PATCH", { status: "active" });
-    if (!activated.ok) throw new Error("Could not activate new match conversation");
+    needsAuthorization = true;
   }
-  const managed = await fetchBackend("/api/v1/conversations/management", token, "PUT", {
-    updates: [{ conversationId, managementState: "ai-managed" }]
-  });
-  if (!managed.ok) throw new Error("Could not authorize this match for AI management");
+  if (needsAuthorization) {
+    const managed = await fetchBackend("/api/v1/conversations/management", token, "PUT", {
+      updates: [{ conversationId, managementState: "ai-managed" }]
+    });
+    if (!managed.ok) throw new Error("Could not authorize this match for AI management");
+  }
+  // The separate first-message permission guard validates this EXACT thread,
+  // the selected user's preferences and that no outgoing message was claimed.
   return conversationId;
 }
 
