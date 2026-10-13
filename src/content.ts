@@ -1,5 +1,6 @@
 import { TinderDomAdapter } from "./tinder-adapter";
 import { readVisibleTinderMatchIdentity } from "./tinder-chat-identity";
+import { visibleTinderThreadRefs } from "./tinder-visible-thread-links";
 import { firstMessageAttemptKey, firstMessageBlocker, firstMessageContext } from "./tinder-first-message";
 import { syncConversationDelta } from "./conversation-sync";
 import { observeTinderRuntime } from "./tinder-runtime-observation";
@@ -15,6 +16,8 @@ const adapter = new TinderDomAdapter();
 let busy = false;
 let scanTimer: number | undefined;
 let runtimeReadBusy = false;
+let lastNewMatchObservation = "";
+let lastNewMatchObservationAt = 0;
 let identitySyncBusy = false;
 let lastIdentityFingerprint = "";
 let lastIdentityAttemptAt = 0;
@@ -321,6 +324,19 @@ async function observeVisibleIdentity(): Promise<void> {
   } finally { identitySyncBusy = false; }
 }
 
+async function observeNewMatchLinks(): Promise<void> {
+  if (!hasLiveExtensionContext()) return;
+  const pathname = location.pathname;
+  if (![ "/app/messages", "/app/matches", "/app/recs" ].includes(pathname)) return;
+  const refs = visibleTinderThreadRefs();
+  if (!refs.length) return;
+  const fingerprint = JSON.stringify(refs);
+  if (fingerprint === lastNewMatchObservation && Date.now() - lastNewMatchObservationAt < 30_000) return;
+  lastNewMatchObservation = fingerprint;
+  lastNewMatchObservationAt = Date.now();
+  await sendRuntimeMessage({ type: "TNND_NEW_MATCH_LINKS_SEEN", refs });
+}
+
 async function observeRuntimeReadMode(): Promise<void> {
   if (runtimeReadBusy || !hasLiveExtensionContext()) return;
   const observation = observeTinderRuntime(adapter);
@@ -545,6 +561,7 @@ function scheduleScan(): void {
   if (!hasLiveExtensionContext()) return;
   void observeRuntimeReadMode();
   void observeVisibleIdentity().catch(() => undefined);
+  void observeNewMatchLinks().catch(() => undefined);
   if (scanTimer) window.clearTimeout(scanTimer);
   scanTimer = window.setTimeout(() => {
     if (!hasLiveExtensionContext()) return;

@@ -1,5 +1,6 @@
 import { TinderDomAdapter } from "./tinder-adapter";
 import { readVisibleTinderMatchIdentity } from "./tinder-chat-identity";
+import { visibleTinderThreadRefs } from "./tinder-visible-thread-links";
 import { detectTinderChat } from "./tinder-chat-detection";
 import { buildNormalizedMessageKeys } from "./tinder-message-key";
 import { classifyTinderPath } from "./tinder-state-machine";
@@ -14,6 +15,16 @@ const tinderJobKinds = new Set<TinderJobKind>(["scan-inbox", "process-thread", "
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
   if (!message || typeof message !== "object") return false;
   const input = message as { type?: string; job?: unknown; jobId?: unknown; conversationRef?: unknown };
+
+  if (input.type === "TNND_GET_VISIBLE_THREAD_LINKS") {
+    const state = classifyTinderPath(location.pathname);
+    if (state.state !== "inbox" && state.state !== "discovery") {
+      sendResponse({ ok: false, error: "Open Tinder Messages before arming new match detection." });
+      return false;
+    }
+    sendResponse({ ok: true, refs: visibleTinderThreadRefs() });
+    return false;
+  }
 
   if (input.type === "TNND_GET_THREAD_INFO") {
     const diagnostics = adapter.diagnose();
