@@ -3,6 +3,7 @@ import { getApiKey, getBackendProfileCache, getBackendSession, getConfig, saveAp
 import { profileReadiness } from "./setup-progress";
 import { mountTextingStyleControls } from "./texting-options";
 import { MAX_FIRST_MESSAGE_DAILY_LIMIT, firstMessageDailyLimit } from "./tinder-first-message-daily-limit";
+import { openerDelayWindow } from "./tinder-opener-timing";
 import type { AppConfig, ContactPreference, EmojiLevel, MessageLength, Tone } from "./types";
 
 function el<T extends HTMLElement>(id: string): T {
@@ -18,7 +19,7 @@ const f = {
   tone: el<HTMLSelectElement>("tone"), messageLength: el<HTMLSelectElement>("messageLength"), flirtLevel: el<HTMLInputElement>("flirtLevel"), flirtValue: el<HTMLElement>("flirtValue"), humorLevel: el<HTMLInputElement>("humorLevel"), humorValue: el<HTMLElement>("humorValue"), emojiLevel: el<HTMLSelectElement>("emojiLevel"), replyCount: el<HTMLSelectElement>("replyCount"),
   langFr: el<HTMLInputElement>("langFr"), langDarija: el<HTMLInputElement>("langDarija"), langEn: el<HTMLInputElement>("langEn"), preferredWords: el<HTMLTextAreaElement>("preferredWords"), avoidedWords: el<HTMLTextAreaElement>("avoidedWords"), extraInstructions: el<HTMLTextAreaElement>("extraInstructions"),
   instagram: el<HTMLInputElement>("instagram"), whatsapp: el<HTMLInputElement>("whatsapp"), contactPreference: el<HTMLSelectElement>("contactPreference"),
-  autoEnabled: el<HTMLInputElement>("autoEnabled"), replyDelayMinSeconds: el<HTMLInputElement>("replyDelayMinSeconds"), replyDelayMaxSeconds: el<HTMLInputElement>("replyDelayMaxSeconds"), quietHoursEnabled: el<HTMLInputElement>("quietHoursEnabled"), quietStart: el<HTMLInputElement>("quietStart"), quietEnd: el<HTMLInputElement>("quietEnd"), maxAutoRepliesPerDay: el<HTMLInputElement>("maxAutoRepliesPerDay"), maxFirstMessagesPerDay: el<HTMLInputElement>("maxFirstMessagesPerDay"),
+  autoEnabled: el<HTMLInputElement>("autoEnabled"), replyDelayMinSeconds: el<HTMLInputElement>("replyDelayMinSeconds"), replyDelayMaxSeconds: el<HTMLInputElement>("replyDelayMaxSeconds"), openerDelayMinSeconds: el<HTMLInputElement>("openerDelayMinSeconds"), openerDelayMaxSeconds: el<HTMLInputElement>("openerDelayMaxSeconds"), quietHoursEnabled: el<HTMLInputElement>("quietHoursEnabled"), quietStart: el<HTMLInputElement>("quietStart"), quietEnd: el<HTMLInputElement>("quietEnd"), maxAutoRepliesPerDay: el<HTMLInputElement>("maxAutoRepliesPerDay"), maxFirstMessagesPerDay: el<HTMLInputElement>("maxFirstMessagesPerDay"),
   exportProfile: el<HTMLButtonElement>("exportProfile"), importProfile: el<HTMLButtonElement>("importProfile"), importProfileFile: el<HTMLInputElement>("importProfileFile"), extensionVersion: el<HTMLElement>("extensionVersion"), aiStatus: el<HTMLElement>("aiStatus"),
   testGemini: el<HTMLButtonElement>("testGemini"), status: el<HTMLElement>("status")
 };
@@ -33,6 +34,12 @@ function readConfig(): AppConfig {
   const rawMax = Math.max(0, num(f.replyDelayMaxSeconds, 60));
   const replyDelayMinSeconds = Math.min(rawMin, rawMax);
   const replyDelayMaxSeconds = Math.max(rawMin, rawMax);
+  const rawOpenerMin = Number(f.openerDelayMinSeconds.value);
+  const rawOpenerMax = Number(f.openerDelayMaxSeconds.value);
+  if (![rawOpenerMin, rawOpenerMax].every(value => Number.isInteger(value) && value >= 1 && value <= 60)) {
+    throw new Error("Opening-message gap must be 1–60 whole seconds.");
+  }
+  const [openerDelayMinSeconds, openerDelayMaxSeconds] = openerDelayWindow({ openerDelayMinSeconds: rawOpenerMin, openerDelayMaxSeconds: rawOpenerMax });
   const rawFirstMessageLimit = Number(f.maxFirstMessagesPerDay.value);
   if (!Number.isInteger(rawFirstMessageLimit) || rawFirstMessageLimit < 1 || rawFirstMessageLimit > MAX_FIRST_MESSAGE_DAILY_LIMIT) {
     throw new Error(`First-message daily limit must be a whole number from 1 to ${MAX_FIRST_MESSAGE_DAILY_LIMIT}.`);
@@ -45,7 +52,7 @@ function readConfig(): AppConfig {
     preferredWords: f.preferredWords.value.trim(), avoidedWords: f.avoidedWords.value.trim(), extraInstructions: f.extraInstructions.value.trim(),
     textingStyle: textingStyle.read(),
     identity: { ...(identityCache ?? { firstName: "", age: "", city: "", origin: "", occupation: "", interests: "", aboutMe: "" }), instagram: f.instagram.value.trim(), whatsapp: f.whatsapp.value.trim(), contactPreference: f.contactPreference.value as ContactPreference },
-    automation: { enabled: f.autoEnabled.checked, replyDelayMinSeconds, replyDelayMaxSeconds, quietHoursEnabled: f.quietHoursEnabled.checked, quietStart: f.quietStart.value, quietEnd: f.quietEnd.value, maxAutoRepliesPerDay: num(f.maxAutoRepliesPerDay, 40), maxFirstMessagesPerDay: rawFirstMessageLimit }
+    automation: { enabled: f.autoEnabled.checked, replyDelayMinSeconds, replyDelayMaxSeconds, openerDelayMinSeconds, openerDelayMaxSeconds, quietHoursEnabled: f.quietHoursEnabled.checked, quietStart: f.quietStart.value, quietEnd: f.quietEnd.value, maxAutoRepliesPerDay: num(f.maxAutoRepliesPerDay, 40), maxFirstMessagesPerDay: rawFirstMessageLimit }
   };
 }
 
@@ -59,6 +66,9 @@ function applyConfig(c: AppConfig): void {
   f.autoEnabled.checked = c.automation.enabled;
   f.replyDelayMinSeconds.value = String(c.automation.replyDelayMinSeconds ?? (Number.isFinite(legacy) ? Math.max(0, legacy - 15) : 20));
   f.replyDelayMaxSeconds.value = String(c.automation.replyDelayMaxSeconds ?? (Number.isFinite(legacy) ? legacy + 15 : 60));
+  const [openerMin, openerMax] = openerDelayWindow(c.automation);
+  f.openerDelayMinSeconds.value = String(openerMin);
+  f.openerDelayMaxSeconds.value = String(openerMax);
   f.quietHoursEnabled.checked = c.automation.quietHoursEnabled; f.quietStart.value = c.automation.quietStart; f.quietEnd.value = c.automation.quietEnd; f.maxAutoRepliesPerDay.value = String(c.automation.maxAutoRepliesPerDay); f.maxFirstMessagesPerDay.value = String(firstMessageDailyLimit(c.automation.maxFirstMessagesPerDay)); updateRanges();
 }
 
