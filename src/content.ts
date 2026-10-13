@@ -142,12 +142,11 @@ async function getState(): Promise<AutoState | null> {
   const response = await sendRuntimeMessage<{ ok: boolean; state?: AutoState; error?: string }>({ type: "TNND_GET_AUTO_STATE" });
   if (!response) return null;
   if (!response.ok || !response.state) throw new Error(response.error ?? "Could not load TNND automation state.");
-  return response.state.date === today() ? response.state : { date: today(), dailyCount: 0, processed: {} };
+  return response.state;
 }
 
 async function saveState(state: AutoState): Promise<boolean> {
-  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  state.processed = Object.fromEntries(Object.entries(state.processed).filter(([, timestamp]) => timestamp >= cutoff));
+  state.processed = Object.fromEntries(Object.entries(state.processed).slice(-5000));
   const response = await sendRuntimeMessage<{ ok: boolean; error?: string }>({ type: "TNND_SAVE_AUTO_STATE", state });
   if (!response) return false;
   if (!response.ok) throw new Error(response.error ?? "Could not save TNND automation state.");
