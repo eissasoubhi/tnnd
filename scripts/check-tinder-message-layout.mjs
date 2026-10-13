@@ -3,6 +3,7 @@ import test from "node:test";
 import { directionFromChatColumnGeometry, directionFromVerifiedTinderClasses, messageBubbleSized } from "../src/tinder-message-layout.ts";
 import { directionFromTinderHints } from "../src/tinder-message-evidence.ts";
 import { unansweredStatus } from "../src/tinder-unanswered-backlog.ts";
+import { isTinderMessageUiControl, NON_MESSAGE_UI_CONTROL_SELECTOR } from "../src/tinder-message-candidate-filter.ts";
 
 const composer = {left: 80, right: 900, width: 820};
 const bubble = (left, right) => ({left, right, width: right-left});
@@ -83,4 +84,36 @@ test("an empty verified transcript never falls back to page-wide Messages sideba
   assert.match(candidateFn, /for \(const selector of MESSAGE_SELECTORS\)/);
   assert.ok(candidateFn.indexOf("return verified.slice(-40)") < candidateFn.indexOf("for (const selector of MESSAGE_SELECTORS)"));
   assert.match(candidateFn, /visible\(element\) && !element\.contains\(composer\)/);
+});
+
+
+/** Synthetic structure only, modeled after user-provided redacted diagnostics:
+ * 0 verified message articles, 1 generic aria-label match: Send message button.
+ * Never commit raw Tinder HTML, names, thread identifiers or screenshots.
+ */
+test("empty Tinder match: Send message button is NOT counted as a message", () => {
+  const matchesAncestorSelector = (selectors) => ({
+    closest(selector) {
+      const parts = selector.split(",").map(part => part.trim());
+      return selectors.some(part => parts.includes(part)) ? {} : null;
+    }
+  });
+  assert.match(NON_MESSAGE_UI_CONTROL_SELECTOR, /button/);
+  assert.equal(isTinderMessageUiControl(matchesAncestorSelector(["button"])), true);
+  assert.equal(isTinderMessageUiControl(matchesAncestorSelector(["form"])), true);
+  assert.equal(isTinderMessageUiControl(matchesAncestorSelector(['[role="button"]'])), true);
+  assert.equal(isTinderMessageUiControl(matchesAncestorSelector(["nav"])), true);
+  assert.equal(isTinderMessageUiControl(matchesAncestorSelector(['[role="textbox"]'])), true);
+  assert.equal(isTinderMessageUiControl(matchesAncestorSelector([])), false); // real bubble without controls
+});
+
+test("Tinder adapter scopes fallback candidates to the chat pane and filters controls before reading message text", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("../src/tinder-adapter.ts", import.meta.url), "utf8");
+  const fallback = source.slice(source.indexOf("const conversationRoot = composer.closest"), source.indexOf("// Multiple broad selectors"));
+  assert.match(fallback, /composer\.closest<HTMLElement>\("\.chat"\)/);
+  assert.match(fallback, /conversationRoot && !conversationRoot\.contains\(element\)/);
+  assert.match(fallback, /if \(isTinderMessageUiControl\(element\)\) continue;/);
+  assert.ok(fallback.indexOf("isTinderMessageUiControl(element)") < fallback.indexOf("const text = messageText(element)"));
+  assert.match(source, /if \(transcript\) \{[\s\S]*return verified\.slice\(-40\)/);
 });
