@@ -76,13 +76,28 @@ chrome.runtime.onMessage.addListener((message: Request, sender, respond) => {
       const config = await getConfig();
       if (!session) throw new Error("Connect your TNND account before enabling new-match messages.");
       if (!config.automation.enabled) throw new Error("Enable automatic replies in TNND Options first.");
-      return saveNewMatchState(armNewMatchObservation(message.refs, session.user.id));
+      const next = await saveNewMatchState(armNewMatchObservation(message.refs, session.user.id));
+      await chrome.alarms.create("tnnd.globalNewMatches.cycle", { periodInMinutes: 1 });
+      return next;
     }).then(state => respond({ ok: true, state }))
       .catch(error => respond({ ok: false, error: error instanceof Error ? error.message : "arm_failed" }));
     return true;
   }
   if (message.type === "TNND_NEW_MATCH_OBSERVATION_STOP" && popupSender(sender)) {
-    void serialized(async () => saveNewMatchState(stopNewMatchObservation(await readNewMatchState())))
+    void serialized(async () => {
+      const next = await saveNewMatchState(stopNewMatchObservation(await readNewMatchState()));
+      await chrome.alarms.clear("tnnd.globalNewMatches.cycle");
+      const ownedKey = "tnnd.newMatchOwnedTab.v1";
+      const owned = (await chrome.storage.local.get(ownedKey))[ownedKey] as { tabId?: number; ref?: string } | undefined;
+      if (owned?.tabId) {
+        try {
+          const tab = await chrome.tabs.get(owned.tabId);
+          if (tab.url === `https://tinder.com/app/messages/${encodeURIComponent(owned.ref ?? "")}`) await chrome.tabs.remove(owned.tabId);
+        } catch { /* already closed */ }
+      }
+      await chrome.storage.local.remove(ownedKey);
+      return next;
+    })
       .then(state => respond({ ok: true, state }))
       .catch(() => respond({ ok: false, error: "stop_failed" }));
     return true;
