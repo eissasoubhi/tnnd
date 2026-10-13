@@ -52,24 +52,28 @@ async function prepareNewMatch(ref: string, token: string): Promise<string> {
   return conversationId;
 }
 
+/** Reuse exactly ONE already opened Tinder tab. Tinder invalidates parallel web
+ * sessions, so no popup worker is allowed to open/close a second Tinder tab.
+ */
 async function ownedTab(ref: string, userId: string): Promise<number> {
-  const raw = (await chrome.storage.local.get(OWNED_TAB))[OWNED_TAB] as { tabId?: number; ref?: string; userId?: string } | undefined;
-  if (raw?.tabId) {
-    try {
-      const old = await chrome.tabs.get(raw.tabId);
-      const oldUrl = `https://tinder.com/app/messages/${encodeURIComponent(raw.ref || "")}`;
-      if (old.url !== oldUrl || raw.userId !== userId) throw new Error("The new-match worker tab was changed; stop and restart");
-      // Only navigate previously owned worker tab.
-      await chrome.tabs.update(raw.tabId, { url: `https://tinder.com/app/messages/${encodeURIComponent(ref)}` });
-      await chrome.storage.local.set({ [OWNED_TAB]: { tabId: raw.tabId, ref, userId } });
-      return raw.tabId;
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("was changed")) throw error;
-    }
+  const candidates = await chrome.tabs.query({ url: ["https://tinder.com/*", "https://www.tinder.com/*"] });
+  if (candidates.length !== 1 || !candidates[0].id) {
+    throw new Error("Open exactly one Tinder tab with Matches visible before sending first messages.");
   }
-  const tab = await chrome.tabs.create({ url: `https://tinder.com/app/messages/${encodeURIComponent(ref)}`, active: false });
-  if (!tab.id) throw new Error("Cannot open Tinder for the match");
-  await chrome.storage.local.set({ [OWNED_TAB]: { tabId: tab.id, ref, userId } });
+  const tab = candidates[0];
+  const existing = (await chrome.storage.local.get(OWNED_TAB))[OWNED_TAB] as {
+    tabId?: number; userId?: string; ref?: string | null
+  } | undefined;
+  if (existing && (existing.tabId !== tab.id || existing.userId !== userId)) {
+    throw new Error("Tinder worker tab/session changed; stop and restart the match batch.");
+  }
+  const info = await chrome.tabs.sendMessage(tab.id, { type: "TNND_MATCH_SPA_NAVIGATE", ref }) as {
+    ok?: boolean; error?: string; currentRef?: string
+  };
+  if (!info?.ok || info.currentRef !== ref) {
+    throw new Error("Could not navigate in Tinder without reload: " + (info?.error ?? "unknown_navigation_error"));
+  }
+  await chrome.storage.local.set({ [OWNED_TAB]: { tabId: tab.id, userId, ref } });
   return tab.id;
 }
 
@@ -139,14 +143,7 @@ export async function refreshNewMatchAlarm(): Promise<void> {
 export async function stopNewMatchWorker(): Promise<void> {
   await chrome.alarms.clear(ALARM);
   const raw = (await chrome.storage.local.get(OWNED_TAB))[OWNED_TAB] as { tabId?: number; ref?: string } | undefined;
-  if (raw?.tabId) {
-    try {
-      const tab = await chrome.tabs.get(raw.tabId);
-      if (tab.url === `https://tinder.com/app/messages/${encodeURIComponent(raw.ref || "")}`) {
-        await chrome.tabs.remove(raw.tabId);
-      }
-    } catch { /* already closed */ }
-  }
-  await chrome.storage.local.remove(OWNED_TAB);
+  // Revoke worker ownership but leave the user's Tinder tab untouched.
+  if (raw?.tabId) await chrome.storage.local.remove(OWNED_TAB);
 }
 chrome.runtime.onStartup.addListener(() => { void refreshNewMatchAlarm(); });
