@@ -462,6 +462,7 @@ const server = createServer(async (request, response) => {
         conversations: conversations.map((conversation) => ({
           id: conversation.id,
           displayName: conversationDisplayName(conversation.id, conversation.matchFirstName),
+          ...(conversation.matchPhotoUrl ? { matchPhotoUrl: conversation.matchPhotoUrl } : {}),
           ...(conversation.userDisplayLabel !== undefined ? { userDisplayLabel: conversation.userDisplayLabel } : {}),
           ...(conversation.userDisplayAge !== undefined ? { userDisplayAge: conversation.userDisplayAge } : {}),
           ...(matchIdentity(conversation.matchFirstName, conversation.matchAge).age ? { matchAge: matchIdentity(conversation.matchFirstName, conversation.matchAge).age } : {}),
@@ -705,12 +706,16 @@ const server = createServer(async (request, response) => {
         conversation: {
           id: conversation.id,
           displayName: conversationDisplayName(conversation.id, conversation.matchFirstName),
+          ...(conversation.matchPhotoUrl ? { matchPhotoUrl: conversation.matchPhotoUrl } : {}),
+          ...(conversation.userDisplayLabel !== undefined ? { userDisplayLabel: conversation.userDisplayLabel } : {}),
+          ...(conversation.userDisplayAge !== undefined ? { userDisplayAge: conversation.userDisplayAge } : {}),
           ...(matchIdentity(conversation.matchFirstName, conversation.matchAge).age ? { matchAge: matchIdentity(conversation.matchFirstName, conversation.matchAge).age } : {}),
           status: conversation.status,
           currentTopic: conversation.currentTopic ?? null,
           pendingHumanActions: conversation.pendingHumanActions ?? 0,
           temporaryInstruction: conversation.temporaryInstruction ?? null,
-          messages: conversation.messages
+          messages: conversation.messages,
+          topicState: conversation.topicState
         }
       });
       return;
