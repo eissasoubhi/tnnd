@@ -270,6 +270,11 @@ async function main() {
     for (let i = 0; i < 80 && !requests.some(x => x.path === "/api/v1/profile" && x.method === "PUT"); i++) await sleep(100);
     const profileWrites = requests.filter(x => x.path === "/api/v1/profile" && x.method === "PUT");
     assert.equal(profileWrites.length, 1, "Save preferences should make one API request.");
+    // The recorder sees the PUT as soon as it starts, before the fixture
+    // async request handler persists it. Wait for the actual saved state.
+    for (let i = 0; i < 80 && !/meeting new people/.test(storedProfile.datingIntent?.datingGoalDetails ?? ""); i++) {
+      await sleep(100);
+    }
     assert.match(storedProfile.datingIntent?.datingGoalDetails ?? "", /meeting new people/, "Example must survive backend save.");
     results.push({ name: "Save preferences persists the example exactly once via API", passed: true });
 
