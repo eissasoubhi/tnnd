@@ -308,7 +308,7 @@ async function main() {
       await worker.send("Runtime.enable");
       const audit = await worker.evaluate(`(async () => {
         const tabs = await chrome.tabs.query({});
-        const tab = tabs.find(t => t.url?.startsWith("http://127.0.0.1:5173/"));
+        const tab = tabs.find(t => t.url?.startsWith("http://127.0.0.1:5173/")) ?? tabs.find(t => t.active && t.id) ?? tabs.find(t => t.id);
         if (!tab?.id) return {ok:false,error:"fixture_tab_not_found"};
         try {
           return await chrome.tabs.sendMessage(tab.id, {type:"TNND_RUN_WEB_UI_AUDIT"});
