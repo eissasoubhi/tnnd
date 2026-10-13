@@ -2,7 +2,7 @@
  * created matches. A newly loaded old sidebar row is NOT proof of a new match.
  * Observations are read-only until real Tinder DOM evidence confirms age/status. */
 export interface NewMatchObservationState {
-  schemaVersion: 1;
+  schemaVersion: 2;
   enabled: boolean;
   baselineReady: boolean;
   seenRefs: string[];
@@ -11,7 +11,7 @@ export interface NewMatchObservationState {
 }
 
 export function emptyNewMatchState(): NewMatchObservationState {
-  return { schemaVersion: 1, enabled: false, baselineReady: false, seenRefs: [], pendingRefs: [], updatedAt: "" };
+  return { schemaVersion: 2, enabled: false, baselineReady: false, seenRefs: [], pendingRefs: [], updatedAt: "" };
 }
 
 function clean(refs: readonly string[]): string[] {
@@ -19,7 +19,7 @@ function clean(refs: readonly string[]): string[] {
 }
 
 export function armNewMatchObservation(refs: readonly string[], now = new Date().toISOString()): NewMatchObservationState {
-  return { schemaVersion: 1, enabled: true, baselineReady: true, seenRefs: clean(refs), pendingRefs: [], updatedAt: now };
+  return { schemaVersion: 2, enabled: true, baselineReady: true, seenRefs: clean(refs), pendingRefs: [], updatedAt: now };
 }
 
 export function stopNewMatchObservation(state: NewMatchObservationState): NewMatchObservationState {
@@ -43,7 +43,7 @@ export function observeNewMatchLinks(state: NewMatchObservationState, refs: read
 export function isNewMatchObservationState(value: unknown): value is NewMatchObservationState {
   if (!value || typeof value !== "object") return false;
   const v = value as Partial<NewMatchObservationState>;
-  return v.schemaVersion === 1 && typeof v.enabled === "boolean" && typeof v.baselineReady === "boolean"
+  return v.schemaVersion === 2 && typeof v.enabled === "boolean" && typeof v.baselineReady === "boolean"
     && Array.isArray(v.seenRefs) && v.seenRefs.every(x => typeof x === "string")
     && Array.isArray(v.pendingRefs) && v.pendingRefs.every(x => typeof x === "string")
     && typeof v.updatedAt === "string";
