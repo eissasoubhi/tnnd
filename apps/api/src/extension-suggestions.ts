@@ -6,7 +6,7 @@ import type { ConversationOverrides } from "./conversation-overrides.js";
 
 export interface ExtensionSuggestionRequest {
   context: string;
-  purpose: "manual" | "auto" | "preview";
+  purpose: "manual" | "auto" | "preview" | "opener";
   count: number;
   config: Record<string, unknown>;
   chat?: Record<string, unknown>;
@@ -105,7 +105,7 @@ export function validateExtensionSuggestionRequest(value: unknown): ExtensionSug
   if (!context || context.length > 12_000) throw new Error("invalid_extension_generation_context");
 
   const purpose = input.purpose;
-  if (purpose !== "manual" && purpose !== "auto" && purpose !== "preview") throw new Error("invalid_extension_generation_purpose");
+  if (purpose !== "manual" && purpose !== "auto" && purpose !== "preview" && purpose !== "opener") throw new Error("invalid_extension_generation_purpose");
 
   const count = Number(input.count);
   if (!Number.isInteger(count) || count < 1 || count > 3) throw new Error("invalid_extension_generation_count");
@@ -172,7 +172,9 @@ export async function generateExtensionSuggestions(
       ? `Auto-adaptive relative to the saved user baseline: ${adaptive.autoFields.join(", ")}. Return to baseline when mood changes. Adapt conservatively; never force jokes or teasing. Double texting never causes extra sends.`
       : "",
     avoidInstruction,
-    "Use the recent conversation flow, answer what was actually said, and avoid abruptly changing subject.",
+    request.purpose === "opener"
+      ? "Write exactly one opening Tinder message to start a new conversation. No earlier messages exist. Never pretend the other person has spoken, invent profile facts, or imply false familiarity."
+      : "Use the recent conversation flow, answer what was actually said, and avoid abruptly changing subject.",
     "If context is incomplete, stay generic rather than inventing details.",
     `Conversation context:\n${request.context.slice(-9000)}`,
     `Return only a valid JSON array containing exactly ${request.count} distinct message string${request.count === 1 ? "" : "s"}. No markdown, explanation or labels.`
