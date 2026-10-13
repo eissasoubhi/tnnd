@@ -124,9 +124,9 @@ async function debugPort(profile, child) {
   }
   throw new Error("Chrome DevTools did not start");
 }
-async function openCDP(port) {
+async function openCDP(port, type = "page") {
   const targets = await (await fetch("http://127.0.0.1:" + port + "/json/list")).json();
-  const target = targets.find(t => t.type === "page");
+  const target = targets.find(t => t.type === type && (type !== "service_worker" || t.url?.startsWith("chrome-extension://")));
   assert.ok(target?.webSocketDebuggerUrl, "Browser page target missing");
   const socket = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((ok, bad) => { socket.addEventListener("open", ok, { once: true }); socket.addEventListener("error", bad, { once: true }); });
@@ -186,7 +186,8 @@ async function main() {
   ], { stdio: "ignore" });
   let cdp;
   try {
-    cdp = await openCDP(await debugPort(profile, child));
+    const port = await debugPort(profile, child);
+    cdp = await openCDP(port);
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
     await cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
@@ -294,15 +295,49 @@ async function main() {
 
     const targets = await cdp.send("Target.getTargets");
     const extensionRunning = targets.targetInfos.some(t => t.url?.startsWith("chrome-extension://"));
+    assert.ok(extensionRunning, "The unpacked extension did not load in Chrome.");
     results.push({ name: "Unpacked extension present in browser", passed: extensionRunning });
-    console.log("Extension target present:", extensionRunning);
+
+    // This is a real Chrome extension runtime message to the registered
+    // content script on the fixture Web tab, not a reimplementation of it.
+    const worker = await openCDP(port, "service_worker");
+    try {
+      await worker.send("Runtime.enable");
+      const audit = await worker.evaluate(`(async () => {
+        const tabs = await chrome.tabs.query({});
+        const tab = tabs.find(t => t.url?.startsWith("http://127.0.0.1:5173/"));
+        if (!tab?.id) return {ok:false,error:"fixture_tab_not_found"};
+        try {
+          return await chrome.tabs.sendMessage(tab.id, {type:"TNND_RUN_WEB_UI_AUDIT"});
+        } catch (error) {
+          return {ok:false,error:String(error)};
+        }
+      })()`);
+      assert.ok(audit?.ok && audit.report, "Extension-to-Web UI audit failed: " + JSON.stringify(audit));
+      assert.equal(audit.report.sections, 7, "Expected all workspace sections");
+      assert.equal(audit.report.navLinks, 7, "Extension did not click all nav links");
+      const failing = audit.report.checks.filter(check => check.result === "failed");
+      assert.deepEqual(failing, [], "Extension reported broken safe interactions");
+      results.push({
+        name: "Real extension messaging audits workspace buttons, navigation and disclosures",
+        passed: true, inspectedButtons: audit.report.buttons.visible,
+        navLinks: audit.report.navLinks, disclosures: audit.report.disclosures,
+        issueCount: audit.report.issues.length
+      });
+      await writeFile(join(output, "extension-ui-audit.json"), JSON.stringify(audit.report, null, 2) + "\\n");
+      console.log("PASS Extension UI audit: " + audit.report.buttons.visible + " buttons, " +
+        audit.report.navLinks + " navigation links and " + audit.report.disclosures + " disclosures");
+    } finally {
+      worker.close();
+    }
+
     await writeFile(join(output,"report.json"),JSON.stringify({
       kind:"tnnd-synthetic-browser-interaction-qa",generatedAt:new Date().toISOString(),
       syntheticOnly:true, extensionRunning, passed:results.every(x=>x.passed),
       results, apiRequestCount: requests.length,
       knownLimitations: ["Live Tinder DOM, real Gemini, payment and destructive-account flows are not exercised.", "Fixture API simulates success and cannot guarantee production service availability."]
     },null,2)+"\n");
-    assert.ok(extensionRunning, "The unpacked extension did not load in Chrome; cannot claim extension-integrated QA.");
+
     console.log("Functional browser QA passed: " + results.length + " checks");
   } finally {
     cdp?.close();
