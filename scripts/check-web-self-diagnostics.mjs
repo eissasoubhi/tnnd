@@ -46,4 +46,24 @@ const pending = analyzeWebDiagnosticState({
 assert.equal(pending.level, "warning");
 assert.match(pending.summary, /requête HTTP reste en attente/);
 
+const failedFunction = analyzeWebDiagnosticState({
+  ...base,
+  events: [{
+    kind: "ui-click", pageSessionId: "page-1", at: 9_600, detail: "generate-draft"
+  }, {
+    kind: "fetch-end", pageSessionId: "page-1", at: 9_700,
+    id: "req", method: "POST",
+    url: "http://127.0.0.1:5173/api/v1/conversations/[conversation]/generate",
+    status: 500
+  }, {
+    kind: "app-error", pageSessionId: "page-1", at: 9_701,
+    id: "req", method: "POST",
+    url: "http://127.0.0.1:5173/api/v1/conversations/[conversation]/generate",
+    status: 500, detail: "internal_error"
+  }]
+}, 10_000);
+assert.equal(failedFunction.level, "warning");
+assert.match(failedFunction.summary, /API\/function failure/);
+assert.ok(failedFunction.evidence.some(text => /Docker API logs/.test(text)));
+
 console.log("TNND Web self-diagnostic checks passed.");
