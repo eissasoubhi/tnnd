@@ -7,6 +7,7 @@ import { loadTinderConversationManagement } from "./tinder-backend-management";
 import { prepareReadOnlyImport, type VisibleTinderMessage } from "./tinder-manual-import";
 import { renderSyncStatus } from "./sync-status-panel";
 import type { UiAuditReport } from "./web-ui-audit";
+import { functionalFindings } from "./web-functional-diagnostics";
 import type { ChatSettings, ConversationStage, Tone } from "./types";
 import { WEB_DIAGNOSTIC_STORAGE_KEY, analyzeWebDiagnosticState, isTnndLocalWebUrl, type WebDiagnosticStore, type WebDiagnosticTabState } from "./web-diagnostic-types";
 
@@ -514,13 +515,18 @@ runWebUiAudit.addEventListener("click", () => {
       ok?: boolean; report?: UiAuditReport; error?: string;
     };
     if (!response?.ok || !response.report) throw new Error(response?.error ?? "Could not run UI audit. Reload TNND Web and reopen the extension.");
+    const findings = functionalFindings(current.state?.events ?? []);
+    response.report.functionalFindings = findings;
     latestWebUiAudit = response.report;
     exportWebUiAudit.disabled = false;
     const failures = response.report.checks.filter(check => check.result === "failed").length;
     const errors = response.report.issues.filter(issue => issue.severity === "error").length;
     const warnings = response.report.issues.filter(issue => issue.severity === "warning").length;
+    const generationFailures = findings.filter(finding => finding.operation === "conversation.generate");
     webUiAuditSummary.textContent =
-      `${response.report.buttons.visible} buttons inspected · ${response.report.navLinks} menu links clicked · ${response.report.disclosures} groups toggled. ${failures} failed checks; ${errors} errors; ${warnings} warnings. Save/delete/send buttons were not pressed. Export the JSON for details.`;
+      `${response.report.buttons.visible} buttons inspected · ${response.report.navLinks} menu links clicked · ${response.report.disclosures} groups toggled. ${failures} failed checks; ${errors} UI errors; ${warnings} warnings; ${findings.length} recent functional/API failures.` +
+      (generationFailures.length ? ` Generate draft failed: ${generationFailures[generationFailures.length - 1].nextStep}` : "") +
+      " Save/delete/send buttons were not pressed. Export the JSON for details.";
   })().catch(error => {
     webUiAuditSummary.textContent = error instanceof Error ? error.message : "UI audit failed.";
   }).finally(() => {
