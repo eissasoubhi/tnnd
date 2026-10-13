@@ -50,6 +50,24 @@ jobs:
           path: artifacts/neo-bento-extension/
           if-no-files-found: warn
           retention-days: 7
+      - name: Install Web dependencies for functional browser QA
+        run: npm install --prefix apps/web
+      - name: Build Web UI with the synthetic same-origin API
+        env:
+          VITE_TNND_API_BASE_URL: /
+        run: npm run build --prefix apps/web
+      - name: Exercise TNND Web buttons and navigation with unpacked extension
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+        run: node scripts/functional-qa-web.mjs
+      - name: Upload Web interaction QA report and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tnnd-web-interaction-qa-${{ github.sha }}
+          path: artifacts/web-interaction-qa/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Add build integrity metadata
         run: |
           printf '{"commit":"%s","version":"%s"}\n' "$GITHUB_SHA" "$(node -p "require('./package.json').version")" > dist/BUILD-INFO.json
