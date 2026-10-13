@@ -81,10 +81,12 @@ export function readVisibleTinderMatchIdentity(conversationRef: string): Visible
     .find(candidate => visible(candidate) && exactThreadAnchor(candidate, conversationRef));
   if (!anchor) return {};
 
-  const firstLine = anchor.querySelector<HTMLElement>("h2,h3,h4,strong")?.innerText
-    || anchor.innerText.split(/\n/).map(line => line.trim()).find(Boolean) || "";
-  const identity = parseVisibleMatchHeading(firstLine);
-  if (!identity.firstName) return {};
+  const identityCandidates = [
+    ...Array.from(anchor.querySelectorAll<HTMLElement>("h2,h3,h4,strong")).map(element => element.innerText),
+    ...anchor.innerText.split(/\n/)
+  ];
+  const identity = identityCandidates.map(parseVisibleMatchHeading).find(candidate => candidate.firstName);
+  if (!identity?.firstName) return {};
 
   // Age is accepted from this row, or from a visible conversation heading that
   // repeats exactly the SAME name (e.g. "Srim 30").
@@ -96,5 +98,6 @@ export function readVisibleTinderMatchIdentity(conversationRef: string): Visible
       if (parsed.firstName === identity.firstName && parsed.age) { age = parsed.age; break; }
     }
   }
-  return { firstName: identity.firstName, ...(age ? { age } : {}), ...(matchedPhoto(anchor) ? { photoUrl: matchedPhoto(anchor) } : {}) };
+  const photoUrl = matchedPhoto(anchor);
+  return { firstName: identity.firstName, ...(age ? { age } : {}), ...(photoUrl ? { photoUrl } : {}) };
 }
