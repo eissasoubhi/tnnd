@@ -669,42 +669,154 @@ exportButton.addEventListener("click", () => void exportDiagnostics().catch((err
   status.textContent = error instanceof Error ? error.message : "Could not export diagnostics.";
   exportButton.disabled = false;
 }));
+interface GlobalRunnerActivity { at: string; phase: string; detail: string; conversation: string | null }
+interface GlobalRunnerState {
+  enabled: boolean;
+  tabId: number | null;
+  tabMode: "reused" | "created" | null;
+  phase: string;
+  phaseDetail: string;
+  currentLabel: string | null;
+  eligibleCount: number;
+  visitedCount: number;
+  sentCount: number;
+  skippedCount: number;
+  errorCount: number;
+  lastActionAt: string | null;
+  lastVisitAt: string | null;
+  lastError: string | null;
+  activity: GlobalRunnerActivity[];
+}
 interface GlobalExistingControlResponse {
   ok?: boolean;
   error?: string;
-  state?: { enabled: boolean; tabId: number | null; lastRef: string | null; lastVisitAt: string | null; lastError: string | null };
+  state?: GlobalRunnerState;
 }
-
+const runnerPhaseLabels: Record<string, string> = {
+  starting: "Starting", checking: "Checking", loading: "Opening chat",
+  waiting: "Waiting", generating: "Generating reply", sending: "Sending",
+  sent: "Send action completed", skipped: "Skipped", error: "Error", stopped: "Stopped"
+};
+let lastGlobalExistingState: GlobalRunnerState | null = null;
+let globalRunnerRequestBusy = false;
+let globalRunnerUiError: string | null = null;
+function asClock(value: string | null): string {
+  if (!value || !Number.isFinite(Date.parse(value))) return "not yet";
+  return new Date(value).toLocaleTimeString();
+}
+function displayRunnerState(state: GlobalRunnerState): void {
+  lastGlobalExistingState = state;
+  startGlobalExisting.disabled = state.enabled;
+  stopGlobalExisting.disabled = !state.enabled;
+  const phase = document.getElementById("globalExistingPhase")!;
+  phase.textContent = runnerPhaseLabels[state.phase] ?? state.phase;
+  phase.dataset.phase = state.phase;
+  const freshness = document.getElementById("globalExistingFreshness")!;
+  const seconds = state.lastActionAt ? Math.floor((Date.now() - Date.parse(state.lastActionAt)) / 1000) : null;
+  freshness.textContent = seconds !== null && Number.isFinite(seconds)
+    ? (seconds < 60 ? `${Math.max(0, seconds)}s ago` : `${Math.floor(seconds / 60)}m ago`)
+    : "No activity yet";
+  globalExistingStatus.textContent = globalRunnerUiError
+    ?? state.phaseDetail
+    ?? (state.enabled ? "Runner active, waiting for updates." : "Runner stopped.");
+  const chat = document.getElementById("globalExistingConversation")!;
+  chat.textContent = state.currentLabel ? `Current chat: ${state.currentLabel} · last visited ${asClock(state.lastVisitAt)}`
+    : "No chat selected yet";
+  const metrics: Record<string, number> = {
+    globalRunnerEligible: state.eligibleCount ?? 0,
+    globalRunnerVisited: state.visitedCount ?? 0,
+    globalRunnerSent: state.sentCount ?? 0,
+    globalRunnerSkipped: state.skippedCount ?? 0,
+    globalRunnerErrors: state.errorCount ?? 0
+  };
+  for (const [id, count] of Object.entries(metrics)) {
+    const element = document.getElementById(id);
+    if (element) element.textContent = String(count);
+  }
+  const activityList = document.getElementById("globalExistingActivity")!;
+  activityList.replaceChildren();
+  const recent = Array.isArray(state.activity) ? state.activity.slice(-12).reverse() : [];
+  if (!recent.length) {
+    const item = document.createElement("li");
+    item.textContent = "No activity recorded.";
+    activityList.append(item);
+  }
+  for (const event of recent) {
+    const item = document.createElement("li");
+    const clock = document.createElement("time");
+    clock.textContent = asClock(event.at);
+    const description = document.createElement("span");
+    description.textContent = `${runnerPhaseLabels[event.phase] ?? event.phase}: ${event.detail}`
+      + (event.conversation ? ` · ${event.conversation}` : "");
+    item.append(clock, description);
+    activityList.append(item);
+  }
+  const locate = document.getElementById("focusGlobalExistingTab") as HTMLButtonElement;
+  locate.disabled = state.tabId === null;
+}
 async function refreshGlobalExisting(): Promise<void> {
-  const response = await chrome.runtime.sendMessage({ type: "TNND_GLOBAL_EXISTING_STATE" }) as GlobalExistingControlResponse;
-  if (!response?.ok || !response.state) { globalExistingStatus.textContent = response?.error ?? "Cannot read global existing state."; return; }
-  const current = response.state;
-  startGlobalExisting.disabled = current.enabled;
-  stopGlobalExisting.disabled = !current.enabled;
-  globalExistingStatus.textContent = current.enabled
-    ? `Global runner active · dedicated Tinder tab ${current.tabId ?? "starting"} · last visit ${current.lastVisitAt ? new Date(current.lastVisitAt).toLocaleString() : "not yet"}${current.lastError ? ` · ${current.lastError}` : ""}. Chrome must stay open.`
-    : "Global runner stopped. Individual chat auto-replies remain controlled by their own settings.";
+  if (globalRunnerRequestBusy) return;
+  globalRunnerRequestBusy = true;
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "TNND_GLOBAL_EXISTING_STATE" }) as GlobalExistingControlResponse;
+    if (!response?.ok || !response.state) {
+      globalExistingStatus.textContent = response?.error ?? "Could not read runner status.";
+      return;
+    }
+    displayRunnerState(response.state);
+  } finally { globalRunnerRequestBusy = false; }
 }
 
+(document.getElementById("refreshGlobalExistingStatus") as HTMLButtonElement).addEventListener("click", () => {
+  globalRunnerUiError = null;
+  void refreshGlobalExisting();
+});
+(document.getElementById("focusGlobalExistingTab") as HTMLButtonElement).addEventListener("click", () => {
+  void (async () => {
+    const tabId = lastGlobalExistingState?.tabId;
+    if (tabId == null) throw new Error("Runner has no Tinder tab yet.");
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab.url || !isTinderUrl(tab.url)) throw new Error("The managed tab is no longer on Tinder.");
+    await chrome.tabs.update(tabId, { active: true });
+    if (tab.windowId) await chrome.windows.update(tab.windowId, { focused: true });
+  })().catch(error => {
+    globalRunnerUiError = error instanceof Error ? error.message : "Unable to focus Tinder.";
+    globalExistingStatus.textContent = globalRunnerUiError;
+  });
+});
 startGlobalExisting.addEventListener("click", () => {
   void (async () => {
-    if (!window.confirm("Start a dedicated background Tinder tab cycling through your AI-managed active existing conversations? TNND can SEND replies to new incoming messages in eligible chats. Manual/blocked chats remain excluded. Chrome must stay open.")) return;
+    if (!window.confirm("Use your EXISTING Tinder tab for global replies? TNND will navigate that tab through AI-managed existing chats, and can send replies to new incoming messages. Your tab will NOT be closed on Stop. If new-match AI is active, stop it first.")) return;
+    globalRunnerUiError = null;
     startGlobalExisting.disabled = true;
+    globalExistingStatus.textContent = "Checking authorization and locating your Tinder tab…";
     const response = await chrome.runtime.sendMessage({ type: "TNND_GLOBAL_EXISTING_START" }) as GlobalExistingControlResponse;
-    if (!response?.ok) throw new Error(response?.error ?? "Could not start existing conversation runner.");
-    await refreshGlobalExisting();
-  })().catch(error => { globalExistingStatus.textContent = error instanceof Error ? error.message : "Start failed."; })
-    .finally(() => void refreshGlobalExisting());
+    if (!response?.ok) throw new Error(response?.error ?? "Could not start existing chat runner.");
+    if (response.state) displayRunnerState(response.state);
+  })().catch(error => {
+    globalRunnerUiError = error instanceof Error ? error.message : "Start failed.";
+    globalExistingStatus.textContent = globalRunnerUiError;
+    startGlobalExisting.disabled = false;
+  });
 });
 stopGlobalExisting.addEventListener("click", () => {
   void (async () => {
     stopGlobalExisting.disabled = true;
+    globalRunnerUiError = null;
+    globalExistingStatus.textContent = "Stopping global runner…";
     const response = await chrome.runtime.sendMessage({ type: "TNND_GLOBAL_EXISTING_STOP" }) as GlobalExistingControlResponse;
-    if (!response?.ok) throw new Error(response?.error ?? "Could not stop existing conversation runner.");
-    await refreshGlobalExisting();
-  })().catch(error => { globalExistingStatus.textContent = error instanceof Error ? error.message : "Stop failed."; })
-    .finally(() => void refreshGlobalExisting());
+    if (!response?.ok) throw new Error(response?.error ?? "Could not stop existing chat runner.");
+    if (response.state) displayRunnerState(response.state);
+  })().catch(error => {
+    globalRunnerUiError = error instanceof Error ? error.message : "Stop failed.";
+    globalExistingStatus.textContent = globalRunnerUiError;
+    stopGlobalExisting.disabled = false;
+  });
 });
+// Only the popup polls: when closed, the background saves all events and metrics.
+window.setInterval(() => {
+  void refreshGlobalExisting().catch(() => { /* Keep last known operational state. */ });
+}, 3_000);
 
 interface NewMatchObservationResponse { ok?: boolean; error?: string; state?: { enabled: boolean; autoSendEnabled: boolean; seenRefs: string[]; pendingRefs: string[]; completedRefs: string[]; failedRefs: string[]; lastResult: string | null; baselineReady: boolean } }
 
