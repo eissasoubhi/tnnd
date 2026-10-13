@@ -14,6 +14,11 @@ test("validates bounded extension suggestion requests", () => {
   assert.equal(result.purpose, "preview");
 });
 
+test("accepts the opener purpose but rejects unknown generation purposes", () => {
+  assert.equal(validateExtensionSuggestionRequest({ context:"No previous messages", purpose:"opener", count:1, config:{} }).purpose, "opener");
+  assert.throws(() => validateExtensionSuggestionRequest({ context:"hi", purpose:"broadcast", count:1, config:{} }), /invalid_extension_generation_purpose/);
+});
+
 test("uses stored per-user Gemini settings without returning the API key", async () => {
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   const result = await generateExtensionSuggestions(

@@ -1,7 +1,7 @@
 export type Tone = "playful" | "flirty" | "direct" | "warm" | "chill" | "witty";
 export type MessageLength = "very-short" | "short" | "medium";
 export type EmojiLevel = "none" | "low" | "medium";
-export type GeneratePurpose = "manual" | "auto" | "preview";
+export type GeneratePurpose = "manual" | "auto" | "preview" | "opener";
 export type ContactPreference = "instagram-first" | "whatsapp-first" | "stay-on-tinder";
 export type ConversationStage = "auto" | "opener" | "discovery" | "playful" | "date-prep" | "off-app" | "re-engagement";
 export type TextingFormality = "very-casual" | "casual" | "neutral";

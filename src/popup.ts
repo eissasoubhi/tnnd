@@ -116,6 +116,8 @@ const chatLangEn = document.getElementById("chatLangEn") as HTMLInputElement;
 const saveChat = document.getElementById("saveChat") as HTMLButtonElement;
 const chatStatus = document.getElementById("chatStatus")!;
 const syncCurrentChat = document.getElementById("syncCurrentChat") as HTMLButtonElement;
+const startFirstMessage = document.getElementById("startFirstMessage") as HTMLButtonElement;
+const firstMessageStatus = document.getElementById("firstMessageStatus")!;
 const importMatchName = document.getElementById("importMatchName") as HTMLInputElement;
 const importMatchAge = document.getElementById("importMatchAge") as HTMLInputElement;
 const manualSyncStatus = document.getElementById("manualSyncStatus")!;
@@ -303,6 +305,7 @@ async function refreshBackendAuth(): Promise<void> {
 async function loadCurrentChat(): Promise<void> {
   currentThreadKey = null;
   syncCurrentChat.disabled = true;
+  startFirstMessage.disabled = true;
   chatEditor.classList.add("hidden");
   chatUnavailable.classList.remove("hidden");
   const hint = chatUnavailable.querySelector("p");
@@ -323,6 +326,7 @@ async function loadCurrentChat(): Promise<void> {
     }
     currentThreadKey = response.threadKey;
     syncCurrentChat.disabled = response.composerFound === false;
+    startFirstMessage.disabled = response.composerFound === false;
     applyChatSettings(await getChatSettings(currentThreadKey));
     chatUnavailable.classList.add("hidden");
     chatEditor.classList.remove("hidden");
@@ -542,6 +546,34 @@ syncCurrentChat.addEventListener("click", () => {
   });
   syncCurrentChat.disabled = true;
   manualSyncStatus.textContent = "Importing visible chat messages…";
+});
+
+startFirstMessage.addEventListener("click", () => {
+  void (async () => {
+    const expectedThreadKey = currentThreadKey;
+    if (!expectedThreadKey) throw new Error("Open a Tinder conversation first.");
+    const session = await getBackendSession();
+    if (!session) throw new Error("Connect your TNND backend account first.");
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id || !isTinderUrl(tab.url)) throw new Error("Open the selected chat on Tinder.");
+    const info = await chrome.tabs.sendMessage(tab.id, { type: "TNND_GET_THREAD_INFO" }) as ThreadInfoResponse;
+    if (!info?.composerFound || info.threadKey !== expectedThreadKey) throw new Error("Tinder chat changed; reopen TNND.");
+    if (!window.confirm("TNND will generate and SEND ONE first message to this Tinder match, not just a preview. Continue?")) {
+      firstMessageStatus.textContent = "Cancelled. Nothing sent.";
+      return;
+    }
+    startFirstMessage.disabled = true;
+    firstMessageStatus.textContent = "Checking permissions, generating one opener, then sending on Tinder…";
+    const result = await chrome.tabs.sendMessage(tab.id, {
+      type: "TNND_START_FIRST_MESSAGE", threadKey: expectedThreadKey
+    }) as { ok?: boolean; sent?: boolean; error?: string };
+    if (!result?.ok) throw new Error(result?.error ?? "No first message was sent. Check Tinder.");
+    firstMessageStatus.textContent = result.sent
+      ? `First message sent on Tinder. ${result.error ?? "AI can now continue when the match replies and all auto-chat settings stay enabled."}`
+      : "Nothing sent.";
+  })().catch((error) => {
+    firstMessageStatus.textContent = error instanceof Error ? error.message : "Unable to start chat; no send confirmed.";
+  }).finally(() => { startFirstMessage.disabled = !currentThreadKey; });
 });
 
 saveChat.addEventListener("click", () => {
