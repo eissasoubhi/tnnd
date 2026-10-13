@@ -207,6 +207,8 @@ export async function getConversation(userId: string, conversationId: string): P
     current_topic: string | null;
     match_first_name: string | null;
     match_age: string | null;
+    display_label: string | null;
+    display_age: number | null;
     temporary_instruction: string | null;
     temporary_instruction_scope: TemporaryInstructionScope | null;
     temporary_instruction_remaining: number | null;
