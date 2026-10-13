@@ -63,6 +63,26 @@ if (isTnndLocalWebUrl(window.location.href)) {
     emit("unhandled-rejection", { detail: sanitizeWebDiagnosticText(event.reason) });
   });
 
+  // Record *known* user intents, not input values, labels or arbitrary DOM.
+  // This lets a later failed API request be associated with the preceding click.
+  const knownActions: Array<[string, string]> = [
+    ["[data-generation-button]", "generate-draft"],
+    ["[data-generation-regenerate]", "regenerate-draft"],
+    ["#ai-provider-test", "test-gemini"],
+    ["#ai-provider-save", "save-gemini"],
+    ["#preferences-save", "save-preferences"],
+    ["[data-temporary-instruction-save]", "save-instruction"],
+    ["[data-temporary-instruction-clear]", "clear-instruction"],
+    ["#identity-builder-analyze", "analyze-identity"],
+    ["#memory-analyze", "analyze-memory"]
+  ];
+  document.addEventListener("click", event => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const action = knownActions.find(([selector]) => target.closest(selector));
+    if (action) emit("ui-click", { detail: action[1] });
+  }, true);
+
   const nativeFetch = window.fetch;
   window.fetch = (async (...args: Parameters<typeof fetch>): Promise<Response> => {
     const input = args[0];
@@ -77,6 +97,20 @@ if (isTnndLocalWebUrl(window.location.href)) {
     try {
       const response = await nativeFetch(...args);
       emit("fetch-end", { id, url, method, status: response.status, durationMs: Date.now() - startedAt });
+      // Inspect only the machine-readable `error` code on TNND API responses.
+      // Never persist response bodies, messages, profile, headers or tokens.
+      try {
+        const pathname = new URL(rawUrl, location.href).pathname;
+        if (pathname.startsWith("/api/v1/") && response.headers.get("content-type")?.includes("json")) {
+          void response.clone().json().then((value: unknown) => {
+            const code = value && typeof value === "object" && !Array.isArray(value)
+              ? (value as { error?: unknown }).error : undefined;
+            if (typeof code === "string" && /^[a-z][a-z0-9_:-]{1,63}$/.test(code)) {
+              emit("app-error", { id, url, method, status: response.status, detail: code });
+            }
+          }).catch(() => undefined);
+        }
+      } catch { /* Never interfere with the application's fetch or parsing. */ }
       return response;
     } catch (error) {
       emit("fetch-error", { id, url, method, durationMs: Date.now() - startedAt, detail: sanitizeWebDiagnosticText(error) });
