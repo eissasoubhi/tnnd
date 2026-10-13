@@ -2,6 +2,7 @@ import "./web-diagnostic-background";
 import "./tinder-checkpoint-background";
 import "./tinder-message-cursor-background";
 import "./tinder-unread-observation-background";
+import "./tinder-new-match-background";
 import { generateSuggestions } from "./gemini";
 import { loadTinderConversationManagement } from "./tinder-backend-management";
 import { syncConversationDelta } from "./conversation-sync";
