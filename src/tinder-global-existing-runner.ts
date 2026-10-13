@@ -1,4 +1,6 @@
-import { getBackendSession, getConfig } from "./storage";
+import { getBackendSession, getChatSettings, getConfig, saveChatSettings } from "./storage";
+import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
+import { partitionExistingChatPermissions } from "./tinder-existing-chat-settings-policy";
 import { eligibleExistingThreadRefs, nextExistingThreadRef } from "./tinder-global-existing-policy";
 
 const KEY = "tnnd.globalExistingRunner.v2";
@@ -90,7 +92,7 @@ async function save(state: GlobalExistingRunnerState): Promise<GlobalExistingRun
   await chrome.storage.local.set({ [KEY]: state });
   return state;
 }
-async function listEligible(): Promise<{ refs: string[]; labels: Map<string, string> }> {
+async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[]; labels: Map<string, string> }> {
   const session = await getBackendSession();
   if (!session) throw new Error("TNND account is not connected.");
   const headers = { authorization: `Bearer ${session.token}` };
@@ -123,7 +125,15 @@ async function listEligible(): Promise<{ refs: string[]; labels: Map<string, str
     const ref = ids.get(item.id);
     if (ref) labels.set(ref, item.displayName && !item.displayName.startsWith("Conversation ") ? item.displayName : `Thread ${ref.slice(0, 8)}`);
   }
-  return { refs: eligibleExistingThreadRefs(records, summaries), labels };
+
+  const authorized = eligibleExistingThreadRefs(records, summaries);
+  const settingsByRef = new Map<string, { enabled: boolean }>();
+  for (const ref of authorized) {
+    const threadKey = tinderThreadKeyFromPath("/app/messages/" + encodeURIComponent(ref));
+    settingsByRef.set(ref, await getChatSettings(threadKey));
+  }
+  const { ready, disabled } = partitionExistingChatPermissions(authorized, settingsByRef);
+  return { refs: ready, disabledRefs: disabled, labels };
 }
 
 /** Reuse the EXISTING Tinder tab. Opening a second one can invalidate Tinder's
@@ -202,7 +212,7 @@ async function tick(): Promise<void> {
     if (latest.enabled) await save(activity(latest, "error", error instanceof Error ? error.message : "Runner failed."));
   } finally { busy = false; }
 }
-async function start(): Promise<GlobalExistingRunnerState> {
+async function start(enablePreviouslyDisabled = false): Promise<GlobalExistingRunnerState> {
   if (starting) throw new Error("Runner is already starting.");
   starting = true;
   try {
@@ -214,9 +224,27 @@ async function start(): Promise<GlobalExistingRunnerState> {
     if (!session) throw new Error("Connect your TNND account first.");
     const future = (await chrome.storage.local.get("tnnd.newMatchLinkObservation.v3"))["tnnd.newMatchLinkObservation.v3"] as { enabled?: boolean } | undefined;
     if (future?.enabled) throw new Error("New-match AI is active. Stop it before running existing chats: Tinder supports only one active tab.");
-    const { refs } = await listEligible();
-    if (!refs.length) throw new Error("No eligible existing conversations. Check synchronized message history and AI-managed status in TNND Web.");
+
+    const selection = await listEligible();
+    if (!selection.refs.length && !selection.disabledRefs.length) {
+      throw new Error("No eligible existing conversations. Sync chats and authorize AI management in TNND Web.");
+    }
+    if (!selection.refs.length && !enablePreviouslyDisabled) {
+      throw new Error(selection.disabledRefs.length + " eligible chat(s) are disabled individually. Start again and explicitly confirm bulk reactivation, or re-enable them one by one.");
+    }
+    // Check Tinder tabs before modifying per-chat settings.
     const tab = await findSingleTinderTab();
+    if (enablePreviouslyDisabled) {
+      // Only backend-confirmed AI-managed active existing chats enter this list.
+      // Manual, archived, disabled and human-action-blocked chats stay excluded.
+      for (const ref of selection.disabledRefs) {
+        const threadKey = tinderThreadKeyFromPath("/app/messages/" + encodeURIComponent(ref));
+        const settings = await getChatSettings(threadKey);
+        if (settings.enabled === false) await saveChatSettings(threadKey, { ...settings, enabled: true });
+      }
+    }
+    const { refs } = await listEligible();
+    if (!refs.length) throw new Error("No chat is enabled after checking current permissions.");
     let next = initial();
     next = activity({ ...next, enabled: true, userId: session.user.id, tabId: tab.id, tabMode: tab.mode,
       eligibleCount: refs.length, startedAt: new Date().toISOString() },
@@ -264,7 +292,7 @@ chrome.runtime.onStartup.addListener(() => {
 });
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (!message || typeof message !== "object") return false;
-  const input = message as { type?: unknown; phase?: unknown; detail?: unknown; ref?: unknown };
+  const input = message as { type?: unknown; phase?: unknown; detail?: unknown; ref?: unknown; enablePreviouslyDisabled?: unknown };
   if (input.type === "TNND_EXISTING_RUNNER_TAB_PAUSED") {
     const statePromise = load();
     void statePromise.then(state => sendResponse({
@@ -297,17 +325,27 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       .catch(() => sendResponse({ ok: false }));
     return true;
   }
-  if (!["TNND_GLOBAL_EXISTING_STATE", "TNND_GLOBAL_EXISTING_START", "TNND_GLOBAL_EXISTING_STOP"].includes(String(input.type))) return false;
+  if (!["TNND_GLOBAL_EXISTING_STATE", "TNND_GLOBAL_EXISTING_PREFLIGHT", "TNND_GLOBAL_EXISTING_START", "TNND_GLOBAL_EXISTING_STOP"].includes(String(input.type))) return false;
   if (input.type === "TNND_GLOBAL_EXISTING_STATE" && (popupSender(sender) || webReadOnlySender(sender))) {
     void load().then(state => sendResponse({ ok: true, state }))
       .catch(() => sendResponse({ ok: false, error: "state_unavailable" }));
     return true;
   }
+
   if (!popupSender(sender)) {
     sendResponse({ ok: false, error: "Runner Start/Stop requires the TNND extension popup." });
     return false;
   }
-  void (input.type === "TNND_GLOBAL_EXISTING_START" ? start() : stop())
+  if (input.type === "TNND_GLOBAL_EXISTING_PREFLIGHT") {
+    void listEligible().then(({ refs, disabledRefs }) => sendResponse({
+      ok: true, readyCount: refs.length, disabledCount: disabledRefs.length,
+      totalAuthorizedCount: refs.length + disabledRefs.length
+    })).catch(error => sendResponse({ ok: false, error: error instanceof Error ? error.message : "preflight_failed" }));
+    return true;
+  }
+  void (input.type === "TNND_GLOBAL_EXISTING_START"
+    ? start(input.enablePreviouslyDisabled === true)
+    : stop())
     .then(state => sendResponse({ ok: true, state }))
     .catch(error => sendResponse({ ok: false, error: error instanceof Error ? error.message : "runner_failed" }));
   return true;

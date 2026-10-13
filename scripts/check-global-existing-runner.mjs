@@ -44,7 +44,8 @@ test("the runner reuses the sole existing Tinder tab and never closes user tabs"
  assert.doesNotMatch(runner, /adapter\.send|GENERATE_SUGGESTIONS/);
  assert.match(popup, /startGlobalExisting\.addEventListener\("click"/);
  assert.match(popup, /stopGlobalExisting\.addEventListener\("click"/);
- assert.match(popup, /window\.confirm\("Use your EXISTING Tinder tab/);
+ assert.match(popup, /Start global replies on your existing Tinder tab/);
+ assert.match(popup, /individually disabled auto-replies/);
 });
 
 test("operational runner states are persisted and reported without Tinder message contents", async () => {
