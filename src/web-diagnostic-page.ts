@@ -106,7 +106,15 @@ if (isTnndLocalWebUrl(window.location.href)) {
             const code = value && typeof value === "object" && !Array.isArray(value)
               ? (value as { error?: unknown }).error : undefined;
             if (typeof code === "string" && /^[a-z][a-z0-9_:-]{1,63}$/.test(code)) {
-              emit("app-error", { id, url, method, status: response.status, detail: code });
+              const stage = (value as { stage?: unknown }).stage;
+              const knownStages = new Set([
+                "conversation", "profile", "summary", "facts", "effective-context",
+                "supplemental", "memories", "provider-settings", "provider", "memory-usage"
+              ]);
+              emit("app-error", {
+                id, url, method, status: response.status, detail: code,
+                ...(typeof stage === "string" && knownStages.has(stage) ? { phase: stage } : {})
+              });
             } else if (response.ok && value && typeof value === "object") {
               // A 200 response can still be functionally unsuccessful.
               const result = value as { connected?: unknown; generation?: unknown };
