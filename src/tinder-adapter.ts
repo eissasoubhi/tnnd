@@ -1,5 +1,6 @@
 import { hashTinderThreadKey, tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import { classifyTinderPath } from "./tinder-state-machine";
+import { directionFromTinderHints } from "./tinder-message-evidence";
 export interface ConversationSnapshot {
   threadKey: string;
   context: string;
@@ -172,9 +173,10 @@ function directionOf(element: HTMLElement): Direction {
       current.getAttribute("aria-label") ?? ""
     );
   }
-  const hint = tokens.join(" ").toLowerCase();
-  if (/outgoing|sent|sender|from-me|mine|self|chat-bubble-send/.test(hint)) return "me";
-  if (/incoming|received|from-match|receiver|msg--received|chat-bubble-receive/.test(hint)) return "them";
+  // A shared bubble wrapper can mention "Sent at" or "sender" for any
+  // message; those generic strings must never imply a message is ours.
+  const direction = directionFromTinderHints(tokens);
+  if (direction !== "unknown") return direction;
 
   const root = document.querySelector("main") ?? document.body;
   const rootRect = root.getBoundingClientRect();
