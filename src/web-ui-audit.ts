@@ -84,7 +84,7 @@ export async function runWebUiAudit(): Promise<UiAuditReport> {
     }
   }
   const idCounts = new Map<string, number>();
-  for (const el of document.querySelectorAll<HTMLElement>("[id]")) {
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>("[id]"))) {
     idCounts.set(el.id, (idCounts.get(el.id) ?? 0) + 1);
     if (idCounts.get(el.id) === 2) add("duplicate-id", "error", el, "Two or more elements share this id.");
   }
