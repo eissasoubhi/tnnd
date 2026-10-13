@@ -174,7 +174,10 @@ export function analyzeWebDiagnosticState(state: WebDiagnosticTabState | null | 
     };
   }
 
-  const functional = functionalFindings(recent, now);
+  // UI interaction errors remain useful for the entire five-minute audit
+  // window. The old 60-second cutoff falsely reported healthy ~62 seconds
+  // after a genuine 500 (even while the related audit found the failure).
+  const functional = functionalFindings(state.events, now);
   if (functional.length) {
     const last = functional[functional.length - 1];
     return {
