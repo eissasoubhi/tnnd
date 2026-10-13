@@ -397,33 +397,71 @@ async function observeRuntimeReadMode(): Promise<void> {
   }
 }
 
+let lastExistingRunnerEventKey = "";
+let lastExistingRunnerEventAt = 0;
+/** Telemetry contains only operational metadata, never Tinder message text. */
+function reportExistingRunner(phase: "waiting" | "generating" | "sending" | "sent" | "skipped" | "error", detail: string): void {
+  const ref = currentConversationRef();
+  if (!ref || !hasLiveExtensionContext()) return;
+  const key = `${ref}:${phase}:${detail}`;
+  if (phase !== "sent" && lastExistingRunnerEventKey === key && Date.now() - lastExistingRunnerEventAt < 45_000) return;
+  lastExistingRunnerEventKey = key;
+  lastExistingRunnerEventAt = Date.now();
+  void sendRuntimeMessage({ type: "TNND_EXISTING_RUNNER_EVENT", ref, phase, detail }).catch(() => undefined);
+}
+
 async function scan(): Promise<void> {
   if (busy || !hasLiveExtensionContext()) return;
 
   try {
     const config = await getContentConfig();
     if (!config || !contentRuntimeAlive) return;
-    if (!config.automation.enabled) return;
-    if (config.automation.quietHoursEnabled && insideQuietHours(config.automation.quietStart, config.automation.quietEnd)) return;
+    if (!config.automation.enabled) {
+      reportExistingRunner("skipped", "Automatic replies disabled in extension Options.");
+      return;
+    }
+    if (config.automation.quietHoursEnabled && insideQuietHours(config.automation.quietStart, config.automation.quietEnd)) {
+      reportExistingRunner("waiting", "Quiet hours active; no messages will be sent.");
+      return;
+    }
 
     const snapshot = adapter.read();
-    if (!snapshot) return;
+    if (!snapshot) {
+      reportExistingRunner("waiting", "Chat opened · waiting for a new incoming message.");
+      return;
+    }
     const conversationRef = currentConversationRef();
     // Never send from a loosely classified Tinder view: route identity must
     // match the chat snapshot and the backend must authorize this precise chat.
-    if (!conversationRef || tinderThreadKeyFromPath(location.pathname) !== snapshot.threadKey) return;
-    if (!await backendAllowsAutomaticReply(conversationRef)) return;
+    if (!conversationRef || tinderThreadKeyFromPath(location.pathname) !== snapshot.threadKey) {
+      reportExistingRunner("skipped", "Thread identity mismatch; no message sent.");
+      return;
+    }
+    if (!await backendAllowsAutomaticReply(conversationRef)) {
+      reportExistingRunner("skipped", "AI management not authorized by TNND backend.");
+      return;
+    }
     const chatAutomationEnabled = await getChatAutomationEnabled(snapshot.threadKey);
-    if (chatAutomationEnabled !== true) return;
+    if (chatAutomationEnabled !== true) {
+      reportExistingRunner("skipped", "Automatic replies explicitly disabled for this chat.");
+      return;
+    }
 
     const state = await getState();
     if (!state) return;
-    if (state.processed[snapshot.latestIncomingKey]) return;
-    if (state.dailyCount >= config.automation.maxAutoRepliesPerDay) return;
+    if (state.processed[snapshot.latestIncomingKey]) {
+      reportExistingRunner("waiting", "Latest incoming message already handled · waiting for the next one.");
+      return;
+    }
+    if (state.dailyCount >= config.automation.maxAutoRepliesPerDay) {
+      reportExistingRunner("waiting", "Daily reply limit reached.");
+      return;
+    }
 
     busy = true;
     const delaySeconds = randomCadenceSeconds(config.automation);
     console.info(`TNND queued an automatic reply in ${delaySeconds.toFixed(1)}s.`);
+    reportExistingRunner("waiting", `Incoming message detected · waiting ${Math.ceil(delaySeconds)}s before reply.`);
     await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
     if (!hasLiveExtensionContext()) return;
 
@@ -433,6 +471,7 @@ async function scan(): Promise<void> {
     const stillEnabled = await getChatAutomationEnabled(currentSnapshot.threadKey);
     if (stillEnabled !== true) return;
 
+    reportExistingRunner("generating", "Preparing an AI reply with Gemini…");
     const reply = await generateReply(currentSnapshot.context, currentSnapshot.threadKey);
     if (!reply || !hasLiveExtensionContext()) return;
     // Back-end state or the Tinder tab can change while Gemini is generating.
@@ -441,7 +480,9 @@ async function scan(): Promise<void> {
       || tinderThreadKeyFromPath(location.pathname) !== currentSnapshot.threadKey
       || !await backendAllowsAutomaticReply(conversationRef)) return;
     if (await getChatAutomationEnabled(currentSnapshot.threadKey) !== true) return;
+    reportExistingRunner("sending", "AI reply ready · attempting Tinder send…");
     await adapter.send(reply);
+    reportExistingRunner("sent", "Tinder send action completed · verify delivery in the conversation.");
     const freshState = await getState();
     if (!freshState) return;
     freshState.processed[currentSnapshot.latestIncomingKey] = Date.now();
@@ -449,7 +490,10 @@ async function scan(): Promise<void> {
     await saveState(freshState);
     console.info("TNND sent an automatic reply.");
   } catch (error) {
-    if (contentRuntimeAlive) console.warn("TNND auto-reply skipped", error);
+    if (contentRuntimeAlive) {
+      reportExistingRunner("error", error instanceof Error ? error.message : "Automatic reply failed.");
+      console.warn("TNND auto-reply skipped", error);
+    }
   } finally {
     busy = false;
   }
