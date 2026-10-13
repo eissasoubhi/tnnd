@@ -151,13 +151,13 @@ function renderDetail(detail: ConversationDetail): string {
       </div>
       <span class="pill">${escapeHtml(detail.status)}</span>
     </div>
-    <details class="conversation-identity-editor">
-      <summary>Set chat name & age <span class="subtle">(optional · saved on your account)</span></summary>
-      <p class="subtle">TNND has not automatically verified this person's Tinder name. You can label this chat to distinguish it from generic IDs. This does not edit their Tinder profile.</p>
+    <details class="conversation-identity-editor"${detail.displayName.startsWith("Conversation ") ? " open" : ""}>
+      <summary>${detail.displayName.startsWith("Conversation ") ? "Name not detected · Add Tinder match name" : "Edit chat name & age"} <span class="subtle">(saved on your account)</span></summary>
+      <p class="subtle">This chat is imported, but its Tinder profile name was not captured. Give it the visible Tinder name and age below to replace the generic ID in your list. This does not change Tinder. Automatic profile capture needs a diagnostic from the live Tinder chat.</p>
       <div class="conversation-identity-controls">
         <label for="conversation-display-name">Name <input id="conversation-display-name" maxlength="80" autocomplete="off" placeholder="e.g. Sara" value="${escapeHtml(detail.userDisplayLabel ?? "")}"></label>
         <label for="conversation-display-age">Age <input id="conversation-display-age" type="number" min="18" max="120" placeholder="Optional" value="${detail.userDisplayAge ?? ""}"></label>
-        <button type="button" data-save-conversation-identity>Save name</button>
+        <button type="button" data-save-conversation-identity>Save match name</button>
       </div>
       <p data-conversation-identity-status class="subtle" role="status"></p>
     </details>
