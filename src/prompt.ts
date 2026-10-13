@@ -95,7 +95,7 @@ export function buildSystemInstruction(config: AppConfig, count: number, purpose
 export function buildUserPrompt(context: string, purpose: GeneratePurpose): string {
   return [
     purpose === "opener"
-      ? "Write a very first Tinder turn with 2 or 3 short lines intended as separate chat bubbles. There is no incoming message to answer; do not imply prior conversation or claim an emotional reaction to a profile.",
+      ? "Write a very first Tinder turn with 2 or 3 short lines intended as separate chat bubbles. There is no incoming message to answer; do not imply prior conversation or claim an emotional reaction to a profile."
       : purpose === "auto" ? "Write the next reply to the latest incoming Tinder message." : "Draft the next dating-app message from this conversation/profile context.",
     "Use the recent conversation flow, answer what was actually said, and avoid abruptly changing subject.",
     purpose === "opener" ? "Only the match name/age explicitly listed in the current Tinder context are verified. No photo, bio, appearance, interests or feelings are known. A simple hello is better than inventing a profile reaction." : "Use only grounded conversation context; never infer unseen profile details.",
