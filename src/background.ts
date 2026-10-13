@@ -25,6 +25,7 @@ type TrustedContentRequest =
   | { type: "TNND_GET_CONTENT_CONFIG" }
   | { type: "TNND_GET_CHAT_AUTOMATION"; threadKey: string }
   | { type: "TNND_GET_BACKEND_AUTO_SEND_PERMISSION"; conversationRef: string }
+  | { type: "TNND_GET_FIRST_MESSAGE_PERMISSION"; conversationRef: string }
   | { type: "TNND_SYNC_VISIBLE_MATCH_IDENTITY"; conversationRef: string; identity: VisibleTinderMatchIdentity }
   | { type: "TNND_GET_AUTO_STATE" }
   | { type: "TNND_SAVE_AUTO_STATE"; state: AutoState };
@@ -161,6 +162,41 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
     void getChatSettings(message.threadKey)
       .then((chat) => sendResponse({ ok: true, enabled: chat.enabled }))
       .catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : "Could not load TNND chat configuration." }));
+    return true;
+  }
+
+  if (message.type === "TNND_GET_FIRST_MESSAGE_PERMISSION") {
+    const ref = message.conversationRef?.trim();
+    const senderRef = (() => {
+      try {
+        const url = new URL(sender.url ?? "");
+        if (!["https://tinder.com", "https://www.tinder.com"].includes(url.origin)) return null;
+        return url.pathname.startsWith("/app/messages/")
+          ? decodeURIComponent(url.pathname.slice("/app/messages/".length)).replace(/\\/+$/, "")
+          : null;
+      } catch { return null; }
+    })();
+    if (!ref || !senderRef || ref !== senderRef) {
+      sendResponse({ ok: true, allowed: false, reason: "wrong_thread" });
+      return false;
+    }
+    void (async () => {
+      const backend = await loadTinderConversationManagement(ref);
+      if (!backend.conversationId || backend.conversationStatus !== "active" || !mayAutomaticallySendToTinder(backend)) {
+        return { ok: true, allowed: false, reason: "ai_management_not_active" };
+      }
+      const session = await getBackendSession();
+      if (!session) return { ok: true, allowed: false, reason: "not_connected" };
+      const response = await fetch(`http://127.0.0.1:4000/api/v1/conversations/${encodeURIComponent(backend.conversationId)}`, {
+        headers: { authorization: `Bearer ${session.token}` }
+      });
+      if (!response.ok) return { ok: true, allowed: false, reason: "backend_unavailable" };
+      const payload = await response.json() as { conversation?: { messages?: unknown[] } };
+      // Fail closed if the response does not prove the server has an empty chat.
+      if (!Array.isArray(payload?.conversation?.messages)) return { ok: true, allowed: false, reason: "unknown_backend_history" };
+      const count = payload.conversation.messages.length;
+      return { ok: true, allowed: count === 0, savedMessageCount: count, reason: count ? "backend_history_present" : null };
+    })().then(sendResponse).catch(() => sendResponse({ ok: true, allowed: false, reason: "backend_unavailable" }));
     return true;
   }
 
