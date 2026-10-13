@@ -722,10 +722,10 @@ async function renderNewMatchObservation(): Promise<void> {
 startNewMatchObservation.addEventListener("click", () => {
   void (async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id || !isTinderUrl(tab.url)) throw new Error("Open the Tinder Messages inbox, then reopen TNND.");
+    if (!tab?.id || !isTinderUrl(tab.url)) throw new Error("Open Tinder, select the Matches tab in the left sidebar, then reopen TNND.");
     const snapshot = await chrome.tabs.sendMessage(tab.id, { type: "TNND_GET_VISIBLE_THREAD_LINKS" }) as { ok?: boolean; refs?: string[]; error?: string };
-    if (!snapshot?.ok || !snapshot.refs?.length) throw new Error(snapshot?.error ?? "No verified Tinder conversation links are visible yet. Load the Messages inbox first.");
-    if (!window.confirm(`Track future Tinder conversation links after a baseline of ${snapshot.refs.length} currently visible chats? Detection is read-only; no messages will be sent automatically.`)) return;
+    if (!snapshot?.ok || !snapshot.refs?.length) throw new Error(snapshot?.error ?? "No verified Tinder match tiles are visible yet. Select the Matches tab and allow it to load.");
+    if (!window.confirm(`Track future Tinder conversation links after a baseline of ${snapshot.refs.length} currently visible match tiles? Detection is read-only; no messages will be sent automatically.`)) return;
     const response = await chrome.runtime.sendMessage({ type: "TNND_NEW_MATCH_OBSERVATION_START", refs: snapshot.refs }) as NewMatchObservationResponse;
     if (!response?.ok) throw new Error(response?.error ?? "Could not start detection.");
     await renderNewMatchObservation();
