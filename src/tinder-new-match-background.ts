@@ -3,7 +3,7 @@ import {
   observeNewMatchLinks, stopNewMatchObservation
 } from "./tinder-new-match-observation";
 
-const KEY = "tnnd.newMatchLinkObservation.v1";
+const KEY = "tnnd.newMatchLinkObservation.v2";
 
 type Request =
   | { type: "TNND_NEW_MATCH_OBSERVATION_STATE" }
@@ -24,7 +24,8 @@ function tinderSender(sender: chrome.runtime.MessageSender): boolean {
   try {
     const url = new URL(sender.url ?? "");
     return (url.origin === "https://tinder.com" || url.origin === "https://www.tinder.com")
-      && (url.pathname === "/app/messages" || url.pathname === "/app/matches" || url.pathname === "/app/recs");
+      && (url.pathname === "/app/messages" || url.pathname === "/app/matches" || url.pathname === "/app/recs"
+        || url.pathname.startsWith("/app/messages/"));
   } catch { return false; }
 }
 
