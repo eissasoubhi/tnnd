@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { readWebVersion, resolveWebCommit } from "../build-info";
 import { formatWebBuildDescription, formatWebBuildLabel } from "./web-build-label";
@@ -65,4 +67,16 @@ test("does not invent a revision if Git metadata is unavailable", () => {
     assert.equal(resolveWebCommit(root), null);
     assert.equal(resolveWebCommit(root, { TNND_WEB_GIT_SHA: "not-a-sha" }), null);
   });
+});
+
+test("Web UI renders a single subtle badge, and Vite injects the actual checkout metadata", () => {
+  const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const main = readFileSync(join(webRoot, "src", "main.ts"), "utf8");
+  const styles = readFileSync(join(webRoot, "src", "neo-bento.css"), "utf8");
+  const vite = readFileSync(join(webRoot, "vite.config.ts"), "utf8");
+  assert.match(main, /buildBadge\.textContent = build\.label/);
+  assert.match(main, /\.workspace-nav"\)\?\.prepend\(buildBadge\)/);
+  assert.match(styles, /#app \.workspace-nav \.workspace-build-version/);
+  assert.match(vite, /__TNND_WEB_VERSION__: JSON\.stringify\(webVersion\)/);
+  assert.match(vite, /__TNND_WEB_COMMIT__: JSON\.stringify\(webCommit\)/);
 });
