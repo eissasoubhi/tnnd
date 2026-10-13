@@ -30,6 +30,8 @@ export interface ConversationSummary {
   status: ConversationStatus;
   matchFirstName?: string;
   matchAge?: number;
+  userDisplayLabel?: string;
+  userDisplayAge?: number;
   currentTopic?: string;
   lastMessageAt?: string;
   pendingHumanActions?: number;
@@ -157,11 +159,14 @@ export async function listConversations(userId: string): Promise<ConversationSum
     current_topic: string | null;
     match_first_name: string | null;
     match_age: string | null;
+    display_label: string | null;
+    display_age: number | null;
     last_message_at: Date | null;
     pending_human_actions: string | number;
     updated_at: Date;
   }>(
     `SELECT c.id, c.external_thread_id, c.status, c.current_topic, c.updated_at,
+             c.display_label, c.display_age,
             (SELECT mp.normalized_profile->'fields'->>'firstName' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_first_name,
             (SELECT mp.normalized_profile->'fields'->>'age' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_age,
             MAX(m.sent_at) AS last_message_at,
@@ -183,8 +188,10 @@ export async function listConversations(userId: string): Promise<ConversationSum
     id: row.id,
     externalThreadId: row.external_thread_id,
     status: row.status,
-    ...(row.match_first_name ? { matchFirstName: row.match_first_name } : {}),
-    ...(row.match_age ? { matchAge: Number(row.match_age) } : {}),
+    ...(row.display_label || row.match_first_name ? { matchFirstName: row.display_label || row.match_first_name } : {}),
+    ...(row.display_label !== null ? { userDisplayLabel: row.display_label } : {}),
+    ...(row.display_age || row.match_age ? { matchAge: Number(row.display_age || row.match_age) } : {}),
+    ...(row.display_age !== null ? { userDisplayAge: row.display_age } : {}),
     ...(row.current_topic ? { currentTopic: row.current_topic } : {}),
     ...(row.last_message_at ? { lastMessageAt: row.last_message_at.toISOString() } : {}),
     pendingHumanActions: Number(row.pending_human_actions) || 0,
@@ -207,6 +214,7 @@ export async function getConversation(userId: string, conversationId: string): P
     updated_at: Date;
   }>(
     `SELECT c.id, c.external_thread_id, c.status, c.current_topic,
+             c.display_label, c.display_age,
             (SELECT mp.normalized_profile->'fields'->>'firstName' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_first_name,
             (SELECT mp.normalized_profile->'fields'->>'age' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_age,
             c.temporary_instruction, c.temporary_instruction_scope, c.temporary_instruction_remaining,
@@ -263,8 +271,10 @@ export async function getConversation(userId: string, conversationId: string): P
     id: conversation.id,
     externalThreadId: conversation.external_thread_id,
     status: conversation.status,
-    ...(conversation.match_first_name ? { matchFirstName: conversation.match_first_name } : {}),
-    ...(conversation.match_age ? { matchAge: Number(conversation.match_age) } : {}),
+    ...(conversation.display_label || conversation.match_first_name ? { matchFirstName: conversation.display_label || conversation.match_first_name } : {}),
+    ...(conversation.display_label !== null ? { userDisplayLabel: conversation.display_label } : {}),
+    ...(conversation.display_age || conversation.match_age ? { matchAge: Number(conversation.display_age || conversation.match_age) } : {}),
+    ...(conversation.display_age !== null ? { userDisplayAge: conversation.display_age } : {}),
     ...(conversation.current_topic ? { currentTopic: conversation.current_topic } : {}),
     ...(messages.length ? { lastMessageAt: messages[messages.length - 1].sentAt } : {}),
     pendingHumanActions: Number(conversation.pending_human_actions) || 0,
@@ -341,6 +351,24 @@ export async function clearConversationTemporaryInstruction(userId: string, conv
          updated_at = now()
      WHERE id = $1 AND user_id = $2`,
     [conversationId, userId]
+  );
+  return Boolean(result.rowCount);
+}
+
+/** User-confirmed identity, not a Tinder scraping claim. Clearing both fields
+ * falls back to the separately captured MatchProfile, if one exists. */
+export async function updateConversationDisplayIdentity(
+  userId: string,
+  conversationId: string,
+  label: string | null,
+  age: number | null
+): Promise<boolean> {
+  const result = await getPool().query(
+    `UPDATE conversations
+     SET display_label = $1, display_age = $2, updated_at = now()
+     WHERE id = $3 AND user_id = $4
+     RETURNING id`,
+    [label, age, conversationId, userId]
   );
   return Boolean(result.rowCount);
 }
