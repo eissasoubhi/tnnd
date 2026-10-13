@@ -14,6 +14,49 @@ import { getApiKey, getBackendSession, getChatSettings, getConfig, lockStorageTo
 import type { AppConfig, GenerateRequest, GenerateResponse, PreviewOverrides } from "./types";
 
 const AUTO_STATE_KEY = "tnnd.autoState";
+const FIRST_MESSAGE_CLAIMS_KEY = "tnnd.firstMessageAttempts.v1";
+const pendingFirstMessageClaims = new Set<string>();
+
+function senderThreadRef(sender: chrome.runtime.MessageSender): string | null {
+  try {
+    const url = new URL(sender.url ?? "");
+    if (!["https://tinder.com", "https://www.tinder.com"].includes(url.origin)) return null;
+    if (!url.pathname.startsWith("/app/messages/")) return null;
+    return decodeURIComponent(url.pathname.slice("/app/messages/".length)).replace(/\/+$/, "");
+  } catch { return null; }
+}
+
+function normalizeFirstMessageClaims(value: unknown): Record<string, number> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .filter(([ref, timestamp]) => ref.length > 0 && ref.length <= 512 && typeof timestamp === "number" && Number.isFinite(timestamp))
+    .slice(-1000)) as Record<string, number>;
+}
+
+async function checkFirstMessagePermission(ref: string): Promise<{
+  ok: boolean; allowed: boolean; reason?: string; savedMessageCount?: number;
+}> {
+  const raw = await chrome.storage.local.get(FIRST_MESSAGE_CLAIMS_KEY);
+  if (normalizeFirstMessageClaims(raw[FIRST_MESSAGE_CLAIMS_KEY])[ref]) return { ok: true, allowed: false, reason: "already_attempted" };
+  if (pendingFirstMessageClaims.has(ref)) return { ok: true, allowed: false, reason: "claim_in_progress" };
+  const backend = await loadTinderConversationManagement(ref);
+  if (!backend.conversationId || backend.conversationStatus !== "active" || !mayAutomaticallySendToTinder(backend)) {
+    return { ok: true, allowed: false, reason: "ai_management_not_active" };
+  }
+  const session = await getBackendSession();
+  if (!session) return { ok: true, allowed: false, reason: "not_connected" };
+  const response = await fetch(`http://127.0.0.1:4000/api/v1/conversations/${encodeURIComponent(backend.conversationId)}`, {
+    headers: { authorization: `Bearer ${session.token}` }
+  });
+  if (!response.ok) return { ok: true, allowed: false, reason: "backend_unavailable" };
+  const payload = await response.json() as { conversation?: { messages?: unknown[] } };
+  if (!Array.isArray(payload?.conversation?.messages)) return { ok: true, allowed: false, reason: "unknown_backend_history" };
+  const savedMessageCount = payload.conversation.messages.length;
+  return { ok: true, allowed: savedMessageCount === 0, savedMessageCount,
+    ...(savedMessageCount ? { reason: "backend_history_present" } : {}) };
+}
+
+
 
 interface AutoState {
   date: string;
@@ -26,6 +69,7 @@ type TrustedContentRequest =
   | { type: "TNND_GET_CHAT_AUTOMATION"; threadKey: string }
   | { type: "TNND_GET_BACKEND_AUTO_SEND_PERMISSION"; conversationRef: string }
   | { type: "TNND_GET_FIRST_MESSAGE_PERMISSION"; conversationRef: string }
+  | { type: "TNND_CLAIM_FIRST_MESSAGE"; conversationRef: string }
   | { type: "TNND_SYNC_VISIBLE_MATCH_IDENTITY"; conversationRef: string; identity: VisibleTinderMatchIdentity }
   | { type: "TNND_GET_AUTO_STATE" }
   | { type: "TNND_SAVE_AUTO_STATE"; state: AutoState };
@@ -165,38 +209,37 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
     return true;
   }
 
-  if (message.type === "TNND_GET_FIRST_MESSAGE_PERMISSION") {
+  if (message.type === "TNND_GET_FIRST_MESSAGE_PERMISSION" || message.type === "TNND_CLAIM_FIRST_MESSAGE") {
     const ref = message.conversationRef?.trim();
-    const senderRef = (() => {
-      try {
-        const url = new URL(sender.url ?? "");
-        if (!["https://tinder.com", "https://www.tinder.com"].includes(url.origin)) return null;
-        return url.pathname.startsWith("/app/messages/")
-          ? decodeURIComponent(url.pathname.slice("/app/messages/".length)).replace(/\\/+$/, "")
-          : null;
-      } catch { return null; }
-    })();
-    if (!ref || !senderRef || ref !== senderRef) {
+    const senderRef = senderThreadRef(sender);
+    if (!ref || senderRef !== ref) {
       sendResponse({ ok: true, allowed: false, reason: "wrong_thread" });
       return false;
     }
-    void (async () => {
-      const backend = await loadTinderConversationManagement(ref);
-      if (!backend.conversationId || backend.conversationStatus !== "active" || !mayAutomaticallySendToTinder(backend)) {
-        return { ok: true, allowed: false, reason: "ai_management_not_active" };
+    if (message.type === "TNND_GET_FIRST_MESSAGE_PERMISSION") {
+      void checkFirstMessagePermission(ref).then(sendResponse)
+        .catch(() => sendResponse({ ok: true, allowed: false, reason: "backend_unavailable" }));
+    } else {
+      // In-memory lock serializes claims across Tinder tabs in this worker.
+      // Persistent record survives reload/crash and forbids blind retries.
+      if (pendingFirstMessageClaims.has(ref)) {
+        sendResponse({ ok: true, claimed: false, reason: "already_attempted" });
+        return false;
       }
-      const session = await getBackendSession();
-      if (!session) return { ok: true, allowed: false, reason: "not_connected" };
-      const response = await fetch(`http://127.0.0.1:4000/api/v1/conversations/${encodeURIComponent(backend.conversationId)}`, {
-        headers: { authorization: `Bearer ${session.token}` }
-      });
-      if (!response.ok) return { ok: true, allowed: false, reason: "backend_unavailable" };
-      const payload = await response.json() as { conversation?: { messages?: unknown[] } };
-      // Fail closed if the response does not prove the server has an empty chat.
-      if (!Array.isArray(payload?.conversation?.messages)) return { ok: true, allowed: false, reason: "unknown_backend_history" };
-      const count = payload.conversation.messages.length;
-      return { ok: true, allowed: count === 0, savedMessageCount: count, reason: count ? "backend_history_present" : null };
-    })().then(sendResponse).catch(() => sendResponse({ ok: true, allowed: false, reason: "backend_unavailable" }));
+      pendingFirstMessageClaims.add(ref);
+      void (async () => {
+        try {
+          const checked = await checkFirstMessagePermission(ref);
+          if (!checked.allowed) return { ok: true, claimed: false, reason: checked.reason };
+          const stored = await chrome.storage.local.get(FIRST_MESSAGE_CLAIMS_KEY);
+          const entries = normalizeFirstMessageClaims(stored[FIRST_MESSAGE_CLAIMS_KEY]);
+          if (entries[ref]) return { ok: true, claimed: false, reason: "already_attempted" };
+          const attempts = { ...entries, [ref]: Date.now() };
+          await chrome.storage.local.set({ [FIRST_MESSAGE_CLAIMS_KEY]: attempts });
+          return { ok: true, claimed: true };
+        } finally { pendingFirstMessageClaims.delete(ref); }
+      })().then(sendResponse).catch(() => sendResponse({ ok: true, claimed: false, reason: "claim_failed" }));
+    }
     return true;
   }
 
