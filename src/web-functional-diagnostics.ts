@@ -5,6 +5,7 @@ export interface FunctionalFinding {
   operation: string;
   httpStatus?: number;
   errorCode?: string;
+  stage?: string;
   action?: string;
   nextStep: string;
 }
@@ -58,10 +59,15 @@ export function functionalFindings(events: readonly WebDiagnosticEvent[], now = 
     if (op === "other" || op === "unknown") continue;
     const action = [...actions].reverse().find(a => a.at <= event.at && event.at - a.at < 30_000)?.detail;
     const code = isApp && /^[a-z][a-z0-9_:-]{1,63}$/.test(event.detail ?? "") ? event.detail : undefined;
+    const safeStages = new Set([
+      "conversation", "profile", "summary", "facts", "effective-context",
+      "supplemental", "memories", "provider-settings", "provider", "memory-usage"
+    ]);
+    const stage = isApp && safeStages.has(event.phase ?? "") ? event.phase : undefined;
     const kind = isNetwork ? "network" : isApp ? "application" : "http";
     const finding: FunctionalFinding = {
       kind, operation: op, ...(event.status ? { httpStatus: event.status } : {}),
-      ...(code ? { errorCode: code } : {}), ...(action ? { action } : {}),
+      ...(code ? { errorCode: code } : {}), ...(stage ? { stage } : {}), ...(action ? { action } : {}),
       nextStep: nextStep(kind, op, code)
     };
     latest.set(op + ":" + (event.id ?? event.at), finding);
