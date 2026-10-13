@@ -9,6 +9,7 @@ import { isInboxReadableTinderState } from "./tinder-state-machine";
 import type { TinderScheduledJob } from "./tinder-scheduler";
 import { executeUnreadAwareTinderStep } from "./tinder-unread-executor";
 import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
+import { selectVisibleTinderChatLink } from "./tinder-spa-conversation-navigation";
 import type { AutomationConfig, GenerateRequest, GenerateResponse } from "./types";
 import { sendRuntimeMessageSafely } from "./extension-context";
 
@@ -641,6 +642,54 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   void startFirstMessage(input.threadKey, input.type === "TNND_AUTO_START_NEW_MATCH" ? "global-new" : "individual").then(sendResponse);
   return true;
 });
+
+/** React/Tinder handles the click internally. This content script stays alive
+ * across a SPA transition, unlike chrome.tabs.update({url}) full navigations.
+ */
+let spaNavigationBusy = false;
+async function navigateExistingSpa(ref: string, expectedRef: string | null): Promise<{
+  ok: boolean; error?: string; currentRef?: string
+}> {
+  if (spaNavigationBusy || busy) return { ok: false, error: "conversation_processing_in_progress" };
+  if (!/^[a-zA-Z0-9_-]{3,512}$/.test(ref)) return { ok: false, error: "invalid_thread_ref" };
+  if (currentConversationRef() !== expectedRef) return { ok: false, error: "unexpected_current_thread" };
+  if (currentConversationRef() === ref) return { ok: true, currentRef: ref };
+  const anchor = selectVisibleTinderChatLink(document, ref, location.origin);
+  if (!anchor) return { ok: false, error: "thread_not_in_visible_sidebar" };
+  spaNavigationBusy = true;
+  try {
+    anchor.click();
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      if (currentConversationRef() === ref && adapter.diagnose().composerFound) {
+        scheduleScan();
+        return { ok: true, currentRef: ref };
+      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return { ok: false, error: "spa_navigation_not_confirmed" };
+  } finally { spaNavigationBusy = false; }
+}
+
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (!message || typeof message !== "object") return false;
+  const input = message as { type?: unknown; ref?: unknown; expectedRef?: unknown };
+  if (input.type !== "TNND_EXISTING_SPA_NAVIGATE") return false;
+  if (sender.id !== chrome.runtime.id || typeof input.ref !== "string"
+    || (input.expectedRef !== null && typeof input.expectedRef !== "string")) {
+    sendResponse({ ok: false, error: "untrusted_or_invalid_navigation_request" });
+    return false;
+  }
+  void navigateExistingSpa(input.ref, input.expectedRef)
+    .then(sendResponse).catch(() => sendResponse({ ok: false, error: "spa_navigation_failed" }));
+  return true;
+});
+
+window.setInterval(() => {
+  if (!hasLiveExtensionContext() || spaNavigationBusy || busy) return;
+  const ref = currentConversationRef();
+  if (ref) void sendRuntimeMessage({ type: "TNND_EXISTING_RUNNER_TICK", ref }).catch(() => undefined);
+}, 2500);
 
 function scheduleScan(): void {
   if (!hasLiveExtensionContext()) return;
