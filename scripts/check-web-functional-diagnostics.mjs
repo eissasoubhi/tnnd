@@ -33,3 +33,12 @@ test("missing /analytics route is treated as a real functional API failure", () 
   assert.equal(findings[0]?.operation,"analytics");
   assert.match(findings[0]?.nextStep ?? "",/API/);
 });
+
+test("reports only fixed generation stage identifiers, never freeform server errors", () => {
+  const base = {kind:"app-error",at,pageSessionId:"p",status:500,method:"POST",id:"g",url:"http://localhost:5173/api/v1/conversations/[conversation]/generate",detail:"generation_schema_missing"};
+  const known = functionalFindings([{...base,phase:"summary"}],at);
+  assert.equal(known[0]?.stage,"summary");
+  const untrusted = functionalFindings([{...base,phase:"private user content and token"}],at);
+  assert.equal(untrusted[0]?.stage,undefined);
+  assert.ok(!JSON.stringify(untrusted).includes("private"));
+});
