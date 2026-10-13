@@ -29,5 +29,47 @@ if (isTnndLocalWebUrl(window.location.href)) {
     });
   });
 
+  // Status-only bridge; the Web app cannot start, stop or control the runner.
+  // The background accepts these read requests only from TNND's local Web origin.
+  const isTnndApp = ["http://127.0.0.1:5173", "http://localhost:5173"].includes(window.location.origin);
+  if (isTnndApp) {
+    const publishRunnerState = async (): Promise<void> => {
+      if (!alive || !hasLiveExtensionContext()) return;
+      try {
+        const result = await chrome.runtime.sendMessage({ type: "TNND_GLOBAL_EXISTING_STATE" }) as {
+          ok?: boolean;
+          state?: {
+            enabled?: boolean; phase?: string; phaseDetail?: string; currentLabel?: string | null;
+            eligibleCount?: number; visitedCount?: number; sentCount?: number;
+            skippedCount?: number; errorCount?: number; lastActionAt?: string | null;
+            lastError?: string | null;
+            activity?: Array<{ at: string; phase: string; detail: string; conversation: string | null }>;
+          };
+        };
+        if (!result?.ok || !result.state) return;
+        const state = result.state;
+        window.postMessage({
+          source: "TNND_GLOBAL_RUNNER_STATUS_V1",
+          state: {
+            enabled: state.enabled === true,
+            phase: state.phase ?? "stopped",
+            phaseDetail: state.phaseDetail ?? "",
+            currentLabel: state.currentLabel ?? null,
+            eligibleCount: Number(state.eligibleCount) || 0,
+            visitedCount: Number(state.visitedCount) || 0,
+            sentCount: Number(state.sentCount) || 0,
+            skippedCount: Number(state.skippedCount) || 0,
+            errorCount: Number(state.errorCount) || 0,
+            lastActionAt: state.lastActionAt ?? null,
+            lastError: state.lastError ?? null,
+            activity: (state.activity ?? []).slice(-5)
+          }
+        }, window.location.origin);
+      } catch { /* An outdated or disconnected extension stays read-only. */ }
+    };
+    void publishRunnerState();
+    window.setInterval(() => { void publishRunnerState(); }, 3_000);
+  }
+
   window.postMessage({ source: WEB_DIAGNOSTIC_REQUEST_CHANNEL, type: "snapshot" }, "*");
 }

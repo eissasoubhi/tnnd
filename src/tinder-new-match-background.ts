@@ -72,6 +72,8 @@ chrome.runtime.onMessage.addListener((message: Request, sender, respond) => {
   if (message.type === "TNND_NEW_MATCH_OBSERVATION_START" && popupSender(sender)) {
     void serialized(async () => {
       if (!Array.isArray(message.refs) || message.refs.length < 2 || message.refs.length > 500) throw new Error("Select the Tinder Matches tab with at least two loaded match tiles before starting.");
+      const existingRunner = (await chrome.storage.local.get("tnnd.globalExistingRunner.v2"))["tnnd.globalExistingRunner.v2"] as { enabled?: boolean } | undefined;
+      if (existingRunner?.enabled) throw new Error("Global existing chats are running. Stop that runner before starting new-match AI: Tinder supports a single tab.");
       const session = await getBackendSession();
       const config = await getConfig();
       if (!session) throw new Error("Connect your TNND account before enabling new-match messages.");

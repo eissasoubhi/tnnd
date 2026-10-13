@@ -26,18 +26,56 @@ test("global navigation visits only confirmed AI-managed existing chats", () => 
  assert.equal(nextExistingThreadRef([],null),null);
 });
 
-test("the scheduler navigates a user-confirmed dedicated tab, not unrelated Tinder chats", async () => {
- const { readFile }=await import("node:fs/promises");
- const runner=await readFile(new URL("../src/tinder-global-existing-runner.ts",import.meta.url),"utf8");
- const popup=await readFile(new URL("../src/popup.ts",import.meta.url),"utf8");
- assert.match(runner,/chrome\.alarms\.onAlarm/);
- assert.match(runner,/chrome\.tabs\.create\(/);
- assert.match(runner,/active: false/);
- assert.match(runner,/chrome\.tabs\.update\(/);
- assert.match(runner,/eligibleExistingThreadRefs/);
- assert.match(runner,/chrome\.alarms\.clear/);
- assert.doesNotMatch(runner,/adapter\.send|GENERATE_SUGGESTIONS/);
- assert.match(popup,/startGlobalExisting\.addEventListener\("click"/);
- assert.match(popup,/stopGlobalExisting\.addEventListener\("click"/);
- assert.match(popup,/window\.confirm\("Start a dedicated background Tinder tab/);
+test("the runner reuses the sole existing Tinder tab and never closes user tabs", async () => {
+ const { readFile } = await import("node:fs/promises");
+ const runner = await readFile(new URL("../src/tinder-global-existing-runner.ts", import.meta.url), "utf8");
+ const popup = await readFile(new URL("../src/popup.ts", import.meta.url), "utf8");
+ assert.match(runner, /chrome\.tabs\.query\(/);
+ assert.match(runner, /tinder\.com\/\*/);
+ assert.match(runner, /tinder\.length > 1/);
+ assert.match(runner, /mode: "reused"/);
+ assert.match(runner, /chrome\.tabs\.create\(/);
+ assert.match(runner, /active: true/);
+ assert.match(runner, /chrome\.tabs\.update\(/);
+ assert.doesNotMatch(runner, /chrome\.tabs\.remove\(/);
+ assert.match(runner, /eligibleExistingThreadRefs/);
+ assert.match(runner, /chrome\.alarms\.clear/);
+ assert.match(runner, /tnnd\.newMatchLinkObservation\.v3/);
+ assert.doesNotMatch(runner, /adapter\.send|GENERATE_SUGGESTIONS/);
+ assert.match(popup, /startGlobalExisting\.addEventListener\("click"/);
+ assert.match(popup, /stopGlobalExisting\.addEventListener\("click"/);
+ assert.match(popup, /window\.confirm\("Use your EXISTING Tinder tab/);
+});
+
+test("operational runner states are persisted and reported without Tinder message contents", async () => {
+ const { readFile } = await import("node:fs/promises");
+ const runner = await readFile(new URL("../src/tinder-global-existing-runner.ts", import.meta.url), "utf8");
+ const content = await readFile(new URL("../src/content.ts", import.meta.url), "utf8");
+ const popup = await readFile(new URL("../src/popup.ts", import.meta.url), "utf8");
+ const html = await readFile(new URL("../public/popup.html", import.meta.url), "utf8");
+ const bridge = await readFile(new URL("../src/web-diagnostic-bridge.ts", import.meta.url), "utf8");
+ const panel = await readFile(new URL("../apps/web/src/conversation-management-panel.ts", import.meta.url), "utf8");
+ assert.match(runner, /LOG_LIMIT = 16/);
+ assert.match(runner, /lastActionAt/);
+ assert.match(runner, /visitedCount/);
+ assert.match(runner, /sentCount/);
+ assert.match(runner, /TNND_EXISTING_RUNNER_EVENT/);
+ assert.match(runner, /pausedOnStop/);
+ assert.match(runner, /TNND_EXISTING_RUNNER_TAB_PAUSED/);
+ assert.match(runner, /TNND_EXISTING_RUNNER_CLEAR_PAUSE/);
+ assert.match(content, /await autoReplyPausedAfterGlobalStop\(conversationRef\)/);
+ assert.match(popup, /TNND_EXISTING_RUNNER_CLEAR_PAUSE/);
+ assert.match(runner, /sender\.tab\.id !== state\.tabId/);
+ assert.match(runner, /webReadOnlySender/);
+ for (const phase of ["waiting", "generating", "sending", "sent", "skipped", "error"]) {
+   assert.ok(content.includes(`reportExistingRunner("${phase}"`), phase);
+ }
+ assert.match(popup, /setInterval/);
+ assert.match(popup, /globalExistingActivity/);
+ assert.match(html, /globalRunnerVisited/);
+ assert.match(html, /focusGlobalExistingTab/);
+ assert.match(bridge, /TNND_GLOBAL_RUNNER_STATUS_V1/);
+ assert.match(panel, /TNND_GLOBAL_RUNNER_STATUS_V1/);
+ assert.match(panel, /web-runner-phase/);
+ assert.match(panel, /web-runner-sent/);
 });

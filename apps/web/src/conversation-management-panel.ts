@@ -59,6 +59,7 @@ function installStyles(): void {
   style.id = "tnnd-management-panel-styles";
   style.textContent = `
     .conversation-management-explainer{padding:10px 14px;border:1px solid var(--nb-border,#c8d8cd);border-radius:12px;background:var(--nb-surface-soft,#edf4eb);font-size:12px;line-height:1.6}.conversation-management-explainer summary{cursor:pointer;font-weight:750}.conversation-management-explainer p{margin:8px 0 0}
+    .management-runner-monitor{margin:14px 0;padding:14px;border:1px solid var(--nb-border,#c8d8cd);border-radius:12px;background:var(--nb-surface-soft,#f5f8f3)}.management-runner-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}.management-runner-heading h3{margin:0 0 5px;font-size:14px}.management-runner-phase{border-radius:999px;padding:5px 9px;white-space:nowrap;background:#e5e7eb;font-size:11px;font-weight:750}.management-runner-phase[data-phase="sending"],.management-runner-phase[data-phase="generating"],.management-runner-phase[data-phase="loading"]{background:#dbeafe;color:#1d4ed8}.management-runner-phase[data-phase="sent"],.management-runner-phase[data-phase="waiting"]{background:#dcfce7;color:#166534}.management-runner-phase[data-phase="error"],.management-runner-phase[data-phase="skipped"]{background:#fee2e2;color:#991b1b}.management-runner-current{font-weight:700;font-size:12px;margin:8px 0}.management-runner-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin:12px 0}.management-runner-stats span{border:1px solid var(--nb-border,#d6e0d7);border-radius:9px;background:#fff;padding:9px 3px;text-align:center;font-size:11px}.management-runner-stats strong{display:block;font-size:17px}.management-runner-history>summary{font-size:12px;font-weight:750;cursor:pointer}.management-runner-history ol{max-height:160px;overflow:auto;font-size:12px;padding-left:20px;line-height:1.6}.management-runner-history time{color:#767676;margin-right:8px}@media(max-width:760px){.management-runner-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
     .management-bulk-actions{display:flex;gap:8px;flex-wrap:wrap}.management-bulk-panel{padding:15px;border:1px solid var(--nb-border,#c8d8cd);border-radius:12px;background:var(--nb-surface-soft,#edf4eb);margin:14px 0}.management-bulk-panel h3{font-size:14px;margin:0 0 6px}.management-bulk-panel button{padding:8px 12px;margin-top:8px;cursor:pointer}.management-bulk-panel button:disabled{opacity:.5;cursor:not-allowed}.management-list{display:grid;gap:8px;margin-top:12px}.management-row{display:grid;grid-template-columns:minmax(0,1fr) 190px auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--border,#d4d4d8);border-radius:10px}.management-row-main{display:grid;gap:3px;min-width:0}.management-match-line{display:flex;align-items:center;gap:9px;min-width:0}.management-match-avatar{display:grid;flex:0 0 36px;place-items:center;width:36px;height:36px;border-radius:50%;object-fit:cover;background:var(--nb-mint,#d9efcc);color:var(--nb-primary,#264b40)}.management-row-main strong,.management-row-main small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.management-row small{opacity:.65}.management-row select{width:100%}.management-row button{width:auto;padding:7px 10px}.management-badge{font-size:10px;opacity:.72}.management-action-block{display:inline-flex;width:max-content;max-width:100%;font-size:11px;font-weight:700;padding:3px 7px;border-radius:999px;background:rgba(245,158,11,.14)}.management-action-block[data-severity="urgent"]{background:rgba(239,68,68,.16)}.management-note{margin-top:9px}.management-status{min-height:18px}.management-row[data-management-state="moved-off-tinder"]{border-style:dashed}.management-row[data-management-state="ai-managed"]{outline:1px solid currentColor;outline-offset:1px}.management-row[data-action-focus="true"]{box-shadow:0 0 0 3px rgba(99,102,241,.3)}@media(max-width:760px){.management-row{grid-template-columns:1fr}}
   `;
   document.head.append(style);
@@ -89,6 +90,14 @@ function mount(): { list: HTMLElement; status: HTMLElement } | null {
       <p class="subtle"><strong>Step 2 — Start the automation:</strong> open the TNND browser extension on Tinder → <strong>Existing conversations</strong> → <strong>Start global existing chat runner</strong>. Keep Chrome open. This is a separate control that cannot be started by the Web authorization button.</p>
       <p id="management-bulk-status" class="subtle" role="status" aria-live="polite"></p>
     </section>
+    <section class="management-runner-monitor" aria-label="Tinder AI runner live activity">
+      <div class="management-runner-heading"><div><h3>Global AI runner · live activity</h3><p class="subtle">Read-only status from the TNND Chrome extension. Start and stop the runner in the extension popup.</p></div><span id="web-runner-phase" class="management-runner-phase" data-phase="unknown">Waiting for extension</span></div>
+      <p id="web-runner-summary" class="subtle" role="status" aria-live="polite">Open TNND in Chrome with the updated extension installed. Runner updates appear here automatically.</p>
+      <p id="web-runner-current" class="management-runner-current">No conversation being processed yet.</p>
+      <div class="management-runner-stats"><span><strong id="web-runner-eligible">0</strong> eligible</span><span><strong id="web-runner-visited">0</strong> visited</span><span><strong id="web-runner-sent">0</strong> send actions</span><span><strong id="web-runner-skipped">0</strong> skipped</span><span><strong id="web-runner-errors">0</strong> errors</span></div>
+      <details class="management-runner-history"><summary>Recent runner events</summary><ol id="web-runner-activity"><li>No activity yet.</li></ol></details>
+      <p class="subtle">Send actions are not delivery receipts. Chrome and Tinder must stay open. A running status with no recent updates may indicate a paused or disconnected tab.</p>
+    </section>
     <div id="conversation-management-list" class="management-list"></div>
     <p class="subtle management-note">Switching to AI managed requires an explicit confirmation before it is saved.</p>
     <p class="subtle management-status" id="conversation-management-message"></p>
@@ -99,6 +108,57 @@ function mount(): { list: HTMLElement; status: HTMLElement } | null {
     status: panel.querySelector<HTMLElement>("#conversation-management-status")!
   };
 }
+
+const runnerDisplayPhases: Record<string, string> = {
+  starting: "Starting", checking: "Checking", loading: "Opening chat", waiting: "Waiting",
+  generating: "Generating reply", sending: "Sending", sent: "Send action completed",
+  skipped: "Skipped", error: "Error", stopped: "Stopped"
+};
+type RunnerWebEvent = { at: string; phase: string; detail: string; conversation: string | null };
+type RunnerWebState = {
+  enabled: boolean; phase: string; phaseDetail: string; currentLabel: string | null;
+  eligibleCount: number; visitedCount: number; sentCount: number; skippedCount: number;
+  errorCount: number; lastActionAt: string | null; activity: RunnerWebEvent[];
+};
+window.addEventListener("message", event => {
+  if (event.source !== window || event.origin !== window.location.origin) return;
+  const message = event.data as { source?: unknown; state?: RunnerWebState } | null;
+  if (message?.source !== "TNND_GLOBAL_RUNNER_STATUS_V1" || !message.state) return;
+  const state = message.state;
+  if (typeof state.phase !== "string" || typeof state.enabled !== "boolean") return;
+  const phase = document.querySelector<HTMLElement>("#web-runner-phase");
+  const summary = document.querySelector<HTMLElement>("#web-runner-summary");
+  const current = document.querySelector<HTMLElement>("#web-runner-current");
+  if (!phase || !summary || !current) return;
+  phase.textContent = runnerDisplayPhases[state.phase] ?? state.phase;
+  phase.dataset.phase = state.phase;
+  const elapsed = state.lastActionAt ? Date.now() - Date.parse(state.lastActionAt) : NaN;
+  const stale = state.enabled && Number.isFinite(elapsed) && elapsed > 10 * 60_000;
+  summary.textContent = `${state.phaseDetail ?? "No runner activity."}${stale ? " · No update for over 10 minutes. Check the Tinder tab or extension." : ""}`;
+  current.textContent = state.currentLabel ? `Current conversation: ${state.currentLabel}` : "No current conversation.";
+  const counters = {
+    "web-runner-eligible": state.eligibleCount,
+    "web-runner-visited": state.visitedCount,
+    "web-runner-sent": state.sentCount,
+    "web-runner-skipped": state.skippedCount,
+    "web-runner-errors": state.errorCount
+  };
+  for (const [id, value] of Object.entries(counters)) {
+    const element = document.getElementById(id);
+    if (element) element.textContent = String(Number.isFinite(value) ? value : 0);
+  }
+  const log = document.querySelector<HTMLOListElement>("#web-runner-activity");
+  if (!log) return;
+  log.replaceChildren();
+  for (const item of (Array.isArray(state.activity) ? state.activity.slice(-5).reverse() : [])) {
+    const li = document.createElement("li");
+    const time = document.createElement("time");
+    time.textContent = Number.isFinite(Date.parse(item.at)) ? new Date(item.at).toLocaleTimeString() : "—";
+    li.append(time, document.createTextNode(`${runnerDisplayPhases[item.phase] ?? item.phase}: ${item.detail}`));
+    log.append(li);
+  }
+  if (!log.childElementCount) { const li = document.createElement("li"); li.textContent = "No activity yet."; log.append(li); }
+});
 
 const elements = mount();
 let records: ConversationManagementRecord[] = [];
