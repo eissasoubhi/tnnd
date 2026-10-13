@@ -9,8 +9,8 @@ TNND Web → **Conversation management** → **Existing conversations · global 
 - **Start existing chats**: inspect the eligible/blocked/excluded counts, confirm explicitly, bulk-enroll already synced conversations with messages (100 per server transaction), and Resume eligible paused chats one at a time.
 - **Stop existing chats**: confirm, then pause server automation for already AI-managed existing chats. Their AI-managed selections remain saved and can be Resumed individually.
 - Explicitly manual, archived/moved-off Tinder, disabled, unsynced, empty-history, and human-action-blocked chats are skipped when starting.
-- This never sends a Tinder message itself. It enables backend permissions for the pre-existing per-chat auto-reply engine. The engine still only processes the **currently open and recognized** Tinder conversation when the global extension auto-reply switch is on.
-- Keep manual single-chat Start/Resume/Pause/Disable and Tinder popup per-chat enabled settings.
+- This enrollment does not send Tinder messages itself. To visit more than one chat, use the **extension popup → Existing conversations → Start global existing chat runner**. The runner opens an inactive, dedicated Tinder tab, cycles only active AI-managed chats with actual saved messages, and lets the per-chat extension engine independently validate each new incoming reply. Stop closes the managed Tinder tab and clears the recurring alarm. Chrome must remain open; browser timer throttling can delay processing.
+- Keep manual single-chat Start/Resume/Pause/Disable and Tinder popup per-chat enabled settings. Enable **automatic replies on Tinder** in extension Options before starting the dedicated runner. Runtime checks still enforce per-chat permission, quiet hours, and daily limits. The background runner never sends messages directly.
 
 ## 2. Future matches (read-only detection foundation, NOT sending)
 
@@ -25,6 +25,6 @@ Open Tinder **Messages** and the TNND extension popup:
 
 ## Verification
 
-`npm run build`, `npm run test:new-match-observation`, `cd apps/web && npm test`, `cd apps/api && npm test`.
+`npm run build`, `npm run test:new-match-observation`, `npm run test:global-existing-runner`, `cd apps/web && npm test`, `cd apps/api && npm test`.
 
 CI uses synthetic records, not real Tinder sending.
