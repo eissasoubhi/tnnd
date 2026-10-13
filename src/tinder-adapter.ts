@@ -1,6 +1,7 @@
 import { hashTinderThreadKey, tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import { classifyTinderPath } from "./tinder-state-machine";
 import { directionFromTinderHints } from "./tinder-message-evidence";
+import { directionFromChatColumnGeometry, messageBubbleSized } from "./tinder-message-layout";
 import { unansweredStatus, lastUnansweredEvidence, type UnansweredStatus } from "./tinder-unanswered-backlog";
 export interface ConversationSnapshot {
   threadKey: string;
@@ -165,6 +166,28 @@ function findComposer(): HTMLElement | null {
   return findComposerMatch()?.element ?? null;
 }
 
+/** A Tinder message list item may occupy the FULL chat width even though
+ * the visible text bubble is anchored to the left or right. Look for a
+ * message-sized descendant before using geometry; never infer authorship
+ * from the main/page center (which may include Tinder's profile panel).
+ */
+function visibleBubbleRect(element: HTMLElement, composerRect: DOMRect): DOMRect | null {
+  const fullText = textOf(element);
+  if (!fullText) return null;
+  const nodes = [element, ...Array.from(element.querySelectorAll<HTMLElement>("span, p, div, [role='paragraph']"))];
+  const possible: DOMRect[] = [];
+  for (const node of nodes.slice(0, 120)) {
+    if (!visible(node) || textOf(node) !== fullText) continue;
+    const rect = node.getBoundingClientRect();
+    if (!messageBubbleSized(rect, composerRect) || rect.height < 2) continue;
+    possible.push(rect);
+  }
+  // Prefer the actual small text/bubble over a broad enclosing row.
+  // An unresolvable full-width row intentionally remains "unknown".
+  possible.sort((a, b) => a.width - b.width);
+  return possible[0] ?? null;
+}
+
 function directionOf(element: HTMLElement): Direction {
   let current: HTMLElement | null = element;
   const tokens: string[] = [];
@@ -175,20 +198,14 @@ function directionOf(element: HTMLElement): Direction {
       current.getAttribute("aria-label") ?? ""
     );
   }
-  // A shared bubble wrapper can mention "Sent at" or "sender" for any
-  // message; those generic strings must never imply a message is ours.
-  const direction = directionFromTinderHints(tokens);
-  if (direction !== "unknown") return direction;
-
-  const root = document.querySelector("main") ?? document.body;
-  const rootRect = root.getBoundingClientRect();
-  const rect = element.getBoundingClientRect();
-  const center = rect.left + rect.width / 2;
-  const rootCenter = rootRect.left + rootRect.width / 2;
-  const threshold = Math.max(24, rootRect.width * 0.08);
-  if (center > rootCenter + threshold) return "me";
-  if (center < rootCenter - threshold) return "them";
-  return "unknown";
+  const hinted = directionFromTinderHints(tokens);
+  if (hinted !== "unknown") return hinted;
+  const composer = findComposer();
+  if (!composer) return "unknown";
+  const composerRect = composer.getBoundingClientRect();
+  const bubbleRect = visibleBubbleRect(element, composerRect);
+  if (!bubbleRect) return "unknown";
+  return directionFromChatColumnGeometry(bubbleRect, composerRect);
 }
 
 function candidateMessages(composer: HTMLElement): HTMLElement[] {
