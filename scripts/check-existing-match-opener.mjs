@@ -43,7 +43,7 @@ test("existing-match worker reuses one tab, checks empty thread and honors first
  assert.match(content,/a\.matchListItem/);
  assert.match(background,/TNND_EXISTING_MATCHES_START/);
  assert.match(background,/armExistingMatches\(message\.refs, session\.user\.id, prior\)/);
- assert.match(popup,/Start AI on existing matches/);
+ assert.match(popup,/startExistingMatchBatch/);
  assert.match(popup,/TNND_EXISTING_MATCHES_START/);
  assert.match(html,/startExistingMatchBatch/);
 });
