@@ -3,6 +3,7 @@ import "./tinder-checkpoint-background";
 import "./tinder-message-cursor-background";
 import "./tinder-unread-observation-background";
 import "./tinder-new-match-background";
+import "./tinder-global-existing-runner";
 import { generateSuggestions } from "./gemini";
 import { loadTinderConversationManagement } from "./tinder-backend-management";
 import { syncConversationDelta } from "./conversation-sync";
