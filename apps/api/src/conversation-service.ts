@@ -30,6 +30,7 @@ export interface ConversationSummary {
   status: ConversationStatus;
   matchFirstName?: string;
   matchAge?: number;
+  matchPhotoUrl?: string;
   userDisplayLabel?: string;
   userDisplayAge?: number;
   currentTopic?: string;
@@ -159,6 +160,7 @@ export async function listConversations(userId: string): Promise<ConversationSum
     current_topic: string | null;
     match_first_name: string | null;
     match_age: string | null;
+    match_photo_url: string | null;
     display_label: string | null;
     display_age: number | null;
     last_message_at: Date | null;
@@ -169,6 +171,7 @@ export async function listConversations(userId: string): Promise<ConversationSum
              c.display_label, c.display_age,
             (SELECT mp.normalized_profile->'fields'->>'firstName' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_first_name,
             (SELECT mp.normalized_profile->'fields'->>'age' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_age,
+            (SELECT mp.normalized_profile->'fields'->>'photoUrl' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_photo_url,
             MAX(m.sent_at) AS last_message_at,
             (
               SELECT COUNT(*)
@@ -191,6 +194,7 @@ export async function listConversations(userId: string): Promise<ConversationSum
     ...(row.display_label || row.match_first_name ? { matchFirstName: (row.display_label || row.match_first_name)! } : {}),
     ...(row.display_label !== null ? { userDisplayLabel: row.display_label } : {}),
     ...(row.display_age || row.match_age ? { matchAge: Number(row.display_age || row.match_age) } : {}),
+    ...(row.match_photo_url ? { matchPhotoUrl: row.match_photo_url } : {}),
     ...(row.display_age !== null ? { userDisplayAge: row.display_age } : {}),
     ...(row.current_topic ? { currentTopic: row.current_topic } : {}),
     ...(row.last_message_at ? { lastMessageAt: row.last_message_at.toISOString() } : {}),
@@ -207,6 +211,7 @@ export async function getConversation(userId: string, conversationId: string): P
     current_topic: string | null;
     match_first_name: string | null;
     match_age: string | null;
+    match_photo_url: string | null;
     display_label: string | null;
     display_age: number | null;
     temporary_instruction: string | null;
@@ -219,6 +224,7 @@ export async function getConversation(userId: string, conversationId: string): P
              c.display_label, c.display_age,
             (SELECT mp.normalized_profile->'fields'->>'firstName' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_first_name,
             (SELECT mp.normalized_profile->'fields'->>'age' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_age,
+            (SELECT mp.normalized_profile->'fields'->>'photoUrl' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_photo_url,
             c.temporary_instruction, c.temporary_instruction_scope, c.temporary_instruction_remaining,
             c.updated_at,
             (
@@ -276,6 +282,7 @@ export async function getConversation(userId: string, conversationId: string): P
     ...(conversation.display_label || conversation.match_first_name ? { matchFirstName: (conversation.display_label || conversation.match_first_name)! } : {}),
     ...(conversation.display_label !== null ? { userDisplayLabel: conversation.display_label } : {}),
     ...(conversation.display_age || conversation.match_age ? { matchAge: Number(conversation.display_age || conversation.match_age) } : {}),
+    ...(conversation.match_photo_url ? { matchPhotoUrl: conversation.match_photo_url } : {}),
     ...(conversation.display_age !== null ? { userDisplayAge: conversation.display_age } : {}),
     ...(conversation.current_topic ? { currentTopic: conversation.current_topic } : {}),
     ...(messages.length ? { lastMessageAt: messages[messages.length - 1].sentAt } : {}),
