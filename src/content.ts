@@ -142,12 +142,11 @@ async function getState(): Promise<AutoState | null> {
   const response = await sendRuntimeMessage<{ ok: boolean; state?: AutoState; error?: string }>({ type: "TNND_GET_AUTO_STATE" });
   if (!response) return null;
   if (!response.ok || !response.state) throw new Error(response.error ?? "Could not load TNND automation state.");
-  return response.state.date === today() ? response.state : { date: today(), dailyCount: 0, processed: {} };
+  return response.state;
 }
 
 async function saveState(state: AutoState): Promise<boolean> {
-  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  state.processed = Object.fromEntries(Object.entries(state.processed).filter(([, timestamp]) => timestamp >= cutoff));
+  state.processed = Object.fromEntries(Object.entries(state.processed).slice(-5000));
   const response = await sendRuntimeMessage<{ ok: boolean; error?: string }>({ type: "TNND_SAVE_AUTO_STATE", state });
   if (!response) return false;
   if (!response.ok) throw new Error(response.error ?? "Could not save TNND automation state.");
@@ -432,9 +431,18 @@ async function scan(): Promise<void> {
       return;
     }
 
-    const snapshot = adapter.read();
+    const inspection = adapter.inspectUnanswered();
+    const snapshot = inspection.snapshot;
     if (!snapshot) {
-      reportExistingRunner("waiting", "Chat opened · waiting for a new incoming message.");
+      const explanation = {
+        "composer-missing": "Tinder chat composer not ready; waiting for chat to load.",
+        "no-messages": "No readable Tinder message bubbles. Cannot identify old unanswered messages; check Tinder DOM diagnostics.",
+        "unrecognized-direction": "Message direction uncertain. Refusing to send until incoming/outgoing messages can be identified.",
+        "already-replied": "Last visible message was sent by you · no unanswered message here.",
+        "no-incoming": "No incoming message found in the visible chat.",
+        "unanswered": "Last incoming message could not be read safely; no reply sent."
+      }[inspection.status] ?? "Cannot identify an unanswered message.";
+      reportExistingRunner(inspection.status === "unrecognized-direction" ? "skipped" : "waiting", explanation);
       return;
     }
     const conversationRef = currentConversationRef();
@@ -460,8 +468,9 @@ async function scan(): Promise<void> {
 
     const state = await getState();
     if (!state) return;
-    if (state.processed[snapshot.latestIncomingKey]) {
-      reportExistingRunner("waiting", "Latest incoming message already handled · waiting for the next one.");
+    if (state.processed[snapshot.latestIncomingKey] ||
+        (snapshot.legacyIncomingKey && state.processed[snapshot.legacyIncomingKey])) {
+      reportExistingRunner("waiting", "The last incoming message was already handled · waiting for another.");
       return;
     }
     if (state.dailyCount >= config.automation.maxAutoRepliesPerDay) {
@@ -472,7 +481,7 @@ async function scan(): Promise<void> {
     busy = true;
     const delaySeconds = randomCadenceSeconds(config.automation);
     console.info(`TNND queued an automatic reply in ${delaySeconds.toFixed(1)}s.`);
-    reportExistingRunner("waiting", `Incoming message detected · waiting ${Math.ceil(delaySeconds)}s before reply.`);
+    reportExistingRunner("waiting", `Unanswered incoming message found (old or new) · replying after ${Math.ceil(delaySeconds)}s.`);
     await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
     if (!hasLiveExtensionContext()) return;
 
@@ -491,15 +500,27 @@ async function scan(): Promise<void> {
       || tinderThreadKeyFromPath(location.pathname) !== currentSnapshot.threadKey
       || !await backendAllowsAutomaticReply(conversationRef) || await autoReplyPausedAfterGlobalStop(conversationRef)) return;
     if (await getChatAutomationEnabled(currentSnapshot.threadKey) !== true) return;
-    reportExistingRunner("sending", "AI reply ready · attempting Tinder send…");
-    await adapter.send(reply);
-    reportExistingRunner("sent", "Tinder send action completed · verify delivery in the conversation.");
+    // A match may have sent a newer message or the user may have replied
+    // while Gemini generated; never send an obsolete answer.
+    const finalSnapshot = adapter.read();
+    if (!finalSnapshot || finalSnapshot.latestIncomingKey !== currentSnapshot.latestIncomingKey
+      || finalSnapshot.threadKey !== currentSnapshot.threadKey) {
+      reportExistingRunner("skipped", "Visible conversation changed while generating · reply cancelled.");
+      return;
+    }
     const freshState = await getState();
-    if (!freshState) return;
-    freshState.processed[currentSnapshot.latestIncomingKey] = Date.now();
+    if (!freshState || freshState.dailyCount >= config.automation.maxAutoRepliesPerDay
+      || freshState.processed[finalSnapshot.latestIncomingKey]
+      || (finalSnapshot.legacyIncomingKey && freshState.processed[finalSnapshot.legacyIncomingKey])) return;
+    // Durable one-shot send claim BEFORE touching Tinder. A failed/uncertain
+    // click must never be automatically retried on an ancient unanswered chat.
+    freshState.processed[finalSnapshot.latestIncomingKey] = Date.now();
     freshState.dailyCount += 1;
-    await saveState(freshState);
-    console.info("TNND sent an automatic reply.");
+    if (!await saveState(freshState)) return;
+    reportExistingRunner("sending", "One-time reply attempt recorded · clicking Tinder Send…");
+    await adapter.send(reply);
+    reportExistingRunner("sent", "Tinder Send action completed; check delivery in the chat. No duplicate retry.");
+    console.info("TNND attempted one reply to the last unanswered message.");
   } catch (error) {
     if (contentRuntimeAlive) {
       reportExistingRunner("error", error instanceof Error ? error.message : "Automatic reply failed.");

@@ -152,6 +152,19 @@ async function tick(): Promise<void> {
   try {
     const state = await load();
     if (!state.enabled) return;
+    // A loaded old conversation can still be waiting for the configured cadence
+    // or Gemini. Do not navigate away before that pending reply completes.
+    const configForLease = await getConfig();
+    const maxReplyDelaySeconds = Math.min(3600, Math.max(0, Number(configForLease.automation.replyDelayMaxSeconds) || 60));
+    const leaseMs = (maxReplyDelaySeconds + 180) * 1000;
+    const elapsed = state.lastActionAt ? Date.now() - Date.parse(state.lastActionAt) : Number.POSITIVE_INFINITY;
+    const replyInProgress = state.phase === "generating" || state.phase === "sending"
+      || (state.phase === "waiting" && state.phaseDetail.startsWith("Unanswered incoming message found"));
+    if (replyInProgress && Number.isFinite(elapsed) && elapsed >= 0 && elapsed < leaseMs) {
+      // Keep the exact Tinder tab/thread open until Send succeeds, fails, or
+      // the lease expires. A later cycle can continue other conversations.
+      return;
+    }
     await save(activity(state, "checking", "Checking account, automation settings and eligible conversations…"));
     const session = await getBackendSession();
     if (!session || session.user.id !== state.userId) {

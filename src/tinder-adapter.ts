@@ -1,11 +1,13 @@
 import { hashTinderThreadKey, tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import { classifyTinderPath } from "./tinder-state-machine";
 import { directionFromTinderHints } from "./tinder-message-evidence";
+import { unansweredStatus, lastUnansweredEvidence, type UnansweredStatus } from "./tinder-unanswered-backlog";
 export interface ConversationSnapshot {
   threadKey: string;
   context: string;
   latestIncomingKey: string;
   latestIncomingText: string;
+  legacyIncomingKey?: string;
 }
 
 export interface TinderVisibleMessage {
@@ -395,27 +397,44 @@ export class TinderDomAdapter {
       );
   }
 
-  read(): ConversationSnapshot | null {
+  /** Readiness for backlog catch-up AND normal new incoming messages.
+   * Null snapshots are explained rather than reported as merely "waiting".
+   */
+  inspectUnanswered(): { status: UnansweredStatus | "composer-missing"; snapshot: ConversationSnapshot | null } {
     const composer = findComposer();
-    if (!composer) return null;
+    if (!composer) return { status: "composer-missing", snapshot: null };
     const messages = candidateMessages(composer)
-      .map((element) => ({ text: textOf(element), direction: directionOf(element) }))
-      .filter((message) => message.direction !== "unknown");
-    if (!messages.length) return null;
-
-    const latestIncomingIndex = messages.map((m) => m.direction).lastIndexOf("them");
-    if (latestIncomingIndex < 0) return null;
-    const latest = messages[latestIncomingIndex];
-    if (messages.slice(latestIncomingIndex + 1).some((m) => m.direction === "me")) return null;
-
-    const context = messages.slice(-24).map((message) => `${message.direction === "me" ? "Me" : "Them"}: ${message.text}`).join("\n");
+      .map(element => ({ text: textOf(element), direction: directionOf(element) }));
+    const status = unansweredStatus(messages);
+    if (status !== "unanswered") return { status, snapshot: null };
+    const evidence = lastUnansweredEvidence(messages);
+    if (!evidence) return { status: "unrecognized-direction", snapshot: null };
     const threadKey = tinderThreadKeyFromPath(location.pathname);
+    if (!threadKey) return { status: "composer-missing", snapshot: null };
+    const latestIncomingIndex = messages.map(m => m.direction).lastIndexOf("them");
+    const latest = messages[latestIncomingIndex];
+    // Unknown direction anywhere in the latest visible transcript means the
+    // context cannot be safely reconstructed, even for older messages.
+    if (messages.slice(latestIncomingIndex + 1).some(m => m.direction !== "them")) {
+      return { status: "unrecognized-direction", snapshot: null };
+    }
+    const context = messages.slice(-24)
+      .filter(m => m.direction !== "unknown")
+      .map(m => `${m.direction === "me" ? "Me" : "Them"}: ${m.text}`).join("\n");
     return {
-      threadKey,
-      context,
-      latestIncomingText: latest.text,
-      latestIncomingKey: simpleHash(`${threadKey}|${latestIncomingIndex}|${latest.text}|${messages.length}`)
+      status: "unanswered",
+      snapshot: {
+        threadKey,
+        context,
+        latestIncomingText: latest.text,
+        latestIncomingKey: simpleHash(`unanswered:v2|${threadKey}|${evidence}`),
+        legacyIncomingKey: simpleHash(`${threadKey}|${latestIncomingIndex}|${latest.text}|${messages.length}`)
+      }
     };
+  }
+
+  read(): ConversationSnapshot | null {
+    return this.inspectUnanswered().snapshot;
   }
 
   diagnose(): TinderSelectorDiagnostics {

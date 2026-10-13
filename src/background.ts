@@ -100,7 +100,8 @@ function defaultAutoState(): AutoState {
 function normalizeAutoState(value: unknown): AutoState {
   if (!value || typeof value !== "object") return defaultAutoState();
   const candidate = value as Partial<AutoState>;
-  if (candidate.date !== today()) return defaultAutoState();
+  // Reset only the daily quota at midnight. Historical processed evidence
+  // must survive so reopening an old chat never re-sends to the same message.
   const processed = candidate.processed && typeof candidate.processed === "object"
     ? Object.fromEntries(
         Object.entries(candidate.processed)
@@ -109,8 +110,8 @@ function normalizeAutoState(value: unknown): AutoState {
       )
     : {};
   return {
-    date: candidate.date,
-    dailyCount: typeof candidate.dailyCount === "number" && Number.isFinite(candidate.dailyCount)
+    date: today(),
+    dailyCount: candidate.date === today() && typeof candidate.dailyCount === "number" && Number.isFinite(candidate.dailyCount)
       ? Math.max(0, Math.floor(candidate.dailyCount))
       : 0,
     processed
@@ -124,8 +125,9 @@ async function getAutoState(): Promise<AutoState> {
 
 async function saveAutoState(value: unknown): Promise<AutoState> {
   const state = normalizeAutoState(value);
-  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  state.processed = Object.fromEntries(Object.entries(state.processed).filter(([, timestamp]) => timestamp >= cutoff));
+  // Avoid automatic expiration: unanswered messages may be months old. Keep
+  // the 5000 most recent fingerprints, without storing message text. 
+  state.processed = Object.fromEntries(Object.entries(state.processed).slice(-5000));
   await chrome.storage.local.set({ [AUTO_STATE_KEY]: state });
   return state;
 }
