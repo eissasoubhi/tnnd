@@ -14,9 +14,9 @@ TNND Web → **Conversation management** → **Existing conversations · global 
 
 ## 2. Future matches (read-only detection foundation, NOT sending)
 
-Open Tinder **Messages** and the TNND extension popup:
+Open Tinder, select **Matches** in the left sidebar, and open the TNND extension popup (the current conversation URL may remain unchanged):
 
-- **Start detecting future matches** records a baseline of verified, visible, same-origin thread links after confirmation.
+- **Start detecting future matches** records a baseline of verified, visible, same-origin Tinder `matchListItem` tiles (never the Likes You promotional tile or Message rows) after confirmation.
 - Links appearing later are tracked as **newly observed**, not guaranteed newly created Tinder matches. DOM lazy loading can make an old chat appear for the first time.
 - **Stop detection** turns off monitoring without changing existing conversation automation.
 - No automatic first messages are sent by this detector. The pre-existing first-message button still works individually with its strict permission, empty-chat and duplicate-send gates.
