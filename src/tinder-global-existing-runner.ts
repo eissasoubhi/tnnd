@@ -219,7 +219,7 @@ async function stop(reason = "Runner stopped. Tinder tab kept open."): Promise<G
   const state = await load();
   // Do not close a reused or newly created tab; it belongs to the user after
   // taking over the sole Tinder session. Never force logout by opening another.
-  const next = activity({ ...state, enabled: false, userId: null, pausedOnStop: state.tabId !== null && state.lastRef !== null }, "stopped", reason);
+  const next = activity({ ...state, enabled: false, userId: null, pausedOnStop: state.tabId !== null }, "stopped", reason);
   await save(next);
   await chrome.alarms.clear(ALARM);
   return next;
@@ -257,7 +257,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     void statePromise.then(state => sendResponse({
       ok: true,
       paused: !state.enabled && state.pausedOnStop && sender.tab?.id === state.tabId
-        && typeof input.ref === "string" && input.ref === state.lastRef && tinderRefFromUrl(sender.url) === state.lastRef
+        && typeof input.ref === "string" && input.ref === tinderRefFromUrl(sender.url)
     })).catch(() => sendResponse({ ok: true, paused: false }));
     return true;
   }
@@ -268,8 +268,11 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     }
     void (async () => {
       const state = await load();
-      if (!state.enabled && state.pausedOnStop && input.ref === state.lastRef) {
-        await save({ ...state, pausedOnStop: false });
+      if (!state.enabled && state.pausedOnStop && typeof input.ref === "string" && state.tabId !== null) {
+        const active = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (active.length === 1 && active[0].id === state.tabId && tinderRefFromUrl(active[0].url) === input.ref) {
+          await save({ ...state, pausedOnStop: false });
+        }
       }
       return { ok: true };
     })().then(sendResponse).catch(() => sendResponse({ ok: false }));
