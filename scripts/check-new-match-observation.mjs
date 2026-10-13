@@ -39,11 +39,11 @@ test("new match tracking uses match tiles and accepts Tinder's retained chat URL
   const bridge = await readFile(new URL("../src/chat-bridge.ts", import.meta.url), "utf8");
   const observer = await readFile(new URL("../src/content.ts", import.meta.url), "utf8");
   const background = await readFile(new URL("../src/tinder-new-match-background.ts", import.meta.url), "utf8");
-  assert.match(links, /a\\.matchListItem\\[href\\*=/);
-  assert.match(links, /a\\.messageListItem\\[href\\*=/);
-  assert.match(links, /detectVisibleTinderSidebarTab\\(root\\) !== "matches"/);
-  assert.match(bridge, /detectVisibleTinderSidebarTab\\(\\) !== "matches"/);
-  assert.match(observer, /detectVisibleTinderSidebarTab\\(\\) !== "matches"/);
-  assert.match(background, /url\\.pathname\\.startsWith\\("\/app\/messages\/"\\)/);
-  assert.doesNotMatch(background, /adapter\\.send|GENERATE_SUGGESTIONS/);
+  assert.ok(links.includes('a.matchListItem[href*="/app/messages/"]'));
+  assert.ok(links.includes('a.messageListItem[href*="/app/messages/"]'));
+  assert.ok(links.includes('detectVisibleTinderSidebarTab(root) !== "matches"'));
+  assert.ok(bridge.includes('detectVisibleTinderSidebarTab() !== "matches"'));
+  assert.ok(observer.includes('detectVisibleTinderSidebarTab() !== "matches"'));
+  assert.ok(background.includes('url.pathname.startsWith("/app/messages/")'));
+  assert.doesNotMatch(background, /adapter.send|GENERATE_SUGGESTIONS/);
 });
