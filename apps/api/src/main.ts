@@ -6,6 +6,7 @@ import { hashSessionToken } from "./auth.js";
 import { authenticateSession, listAccountSessions, loginWithPassword, registerAccount, revokeAccountSession, revokeSession } from "./auth-service.js";
 import { handleConversationGenerationRequest } from "./conversation-generation-controller.js";
 import { generationErrorResponse } from "./conversation-generation-error-response.js";
+import { safeGenerationFailureLog } from "./conversation-generation-stage.js";
 import { handleAnalyticsRequest } from "./analytics-controller.js";
 import { bulkUpdateConversationManagement, isConversationManagementState, listConversationManagement, updateConversationManagement, type ConversationManagementUpdate } from "./conversation-management-service.js";
 import { handleOutgoingConfirmationRequest } from "./conversation-outgoing-confirmation-controller.js";
@@ -547,7 +548,7 @@ const server = createServer(async (request, response) => {
         sendJson(response, result.status, result.body);
       } catch (error) {
         // The public response is sanitized; server retains a safe error log.
-        console.error(safeApiErrorLog(error));
+        console.error(safeGenerationFailureLog(error));
         const failure = generationErrorResponse(error);
         sendJson(response, failure.status, failure.body);
       }
