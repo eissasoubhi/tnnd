@@ -92,6 +92,7 @@ async function serve(req, res) {
       return json(res, 200, { overrides: { version: 1 } });
     }
     if (pathname === "/api/v1/conversations/" + conversationId + "/generate") {
+      if (body.latestMessage === "SIMULATE_INTERNAL_ERROR") return json(res, 500, { error: "internal_error" });
       return json(res, 200, { generation: {
         conversationId, text: "Fixture reply: nice to hear from you!",
         model: "fixture-model", provenance: {
@@ -212,6 +213,12 @@ async function main() {
     await waitFor(cdp, 'document.querySelector("#setup-guidance-panel") !== null', 150);
     await waitFor(cdp, 'document.querySelector("#conversation-panel-status")?.textContent?.includes("synced")', 150);
 
+    await waitFor(cdp, 'document.querySelector("#first-run-guide-panel") !== null');
+    await step(cdp, "First-run tutorial shows one step and a next action",
+      'document.querySelector("#guide-progress")?.textContent?.includes("of 5") && !!document.querySelector("#guide-go")', Boolean);
+    await cdp.evaluate('document.querySelector("#guide-next").click()');
+    await step(cdp, "Tutorial advances to the next explained task",
+      'document.querySelector("#guide-progress")?.textContent?.includes("2 of 5")', Boolean);
     await step(cdp, "Account sign-in and asynchronous workspace panels load",
       'document.querySelector("#auth-signed-in")?.hidden === false && document.querySelector("#login-form")?.hidden === true',
       Boolean);
@@ -290,6 +297,7 @@ async function main() {
     assert.ok(requests.some(x => x.path === "/api/v1/ai/test-connection" && x.method === "POST"), "Test Gemini button did not call API");
     results.push({ name: "Test Gemini connection provides visible feedback", passed: true });
 
+    await waitFor(cdp, 'document.querySelector("[data-inline-overrides-status]")?.textContent === "Ready"');
     await cdp.evaluate(`(() => {
       const msg = document.querySelector("[data-generation-message]");
       if (msg) { msg.value = "How is your day?"; msg.dispatchEvent(new Event("input",{bubbles:true})); }
@@ -316,6 +324,23 @@ async function main() {
       'document.querySelector("[data-generation-status]")?.textContent?.includes("approved locally")',
       Boolean);
     assert.ok(!requests.some(x => /outgoing\/confirm/.test(x.path)), "Approval must not confirm/send");
+
+    await cdp.evaluate(`(() => {
+      const msg = document.querySelector("[data-generation-message]");
+      msg.value = "SIMULATE_INTERNAL_ERROR";
+      msg.dispatchEvent(new Event("input", { bubbles: true }));
+      document.querySelector("[data-generation-button]").click();
+    })()`);
+    await waitFor(cdp, 'document.querySelector("[data-generation-error-help]")?.hidden === false');
+    await step(cdp, "Failed Generate draft displays HTTP 500 and recovery guidance",
+      'document.querySelector("[data-generation-status]")?.textContent?.includes("HTTP 500") && document.querySelector("[data-generation-error-help]")?.textContent?.includes("API logs")', Boolean);
+    await cdp.evaluate(`(() => {
+      document.querySelector("[data-generation-message]").value = "Hello again";
+      document.querySelector("[data-generation-button]").click();
+    })()`);
+    await waitFor(cdp, 'document.querySelector("[data-generation-status]")?.textContent?.includes("Draft ready")');
+    await step(cdp, "Retry success clears previous failure guidance",
+      'document.querySelector("[data-generation-error-help]")?.hidden === true', Boolean);
 
     for (const width of [1440, 390]) {
       await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
