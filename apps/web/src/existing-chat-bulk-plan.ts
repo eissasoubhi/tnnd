@@ -6,6 +6,7 @@ import type { ConversationListItem } from "./conversation-contract";
 export interface ExistingChatBulkPlan {
   eligible: string[];
   resume: string[];
+  alreadyReady: number;
   skipped: { manual: number; archived: number; blocked: number; unsynced: number; disabled: number };
 }
 
@@ -15,7 +16,7 @@ export function planExistingChatTakeover(
 ): ExistingChatBulkPlan {
   const byId = new Map(summaries.map(item => [item.id, item]));
   const result: ExistingChatBulkPlan = {
-    eligible: [], resume: [],
+    eligible: [], resume: [], alreadyReady: 0,
     skipped: { manual: 0, archived: 0, blocked: 0, unsynced: 0, disabled: 0 }
   };
   for (const record of management) {
@@ -35,6 +36,8 @@ export function planExistingChatTakeover(
     // An existing AI-managed chat can be resumed without changing its ownership.
     if (record.managementState !== "ai-managed" || !record.explicitlySelected) result.eligible.push(record.conversationId);
     if (chat.status === "paused") result.resume.push(record.conversationId);
+    else if (record.managementState === "ai-managed" && record.explicitlySelected
+      && ["active", "waiting-for-them", "stale"].includes(chat.status)) result.alreadyReady++;
   }
   return result;
 }

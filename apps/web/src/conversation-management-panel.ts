@@ -83,9 +83,10 @@ function mount(): { list: HTMLElement; status: HTMLElement } | null {
     </details>
     <section class="management-bulk-panel" aria-label="Global AI control for existing conversations">
       <h3>Existing conversations · global AI takeover</h3>
-      <p class="subtle">Applies to previously synced conversations with messages. Manual, blocked, disabled, archived, and unsynced chats are excluded. No first message is sent. Explicitly authorize the bulk operation below.</p>
+      <p class="subtle"><strong>Step 1 — Prepare conversations:</strong> authorize existing synced conversations for AI. This does not start the Tinder automation. Manual, blocked, disabled, archived and unsynced chats are excluded.</p>
       <p class="subtle" id="management-bulk-preview">Loading eligible conversations…</p>
-      <div class="management-bulk-actions"><button type="button" id="management-bulk-enable">Start existing chats</button><button type="button" id="management-bulk-pause">Stop existing chats</button></div>
+      <div class="management-bulk-actions"><button type="button" id="management-bulk-enable">Authorize eligible chats</button><button type="button" id="management-bulk-pause">Pause existing chats</button></div>
+      <p class="subtle"><strong>Step 2 — Start the automation:</strong> open the TNND browser extension on Tinder → <strong>Existing conversations</strong> → <strong>Start global existing chat runner</strong>. Keep Chrome open. This is a separate control that cannot be started by the Web authorization button.</p>
       <p id="management-bulk-status" class="subtle" role="status" aria-live="polite"></p>
     </section>
     <div id="conversation-management-list" class="management-list"></div>
@@ -113,7 +114,12 @@ async function applyBulkExisting(): Promise<void> {
   if (!session || !status || !button || bulkBusy) return;
   const plan = planExistingChatTakeover(records, summariesCache);
   const targets = [...new Set([...plan.eligible, ...plan.resume])];
-  if (!targets.length) { status.textContent = "Nothing to change: eligible chats are already activated."; return; }
+  if (!targets.length) {
+    status.textContent = plan.alreadyReady > 0
+      ? `${plan.alreadyReady} existing chat(s) already authorized for AI. Next: open the TNND extension on Tinder → Existing conversations → Start global existing chat runner. Authorization alone does not start chatting.`
+      : "No eligible existing chats to authorize. Check the exclusions above, and sync Tinder conversations with messages first.";
+    return;
+  }
   const message = `Allow TNND to manage ${targets.length} existing conversations? ${plan.eligible.length} ownership updates, ${plan.resume.length} paused chats to resume. No Tinder messages are sent by this action. Manual, blocked, disabled and archived chats are skipped.`;
   if (!window.confirm(message)) { status.textContent = "Cancelled; no change was made."; return; }
   bulkBusy = true;
@@ -133,7 +139,7 @@ async function applyBulkExisting(): Promise<void> {
       try { await updateConversationStatus(session, id, "active"); resumed++; }
       catch { errors.push(id); }
     }
-    status.textContent = `AI management authorized on ${enrolled} chats; resumed ${resumed}. ${errors.length ? `${errors.length} could not be resumed; review them individually.` : "Other chats left unchanged."} Keep a Tinder tab open and enable extension auto-replies to process messages.`;
+    status.textContent = `Prepared ${enrolled} existing chats; resumed ${resumed}. ${errors.length ? `${errors.length} could not be resumed; review them individually.` : "Other chats left unchanged."} Next: open the TNND extension on Tinder → Existing conversations → Start global existing chat runner. Enable automatic replies in extension Options first.`;
     await refresh();
   } catch (error) {
     status.textContent = `Stopped after ${enrolled} updates and ${resumed} resumes: ${error instanceof Error ? error.message : "Unexpected error"}. Refresh before retrying.`;
@@ -252,7 +258,7 @@ async function refresh(): Promise<void> {
     summariesCache = summaries;
     const bulkPlan = planExistingChatTakeover(records, summariesCache);
     const bulkPreview = document.querySelector<HTMLElement>("#management-bulk-preview");
-    if (bulkPreview) bulkPreview.textContent = `${bulkPlan.eligible.length} to authorize · ${bulkPlan.resume.length} paused to resume · ${bulkPlan.skipped.manual} manual · ${bulkPlan.skipped.blocked} blocked · ${bulkPlan.skipped.unsynced} not yet synced · ${bulkPlan.skipped.archived} archived/moved · ${bulkPlan.skipped.disabled} disabled.`;
+    if (bulkPreview) bulkPreview.textContent = `${bulkPlan.alreadyReady} already AI-authorized · ${bulkPlan.eligible.length} to authorize · ${bulkPlan.resume.length} paused to resume · ${bulkPlan.skipped.manual} manual · ${bulkPlan.skipped.blocked} blocked · ${bulkPlan.skipped.unsynced} not yet synced · ${bulkPlan.skipped.archived} archived/moved · ${bulkPlan.skipped.disabled} disabled. The browser extension runner has its own Start/Stop.`;
     names = new Map(summaries.map(item => [item.id, `${item.displayName.startsWith("Conversation ") ? "Profil Tinder à synchroniser" : item.displayName}${item.matchAge ? ` ${item.matchAge}` : ""}`]));
     photos = new Map(summaries.filter(item => item.matchPhotoUrl).map(item => [item.id, item.matchPhotoUrl!]));
     elements.status.textContent = `${records.length} conversations`;
