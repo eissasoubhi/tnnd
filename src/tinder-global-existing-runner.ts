@@ -1,5 +1,5 @@
 import { getBackendSession, getChatSettings, getConfig, saveChatSettings } from "./storage";
-import { assertTinderContentBridge, isMissingTinderReceiver, describeTinderBridgeError } from "./tinder-tab-connection";
+import { waitForTinderContentBridge, isMissingTinderReceiver, describeTinderBridgeError } from "./tinder-tab-connection";
 import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import { partitionExistingChatPermissions } from "./tinder-existing-chat-settings-policy";
 import { eligibleExistingThreadRefs } from "./tinder-global-existing-policy";
@@ -296,7 +296,7 @@ export async function startExistingRunner(enablePreviouslyDisabled = false): Pro
     const tab = await findSingleTinderTab();
     // Fail BEFORE enabling any per-chat settings or the global runner.
     // A stale Tinder page after reloading the extension has no receiver.
-    await assertTinderContentBridge(tab.id);
+    await waitForTinderContentBridge(tab.id);
     if (enablePreviouslyDisabled) {
       // Only backend-confirmed AI-managed active existing chats enter this list.
       // Manual, archived, disabled and human-action-blocked chats stay excluded.
