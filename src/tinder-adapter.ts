@@ -3,6 +3,7 @@ import { classifyTinderPath } from "./tinder-state-machine";
 import { directionFromTinderHints } from "./tinder-message-evidence";
 import { directionFromChatColumnGeometry, directionFromVerifiedTinderClasses, messageBubbleSized } from "./tinder-message-layout";
 import { unansweredStatus, lastUnansweredEvidence, type UnansweredStatus } from "./tinder-unanswered-backlog";
+import { isTinderMessageUiControl } from "./tinder-message-candidate-filter";
 export interface ConversationSnapshot {
   threadKey: string;
   context: string;
@@ -247,11 +248,18 @@ function candidateMessages(composer: HTMLElement): HTMLElement[] {
     return verified.slice(-40);
   }
 
+  // On current Tinder, an empty match has no ol[aria-label="Messages"]
+  // transcript yet. Its form still has a button[aria-label="Send message"],
+  // which used to be mistaken for an outgoing chat message. Scope fallback
+  // to the chat pane and reject controls before interpreting text as history.
+  const conversationRoot = composer.closest<HTMLElement>(".chat");
   const seen = new Set<HTMLElement>();
   const candidates: HTMLElement[] = [];
   for (const selector of MESSAGE_SELECTORS) {
     for (const element of Array.from(document.querySelectorAll<HTMLElement>(selector))) {
       if (seen.has(element) || element.contains(composer) || composer.contains(element) || element.offsetParent === null) continue;
+      if (conversationRoot && !conversationRoot.contains(element)) continue;
+      if (isTinderMessageUiControl(element)) continue;
       const text = messageText(element);
       if (!text || text.length > 1200) continue;
       seen.add(element);
