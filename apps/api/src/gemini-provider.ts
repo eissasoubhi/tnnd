@@ -76,20 +76,38 @@ function responseText(value: unknown): string {
   return "";
 }
 
-function parseGenerationOutput(raw: string, personalMemoryIds: string[]): { text: string; usedPersonalMemoryId?: string } {
+/**
+ * Structured Gemini output must never be copied as a Tinder reply. In
+ * particular, a MAX_TOKENS result can contain a partial JSON object that
+ * used to be passed through verbatim into the draft UI.
+ */
+export function parseGenerationOutput(raw: string, personalMemoryIds: readonly string[]): { text: string; usedPersonalMemoryId?: string } {
+  const cleaned = raw.trim().replace(/^\`\`\`(?:json)?\\s*/i, "").replace(/\\s*\`\`\`$/, "").trim();
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid");
-    const text = (parsed as { text?: unknown }).text;
-    const used = (parsed as { usedPersonalMemoryId?: unknown }).usedPersonalMemoryId;
-    if (typeof text !== "string" || !text.trim()) throw new Error("invalid");
-    return {
-      text: text.trim(),
-      ...(typeof used === "string" && personalMemoryIds.includes(used) ? { usedPersonalMemoryId: used } : {})
-    };
+    parsed = JSON.parse(cleaned);
+    // A few providers double-encode their response as a JSON string.
+    if (typeof parsed === "string") parsed = JSON.parse(parsed);
   } catch {
-    return { text: raw };
+    throw new Error("gemini_invalid_output");
   }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("gemini_invalid_output");
+  }
+  const text = (parsed as { text?: unknown }).text;
+  const used = (parsed as { usedPersonalMemoryId?: unknown }).usedPersonalMemoryId;
+  if (typeof text !== "string" || !text.trim()) throw new Error("gemini_invalid_output");
+
+  // Do not accept a recursively wrapped JSON payload as a user-visible reply.
+  const reply = text.trim();
+  if (/^\\{\\s*"(?:text|usedPersonalMemoryId)"\\s*:/.test(reply)) {
+    return parseGenerationOutput(reply, personalMemoryIds);
+  }
+  if (reply.startsWith('{"text"') || reply.startsWith('{"usedPersonalMemoryId"')) throw new Error("gemini_invalid_output");
+  return {
+    text: reply,
+    ...(typeof used === "string" && personalMemoryIds.includes(used) ? { usedPersonalMemoryId: used } : {})
+  };
 }
 
 export function createGeminiConversationProvider(credentials?: { apiKey: string; model: string }): GeminiConversationProvider {
@@ -174,11 +192,13 @@ export function createGeminiConversationProvider(credentials?: { apiKey: string;
     },
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.8, maxOutputTokens: 220, responseMimeType: "application/json" }
+      generationConfig: { temperature: 0.8, maxOutputTokens: 1024, responseMimeType: "application/json" }
     })
   });
   if (!response.ok) throw new Error(`gemini_provider_error:${response.status}`);
   const payload: unknown = await response.json();
+  const candidates = (payload as { candidates?: Array<{ finishReason?: string }> } | null)?.candidates;
+  if (candidates?.[0]?.finishReason === "MAX_TOKENS") throw new Error("gemini_output_truncated");
   const raw = responseText(payload);
   if (!raw) throw new Error("gemini_empty_response");
   const generated = parseGenerationOutput(raw, input.personalMemories?.map((memory) => memory.id) ?? []);
