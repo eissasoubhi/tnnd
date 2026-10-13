@@ -65,11 +65,15 @@ async function listEligible(): Promise<string[]> {
   return eligibleExistingThreadRefs(records, summaries);
 }
 
-async function ensureOwnedTab(savedId: number | null): Promise<number> {
+function expectedOwnedUrl(ref: string | null): string {
+  return ref ? `https://tinder.com/app/messages/${encodeURIComponent(ref)}` : "https://tinder.com/app/messages";
+}
+
+async function ensureOwnedTab(savedId: number | null, lastRef: string | null): Promise<number> {
   if (savedId !== null) {
     try {
       const tab = await chrome.tabs.get(savedId);
-      if (tab.id && tab.url && /^https:\/\/(?:www\.)?tinder\.com\//.test(tab.url)) return tab.id;
+      if (tab.id && tab.url && tab.url === expectedOwnedUrl(lastRef)) return tab.id;
     } catch { /* tab was closed */ }
   }
   const tab = await chrome.tabs.create({ url: "https://tinder.com/app/messages", active: false });
@@ -96,7 +100,7 @@ async function tick(): Promise<void> {
       await save({ ...state, lastError: "No eligible AI-managed active existing conversations with saved messages." });
       return;
     }
-    const tabId = await ensureOwnedTab(state.tabId);
+    const tabId = await ensureOwnedTab(state.tabId, state.lastRef);
     // Closing/stopping the runner at any time must prevent further navigation.
     if (!(await load()).enabled) return;
     await chrome.tabs.update(tabId, { url: `https://tinder.com/app/messages/${encodeURIComponent(nextRef)}` });
@@ -135,7 +139,7 @@ async function stop(): Promise<GlobalExistingRunnerState> {
     try {
       const tab = await chrome.tabs.get(state.tabId);
       // Do not close a tab repurposed by the user.
-      if (tab.url && /^https:\/\/(?:www\.)?tinder\.com\//.test(tab.url)) await chrome.tabs.remove(state.tabId);
+      if (tab.url === expectedOwnedUrl(state.lastRef)) await chrome.tabs.remove(state.tabId);
     } catch { /* already closed */ }
   }
   const after = { ...state, enabled: false, tabId: null, lastError: null };
