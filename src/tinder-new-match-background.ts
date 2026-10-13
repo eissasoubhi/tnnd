@@ -71,7 +71,7 @@ chrome.runtime.onMessage.addListener((message: Request, sender, respond) => {
   }
   if (message.type === "TNND_NEW_MATCH_OBSERVATION_START" && popupSender(sender)) {
     void serialized(async () => {
-      if (!Array.isArray(message.refs) || !message.refs.length < 2 || message.refs.length > 500) throw new Error("Select the Tinder Matches tab with at least two loaded match tiles before starting.");
+      if (!Array.isArray(message.refs) || message.refs.length < 2 || message.refs.length > 500) throw new Error("Select the Tinder Matches tab with at least two loaded match tiles before starting.");
       const session = await getBackendSession();
       const config = await getConfig();
       if (!session) throw new Error("Connect your TNND account before enabling new-match messages.");
