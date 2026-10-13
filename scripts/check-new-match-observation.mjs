@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { armNewMatchObservation, emptyNewMatchState, isNewMatchObservationState, observeNewMatchLinks, stopNewMatchObservation } from "../src/tinder-new-match-observation.ts";
+import { classifyVisibleTinderSidebarRows } from "../src/tinder-visible-thread-links.ts";
 
 test("future observation has its own off-by-default mode and baseline", () => {
   assert.equal(emptyNewMatchState().enabled,false);
@@ -22,4 +23,27 @@ test("newly observed links cannot silently send messages", async () => {
   assert.match(content,/TNND_NEW_MATCH_LINKS_SEEN/);
   assert.match(background,/popupSender\(sender\)/);
   assert.match(background,/serialized\(/);
+});
+
+test("Matches and Messages tabs are classified from their visible rows, independent of URL", () => {
+  // Based on structural counts in two redacted Tinder diagnostics. No user profile data.
+  assert.equal(classifyVisibleTinderSidebarRows(0, 60), "messages");
+  assert.equal(classifyVisibleTinderSidebarRows(28, 0), "matches");
+  assert.equal(classifyVisibleTinderSidebarRows(0, 0), "unknown");
+  assert.equal(classifyVisibleTinderSidebarRows(28, 2), "unknown");
+});
+
+test("new match tracking uses match tiles and accepts Tinder's retained chat URL", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const links = await readFile(new URL("../src/tinder-visible-thread-links.ts", import.meta.url), "utf8");
+  const bridge = await readFile(new URL("../src/chat-bridge.ts", import.meta.url), "utf8");
+  const observer = await readFile(new URL("../src/content.ts", import.meta.url), "utf8");
+  const background = await readFile(new URL("../src/tinder-new-match-background.ts", import.meta.url), "utf8");
+  assert.ok(links.includes('a.matchListItem[href*="/app/messages/"]'));
+  assert.ok(links.includes('a.messageListItem[href*="/app/messages/"]'));
+  assert.ok(links.includes('detectVisibleTinderSidebarTab(root) !== "matches"'));
+  assert.ok(bridge.includes('detectVisibleTinderSidebarTab() !== "matches"'));
+  assert.ok(observer.includes('detectVisibleTinderSidebarTab() !== "matches"'));
+  assert.ok(background.includes('url.pathname.startsWith("/app/messages/")'));
+  assert.doesNotMatch(background, /adapter.send|GENERATE_SUGGESTIONS/);
 });

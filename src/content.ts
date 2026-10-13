@@ -1,6 +1,6 @@
 import { TinderDomAdapter } from "./tinder-adapter";
 import { readVisibleTinderMatchIdentity } from "./tinder-chat-identity";
-import { visibleTinderThreadRefs } from "./tinder-visible-thread-links";
+import { detectVisibleTinderSidebarTab, visibleTinderThreadRefs } from "./tinder-visible-thread-links";
 import { firstMessageAttemptKey, firstMessageBlocker, firstMessageContext } from "./tinder-first-message";
 import { syncConversationDelta } from "./conversation-sync";
 import { observeTinderRuntime } from "./tinder-runtime-observation";
@@ -326,8 +326,9 @@ async function observeVisibleIdentity(): Promise<void> {
 
 async function observeNewMatchLinks(): Promise<void> {
   if (!hasLiveExtensionContext()) return;
-  const pathname = location.pathname;
-  if (![ "/app/messages", "/app/matches", "/app/recs" ].includes(pathname)) return;
+  // Tinder often retains the opened chat's URL while showing Matches.
+  // Only observe actual visible match tiles, never Messages/sidebar anchors.
+  if (detectVisibleTinderSidebarTab() !== "matches") return;
   const refs = visibleTinderThreadRefs();
   if (!refs.length) return;
   const fingerprint = JSON.stringify(refs);

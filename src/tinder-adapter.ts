@@ -267,6 +267,7 @@ function detectSidebarState(): { state: TinderSidebarState; signals: string[] } 
   }
 
   const visibleMatchList = anyVisible([
+    'a.matchListItem[href*="/app/messages/"]',
     '[data-testid*="matchList" i]',
     '[aria-label*="matches" i]'
   ]);
