@@ -261,7 +261,7 @@ async function tick(): Promise<void> {
     if (latest.enabled) await save(activity(latest, "error", error instanceof Error ? error.message : "Runner failed."));
   } finally { busy = false; }
 }
-async function start(enablePreviouslyDisabled = false): Promise<GlobalExistingRunnerState> {
+export async function startExistingRunner(enablePreviouslyDisabled = false): Promise<GlobalExistingRunnerState> {
   if (starting) throw new Error("Runner is already starting.");
   starting = true;
   try {
@@ -429,7 +429,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     return true;
   }
   void (input.type === "TNND_GLOBAL_EXISTING_START"
-    ? start(input.enablePreviouslyDisabled === true)
+    ? startExistingRunner(input.enablePreviouslyDisabled === true)
     : stop())
     .then(state => sendResponse({ ok: true, state }))
     .catch(error => sendResponse({ ok: false, error: error instanceof Error ? error.message : "runner_failed" }));

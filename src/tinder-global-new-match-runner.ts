@@ -1,11 +1,15 @@
 import { getBackendSession, getConfig, getChatSettings } from "./storage";
-import { readNewMatchState, updateNewMatchAttempt, newMatchSendPermission } from "./tinder-new-match-background";
+import { readNewMatchState, saveNewMatchState, updateNewMatchAttempt, newMatchSendPermission } from "./tinder-new-match-background";
+import { stopNewMatchObservation } from "./tinder-new-match-observation";
+import { startExistingRunner } from "./tinder-global-existing-runner";
 import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
 
 const ALARM = "tnnd.globalNewMatches.cycle";
 const OWNED_TAB = "tnnd.newMatchOwnedTab.v1";
 const BASE = "http://127.0.0.1:4000";
 const MAX_NEW_OPENERS_PER_DAY = 5;
+const CADENCE_KEY = "tnnd.globalExistingRunner.cadenceSeconds.v1";
+const ALLOWED_CADENCES = new Set([10, 15, 30, 60, 120]);
 let busy = false;
 
 async function fetchBackend(path: string, token: string, method = "GET", body?: unknown): Promise<{ ok: boolean; status: number; data: Record<string, any> }> {
@@ -52,25 +56,56 @@ async function prepareNewMatch(ref: string, token: string): Promise<string> {
   return conversationId;
 }
 
+/** Reuse exactly ONE already opened Tinder tab. Tinder invalidates parallel web
+ * sessions, so no popup worker is allowed to open/close a second Tinder tab.
+ */
 async function ownedTab(ref: string, userId: string): Promise<number> {
-  const raw = (await chrome.storage.local.get(OWNED_TAB))[OWNED_TAB] as { tabId?: number; ref?: string; userId?: string } | undefined;
-  if (raw?.tabId) {
-    try {
-      const old = await chrome.tabs.get(raw.tabId);
-      const oldUrl = `https://tinder.com/app/messages/${encodeURIComponent(raw.ref || "")}`;
-      if (old.url !== oldUrl || raw.userId !== userId) throw new Error("The new-match worker tab was changed; stop and restart");
-      // Only navigate previously owned worker tab.
-      await chrome.tabs.update(raw.tabId, { url: `https://tinder.com/app/messages/${encodeURIComponent(ref)}` });
-      await chrome.storage.local.set({ [OWNED_TAB]: { tabId: raw.tabId, ref, userId } });
-      return raw.tabId;
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("was changed")) throw error;
-    }
+  const candidates = await chrome.tabs.query({ url: ["https://tinder.com/*", "https://www.tinder.com/*"] });
+  if (candidates.length !== 1 || !candidates[0].id) {
+    throw new Error("Open exactly one Tinder tab with Matches visible before sending first messages.");
   }
-  const tab = await chrome.tabs.create({ url: `https://tinder.com/app/messages/${encodeURIComponent(ref)}`, active: false });
-  if (!tab.id) throw new Error("Cannot open Tinder for the match");
-  await chrome.storage.local.set({ [OWNED_TAB]: { tabId: tab.id, ref, userId } });
-  return tab.id;
+  const tab = candidates[0];
+  const tabId = tab.id!;
+  const existing = (await chrome.storage.local.get(OWNED_TAB))[OWNED_TAB] as {
+    tabId?: number; userId?: string; ref?: string | null
+  } | undefined;
+  if (existing && (existing.tabId !== tabId || existing.userId !== userId)) {
+    throw new Error("Tinder worker tab/session changed; stop and restart the match batch.");
+  }
+  const info = await chrome.tabs.sendMessage(tabId, { type: "TNND_MATCH_SPA_NAVIGATE", ref }) as unknown as {
+    ok?: boolean; error?: string; currentRef?: string
+  };
+  if (!info?.ok || info.currentRef !== ref) {
+    throw new Error("Could not navigate in Tinder without reload: " + (info?.error ?? "unknown_navigation_error"));
+  }
+  await chrome.storage.local.set({ [OWNED_TAB]: { tabId, userId, ref } });
+  return tabId;
+}
+
+/** Explicitly authorized automatic handoff after an existing-match batch.
+ * One Tinder tab cannot host both global runner modes simultaneously.
+ */
+async function finishExistingMatchBatch(state: Awaited<ReturnType<typeof readNewMatchState>>, reason: string): Promise<void> {
+  if (state.mode !== "existing" || !state.enabled) return;
+  await saveNewMatchState({
+    ...stopNewMatchObservation(state),
+    lastResult: reason + " · starting existing-conversation monitoring…"
+  });
+  await chrome.alarms.clear(ALARM);
+  await chrome.storage.local.remove(OWNED_TAB);
+  try {
+    await startExistingRunner();
+    const current = await readNewMatchState();
+    await saveNewMatchState({
+      ...current, lastResult: reason + " · existing-conversation AI runner now active."
+    });
+  } catch (error) {
+    const current = await readNewMatchState();
+    await saveNewMatchState({
+      ...current, lastResult: reason + " · first-message batch stopped. Could not start reply monitoring: "
+        + (error instanceof Error ? error.message : "unknown")
+    });
+  }
 }
 
 async function processNext(): Promise<void> {
@@ -80,15 +115,25 @@ async function processNext(): Promise<void> {
   let sent = false;
   try {
     const state = await readNewMatchState();
-    if (!state.enabled || !state.autoSendEnabled || !state.pendingRefs.length) return;
+    if (!state.enabled || !state.autoSendEnabled) return;
+    if (!state.pendingRefs.length) {
+      await finishExistingMatchBatch(state, "First-message batch completed");
+      return;
+    }
     const session = await getBackendSession();
     if (!session || session.user.id !== state.userId) return;
     const config = await getConfig();
     if (!config.automation.enabled) return;
+    const dwell = (await chrome.storage.local.get(CADENCE_KEY))[CADENCE_KEY];
+    const dwellSeconds = typeof dwell === "number" && ALLOWED_CADENCES.has(dwell) ? dwell : 15;
+    if (state.lastAttemptAt && Date.now() - Date.parse(state.lastAttemptAt) < dwellSeconds * 1000) return;
     const today = new Date().toISOString().slice(0, 10);
     const stored = (await chrome.storage.local.get("tnnd.newMatchDailyAttempts.v1"))["tnnd.newMatchDailyAttempts.v1"] as { date: string; refs: string[] } | undefined;
     const used = stored?.date === today && Array.isArray(stored.refs) ? stored.refs : [];
-    if (used.length >= MAX_NEW_OPENERS_PER_DAY) return;
+    if (used.length >= MAX_NEW_OPENERS_PER_DAY) {
+      await finishExistingMatchBatch(state, "Daily first-message limit reached; remaining matches can be resumed later");
+      return;
+    }
     ref = state.pendingRefs.find(item => !used.includes(item)) ?? null;
     if (!ref) return;
     const threadKey = tinderThreadKeyFromPath(`/app/messages/${encodeURIComponent(ref)}`);
@@ -124,6 +169,20 @@ async function processNext(): Promise<void> {
   } finally { busy = false; }
 }
 
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (!message || typeof message !== "object" || (message as { type?: unknown }).type !== "TNND_MATCH_RUNNER_TICK") return false;
+  void (async () => {
+    const state = await readNewMatchState();
+    if (!state.enabled || !state.autoSendEnabled || sender.id !== chrome.runtime.id) return;
+    const owner = (await chrome.storage.local.get(OWNED_TAB))[OWNED_TAB] as { tabId?: number; userId?: string } | undefined;
+    const session = await getBackendSession();
+    if (owner?.tabId !== sender.tab?.id || session?.user.id !== state.userId
+      || owner?.userId !== state.userId) return;
+    await processNext();
+  })().then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
+  return true;
+});
+
 chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === ALARM) void processNext();
 });
@@ -139,14 +198,7 @@ export async function refreshNewMatchAlarm(): Promise<void> {
 export async function stopNewMatchWorker(): Promise<void> {
   await chrome.alarms.clear(ALARM);
   const raw = (await chrome.storage.local.get(OWNED_TAB))[OWNED_TAB] as { tabId?: number; ref?: string } | undefined;
-  if (raw?.tabId) {
-    try {
-      const tab = await chrome.tabs.get(raw.tabId);
-      if (tab.url === `https://tinder.com/app/messages/${encodeURIComponent(raw.ref || "")}`) {
-        await chrome.tabs.remove(raw.tabId);
-      }
-    } catch { /* already closed */ }
-  }
-  await chrome.storage.local.remove(OWNED_TAB);
+  // Revoke worker ownership but leave the user's Tinder tab untouched.
+  if (raw?.tabId) await chrome.storage.local.remove(OWNED_TAB);
 }
 chrome.runtime.onStartup.addListener(() => { void refreshNewMatchAlarm(); });

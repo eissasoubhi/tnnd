@@ -678,6 +678,66 @@ async function navigateExistingSpa(ref: string, expectedRef: string | null): Pro
   } finally { spaNavigationBusy = false; }
 }
 
+/** For first messages to existing matches, use the actual visible Tinder
+ * Matches tile. The selected match moves in Tinder's UI; the queue keys by
+ * stable Tinder thread ID, never by tile position.
+ */
+async function navigateMatchSpa(ref: string): Promise<{ ok: boolean; error?: string; currentRef?: string }> {
+  if (spaNavigationBusy || busy) return { ok: false, error: "conversation_processing_in_progress" };
+  if (!/^[a-zA-Z0-9_-]{3,512}$/.test(ref)) return { ok: false, error: "invalid_thread_ref" };
+  spaNavigationBusy = true;
+  try {
+    if (detectVisibleTinderSidebarTab() !== "matches") {
+      const choices = Array.from(document.querySelectorAll<HTMLElement>(
+        '[role="tab"],button'
+      )).filter(el => el.getClientRects().length > 0
+        && el.textContent?.trim().toLowerCase() === "matches");
+      if (choices.length !== 1) return { ok: false, error: "matches_tab_not_accessible" };
+      choices[0].click();
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline && detectVisibleTinderSidebarTab() !== "matches") {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      if (detectVisibleTinderSidebarTab() !== "matches") return { ok: false, error: "matches_sidebar_not_loaded" };
+    }
+    const tiles = Array.from(document.querySelectorAll<HTMLAnchorElement>('a.matchListItem[href*="/app/messages/"]'));
+    const tile = tiles.find(link => {
+      if (!link.isConnected || !link.getClientRects().length) return false;
+      try {
+        const url = new URL(link.href, location.origin);
+        return url.origin === location.origin
+          && decodeURIComponent(url.pathname) === "/app/messages/" + ref;
+      } catch { return false; }
+    });
+    if (!tile) return { ok: false, error: "match_tile_not_loaded" };
+    spaNavigationSettlesAt = Date.now() + 1800;
+    tile.click();
+    const deadline = Date.now() + 8500;
+    while (Date.now() < deadline) {
+      if (currentConversationRef() === ref && adapter.diagnose().composerFound) {
+        spaNavigationSettlesAt = Date.now() + 1200;
+        window.setTimeout(scheduleScan, 1300);
+        return { ok: true, currentRef: ref };
+      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return { ok: false, error: "match_navigation_not_confirmed" };
+  } finally { spaNavigationBusy = false; }
+}
+
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (!message || typeof message !== "object") return false;
+  const input = message as { type?: unknown; ref?: unknown };
+  if (input.type !== "TNND_MATCH_SPA_NAVIGATE") return false;
+  if (sender.id !== chrome.runtime.id || typeof input.ref !== "string") {
+    sendResponse({ ok: false, error: "untrusted_match_navigation_request" });
+    return false;
+  }
+  void navigateMatchSpa(input.ref).then(sendResponse)
+    .catch(() => sendResponse({ ok: false, error: "match_navigation_failed" }));
+  return true;
+});
+
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (!message || typeof message !== "object") return false;
   const input = message as { type?: unknown; ref?: unknown; expectedRef?: unknown };
@@ -704,7 +764,10 @@ window.setInterval(() => {
       type: "TNND_EXISTING_RUNNER_UNREAD", refs: unreadRefs
     }).catch(() => undefined);
   }
-  if (ref) void sendRuntimeMessage({ type: "TNND_EXISTING_RUNNER_TICK", ref }).catch(() => undefined);
+  if (ref) {
+    void sendRuntimeMessage({ type: "TNND_EXISTING_RUNNER_TICK", ref }).catch(() => undefined);
+    void sendRuntimeMessage({ type: "TNND_MATCH_RUNNER_TICK", ref }).catch(() => undefined);
+  }
 }, 2500);
 
 function scheduleScan(): void {

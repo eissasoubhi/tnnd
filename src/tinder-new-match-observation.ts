@@ -11,6 +11,7 @@ export interface NewMatchObservationState {
   enabled: boolean;
   userId: string | null;
   autoSendEnabled: boolean;
+  mode?: "future" | "existing";
   baselineReady: boolean;
   seenRefs: string[];
   pendingRefs: string[];
@@ -28,7 +29,7 @@ function clean(refs: readonly string[]): string[] {
     .map(ref => ref.trim()).filter(ref => ref.length > 0 && ref.length <= 512 && !ref.includes("/")))].slice(0, LIMIT);
 }
 export function emptyNewMatchState(): NewMatchObservationState {
-  return { schemaVersion: 3, enabled: false, userId: null, autoSendEnabled: false,
+  return { schemaVersion: 3, enabled: false, userId: null, autoSendEnabled: false, mode: "future",
     baselineReady: false, seenRefs: [], pendingRefs: [], candidates: [],
     completedRefs: [], failedRefs: [], lastAttemptAt: null, lastResult: null, updatedAt: "" };
 }
@@ -37,15 +38,39 @@ export function armNewMatchObservation(
 ): NewMatchObservationState {
   const known = clean(refs);
   if (!userId.trim() || known.length < 2) throw new Error("At least two visible match tiles are required for a safe baseline.");
-  return { ...emptyNewMatchState(), enabled: true, userId, autoSendEnabled: true, baselineReady: true, seenRefs: known, updatedAt: now };
+  return { ...emptyNewMatchState(), enabled: true, userId, autoSendEnabled: true, mode: "future", baselineReady: true, seenRefs: known, updatedAt: now };
 }
+/** First-message batch for ALREADY VISIBLE Tinder Matches (not future matches).
+ * Explicit confirmation is required before calling this. The backend must
+ * separately prove a thread has no messages before any Send action.
+ */
+export function armExistingMatches(
+  refs: readonly string[],
+  userId: string,
+  previous: NewMatchObservationState | null = null,
+  now = new Date().toISOString()
+): NewMatchObservationState {
+  const known = clean(refs);
+  if (!userId.trim() || !known.length) throw new Error("Open Tinder Matches with at least one visible match tile.");
+  const prior = previous?.userId === userId ? previous : null;
+  const completed = prior?.completedRefs ?? [];
+  const failed = prior?.failedRefs ?? [];
+  const alreadyAttempted = new Set([...completed, ...failed]);
+  return {
+    ...emptyNewMatchState(), enabled: true, userId,
+    autoSendEnabled: true, mode: "existing", baselineReady: true,
+    seenRefs: known, pendingRefs: known.filter(ref => !alreadyAttempted.has(ref)),
+    completedRefs: completed, failedRefs: failed, updatedAt: now
+  };
+}
+
 export function stopNewMatchObservation(state: NewMatchObservationState): NewMatchObservationState {
   return { ...state, enabled: false, autoSendEnabled: false };
 }
 export function observeNewMatchLinks(
   state: NewMatchObservationState, refs: readonly string[], now = new Date().toISOString()
 ): NewMatchObservationState {
-  if (!state.enabled || !state.baselineReady) return state;
+  if (!state.enabled || !state.baselineReady || state.mode === "existing") return state;
   const current = clean(refs);
   if (current.length < 2) return state;
   const previouslySeen = new Set(state.seenRefs);
