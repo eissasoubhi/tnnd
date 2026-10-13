@@ -3,6 +3,7 @@ import type { AppConfig, ChatSettings } from "./types";
 import { defaultSyncState, type SyncState } from "./sync-status";
 import { applyServerProfile } from "./server-effective-config";
 import { DEFAULT_FIRST_MESSAGE_DAILY_LIMIT, firstMessageDailyLimit } from "./tinder-first-message-daily-limit";
+import { DEFAULT_OPENER_MIN_SECONDS, DEFAULT_OPENER_MAX_SECONDS, openerDelayWindow } from "./tinder-opener-timing";
 
 const CONFIG_KEY = "tnnd.config";
 const API_KEY_KEY = "tnnd.geminiApiKey";
@@ -62,6 +63,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     enabled: false,
     replyDelayMinSeconds: 20,
     replyDelayMaxSeconds: 60,
+    openerDelayMinSeconds: DEFAULT_OPENER_MIN_SECONDS,
+    openerDelayMaxSeconds: DEFAULT_OPENER_MAX_SECONDS,
     quietHoursEnabled: true,
     quietStart: "00:00",
     quietEnd: "08:00",
@@ -97,6 +100,7 @@ export async function getConfig(): Promise<AppConfig> {
   const savedAutomation = (saved?.automation ?? {}) as Partial<AppConfig["automation"]>;
   const legacyDelay = Number(savedAutomation.replyDelaySeconds);
   const hasWindow = Number.isFinite(savedAutomation.replyDelayMinSeconds) || Number.isFinite(savedAutomation.replyDelayMaxSeconds);
+  const [openerDelayMinSeconds, openerDelayMaxSeconds] = openerDelayWindow(savedAutomation);
 
   const localConfig: AppConfig = {
     ...DEFAULT_CONFIG,
@@ -112,6 +116,7 @@ export async function getConfig(): Promise<AppConfig> {
       ...DEFAULT_CONFIG.automation,
       ...savedAutomation,
       maxFirstMessagesPerDay: firstMessageDailyLimit(savedAutomation.maxFirstMessagesPerDay),
+      openerDelayMinSeconds, openerDelayMaxSeconds,
       ...(hasWindow ? {} : Number.isFinite(legacyDelay) ? {
         replyDelayMinSeconds: Math.max(0, legacyDelay - 15),
         replyDelayMaxSeconds: Math.max(0, legacyDelay + 15)
