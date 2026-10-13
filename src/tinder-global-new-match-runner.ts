@@ -65,20 +65,21 @@ async function ownedTab(ref: string, userId: string): Promise<number> {
     throw new Error("Open exactly one Tinder tab with Matches visible before sending first messages.");
   }
   const tab = candidates[0];
+  const tabId = tab.id!;
   const existing = (await chrome.storage.local.get(OWNED_TAB))[OWNED_TAB] as {
     tabId?: number; userId?: string; ref?: string | null
   } | undefined;
-  if (existing && (existing.tabId !== tab.id || existing.userId !== userId)) {
+  if (existing && (existing.tabId !== tabId || existing.userId !== userId)) {
     throw new Error("Tinder worker tab/session changed; stop and restart the match batch.");
   }
-  const info = await chrome.tabs.sendMessage(tab.id, { type: "TNND_MATCH_SPA_NAVIGATE", ref }) as {
+  const info = await chrome.tabs.sendMessage(tabId, { type: "TNND_MATCH_SPA_NAVIGATE", ref }) as unknown as {
     ok?: boolean; error?: string; currentRef?: string
   };
   if (!info?.ok || info.currentRef !== ref) {
     throw new Error("Could not navigate in Tinder without reload: " + (info?.error ?? "unknown_navigation_error"));
   }
-  await chrome.storage.local.set({ [OWNED_TAB]: { tabId: tab.id, userId, ref } });
-  return tab.id;
+  await chrome.storage.local.set({ [OWNED_TAB]: { tabId, userId, ref } });
+  return tabId;
 }
 
 /** Explicitly authorized automatic handoff after an existing-match batch.
@@ -176,7 +177,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     const owner = (await chrome.storage.local.get(OWNED_TAB))[OWNED_TAB] as { tabId?: number; userId?: string } | undefined;
     const session = await getBackendSession();
     if (owner?.tabId !== sender.tab?.id || session?.user.id !== state.userId
-      || owner.userId !== state.userId) return;
+      || owner?.userId !== state.userId) return;
     await processNext();
   })().then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
   return true;
