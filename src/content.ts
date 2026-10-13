@@ -506,6 +506,10 @@ async function startFirstMessage(expectedThreadKey: string): Promise<{ ok: boole
     freshState.dailyCount += 1;
     if (!await saveState(freshState)) return { ok: false, error: "Could not record the opener attempt safely; nothing sent." };
     // No automatic retry even if Tinder's UI acknowledgement is ambiguous.
+    const claim = await sendRuntimeMessage<{ ok: boolean; claimed?: boolean; reason?: string }>({
+      type: "TNND_CLAIM_FIRST_MESSAGE", conversationRef
+    });
+    if (!claim?.ok || !claim.claimed) return { ok: false, error: `First message not sent: ${claim?.reason ?? "claim_failed"}.` };
     await adapter.send(opener);
     try {
       await syncConversationDelta(conversationRef, [{
