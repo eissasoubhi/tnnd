@@ -48,7 +48,7 @@ test("existing and future match preflight prevents sending when Tinder receiver 
   assert.match(popup,/waitForTinderContentBridge\(tab\.id\)/);
   assert.match(popup,/await assertTinderContentBridge\(tab\.id\)/);
   assert.ok(worker.indexOf("const tabId = await ownedTab(ref, session.user.id);") <
-    worker.indexOf("tnnd.newMatchDailyAttempts.v1\": { date: today, refs: [...used, ref] }"));
+    worker.indexOf("tnnd.newMatchDailyAttempts.v1\": { date: today, refs: [...freshUsed, ref] }"));
   assert.match(worker,/if \(isMissingTinderReceiver\(error\) && !sendRequested\)/);
   assert.match(worker,/stopNewMatchObservation\(current\)/);
   assert.match(worker,/sendRequested = true/);

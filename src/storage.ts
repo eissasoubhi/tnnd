@@ -2,6 +2,7 @@ import { findLegacyChatSettingsKey } from "./tinder-chat-detection";
 import type { AppConfig, ChatSettings } from "./types";
 import { defaultSyncState, type SyncState } from "./sync-status";
 import { applyServerProfile } from "./server-effective-config";
+import { DEFAULT_FIRST_MESSAGE_DAILY_LIMIT, firstMessageDailyLimit } from "./tinder-first-message-daily-limit";
 
 const CONFIG_KEY = "tnnd.config";
 const API_KEY_KEY = "tnnd.geminiApiKey";
@@ -64,7 +65,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     quietHoursEnabled: true,
     quietStart: "00:00",
     quietEnd: "08:00",
-    maxAutoRepliesPerDay: 40
+    maxAutoRepliesPerDay: 40,
+    maxFirstMessagesPerDay: DEFAULT_FIRST_MESSAGE_DAILY_LIMIT
   }
 };
 
@@ -109,6 +111,7 @@ export async function getConfig(): Promise<AppConfig> {
     automation: {
       ...DEFAULT_CONFIG.automation,
       ...savedAutomation,
+      maxFirstMessagesPerDay: firstMessageDailyLimit(savedAutomation.maxFirstMessagesPerDay),
       ...(hasWindow ? {} : Number.isFinite(legacyDelay) ? {
         replyDelayMinSeconds: Math.max(0, legacyDelay - 15),
         replyDelayMaxSeconds: Math.max(0, legacyDelay + 15)

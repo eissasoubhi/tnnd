@@ -564,7 +564,8 @@ async function startFirstMessage(expectedThreadKey: string, mode: "individual" |
       globalAutomationEnabled: config.automation.enabled,
       chatAutomationEnabled: perChatEnabled === true,
       insideQuietHours: config.automation.quietHoursEnabled && insideQuietHours(config.automation.quietStart, config.automation.quietEnd),
-      belowDailyLimit: state.dailyCount < config.automation.maxAutoRepliesPerDay,
+      // Daily openers are gated by durable first-message claims in background.
+      belowDailyLimit: permission?.reason !== "daily_limit",
       alreadyAttempted: Boolean(state.processed[firstMessageAttemptKey(conversationRef)])
     });
     const blocker = check();
@@ -596,7 +597,6 @@ async function startFirstMessage(expectedThreadKey: string, mode: "individual" |
       || !freshConfig.automation.enabled
       || (freshConfig.automation.quietHoursEnabled && insideQuietHours(freshConfig.automation.quietStart, freshConfig.automation.quietEnd))
       || await getChatAutomationEnabled(threadKey) !== true
-      || freshState.dailyCount >= freshConfig.automation.maxAutoRepliesPerDay
       || freshState.processed[firstMessageAttemptKey(conversationRef)]) {
       return { ok: false, error: "The chat or permissions changed. First message not sent." };
     }
@@ -607,7 +607,7 @@ async function startFirstMessage(expectedThreadKey: string, mode: "individual" |
     }
     const attemptedAt = Date.now();
     freshState.processed[firstMessageAttemptKey(conversationRef)] = attemptedAt;
-    freshState.dailyCount += 1;
+    // Openers count against the independent durable first-message quota.
     if (!await saveState(freshState)) return { ok: false, error: "Could not record the opener attempt safely; nothing sent." };
     // No automatic retry even if Tinder's UI acknowledgement is ambiguous.
     const claim = await sendRuntimeMessage<{ ok: boolean; claimed?: boolean; reason?: string }>({

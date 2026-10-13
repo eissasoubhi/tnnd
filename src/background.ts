@@ -17,6 +17,7 @@ import { mayAutomaticallySendToTinder } from "./tinder-auto-send-gate";
 import { generateBackendSuggestions } from "./backend-session";
 import { getApiKey, getBackendSession, getChatSettings, getConfig, lockStorageToTrustedContexts, resolveEffectiveConfig } from "./storage";
 import type { AppConfig, GenerateRequest, GenerateResponse, PreviewOverrides } from "./types";
+import { hasReachedFirstMessageDailyLimit } from "./tinder-first-message-daily-limit";
 
 const AUTO_STATE_KEY = "tnnd.autoState";
 const FIRST_MESSAGE_CLAIMS_KEY = "tnnd.firstMessageAttempts.v1";
@@ -33,8 +34,13 @@ async function checkFirstMessagePermission(ref: string, ignoreOwnClaim = false):
   ok: boolean; allowed: boolean; reason?: string; savedMessageCount?: number;
 }> {
   const raw = await chrome.storage.local.get(FIRST_MESSAGE_CLAIMS_KEY);
-  if (normalizeFirstMessageClaims(raw[FIRST_MESSAGE_CLAIMS_KEY])[ref]) return { ok: true, allowed: false, reason: "already_attempted" };
+  const claims = normalizeFirstMessageClaims(raw[FIRST_MESSAGE_CLAIMS_KEY]);
+  if (claims[ref]) return { ok: true, allowed: false, reason: "already_attempted" };
   if (!ignoreOwnClaim && pendingFirstMessageClaims.has(ref)) return { ok: true, allowed: false, reason: "claim_in_progress" };
+  const config = await getConfig();
+  if (hasReachedFirstMessageDailyLimit(claims, config.automation.maxFirstMessagesPerDay)) {
+    return { ok: true, allowed: false, reason: "daily_limit" };
+  }
   const backend = await loadTinderConversationManagement(ref);
   if (!backend.conversationId || backend.conversationStatus !== "active" || !mayAutomaticallySendToTinder(backend)) {
     return { ok: true, allowed: false, reason: "ai_management_not_active" };
@@ -233,6 +239,9 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
       if (pendingFirstMessageClaims.has(ref)) {
         return { ok: true, claimed: false, reason: "already_attempted" };
       }
+      if (pendingFirstMessageClaims.size > 0) {
+        return { ok: true, claimed: false, reason: "claim_in_progress" };
+      }
       pendingFirstMessageClaims.add(ref);
       try {
         const checked = await checkFirstMessagePermission(ref, true);
@@ -245,6 +254,11 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
         const stored = await chrome.storage.local.get(FIRST_MESSAGE_CLAIMS_KEY);
         const entries = normalizeFirstMessageClaims(stored[FIRST_MESSAGE_CLAIMS_KEY]);
         if (entries[ref]) return { ok: true, claimed: false, reason: "already_attempted" };
+        // Validate the live cap after asynchronous authorization reads.
+        const currentConfig = await getConfig();
+        if (hasReachedFirstMessageDailyLimit(entries, currentConfig.automation.maxFirstMessagesPerDay)) {
+          return { ok: true, claimed: false, reason: "daily_limit" };
+        }
         const attempts = { ...entries, [ref]: Date.now() };
         await chrome.storage.local.set({ [FIRST_MESSAGE_CLAIMS_KEY]: attempts });
         return { ok: true, claimed: true };

@@ -6,7 +6,7 @@ TNND has two distinct modes. Both require a connected TNND account, configured G
 
 1. In **TNND Web → Conversation management**, select the intended chat and save **AI managed** with the confirmation.
 2. In **TNND Web → Conversations**, open that same chat and press **Resume** if it is Paused. It should be **Active**.
-3. In the **TNND extension → Options**, activate **Enable automatic replies on Tinder**, verify Gemini, and save.
+3. In the **TNND extension → Options**, activate **Enable automatic replies on Tinder**, set **First AI messages to Tinder matches / day** (default **5**, range 1–100), verify Gemini, and save. This cap is separate from **Maximum automatic replies / day**.
 4. Open the exact Tinder conversation tab. In the popup, turn on **Automatic replies enabled for this chat** and save its settings.
 5. Press **Start chat · Send first AI message** in the popup and explicitly confirm that a message will be sent.
 6. TNND verifies the current thread URL, visible composer, no visible message bubbles, active backend AI-managed status, no persisted messages, quiet hours and daily limit before generating. It rechecks everything before the send.

@@ -5,11 +5,11 @@ import { assertTinderContentBridge, isMissingTinderReceiver, describeTinderBridg
 import { startExistingRunner } from "./tinder-global-existing-runner";
 import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import { classifyExistingMatchPreparation } from "./tinder-existing-match-preparation-policy";
+import { firstMessageDailyLimit, hasReachedFirstMessageDailyLimit } from "./tinder-first-message-daily-limit";
 
 const ALARM = "tnnd.globalNewMatches.cycle";
 const OWNED_TAB = "tnnd.newMatchOwnedTab.v1";
 const BASE = "http://127.0.0.1:4000";
-const MAX_NEW_OPENERS_PER_DAY = 5;
 const CADENCE_KEY = "tnnd.globalExistingRunner.cadenceSeconds.v1";
 const ALLOWED_CADENCES = new Set([10, 15, 30, 60, 120]);
 let busy = false;
@@ -139,8 +139,10 @@ async function processNext(): Promise<void> {
     const today = new Date().toISOString().slice(0, 10);
     const stored = (await chrome.storage.local.get("tnnd.newMatchDailyAttempts.v1"))["tnnd.newMatchDailyAttempts.v1"] as { date: string; refs: string[] } | undefined;
     const used = stored?.date === today && Array.isArray(stored.refs) ? stored.refs : [];
-    if (used.length >= MAX_NEW_OPENERS_PER_DAY) {
-      await finishExistingMatchBatch(state, "Daily first-message limit reached; remaining matches can be resumed later");
+    const claims = (await chrome.storage.local.get("tnnd.firstMessageAttempts.v1"))["tnnd.firstMessageAttempts.v1"] as Record<string, number> | undefined;
+    const limit = firstMessageDailyLimit(config.automation.maxFirstMessagesPerDay);
+    if (used.length >= limit || hasReachedFirstMessageDailyLimit(claims ?? {}, limit)) {
+      await finishExistingMatchBatch(state, `Daily first-message limit (${limit}) reached; remaining matches can be resumed later`);
       return;
     }
     ref = state.pendingRefs.find(item => !used.includes(item)) ?? null;
@@ -172,8 +174,18 @@ async function processNext(): Promise<void> {
     // The sender must remain the same verified, empty conversation before authorizing.
     await prepareNewMatch(ref, session.token);
     if (!await newMatchSendPermission(ref, tabId)) return;
+    // A lower limit saved while the chat loads must also be enforced.
+    const freshConfig = await getConfig();
+    const freshJournal = (await chrome.storage.local.get("tnnd.newMatchDailyAttempts.v1"))["tnnd.newMatchDailyAttempts.v1"] as { date: string; refs: string[] } | undefined;
+    const freshUsed = freshJournal?.date === today && Array.isArray(freshJournal.refs) ? freshJournal.refs : [];
+    const freshClaims = (await chrome.storage.local.get("tnnd.firstMessageAttempts.v1"))["tnnd.firstMessageAttempts.v1"] as Record<string, number> | undefined;
+    const freshLimit = firstMessageDailyLimit(freshConfig.automation.maxFirstMessagesPerDay);
+    if (freshUsed.length >= freshLimit || hasReachedFirstMessageDailyLimit(freshClaims ?? {}, freshLimit)) {
+      await finishExistingMatchBatch(state, `Daily first-message limit (${freshLimit}) reached; remaining matches can be resumed later`);
+      return;
+    }
     // Store durable intent immediately BEFORE the irreversible Send request.
-    await chrome.storage.local.set({ "tnnd.newMatchDailyAttempts.v1": { date: today, refs: [...used, ref] } });
+    await chrome.storage.local.set({ "tnnd.newMatchDailyAttempts.v1": { date: today, refs: [...freshUsed, ref] } });
     sendRequested = true;
     const result = await chrome.tabs.sendMessage(tabId, {
       type: "TNND_AUTO_START_NEW_MATCH", threadKey

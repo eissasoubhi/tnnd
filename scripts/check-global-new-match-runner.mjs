@@ -24,7 +24,8 @@ test("new-match sending is account-scoped, individually gated, and stopped synch
   assert.match(backend,/newMatchSendPermission/);
   assert.match(backend,/autoSendEnabled/);
   assert.match(backend,/chrome\.alarms\.clear/);
-  assert.match(runner,/MAX_NEW_OPENERS_PER_DAY = 5/);
+  assert.match(runner,/firstMessageDailyLimit\(config\.automation\.maxFirstMessagesPerDay\)/);
+  assert.match(runner,/hasReachedFirstMessageDailyLimit\(claims \?\? \{\}, limit\)/);
   assert.match(runner,/await prepareNewMatch/);
   assert.match(runner,/getChatSettings/);
   assert.match(runner,/pendingRefs/);

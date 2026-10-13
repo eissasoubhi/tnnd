@@ -48,6 +48,8 @@ export interface AutomationConfig {
   quietStart: string;
   quietEnd: string;
   maxAutoRepliesPerDay: number;
+  /** First-message attempts to Tinder matches each UTC day (separate from replies). */
+  maxFirstMessagesPerDay: number;
 }
 
 export interface AppConfig {
