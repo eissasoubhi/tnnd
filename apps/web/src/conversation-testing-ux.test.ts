@@ -63,3 +63,11 @@ test("conversation detail prioritizes draft and messages before collapsible adva
   assert.match(detail, /aria-label="Saved conversation history"/);
   assert.match(draft, /detail\.insertBefore\(section, messages\)/);
 });
+
+test("waiting replies are prioritized over answered/paused chats in TNND Web",()=>{
+  assert.match(panel,/prioritizeWaitingReplies\(filterConversationSummaries/);
+  assert.match(panel,/lastMessageDirection === "incoming"/);
+  assert.match(panel,/item\.status === "active"/);
+  assert.match(panel,/Reply waiting/);
+  assert.doesNotMatch(panel,/document\.querySelectorAll.*tinder\.com/);
+});
