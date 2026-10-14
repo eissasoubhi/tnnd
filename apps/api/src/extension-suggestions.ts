@@ -182,7 +182,7 @@ export async function generateExtensionSuggestions(
       ? ["interests", "location", "occupation"] as const : ["location", "occupation", "interests"] as const;
   const capturedProfile = storedConversation ? await getConversationMatchProfile(userId, storedConversation.id) : null;
   const savedDatingIntent = generationContext.userProfile?.datingIntent;
-  const matchRules = savedDatingIntent?.matchScreening as MatchScreeningOptions | undefined;
+  const matchRules = (savedDatingIntent as Record<string, unknown> | undefined)?.matchScreening as MatchScreeningOptions | undefined;
   const matchScreening = request.purpose === "opener" ? null : assessMatchIntent(
     storedConversation ? [...storedConversation.messages.slice(-60), ...observedMessages.slice(-10)] : observedMessages,
     capturedProfile?.normalizedProfile.fields ?? null, matchRules ?? {}
