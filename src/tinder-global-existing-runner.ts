@@ -404,7 +404,7 @@ async function contentEvent(sender: chrome.runtime.MessageSender, message: { pha
   const phase = message.phase as RunnerPhase;
   const detail = typeof message.detail === "string" ? message.detail.slice(0, 240) : phase;
   // Ignore duplicate status events, especially periodic "no incoming" scans.
-  if (state.phase === phase && state.phaseDetail === detail && phase !== "sent") return;
+  if (state.phase === phase && state.phaseDetail === detail && phase !== "sent" && phase !== "incoming") return;
   // Reject late navigation events from an older chat tab.
   const fresh = await load();
   if (!fresh.enabled || fresh.lastRef !== senderRef || fresh.tabId !== sender.tab.id) return;
