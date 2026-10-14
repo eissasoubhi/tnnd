@@ -44,7 +44,7 @@ test("conversation identity and temporary-instruction labels are clear and acces
   assert.match(panel, /Match name not yet synced/);
   assert.match(management, /Match name not yet synced/);
   assert.doesNotMatch(panel, /Profil Tinder à synchroniser/);
-  assert.match(panel, /<label class="temporary-instruction-label" for="conversation-temporary-instruction">Instruction for this conversation<\\/label>/);
+  assert.ok(panel.includes('<label class="temporary-instruction-label" for="conversation-temporary-instruction">Instruction for this conversation</label>'));
   assert.match(panel, /aria-describedby="conversation-temporary-instruction-help"/);
   assert.match(panel, /data-temporary-instruction-status role="status" aria-live="polite"/);
   assert.match(panel, /Based on synchronized conversation history/);
