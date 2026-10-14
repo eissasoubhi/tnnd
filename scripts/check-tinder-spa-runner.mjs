@@ -41,7 +41,7 @@ test("separate adjustable conversation dwell never overrides reply delay or pend
  assert.match(runner,/ALLOWED_CADENCES = \[10, 15, 30, 60, 120\]/);
  assert.match(runner,/DEFAULT_CADENCE = 15/);
  assert.match(runner,/Date\.now\(\) - Date\.parse\(state\.lastVisitAt\) < dwellSeconds \* 1000/);
- assert.match(runner,/replyInProgress && Number\.isFinite\(elapsed\)/);
+ assert.match(runner,/replyInProgress && !\(state\.mode === "watcher" && state\.matchPhase === "verifying"\)/);
  assert.match(runner,/periodInMinutes: 0\.5/);
  assert.match(runner,/TNND_EXISTING_RUNNER_TICK/);
  assert.match(content,/spaNavigationBusy \|\| busy/);
