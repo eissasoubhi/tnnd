@@ -44,3 +44,10 @@ Status: **source review and first improvement**, not a finished screen-by-screen
 - Source finding: "Live structured conversation context" overpromised real-time sync. Changed to "Based on synchronized conversation history".
 - Source finding: English UI contained the French placeholder "Profil Tinder à synchroniser" in two separate panels. Unified as "Match name not yet synced".
 - Updated `conversation-testing-ux.test.ts` with copy and semantic checks. Visual/browser accessibility verification remains pending.
+
+## Third targeted UX pass — stale account data and reversible conversation filters
+
+- **P1 (source review):** In-flight conversation list responses could overwrite the UI after sign-out/account switch. The list now validates request order **and account token**, hides previous account data immediately, and ignores stale detail responses. Failed list loads also clear stale details.
+- **P2 (source review):** Distinguish zero synced conversations from an empty search. The toolbar now exposes a keyboard-friendly Clear filters button that restores all conversations.
+- Signed-out state no longer presents invented/irrelevant `0 shown · 0 total` counters.
+- Unit tests cover state labels and response guards; integration assertions protect wiring. Live browser session testing and screenshot-based UX audit remain pending.

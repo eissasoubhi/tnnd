@@ -11,6 +11,7 @@ import {
 } from "./conversation-client";
 import type { ConversationListItem, ConversationStatus } from "./conversation-contract";
 import { filterConversationSummaries } from "./conversation-list-filter";
+import { conversationEmptyState, hasConversationFilters, isCurrentConversationResponse } from "./conversation-list-ui";
 import { replyTargetFromHistory, replyTargetHint } from "./conversation-reply-target";
 
 function escapeHtml(value: string): string {
@@ -39,8 +40,11 @@ function matchAvatar(displayName: string, photoUrl?: string | null): string {
   return `<span class="conversation-person-avatar" aria-hidden="true">${photoUrl ? `<img src="${escapeHtml(photoUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : escapeHtml(initial)}</span>`;
 }
 
-function renderList(items: ConversationListItem[], selectedId?: string): string {
-  if (!items.length) return '<p class="workspace-empty">No conversations match your search or status filter.</p>';
+function renderList(items: ConversationListItem[], total: number, filtered: boolean, selectedId?: string): string {
+  if (!items.length) {
+    const empty = conversationEmptyState(total, filtered);
+    return `<div class="conversation-empty workspace-empty" role="status"><strong>${escapeHtml(empty.heading)}</strong><p>${escapeHtml(empty.guidance)}</p></div>`;
+  }
   return items.map((item) => `
     <button type="button" class="conversation-row${item.id === selectedId ? " selected" : ""}" data-conversation-id="${escapeHtml(item.id)}" aria-pressed="${item.id === selectedId}">
       <span class="conversation-row-main">
@@ -242,7 +246,7 @@ function installStyles(): void {
   style.id = "tnnd-conversation-panel-styles";
   style.textContent = `
     .conversation-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:12px}.conversation-stat{display:grid;gap:2px;padding:9px 10px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:rgba(127,127,127,.05)}.conversation-stat strong{font-size:18px}.conversation-stat span{font-size:10px;opacity:.7}
-    .conversation-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;flex-wrap:wrap}.conversation-filter{display:flex;align-items:center;gap:7px;font-size:12px}.conversation-filter select{width:auto;min-width:170px}.conversation-summary{font-size:11px;opacity:.7}
+    .conversation-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;flex-wrap:wrap}.conversation-filter{display:flex;align-items:center;gap:7px;font-size:12px}.conversation-filter select{width:auto;min-width:170px}.conversation-summary{font-size:11px;opacity:.7}.conversation-clear-filters{width:auto;min-height:44px;padding:8px 12px;border:1px solid var(--nb-border,#c8d8cd);color:var(--nb-primary,#264b40);background:var(--nb-surface,#fff);border-radius:10px}.conversation-empty{display:grid;gap:8px;padding:16px;border:1px dashed var(--nb-border,#c8d8cd);border-radius:12px;background:var(--nb-surface-soft,#edf4eb)}.conversation-empty p{margin:0;line-height:1.5}
     .conversation-layout{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(280px,1.1fr);gap:14px;margin-top:14px}
     .conversation-identity-editor{margin:0 0 12px;padding:10px 13px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:var(--nb-surface-soft,#edf4eb)}.conversation-identity-editor summary{cursor:pointer;font-size:12px;font-weight:750}.conversation-identity-editor>p{font-size:12px;line-height:1.5}.conversation-identity-controls{display:flex;align-items:flex-end;flex-wrap:wrap;gap:9px}.conversation-identity-controls label{display:grid;gap:5px;flex:1 1 130px;font-size:12px}.conversation-identity-controls label:nth-child(2){flex:0 1 115px}.conversation-identity-controls input{min-width:0;max-width:100%}.conversation-identity-controls button{max-width:100%;width:auto;white-space:normal}
     .conversation-person-line{display:flex;align-items:center;gap:9px;min-width:0}.conversation-person-line strong{min-width:0;overflow-wrap:anywhere} .conversation-person-avatar{display:inline-grid;flex:0 0 40px;place-items:center;width:40px;height:40px;background:var(--nb-mint,#d9efcc);color:var(--nb-primary,#264b40);border-radius:50%;font-weight:800;overflow:hidden}.conversation-person-avatar img{display:block;width:100%;height:100%;object-fit:cover}.conversation-detail-heading>.conversation-person-avatar{width:48px;height:48px;flex-basis:48px}.conversation-status-help{margin:0 0 12px;padding:10px 13px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:var(--nb-surface-soft,#edf4eb)}.conversation-status-help summary{cursor:pointer;font-size:12px;font-weight:750}.conversation-status-help p{font-size:12px;line-height:1.55}.conversation-status-help a{font-size:12px;font-weight:750;color:inherit;text-decoration:underline}
@@ -260,7 +264,7 @@ function installStyles(): void {
   document.head.append(style);
 }
 
-function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement; filter: HTMLSelectElement; search: HTMLInputElement; summary: HTMLElement; stats: HTMLElement } | null {
+function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement; filter: HTMLSelectElement; search: HTMLInputElement; clearFilters: HTMLButtonElement; summary: HTMLElement; stats: HTMLElement } | null {
   const grid = document.querySelector<HTMLElement>(".grid");
   if (!grid) return null;
   installStyles();
@@ -292,6 +296,7 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
           <option value="archived">Archived</option>
         </select>
       </label>
+      <button id="conversation-clear-filters" class="conversation-clear-filters" type="button" hidden>Clear filters</button>
       <span id="conversation-filter-summary" class="conversation-summary" role="status" aria-live="polite"></span>
     </div>
     <div class="conversation-layout">
@@ -306,6 +311,7 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
     status: panel.querySelector<HTMLElement>("#conversation-panel-status")!,
     filter: panel.querySelector<HTMLSelectElement>("#conversation-status-filter")!,
     search: panel.querySelector<HTMLInputElement>("#conversation-search")!,
+    clearFilters: panel.querySelector<HTMLButtonElement>("#conversation-clear-filters")!,
     summary: panel.querySelector<HTMLElement>("#conversation-filter-summary")!,
     stats: panel.querySelector<HTMLElement>("#conversation-operational-summary")!
   };
@@ -315,6 +321,8 @@ const elements = mount();
 let cachedItems: ConversationListItem[] = [];
 let selectedConversationId: string | undefined;
 let detailRequestSequence = 0;
+let refreshRequestSequence = 0;
+let displayedSessionToken: string | null = null;
 
 function filteredItems(): ConversationListItem[] {
   return filterConversationSummaries(cachedItems, {
@@ -343,7 +351,9 @@ function bindRows(items: ConversationListItem[]): void {
 function renderCurrentList(): void {
   if (!elements) return;
   const items = filteredItems();
-  elements.list.innerHTML = renderList(items, selectedConversationId);
+  const filtered = hasConversationFilters(elements.search.value, elements.filter.value);
+  elements.list.innerHTML = renderList(items, cachedItems.length, filtered, selectedConversationId);
+  elements.clearFilters.hidden = !filtered;
   elements.summary.textContent = `${items.length} shown · ${cachedItems.length} total`;
   elements.stats.innerHTML = renderOperationalSummary(cachedItems);
   bindRows(items);
@@ -479,7 +489,7 @@ async function loadDetail(conversationId: string): Promise<void> {
   elements.detail.innerHTML = '<p class="subtle" role="status">Loading conversation…</p>';
   try {
     const detail = await getConversation(session, conversationId);
-    if (requestId !== detailRequestSequence || selectedConversationId !== conversationId) return;
+    if (!isCurrentConversationResponse(requestId, detailRequestSequence, session.token, readSession()?.token) || selectedConversationId !== conversationId) return;
     elements.detail.innerHTML = renderDetail(detail);
     // The draft editor is mounted lazily after the detail DOM changes.
     // Keep the live reply target on its owning detail node, never in storage.
@@ -489,41 +499,65 @@ async function loadDetail(conversationId: string): Promise<void> {
     bindStatusActions(conversationId);
     bindTemporaryInstructionActions(conversationId);
   } catch (error) {
-    if (requestId !== detailRequestSequence || selectedConversationId !== conversationId) return;
+    if (!isCurrentConversationResponse(requestId, detailRequestSequence, session.token, readSession()?.token) || selectedConversationId !== conversationId) return;
     elements.detail.innerHTML = `<p class="subtle">${escapeHtml(error instanceof Error ? error.message : "Unable to load conversation.")}</p>`;
   }
 }
 
 async function refresh(): Promise<void> {
   if (!elements) return;
+  const requestId = ++refreshRequestSequence;
   const session = readSession();
+
+  // Never display previous-account data while a fresh session is loading.
+  if ((session?.token ?? null) !== displayedSessionToken) {
+    displayedSessionToken = session?.token ?? null;
+    cachedItems = [];
+    selectedConversationId = undefined;
+    ++detailRequestSequence;
+    elements.search.value = "";
+    elements.filter.value = "all";
+    elements.clearFilters.hidden = true;
+    elements.summary.textContent = "";
+    elements.stats.innerHTML = "";
+    elements.list.innerHTML = '<p class="subtle" role="status">Loading conversations…</p>';
+    elements.detail.innerHTML = '<p class="subtle">Select a conversation to view its details.</p>';
+  }
+
   if (!session) {
+    ++detailRequestSequence;
     cachedItems = [];
     selectedConversationId = undefined;
     elements.status.textContent = "Sign in required";
-    elements.summary.textContent = "0 shown · 0 total";
-    elements.stats.innerHTML = renderOperationalSummary([]);
-    elements.list.innerHTML = '<p class="subtle">Connect your TNND account to load conversations.</p>';
-    elements.detail.innerHTML = '<p class="subtle">Conversation details will appear here.</p>';
+    elements.summary.textContent = "";
+    elements.stats.innerHTML = "";
+    elements.list.innerHTML = '<p class="subtle">Sign in to TNND to view your synced conversations.</p>';
+    elements.detail.innerHTML = '<p class="subtle">Conversation details will appear after sign-in.</p>';
     return;
   }
 
   elements.status.textContent = "Loading…";
   try {
-    cachedItems = await listConversations(session);
+    const items = await listConversations(session);
+    if (!isCurrentConversationResponse(requestId, refreshRequestSequence, session.token, readSession()?.token)) return;
+    cachedItems = items;
     window.dispatchEvent(new CustomEvent("tnnd:conversation-updated"));
     elements.status.textContent = `${cachedItems.length} synced`;
     const visible = filteredItems();
     if (!selectedConversationId && visible[0]) selectedConversationId = visible[0].id;
     renderCurrentList();
     if (selectedConversationId) void loadDetail(selectedConversationId);
+    else elements.detail.innerHTML = '<p class="subtle">Select a synced conversation to view its details.</p>';
   } catch (error) {
+    if (!isCurrentConversationResponse(requestId, refreshRequestSequence, session.token, readSession()?.token)) return;
+    ++detailRequestSequence;
     cachedItems = [];
     selectedConversationId = undefined;
     elements.status.textContent = "Unavailable";
-    elements.summary.textContent = "0 shown · 0 total";
-    elements.stats.innerHTML = renderOperationalSummary([]);
-    elements.list.innerHTML = `<p class="subtle">${escapeHtml(error instanceof Error ? error.message : "Unable to load conversations.")}</p>`;
+    elements.summary.textContent = "";
+    elements.stats.innerHTML = "";
+    elements.list.innerHTML = `<p class="subtle" role="alert">Unable to load conversations. ${escapeHtml(error instanceof Error ? error.message : "Check your connection and try again.")}</p>`;
+    elements.detail.innerHTML = '<p class="subtle">Conversation details are unavailable until the list loads successfully.</p>';
   }
 }
 
@@ -544,6 +578,13 @@ function applyConversationFilters(): void {
 }
 elements?.filter.addEventListener("change", applyConversationFilters);
 elements?.search.addEventListener("input", applyConversationFilters);
+elements?.clearFilters.addEventListener("click", () => {
+  if (!elements) return;
+  elements.filter.value = "all";
+  elements.search.value = "";
+  applyConversationFilters();
+  elements.search.focus();
+});
 
 window.addEventListener("tnnd:auth-session-changed", () => void refresh());
 void refresh();
