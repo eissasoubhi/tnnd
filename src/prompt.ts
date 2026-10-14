@@ -1,5 +1,5 @@
 import type { AppConfig, ChatSettings, GeneratePurpose } from "./types";
-import { readLabeledReplyHistory, readReplyStyleCues, replyStyleGuidance } from "./conversation-reply-style";
+import { readLabeledReplyHistory, readReplyStyleCues, replyStyleGuidance } from "./conversation-reply-style.ts";
 
 function csv(value: string): string[] {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
