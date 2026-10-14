@@ -20,6 +20,7 @@ export interface ConversationListItem {
   status: ConversationStatus;
   currentTopic?: string | null;
   lastMessageAt?: string | null;
+  lastMessageDirection?: "incoming" | "outgoing" | null;
   pendingHumanActions: number;
 }
 
@@ -61,6 +62,7 @@ export function normalizeConversationListItem(value: unknown): ConversationListI
     status: input.status,
     currentTopic: typeof input.currentTopic === "string" ? input.currentTopic : null,
     lastMessageAt: typeof input.lastMessageAt === "string" ? input.lastMessageAt : null,
+    lastMessageDirection: input.lastMessageDirection === "incoming" || input.lastMessageDirection === "outgoing" ? input.lastMessageDirection : null,
     pendingHumanActions:
       typeof input.pendingHumanActions === "number" && input.pendingHumanActions >= 0
         ? Math.floor(input.pendingHumanActions)
