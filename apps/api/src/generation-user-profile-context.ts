@@ -5,6 +5,8 @@ import { validateProfileEnvelope } from "./profile-schema.js";
 export interface GenerationUserProfileContext {
   identity?: Record<string, unknown>;
   datingIntent?: Record<string, unknown>;
+  /** Active Tinder Passport target cities; never assert user lives there. */
+  targetCities?: string[];
   languages?: Record<string, unknown>;
   textingStyle?: Record<string, unknown>;
   topicEngine?: { avoidedTopics: string[] };
