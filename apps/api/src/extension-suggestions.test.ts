@@ -168,3 +168,47 @@ test("extension generation honors stored adaptive style and proactive topic excl
   assert.match(body, /Do not proactively raise/);
   assert.match(body, /sports/);
 });
+
+test("extension flow uses the last observed exchange and allows the match to redirect", async () => {
+  let submitted = "";
+  const input = validateExtensionSuggestionRequest({
+    context: "You: Salut\nYou: Ça va ?\nThem: Ça va, tu fais quoi ce weekend ?",
+    purpose: "auto", count: 1, config: { conversationFlowEnabled: true },
+    threadKey: "tinder-thread-123"
+  });
+  assert.equal(input.threadKey, "tinder-thread-123");
+  await generateExtensionSuggestions(
+    "u-test", { ...input, threadKey: undefined },
+    async () => ({ provider: "gemini", model: "gemini-test", apiKey: "secret" }),
+    async (_, init) => {
+      submitted = String(init?.body ?? "");
+      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '["Ça va, et toi ?"]' }] } }] }), { status: 200 });
+    },
+    async () => ({ memories: [] })
+  );
+  assert.match(submitted, /Adaptive Conversation Flow/);
+  assert.match(submitted, /ANSWER IT FIRST/);
+  assert.match(submitted, /location/);
+  assert.doesNotMatch(submitted, /apiKey[\\s\\S]*secret/);
+});
+test("extension flow is optional and disabled for users who opt out", async () => {
+  let submitted = "";
+  await generateExtensionSuggestions(
+    "u-test", { context: "Them: Salut", purpose: "auto", count: 1, config: { conversationFlowEnabled: false } },
+    async () => ({ provider: "gemini", model: "gemini-test", apiKey: "secret" }),
+    async (_, init) => {
+      submitted = String(init?.body ?? "");
+      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '["Salut"]' }] } }] }), { status: 200 });
+    },
+    async () => ({ memories: [] })
+  );
+  assert.doesNotMatch(submitted, /Adaptive Conversation Flow/);
+});
+test("thread references are bounded and cannot be arbitrary objects", () => {
+  assert.throws(() => validateExtensionSuggestionRequest({
+    context: "Them: Bonjour", purpose: "auto", count: 1, config: {}, threadKey: { foo: "bar" }
+  }), /invalid_extension_generation_thread/);
+  assert.throws(() => validateExtensionSuggestionRequest({
+    context: "Them: Bonjour", purpose: "auto", count: 1, config: {}, threadKey: "x".repeat(513)
+  }), /invalid_extension_generation_thread/);
+});

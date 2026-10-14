@@ -316,7 +316,8 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
             purpose,
             count,
             config,
-            chat
+            chat,
+            ...(message.threadKey ? { threadKey: message.threadKey } : {})
           })
         : await generateSuggestions(apiKey, config, message.context, purpose, count, chat);
       sendResponse({ ok: true, suggestions } satisfies GenerateResponse);

@@ -17,6 +17,7 @@ const textingStyle = mountTextingStyleControls();
 const f = {
   form: el<HTMLFormElement>("settings-form"), apiKey: el<HTMLInputElement>("apiKey"), model: el<HTMLInputElement>("model"),
   tone: el<HTMLSelectElement>("tone"), messageLength: el<HTMLSelectElement>("messageLength"), flirtLevel: el<HTMLInputElement>("flirtLevel"), flirtValue: el<HTMLElement>("flirtValue"), humorLevel: el<HTMLInputElement>("humorLevel"), humorValue: el<HTMLElement>("humorValue"), emojiLevel: el<HTMLSelectElement>("emojiLevel"), replyCount: el<HTMLSelectElement>("replyCount"),
+  conversationFlowEnabled: el<HTMLInputElement>("conversationFlowEnabled"), conversationFlowOrder: el<HTMLSelectElement>("conversationFlowOrder"),
   langFr: el<HTMLInputElement>("langFr"), langDarija: el<HTMLInputElement>("langDarija"), langEn: el<HTMLInputElement>("langEn"), preferredWords: el<HTMLTextAreaElement>("preferredWords"), avoidedWords: el<HTMLTextAreaElement>("avoidedWords"), extraInstructions: el<HTMLTextAreaElement>("extraInstructions"),
   instagram: el<HTMLInputElement>("instagram"), whatsapp: el<HTMLInputElement>("whatsapp"), contactPreference: el<HTMLSelectElement>("contactPreference"),
   autoEnabled: el<HTMLInputElement>("autoEnabled"), replyDelayMinSeconds: el<HTMLInputElement>("replyDelayMinSeconds"), replyDelayMaxSeconds: el<HTMLInputElement>("replyDelayMaxSeconds"), openerDelayMinSeconds: el<HTMLInputElement>("openerDelayMinSeconds"), openerDelayMaxSeconds: el<HTMLInputElement>("openerDelayMaxSeconds"), quietHoursEnabled: el<HTMLInputElement>("quietHoursEnabled"), quietStart: el<HTMLInputElement>("quietStart"), quietEnd: el<HTMLInputElement>("quietEnd"), maxAutoRepliesPerDay: el<HTMLInputElement>("maxAutoRepliesPerDay"), maxFirstMessagesPerDay: el<HTMLInputElement>("maxFirstMessagesPerDay"),
@@ -50,6 +51,7 @@ function readConfig(): AppConfig {
     flirtLevel: num(f.flirtLevel, 2), humorLevel: num(f.humorLevel, 65), emojiLevel: f.emojiLevel.value as EmojiLevel, replyCount: num(f.replyCount, 3),
     languages: { fr: num(f.langFr), darija: num(f.langDarija), en: num(f.langEn) },
     preferredWords: f.preferredWords.value.trim(), avoidedWords: f.avoidedWords.value.trim(), extraInstructions: f.extraInstructions.value.trim(),
+    conversationFlowEnabled: f.conversationFlowEnabled.checked, conversationFlowOrder: f.conversationFlowOrder.value as "default" | "work-first" | "interests-first",
     textingStyle: textingStyle.read(),
     identity: { ...(identityCache ?? { firstName: "", age: "", city: "", origin: "", occupation: "", interests: "", aboutMe: "" }), instagram: f.instagram.value.trim(), whatsapp: f.whatsapp.value.trim(), contactPreference: f.contactPreference.value as ContactPreference },
     automation: { enabled: f.autoEnabled.checked, replyDelayMinSeconds, replyDelayMaxSeconds, openerDelayMinSeconds, openerDelayMaxSeconds, quietHoursEnabled: f.quietHoursEnabled.checked, quietStart: f.quietStart.value, quietEnd: f.quietEnd.value, maxAutoRepliesPerDay: num(f.maxAutoRepliesPerDay, 40), maxFirstMessagesPerDay: rawFirstMessageLimit }
@@ -58,6 +60,8 @@ function readConfig(): AppConfig {
 
 function applyConfig(c: AppConfig): void {
   f.model.value = c.model; f.tone.value = c.tone; f.messageLength.value = c.messageLength; f.flirtLevel.value = String(c.flirtLevel); f.humorLevel.value = String(c.humorLevel); f.emojiLevel.value = c.emojiLevel; f.replyCount.value = String(c.replyCount);
+  f.conversationFlowEnabled.checked = c.conversationFlowEnabled !== false;
+  f.conversationFlowOrder.value = c.conversationFlowOrder ?? "default";
   f.langFr.value = String(c.languages.fr); f.langDarija.value = String(c.languages.darija); f.langEn.value = String(c.languages.en); f.preferredWords.value = c.preferredWords; f.avoidedWords.value = c.avoidedWords; f.extraInstructions.value = c.extraInstructions;
   textingStyle.apply(c.textingStyle);
   identityCache = c.identity;

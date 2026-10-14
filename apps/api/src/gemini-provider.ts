@@ -119,6 +119,7 @@ export function createGeminiConversationProvider(credentials?: { apiKey: string;
   const promptParts = [
     "You are generating one concise dating-chat reply for TNND.",
     "Respect the supplied effective settings and instructions. Never fabricate mutual interest or ignore expressed boundaries.",
+    "If adaptive Conversation Flow is included in instructions, treat its next stage as optional. Prioritize any match question or new topic; do not re-ask confirmed or previously asked questions.",
     `Effective context JSON: ${JSON.stringify(input.context)}`,
     `Latest incoming message: ${input.latestMessage}`
   ];

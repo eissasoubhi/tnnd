@@ -31,6 +31,9 @@ export function normalizeImportedConfig(value: unknown): AppConfig {
   return {
     ...DEFAULT_CONFIG,
     ...raw,
+    conversationFlowEnabled: raw.conversationFlowEnabled !== false,
+    conversationFlowOrder: ["default", "work-first", "interests-first"].includes(String(raw.conversationFlowOrder))
+      ? raw.conversationFlowOrder : "default",
     languages: { ...DEFAULT_CONFIG.languages, ...languages },
     identity: { ...DEFAULT_CONFIG.identity, ...identity },
     automation: { ...DEFAULT_CONFIG.automation, ...automation, maxFirstMessagesPerDay: firstMessageDailyLimit(automation.maxFirstMessagesPerDay), openerDelayMinSeconds, openerDelayMaxSeconds }

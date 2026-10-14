@@ -36,6 +36,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   preferredWords: "",
   avoidedWords: "",
   extraInstructions: "",
+  conversationFlowEnabled: true,
+  conversationFlowOrder: "default",
   textingStyle: {
     formality: "very-casual",
     capitalization: "mostly-lowercase",
@@ -105,6 +107,9 @@ export async function getConfig(): Promise<AppConfig> {
   const localConfig: AppConfig = {
     ...DEFAULT_CONFIG,
     ...saved,
+    conversationFlowEnabled: saved?.conversationFlowEnabled !== false,
+    conversationFlowOrder: ["default", "work-first", "interests-first"].includes(String(saved?.conversationFlowOrder))
+      ? saved!.conversationFlowOrder : "default",
     languages: { ...DEFAULT_CONFIG.languages, ...(saved?.languages ?? {}) },
     textingStyle: { ...DEFAULT_CONFIG.textingStyle!, ...(saved?.textingStyle ?? {}) },
     identity: {
