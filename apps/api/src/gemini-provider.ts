@@ -158,7 +158,7 @@ export function createGeminiConversationProvider(credentials?: { apiKey: string;
   }
   if (input.matchProfile) {
     promptParts.push(
-      "Visible match-profile context follows. Use it only when relevant and naturally. Do not claim the match stated these profile facts in chat, and avoid repeatedly mentioning profile details.",
+      "Visible match-profile context follows. This is background reference data, NOT a request to raise it immediately. Only proactively use a profile fact as a topic when the conversation instructions allow profile topic hooks AFTER introductions; prioritize the match\'s latest reply. Never claim the match stated these facts in chat or repeat profile details.",
       `Match profile JSON: ${JSON.stringify(input.matchProfile)}`
     );
   }
