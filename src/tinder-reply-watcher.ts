@@ -47,3 +47,10 @@ export function watcherDisplayStatus(state: {
   if (["loading", "generating", "sending", "sent"].includes(state.phase)) return "processing";
   return state.pendingReplies > 0 ? "new-replies" : "waiting";
 }
+
+// Remember which unread badges are still visible: a lingering badge must not
+// generate another event on every 30-second watcher snapshot.
+export function newlyVisibleUnread(previous: readonly string[], current: readonly string[]): string[] {
+  const old = new Set(previous);
+  return [...new Set(current)].filter(ref => !old.has(ref));
+}
