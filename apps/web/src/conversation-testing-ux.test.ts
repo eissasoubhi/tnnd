@@ -28,3 +28,12 @@ test("conversation flow appears on detail cards without creating a send action o
   assert.match(panel,/Les réponses du match passent toujours en priorité/);
   assert.match(client,/normalizeConversationFlow\(input\.conversationFlow\)/);
 });
+
+test("conversation flow remains visible with actionable diagnostics on old API", () => {
+ assert.match(panel,/if \(!flow\) \{/);
+ assert.match(panel,/aria-label="Conversation Flow"/);
+ assert.match(panel,/version 0\.2\.18 ou supérieure/);
+ assert.match(panel,/conversationFlow/);
+ assert.match(panel,/Indisponible/);
+ assert.match(panel,/renderConversationFlow\(detail\)/);
+});
