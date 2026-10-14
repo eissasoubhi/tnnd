@@ -9,6 +9,7 @@ export type MatchProfileVisibleFields = {
   interests?: string[];
   relationshipGoal?: string;
   heightCm?: number;
+  prompts?: Array<{ section: string; question: string; answer: string }>;
 };
 
 export type MatchProfileSourceCapture = {
@@ -84,6 +85,14 @@ export function normalizeTinderPhotoUrl(value: unknown): string | undefined {
 function normalizeFields(value: unknown): MatchProfileVisibleFields {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const input = value as Record<string, unknown>;
+  const prompts = Array.isArray(input.prompts) ? input.prompts.slice(0, 24).flatMap(item => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const value = item as Record<string, unknown>;
+    const section = normalizeText(value.section)?.slice(0, 80);
+    const question = normalizeText(value.question)?.slice(0, 120);
+    const answer = normalizeText(value.answer)?.slice(0, 120);
+    return section && question && answer ? [{ section, question, answer }] : [];
+  }) : [];
   const interests = Array.isArray(input.interests)
     ? input.interests.map(normalizeText).filter((item): item is string => Boolean(item)).slice(0, LIST_LIMIT)
     : [];
@@ -97,6 +106,7 @@ function normalizeFields(value: unknown): MatchProfileVisibleFields {
     education: normalizeText(input.education),
     location: normalizeText(input.location),
     interests: interests.length ? interests : undefined,
+    ...(prompts.length ? { prompts } : {}),
     relationshipGoal: normalizeText(input.relationshipGoal),
     ...(Number.isInteger(input.heightCm) && Number(input.heightCm) >= 100 && Number(input.heightCm) <= 230 ? { heightCm: Number(input.heightCm) } : {}),
   };
