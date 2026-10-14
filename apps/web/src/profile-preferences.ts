@@ -19,6 +19,13 @@ export interface EditablePreferences {
   datingGoalDetails?: string;
   /** Passport / target city is NOT the user's current residence. */
   targetCities?: string;
+  originCity?: string;
+  residenceCity?: string;
+  currentCity?: string;
+  originNeighborhood?: string;
+  residenceNeighborhood?: string;
+  multiPartRepliesEnabled?: boolean;
+  multiPartMinCharacters?: number;
   pauseOnConfirmedMarriage?: string;
   maximumHeightCm?: string;
   casualExpressions?: string;
@@ -63,6 +70,7 @@ function retentionDaysValue(value: unknown): number {
 
 export function readEditablePreferences(profile: ImportedProfile): EditablePreferences {
   const datingIntent = objectValue(profile.datingIntent);
+  const identity = objectValue(profile.identity);
   const textingStyle = objectValue(profile.textingStyle);
   const languageBehavior = objectValue(textingStyle.languageBehavior);
   const matchProfileCapture = objectValue(profile.matchProfileCapture);
@@ -72,6 +80,13 @@ export function readEditablePreferences(profile: ImportedProfile): EditablePrefe
     datingGoal: stringValue(datingIntent.defaultGoal, "open-to-see"),
     datingGoalDetails: optionalStringValue(datingIntent.datingGoalDetails),
     targetCities: Array.isArray(datingIntent.targetCities) ? datingIntent.targetCities.filter((city): city is string => typeof city === "string").join(", ") : "",
+    originCity: optionalStringValue(identity.originCity) || optionalStringValue(identity.origin),
+    residenceCity: optionalStringValue(identity.residenceCity) || optionalStringValue(identity.city),
+    currentCity: optionalStringValue(identity.currentCity),
+    originNeighborhood: optionalStringValue(identity.originNeighborhood),
+    residenceNeighborhood: optionalStringValue(identity.residenceNeighborhood),
+    multiPartRepliesEnabled: textingStyle.multiPartRepliesEnabled === true,
+    multiPartMinCharacters: Number.isInteger(textingStyle.multiPartMinCharacters) ? Math.max(90, Math.min(400, Number(textingStyle.multiPartMinCharacters))) : 150,
     pauseOnConfirmedMarriage: screening.pauseOnConfirmedMarriage === true ? "true" : "false",
     maximumHeightCm: Number.isInteger(screening.maximumHeightCm) ? String(screening.maximumHeightCm) : "",
     casualExpressions: Array.isArray(screening.casualExpressions) ? screening.casualExpressions.filter((x): x is string => typeof x === "string").join(", ") : "",
@@ -101,6 +116,7 @@ export function readEditablePreferences(profile: ImportedProfile): EditablePrefe
 
 export function writeEditablePreferences(profile: ImportedProfile, preferences: EditablePreferences): ImportedProfile {
   const datingIntent = objectValue(profile.datingIntent);
+  const identity = objectValue(profile.identity);
   const textingStyle = objectValue(profile.textingStyle);
   const requestedDatingGoalDetails = preferences.datingGoalDetails;
   const targetCities = preferences.targetCities === undefined
@@ -116,6 +132,14 @@ export function writeEditablePreferences(profile: ImportedProfile, preferences: 
     : requestedDatingGoalDetails.trim() || undefined;
   return {
     ...profile,
+    identity: {
+      ...identity,
+      originCity: preferences.originCity === undefined ? identity.originCity : preferences.originCity.trim().slice(0,120),
+      residenceCity: preferences.residenceCity === undefined ? identity.residenceCity : preferences.residenceCity.trim().slice(0,120),
+      currentCity: preferences.currentCity === undefined ? identity.currentCity : preferences.currentCity.trim().slice(0,120),
+      originNeighborhood: preferences.originNeighborhood === undefined ? identity.originNeighborhood : preferences.originNeighborhood.trim().slice(0,120),
+      residenceNeighborhood: preferences.residenceNeighborhood === undefined ? identity.residenceNeighborhood : preferences.residenceNeighborhood.trim().slice(0,120)
+    },
     datingIntent: {
       ...datingIntent,
       defaultGoal: preferences.datingGoal,
@@ -134,6 +158,8 @@ export function writeEditablePreferences(profile: ImportedProfile, preferences: 
     },
     textingStyle: {
       ...textingStyle,
+      multiPartRepliesEnabled: preferences.multiPartRepliesEnabled === undefined ? textingStyle.multiPartRepliesEnabled === true : preferences.multiPartRepliesEnabled,
+      multiPartMinCharacters: preferences.multiPartMinCharacters === undefined ? (textingStyle.multiPartMinCharacters ?? 150) : Math.max(90, Math.min(400, Math.round(preferences.multiPartMinCharacters))),
       formality: preferences.formality,
       capitalization: preferences.capitalization,
       emojiFrequency: preferences.emojiFrequency,
