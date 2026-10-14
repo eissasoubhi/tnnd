@@ -5,7 +5,7 @@ import {
   reconcileExistingIndex, markThreadChecked, observeUnreadThreads
 } from "../src/tinder-existing-thread-index.ts";
 import {
-  nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus
+  nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus, newlyVisibleUnread
 } from "../src/tinder-reply-watcher.ts";
 
 const base = "2026-10-14T19:00:00Z";
@@ -89,4 +89,21 @@ test("popup starts a separate watch mode; content scan does not expose private m
  assert.match(html,/id="startReplyWatcher"/);
  assert.match(html,/id="stopReplyWatcher"/);
  assert.doesNotMatch(runner,/adapter\.send|GENERATE_SUGGESTIONS/);
+});
+
+test("lingering unread badge is not treated as a new reply on every poll",()=>{
+ assert.deepEqual(newlyVisibleUnread([],["a","b","a"]),["a","b"]);
+ assert.deepEqual(newlyVisibleUnread(["a"],["a","b"]),["b"]);
+ assert.deepEqual(newlyVisibleUnread(["a","b"],["b","a"]),[]);
+ assert.deepEqual(newlyVisibleUnread(["a"],[]),[]);
+ // Once Tinder removes the badge, a later new unread hint may be processed.
+ assert.deepEqual(newlyVisibleUnread([],["a"]),["a"]);
+});
+test("watcher keeps bounded observed unread list after worker restart",async()=>{
+ const runner=await readFile(new URL("../src/tinder-global-existing-runner.ts",import.meta.url),"utf8");
+ assert.match(runner,/visibleUnreadRefs: Array\.isArray/);
+ assert.match(runner,/newlyVisibleUnread\(currentState\.visibleUnreadRefs, visible\)/);
+ assert.match(runner,/newlyVisibleUnread\(state\.visibleUnreadRefs, visible\)/);
+ assert.match(runner,/await chrome\.alarms\.create\(ALARM/);
+ assert.match(runner,/chrome\.runtime\.onStartup\.addListener/);
 });
