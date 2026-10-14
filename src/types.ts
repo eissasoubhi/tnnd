@@ -67,6 +67,9 @@ export interface AppConfig {
   preferredWords: string;
   avoidedWords: string;
   extraInstructions: string;
+  /** Conversation Flow uses synced history and facts, no new model classification call. */
+  conversationFlowEnabled?: boolean;
+  conversationFlowOrder?: "default" | "work-first" | "interests-first";
   identity: IdentityProfile;
   automation: AutomationConfig;
   textingStyle?: TextingStyleProfile;
