@@ -39,6 +39,7 @@ interface GlobalExistingRunnerState {
   matchPhase: WatcherMatchPhase;
   matchPhaseStartedAt: string | null;
   lastMatchScanAt: string | null;
+  lastIncomingAt: string | null;
   watchedMatches: WatchedMatches | null;
   visibleUnreadRefs: string[];
   watcherStatus: ReturnType<typeof watcherDisplayStatus>;
@@ -67,7 +68,7 @@ interface GlobalExistingRunnerState {
 }
 const initial = (): GlobalExistingRunnerState => ({
   enabled: false, mode: "runner", pendingReplies: 0, autoOpenersEnabled: false,
-  matchPhase: "idle", matchPhaseStartedAt: null, lastMatchScanAt: null, watchedMatches: null, visibleUnreadRefs: [], watcherStatus: "stopped", userId: null, tabId: null, tabMode: null, pausedOnStop: false,
+  matchPhase: "idle", matchPhaseStartedAt: null, lastMatchScanAt: null, lastIncomingAt: null, watchedMatches: null, visibleUnreadRefs: [], watcherStatus: "stopped", userId: null, tabId: null, tabMode: null, pausedOnStop: false,
   phase: "stopped", dwellSeconds: DEFAULT_CADENCE, phaseDetail: "Runner stopped.", currentLabel: null,
   eligibleCount: 0, visitedCount: 0, sentCount: 0, skippedCount: 0, errorCount: 0,
   lastRef: null, activeConversationRef: null, activeConversationUntil: null, cursorRef: null, startedAt: null, lastActionAt: null, lastVisitAt: null,
@@ -122,6 +123,7 @@ async function load(): Promise<GlobalExistingRunnerState> {
     matchPhase: ["idle", "verifying", "opener"].includes(String(value.matchPhase)) ? value.matchPhase! : "idle",
     matchPhaseStartedAt: typeof value.matchPhaseStartedAt === "string" ? value.matchPhaseStartedAt : null,
     lastMatchScanAt: typeof value.lastMatchScanAt === "string" ? value.lastMatchScanAt : null,
+    lastIncomingAt: typeof value.lastIncomingAt === "string" ? value.lastIncomingAt : null,
     watchedMatches: value.userId && isWatchedMatches(value.watchedMatches, value.userId) ? value.watchedMatches : null,
     visibleUnreadRefs: Array.isArray(value.visibleUnreadRefs) ? value.visibleUnreadRefs.filter(ref => typeof ref === "string").slice(0, 100) : [],
     phase: PHASES.includes(value.phase as RunnerPhase) ? value.phase as RunnerPhase : "stopped"
@@ -351,7 +353,7 @@ async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void>
     await returnWatcherToMessages(after, "Match already attempted; watching Messages.");
     return;
   }
-  await save(activity({ ...after, matchPhase: "opener" }, "loading",
+  await save(activity({ ...after, matchPhase: "opener", matchPhaseStartedAt: new Date().toISOString() }, "loading",
     "Checking one match opener against daily limits and empty-thread permission."));
   let outcome: { attempted: boolean; sent: boolean; reason: string } | null = null;
   try {
@@ -433,10 +435,8 @@ async function tick(): Promise<void> {
     // it always switches back to Messages first.
     if (state.mode === "watcher" && state.matchPhase !== "idle") {
       const pendingState = await load();
-      if (pendingState.enabled && pendingState.mode === "watcher") {
-        if (pendingState.matchPhase === "verifying")
-          await scanMatchesCycle({ ...pendingState, pendingReplies });
-      }
+      if (pendingState.enabled && pendingState.mode === "watcher")
+        await scanMatchesCycle({ ...pendingState, pendingReplies });
       return;
     }
     const nextRef = state.mode === "watcher" ? nextWatchedReply(queued) : nextIndexedExistingThread(queued);
@@ -612,7 +612,8 @@ async function contentEvent(sender: chrome.runtime.MessageSender, message: { pha
     || (phase === "waiting" && detail.startsWith("Unanswered incoming message found"))
   );
   await save(activity({
-    ...fresh, ...(extendFocus ? extendActiveConversation(senderRef) : {})
+    ...fresh, ...(extendFocus ? extendActiveConversation(senderRef) : {}),
+    ...(phase === "incoming" ? { lastIncomingAt: new Date().toISOString() } : {})
   }, phase, detail, senderRef));
 }
 chrome.alarms.onAlarm.addListener(alarm => {
