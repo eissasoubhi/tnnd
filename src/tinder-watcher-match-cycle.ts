@@ -29,6 +29,7 @@ export function nextWatcherMatchAction(
     return started === null || now - started >= WATCHER_OPENER_RECOVERY_MS ? "recover" : "none";
   if (state.matchPhase === "verifying") {
     if (started === null || now - started >= WATCHER_MATCH_SCAN_TIMEOUT_MS
+      || (stamp(state.lastIncomingAt ?? null) ?? 0) > started
       || options.pendingReplies > 0 || options.replyProcessing || options.activeFollow)
       return "recover";
     return now - started >= WATCHER_MATCH_VERIFICATION_MS ? "verify" : "none";
