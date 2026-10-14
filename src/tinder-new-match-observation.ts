@@ -11,7 +11,7 @@ export interface NewMatchObservationState {
   enabled: boolean;
   userId: string | null;
   autoSendEnabled: boolean;
-  mode?: "future" | "existing";
+  mode?: "future" | "existing" | "watcher";
   baselineReady: boolean;
   seenRefs: string[];
   pendingRefs: string[];
@@ -70,7 +70,7 @@ export function stopNewMatchObservation(state: NewMatchObservationState): NewMat
 export function observeNewMatchLinks(
   state: NewMatchObservationState, refs: readonly string[], now = new Date().toISOString()
 ): NewMatchObservationState {
-  if (!state.enabled || !state.baselineReady || state.mode === "existing") return state;
+  if (!state.enabled || !state.baselineReady || state.mode === "existing" || state.mode === "watcher") return state;
   const current = clean(refs);
   if (current.length < 2) return state;
   const previouslySeen = new Set(state.seenRefs);
