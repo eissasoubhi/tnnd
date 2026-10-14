@@ -328,7 +328,7 @@ function refreshPreferences(profile: ImportedProfile | null): void {
   if (datingGoal) datingGoal.value = preferences.datingGoal;
   if (datingGoalDetails) datingGoalDetails.value = preferences.datingGoalDetails ?? "";
   if (targetCities) targetCities.value = preferences.targetCities ?? "";
-  if (pauseOnMarriage) pauseOnMarriage.checked = preferences.pauseOnConfirmedMarriage === true;
+  if (pauseOnMarriage) pauseOnMarriage.checked = preferences.pauseOnConfirmedMarriage === "true";
   if (maxMatchHeight) maxMatchHeight.value = preferences.maximumHeightCm ?? "";
   if (marriageExpressions) marriageExpressions.value = preferences.marriageExpressions ?? "";
   if (casualExpressions) casualExpressions.value = preferences.casualExpressions ?? "";
@@ -436,7 +436,7 @@ preferencesSave?.addEventListener("click", async () => {
     datingGoal: datingGoal.value,
     datingGoalDetails: datingGoalDetails.value,
     targetCities: targetCities.value,
-    pauseOnConfirmedMarriage: pauseOnMarriage.checked,
+    pauseOnConfirmedMarriage: String(pauseOnMarriage.checked),
     maximumHeightCm: maxMatchHeight.value,
     marriageExpressions: marriageExpressions.value,
     casualExpressions: casualExpressions.value,
