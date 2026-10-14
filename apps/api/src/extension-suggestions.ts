@@ -179,7 +179,7 @@ export async function generateExtensionSuggestions(
     : configWithoutIdentity.conversationFlowOrder === "interests-first"
       ? ["interests", "location", "occupation"] as const : ["location", "occupation", "interests"] as const;
   const conversationFlow = !flowEnabled || request.purpose === "opener" ? null
-    : deriveConversationFlow(storedConversation?.messages ?? observedMessages,
+    : deriveConversationFlow(storedConversation ? [...storedConversation.messages.slice(-80), ...observedMessages.slice(-12)] : observedMessages,
       storedConversation?.conversationFlow.known.map(fact => ({ ...fact, subject: "match" as const, confidence: 1 })) ?? [],
       { order: stageOrder });
   const avoidInstruction = Array.isArray(topicPreferences?.avoidedTopics) && topicPreferences.avoidedTopics.length
