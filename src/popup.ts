@@ -682,6 +682,9 @@ exportButton.addEventListener("click", () => void exportDiagnostics().catch((err
 interface GlobalRunnerActivity { at: string; phase: string; detail: string; conversation: string | null }
 interface GlobalRunnerState {
   enabled: boolean;
+  mode?: "runner" | "watcher";
+  pendingReplies?: number;
+  watcherStatus?: "stopped" | "waiting" | "new-replies" | "processing" | "paused" | "disconnected";
   tabId: number | null;
   dwellSeconds: number;
   tabMode: "reused" | "created" | null;
@@ -718,7 +721,24 @@ function asClock(value: string | null): string {
 function displayRunnerState(state: GlobalRunnerState): void {
   lastGlobalExistingState = state;
   startGlobalExisting.disabled = state.enabled;
-  stopGlobalExisting.disabled = !state.enabled;
+  stopGlobalExisting.disabled = !state.enabled || state.mode === "watcher";
+  const watcher = state.enabled && state.mode === "watcher";
+  const startWatcher = document.getElementById("startReplyWatcher") as HTMLButtonElement;
+  const stopWatcher = document.getElementById("stopReplyWatcher") as HTMLButtonElement;
+  startWatcher.disabled = state.enabled;
+  stopWatcher.disabled = !watcher;
+  const statusLabel: Record<string, string> = {
+    stopped: "Stopped", waiting: "Waiting for replies", "new-replies": "New replies found",
+    processing: "Processing a conversation", paused: "Paused", disconnected: "Disconnected"
+  };
+  const displayStatus = state.watcherStatus ?? (watcher ? "waiting" : "stopped");
+  const watcherStatus = document.getElementById("replyWatcherStatus")!;
+  watcherStatus.textContent = (watcher || state.mode === "watcher"
+    ? statusLabel[displayStatus] ?? "Waiting" : state.enabled ? "Existing-chat runner active" : "Stopped · watcher is off")
+    + (watcher ? " · Tinder tab required" : "");
+  watcherStatus.setAttribute("data-status", displayStatus);
+  document.getElementById("replyWatcherPending")!.textContent =
+    `${state.pendingReplies ?? 0} confirmed replies waiting · existing chats only`;
   const cadence = document.getElementById("globalExistingCadence") as HTMLSelectElement;
   if (document.activeElement !== cadence) cadence.value = String(state.dwellSeconds ?? 15);
   const phase = document.getElementById("globalExistingPhase")!;
@@ -805,6 +825,35 @@ async function refreshGlobalExisting(): Promise<void> {
   })().catch(error => {
     globalRunnerUiError = error instanceof Error ? error.message : "Unable to focus Tinder.";
     globalExistingStatus.textContent = globalRunnerUiError;
+  });
+});
+// Watch mode is deliberately separate from catch-up. It never bulk-enables
+// chats and reuses the same single-Tinder-tab and send-permission gates.
+(document.getElementById("startReplyWatcher") as HTMLButtonElement).addEventListener("click", () => {
+  void (async () => {
+    globalRunnerUiError = null;
+    const response = await chrome.runtime.sendMessage({
+      type: "TNND_GLOBAL_WATCHER_START"
+    }) as GlobalExistingControlResponse;
+    if (!response?.ok) throw new Error(response?.error ?? "Watcher could not start.");
+    if (response.state) displayRunnerState(response.state);
+  })().catch(error => {
+    document.getElementById("replyWatcherStatus")!.textContent =
+      error instanceof Error ? error.message : "Watcher start failed.";
+    void refreshGlobalExisting();
+  });
+});
+(document.getElementById("stopReplyWatcher") as HTMLButtonElement).addEventListener("click", () => {
+  void (async () => {
+    const response = await chrome.runtime.sendMessage({
+      type: "TNND_GLOBAL_EXISTING_STOP"
+    }) as GlobalExistingControlResponse;
+    if (!response?.ok) throw new Error(response?.error ?? "Could not stop watcher.");
+    if (response.state) displayRunnerState(response.state);
+  })().catch(error => {
+    document.getElementById("replyWatcherStatus")!.textContent =
+      error instanceof Error ? error.message : "Watcher stop failed.";
+    void refreshGlobalExisting();
   });
 });
 startGlobalExisting.addEventListener("click", () => {
