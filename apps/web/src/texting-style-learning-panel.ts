@@ -56,7 +56,7 @@ panel.innerHTML = `
     Message examples
     <textarea id="style-learning-examples" rows="8" maxlength="12000" placeholder="Paste several messages you wrote…"></textarea>
   </label>
-  <label>
+  <label class="style-learning-retain">
     <input id="style-learning-retain" type="checkbox" />
     Keep source examples on the server after analysis
   </label>
@@ -143,6 +143,8 @@ function refreshAvailability(): void {
   if (!authenticated) {
     setMessage("Sign in to analyze your texting style.");
     setSourceState("signed-out", "Sign in to check or delete retained source examples.");
+  } else if (message?.textContent?.startsWith("Sign in")) {
+    setMessage("Paste messages you wrote to analyze your style. Nothing is applied until you approve it.");
   }
 }
 

@@ -111,21 +111,28 @@ async function mount(): Promise<void> {
   safety.textContent = "Safety default: existing chats remain unmanaged until these decisions are saved. Unread status alone never authorizes AI takeover.";
   section.append(safety);
 
+  const review = document.createElement("details");
+  review.className = "takeover-review";
+  const reviewSummary = document.createElement("summary");
+  reviewSummary.textContent = "Review existing chat decisions";
+  review.append(reviewSummary);
+  section.append(review);
+
   const bulk = document.createElement("div");
   bulk.style.display = "flex";
   bulk.style.gap = "0.5rem";
   bulk.style.flexWrap = "wrap";
-  section.append(bulk);
+  review.append(bulk);
 
   const list = document.createElement("div");
-  section.append(list);
+  review.append(list);
 
   const actions = document.createElement("div");
   actions.style.display = "flex";
   actions.style.gap = "0.75rem";
   actions.style.alignItems = "center";
   actions.style.marginTop = "1rem";
-  section.append(actions);
+  review.append(actions);
 
   const saveButton = document.createElement("button");
   saveButton.type = "button";
@@ -144,6 +151,14 @@ async function mount(): Promise<void> {
       listConversationManagement(session)
     ]);
     const persistedById = new Map(persistedManagement.map((record) => [record.conversationId, record]));
+    const undecidedCount = conversations.filter((conversation) => !persistedById.get(conversation.id)?.explicitlySelected).length;
+    reviewSummary.textContent = undecidedCount
+      ? `Review ${undecidedCount} undecided chat${undecidedCount === 1 ? "" : "s"} · ${conversations.length} total`
+      : `All ${conversations.length} existing chat decisions saved · Review or change`;
+    if (!undecidedCount && conversations.length) {
+      heading.textContent = "Existing Tinder chat decisions";
+      intro.textContent = "Your existing chat decisions are saved. Open the list below to review or change them.";
+    }
     const draft = loadDraft();
 
     for (const conversation of conversations) {
@@ -177,6 +192,7 @@ async function mount(): Promise<void> {
     }
 
     if (!conversations.length) {
+      review.open = true;
       const empty = document.createElement("p");
       empty.textContent = "No existing conversations found yet.";
       list.append(empty);
@@ -208,6 +224,9 @@ async function mount(): Promise<void> {
         const saved = await saveConversationManagement(session, updates);
         for (const record of saved) draft.choices[record.conversationId] = record.managementState;
         sessionStorage.removeItem(storageKey);
+        reviewSummary.textContent = `All ${saved.length} existing chat decisions saved · Review or change`;
+        heading.textContent = "Existing Tinder chat decisions";
+        intro.textContent = "Your existing chat decisions are saved. Open the list below to review or change them.";
         status.textContent = `Saved ${saved.length} chat decision${saved.length === 1 ? "" : "s"}.`;
       } catch (error) {
         status.textContent = error instanceof Error ? error.message : "Unable to save chat decisions.";

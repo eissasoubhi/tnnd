@@ -216,7 +216,7 @@ label { color: var(--nb-text); }
 #app .conversation-stat strong { color: #162a24; font-size: 26px; }
 #app .conversation-stat span { color: #425d54; opacity: 1; font-weight: 700; }
 #app .conversation-layout { gap: 18px; }
-#app .conversation-list { gap: 8px; }
+#app .conversation-list { gap: 8px; grid-auto-rows: max-content; }
 #app .conversation-row { min-height: 72px; padding: 15px; border: 1px solid var(--nb-border); border-radius: var(--nb-radius-md); background: var(--nb-surface); color: var(--nb-text); }
 #app .conversation-row:hover { border-color: var(--nb-primary); background: var(--nb-surface-soft); }
 #app .conversation-row.selected { outline: 0; border-color: var(--nb-primary); background: var(--nb-mint); box-shadow: inset 4px 0 0 var(--nb-primary); color: #162a24; }
@@ -590,6 +590,11 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
 #app .panel :is(.panel-heading, .workspace-review-heading, .conversation-detail-heading) > * { min-width: 0; }
 #app .panel :is(.pill, .status) { max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
 #app .panel :is(.management-row, .conversation-row, .setup-story-item, .memory-list-item) { min-width: 0; overflow-wrap: anywhere; }
+
+#app .style-learning-retain { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+#app .style-learning-retain input[type="checkbox"] { flex: 0 0 auto; width: 20px; height: 20px; margin: 0; }
+#app .takeover-review > summary { min-height: 44px; padding: 10px 0; cursor: pointer; font-weight: 750; }
+#app .takeover-review > summary:focus-visible { outline: 3px solid var(--nb-focus); outline-offset: 2px; }
 
 /* Setup card itself is the link: no browser-default blue/purple underline. */
 #app #setup-guidance-panel .setup-checklist {

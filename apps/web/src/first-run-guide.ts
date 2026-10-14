@@ -95,6 +95,12 @@ dismiss.addEventListener("click", () => {
   panel.hidden = true;
 });
 render();
+window.addEventListener("tnnd:auth-session-changed", () => {
+  if (readSession() && index === 0) {
+    index = 1;
+    render();
+  }
+});
 panel.hidden = localStorage.getItem(key) === "yes";
 // When a user who has finished the tour wants to see it again, Overview
 // always has a small discoverable link. No extra prominent dashboard buttons.

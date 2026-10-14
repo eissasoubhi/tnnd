@@ -134,7 +134,7 @@ function renderList(): void {
       <span class="memory-list-item__title">${escapeHtml(item.draft.title || "Untitled memory")}</span>
       <span class="memory-list-item__meta">${item.draft.reviewStatus === "approved" ? "Approved" : "Needs review"} · ${escapeHtml(item.draft.category)}</span>
     </button>
-  `).join("") : '<p class="workspace-empty">No memories match your filters. Try a different search or add a story above.</p>';
+  `).join("") : `<p class="workspace-empty">${items.length ? "No stories match this search or review status. Try another filter." : "No stories saved yet. Add a real memory above to start your library."}</p>`;
   list.querySelectorAll<HTMLButtonElement>("[data-memory-id]").forEach((button) => {
     button.addEventListener("click", () => {
       if (busy || !canLeaveSelection()) return;
@@ -149,7 +149,7 @@ function renderSelected(): void {
   const item = items.find((candidate) => candidate.id === selectedId);
   if (!item) {
     workingDraft = null;
-    review.innerHTML = '<div class="workspace-empty">Select a story to review its details.</div>';
+    review.innerHTML = `<div class="workspace-empty">${items.length ? "Select a story to review its details." : "Your first story will appear here for review."}</div>`;
     return;
   }
   workingDraft = structuredClone(item.draft);
