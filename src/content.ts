@@ -816,6 +816,60 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   return true;
 });
 
+/** Bounded SPA sidebar navigation: never reload Tinder, switch Chrome
+ * tabs, or leave the open chat while its composer/send is in progress. */
+async function navigateWatcherSidebar(
+  target: "matches" | "messages", expectedRef: string | null
+): Promise<{ ok: boolean; error?: string; sidebar?: string; refs?: string[] }> {
+  if (!hasLiveExtensionContext() || busy || spaNavigationBusy)
+    return { ok: false, error: "conversation_processing_in_progress" };
+  if (currentConversationRef() !== expectedRef)
+    return { ok: false, error: "unexpected_current_thread" };
+  if (detectVisibleTinderSidebarTab() === target) {
+    return { ok: true, sidebar: target,
+      ...(target === "matches" ? { refs: visibleTinderThreadRefs() } : {}) };
+  }
+  const labels = target === "matches"
+    ? ["matches", "matchs"] : ["messages"];
+  const choices = Array.from(document.querySelectorAll<HTMLElement>('button,[role="tab"]'))
+    .filter(el => el.isConnected && el.getClientRects().length > 0
+      && labels.includes((el.textContent ?? "").replace(/\s+/g, " ").toLowerCase().trim()));
+  if (choices.length !== 1) return { ok: false, error: "sidebar_tab_not_confidently_identified" };
+  spaNavigationBusy = true;
+  try {
+    spaNavigationSettlesAt = Date.now() + 1000;
+    choices[0]!.click();
+    const until = Date.now() + 4500;
+    while (Date.now() < until && detectVisibleTinderSidebarTab() !== target) {
+      await new Promise(resolve => setTimeout(resolve, 150));
+    }
+    if (detectVisibleTinderSidebarTab() !== target)
+      return { ok: false, error: "sidebar_switch_not_confirmed" };
+    // A manual route change during the switch invalidates the operation.
+    if (currentConversationRef() !== expectedRef)
+      return { ok: false, error: "conversation_changed_during_sidebar_switch" };
+    return { ok: true, sidebar: target,
+      ...(target === "matches" ? { refs: visibleTinderThreadRefs() } : {}) };
+  } finally {
+    spaNavigationBusy = false;
+    window.setTimeout(scheduleScan, 400);
+  }
+}
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (!message || typeof message !== "object") return false;
+  const input = message as { type?: unknown; target?: unknown; expectedRef?: unknown };
+  if (input.type !== "TNND_WATCHER_SELECT_SIDEBAR") return false;
+  if (sender.id !== chrome.runtime.id
+    || !["messages","matches"].includes(String(input.target))
+    || (input.expectedRef !== null && typeof input.expectedRef !== "string")) {
+    sendResponse({ ok: false, error: "invalid_watcher_sidebar_request" });
+    return false;
+  }
+  void navigateWatcherSidebar(input.target as "matches"|"messages", input.expectedRef as string|null)
+    .then(sendResponse).catch(() => sendResponse({ ok: false, error: "sidebar_navigation_failed" }));
+  return true;
+});
+
 // Read-only snapshot for a watcher started after the sidebar was already
 // rendered. No message text, profile details or send permissions are exposed.
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
