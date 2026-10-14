@@ -168,8 +168,8 @@ export async function generateExtensionSuggestions(
   const flowLookup = flowEnabled && request.purpose !== "opener" && request.threadKey
     ? await findConversationByExternalThreadId(userId, request.threadKey) : null;
   const storedConversation = flowLookup ? await getConversation(userId, flowLookup.id) : null;
-  const observedMessages = request.context.split("\\n").slice(-50).flatMap(line => {
-    const match = /^\\s*(them|match|incoming|elle|lui|me|you|moi|outgoing)\\s*:\\s*(.+)$/i.exec(line);
+  const observedMessages = request.context.split("\n").slice(-50).flatMap(line => {
+    const match = /^\s*(them|match|incoming|elle|lui|me|you|moi|outgoing)\s*:\s*(.+)$/i.exec(line);
     if (!match) return [];
     return [{ direction: /^(me|you|moi|outgoing)$/i.test(match[1]) ? "outgoing" as const : "incoming" as const,
       text: match[2].slice(0, 600) }];
