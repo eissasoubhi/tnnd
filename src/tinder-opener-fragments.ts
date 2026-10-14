@@ -7,6 +7,17 @@ const UNVERIFIED_PROFILE_REACTION =
 
 const DEFAULT_FRAGMENTS = ["Salut", "Bien ou bien ?"] as const;
 
+function isApprovedShortGreeting(value: string): boolean {
+  const text = normalizedForRules(value).replace(/\\s+/g, " ").trim();
+  // An opener starts with one of the user's four simple formats,
+  // even if Gemini generates an invented hook or a long introductory line.
+  return /^(?:salut|hello|hi|salut cv\\s*\\?)!?$/i.test(text);
+}
+
+function looksLikeOtherGreeting(value: string): boolean {
+  return /^(?:hey|coucou|bonjour|bonsoir|salam|yo|slt|hello|hi|salut)\\b/i.test(normalizedForRules(value));
+}
+
 function normalizedForRules(text: string): string {
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
@@ -40,8 +51,15 @@ export function groundedOpenerFragments(raw: string): string[] {
     .filter(safeFragment);
   const deduped = candidates.filter((fragment, index) =>
     candidates.findIndex(other => normalizedForRules(other) === normalizedForRules(fragment)) === index);
-  if (deduped.length < 2) return [...DEFAULT_FRAGMENTS];
-  return deduped.slice(0, 3);
+  const firstIsGreeting = deduped.length > 0 && isApprovedShortGreeting(deduped[0]);
+  const greeting = firstIsGreeting ? deduped[0] : DEFAULT_FRAGMENTS[0];
+  const remainder = deduped.slice(firstIsGreeting ? 1 : 0).filter(fragment =>
+    !isApprovedShortGreeting(fragment) && !looksLikeOtherGreeting(fragment));
+  // Even a single long sentence or an unapproved "hey" from Gemini must
+  // become a short approved first bubble; never send two salutations.
+  return [greeting, ...(remainder.length ? remainder : [
+    normalizedForRules(greeting).includes("cv") ? "Quoi de neuf ?" : DEFAULT_FRAGMENTS[1]
+  ])].slice(0, 3);
 }
 
 /** Used after the delay, just before sending the next bubble. Another person
