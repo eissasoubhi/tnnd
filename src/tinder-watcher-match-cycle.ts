@@ -4,10 +4,12 @@
 export const WATCHER_MATCH_SCAN_INTERVAL_MS = 5 * 60_000;
 export const WATCHER_MATCH_VERIFICATION_MS = 16_000;
 export const WATCHER_MATCH_SCAN_TIMEOUT_MS = 65_000;
+export const WATCHER_OPENER_RECOVERY_MS = 180_000;
 export type WatcherMatchPhase = "idle" | "verifying" | "opener";
 export interface WatcherMatchCycle {
   matchPhase: WatcherMatchPhase;
   lastMatchScanAt: string | null;
+  lastIncomingAt?: string | null;
   matchPhaseStartedAt: string | null;
   autoOpenersEnabled: boolean;
 }
@@ -22,8 +24,9 @@ export function nextWatcherMatchAction(
   options: { activeFollow: boolean; pendingReplies: number; replyProcessing: boolean; now?: number }
 ): WatcherMatchAction {
   const now = options.now ?? Date.now();
-  if (state.matchPhase === "opener") return "none";
   const started = stamp(state.matchPhaseStartedAt);
+  if (state.matchPhase === "opener")
+    return started === null || now - started >= WATCHER_OPENER_RECOVERY_MS ? "recover" : "none";
   if (state.matchPhase === "verifying") {
     if (started === null || now - started >= WATCHER_MATCH_SCAN_TIMEOUT_MS
       || options.pendingReplies > 0 || options.replyProcessing || options.activeFollow)
@@ -31,8 +34,8 @@ export function nextWatcherMatchAction(
     return now - started >= WATCHER_MATCH_VERIFICATION_MS ? "verify" : "none";
   }
   if (options.activeFollow || options.replyProcessing || options.pendingReplies > 0) return "none";
-  const previous = stamp(state.lastMatchScanAt);
-  return previous === null || now - previous >= WATCHER_MATCH_SCAN_INTERVAL_MS ? "scan" : "none";
+  const previous = Math.max(stamp(state.lastMatchScanAt) ?? 0, stamp(state.lastIncomingAt ?? null) ?? 0);
+  return previous === 0 || now - previous >= WATCHER_MATCH_SCAN_INTERVAL_MS ? "scan" : "none";
 }
 
 export function nextMatchOpener(
