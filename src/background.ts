@@ -11,7 +11,7 @@ import { generateSuggestions } from "./gemini";
 import { loadTinderConversationManagement } from "./tinder-backend-management";
 import { syncConversationDelta } from "./conversation-sync";
 import { syncObservedMatchProfile } from "./tinder-match-profile-runtime";
-import { buildReadOnlyProfileSource, hasMeaningfulVisibleProfileFields } from "./tinder-match-profile-capture";
+import { buildReadOnlyProfileSource, hasMeaningfulVisibleProfileFields, type TinderProfileCaptureInput } from "./tinder-match-profile-capture";
 import type { VisibleTinderMatchIdentity } from "./tinder-chat-identity";
 import { mayAutomaticallySendToTinder } from "./tinder-auto-send-gate";
 import { generateBackendSuggestions } from "./backend-session";
@@ -96,7 +96,7 @@ type TrustedContentRequest =
   | { type: "TNND_GET_FIRST_MESSAGE_PERMISSION"; conversationRef: string }
   | { type: "TNND_GET_NEW_MATCH_SEND_PERMISSION"; conversationRef: string }
   | { type: "TNND_CLAIM_FIRST_MESSAGE"; conversationRef: string }
-  | { type: "TNND_SYNC_VISIBLE_MATCH_IDENTITY"; conversationRef: string; identity: VisibleTinderMatchIdentity }
+  | { type: "TNND_SYNC_VISIBLE_MATCH_IDENTITY"; conversationRef: string; identity: VisibleTinderMatchIdentity; profile?: TinderProfileCaptureInput }
   | { type: "TNND_GET_AUTO_STATE" }
   | { type: "TNND_SAVE_AUTO_STATE"; state: AutoState };
 
@@ -207,11 +207,25 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
     void (async () => {
       const session = await getBackendSession();
       if (!session) return { ok: true, synced: false, reason: "not-connected" };
+      // The content script only captures the visibly OPEN profile matching the
+      // exact Tinder route and sidebar identity. Do not trust arbitrary values
+      // when the sender's current thread does not match.
+      const observed = message.profile;
+      const verified = observed?.route === `/app/messages/${senderRef}`
+        && observed.firstName === message.identity.firstName
+        && (message.identity.age === undefined || observed.age === message.identity.age);
       const source = buildReadOnlyProfileSource({
         route: `/app/messages/${senderRef}`,
         firstName: message.identity.firstName,
         age: message.identity.age,
-        photoUrl: message.identity.photoUrl
+        photoUrl: message.identity.photoUrl,
+        ...(verified ? {
+          bio: observed.bio,
+          relationshipGoal: observed.relationshipGoal,
+          heightCm: observed.heightCm,
+          interests: observed.interests,
+          prompts: observed.prompts
+        } : {})
       });
       if (!source.visibleFields.firstName || !hasMeaningfulVisibleProfileFields(source)) return { ok: false, error: "invalid_visible_identity" };
       const existing = await loadTinderConversationManagement(senderRef);
