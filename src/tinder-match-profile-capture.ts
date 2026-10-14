@@ -11,6 +11,7 @@ export type TinderProfileCaptureInput = {
   location?: string | null;
   interests?: string[] | null;
   relationshipGoal?: string | null;
+  heightCm?: number | null;
 };
 
 export type TinderVisibleProfileSource = {
@@ -29,6 +30,7 @@ export type TinderVisibleProfileSource = {
     location?: string;
     interests?: string[];
     relationshipGoal?: string;
+    heightCm?: number;
   };
 };
 
@@ -79,6 +81,7 @@ export function buildReadOnlyProfileSource(
       location: boundedText(input.location),
       interests: interests.length ? interests : undefined,
       relationshipGoal: boundedText(input.relationshipGoal),
+      heightCm: Number.isInteger(input.heightCm) && Number(input.heightCm) >= 100 && Number(input.heightCm) <= 230 ? Number(input.heightCm) : undefined,
     },
   };
 }
@@ -94,6 +97,7 @@ export function hasMeaningfulVisibleProfileFields(source: TinderVisibleProfileSo
     || fields.education
     || fields.location
     || fields.relationshipGoal
+    || fields.heightCm
     || fields.interests?.length
   );
 }
@@ -113,7 +117,8 @@ export function buildProfileCaptureDedupeKey(source: TinderVisibleProfileSource)
       education: fields.education ?? null,
       location: fields.location ?? null,
       interests: fields.interests ?? [],
-      relationshipGoal: fields.relationshipGoal ?? null
+      relationshipGoal: fields.relationshipGoal ?? null,
+      heightCm: fields.heightCm ?? null
     }
   });
 }
