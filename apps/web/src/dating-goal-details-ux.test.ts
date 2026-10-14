@@ -21,6 +21,8 @@ test("dating goal details explain the intent in an accessible, optional field", 
 test("goal details are loaded and saved with the rest of preferences in one backend mutation", () => {
   assert.match(main, /datingGoalDetails\.value = preferences\.datingGoalDetails \?\? ""/);
   assert.match(main, /datingGoalDetails: datingGoalDetails\.value/);
+  assert.match(main, /targetCities: targetCities\.value/);
+  assert.match(main, /id="target-cities"/);
   assert.doesNotMatch(main, /import\("\.\/dating-goal-details-panel"\)/);
   assert.match(main, /ids: \["dating-goal", "dating-goal-details", "disclosure-strategy"\]/);
   assert.match(main, /field\?\.closest\("\.dating-goal-editor"\)/);
