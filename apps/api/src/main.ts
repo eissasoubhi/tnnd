@@ -715,7 +715,10 @@ const server = createServer(async (request, response) => {
           pendingHumanActions: conversation.pendingHumanActions ?? 0,
           temporaryInstruction: conversation.temporaryInstruction ?? null,
           messages: conversation.messages,
-          topicState: conversation.topicState
+          topicState: conversation.topicState,
+          // Flow is already derived in getConversation. The detail contract
+          // must expose it or TNND Web can only show “Indisponible”.
+          conversationFlow: conversation.conversationFlow
         }
       });
       return;
