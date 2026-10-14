@@ -2,6 +2,7 @@ import { loadGenerationProfile } from "./generation-user-profile-context.js";
 import { findConversationByExternalThreadId } from "./conversation-thread-lookup-service.js";
 import { getConversation } from "./conversation-service.js";
 import { getConversationMatchProfile } from "./match-profile-service.js";
+import { matchProfileTopicGuidance } from "./match-profile-topic-hooks.js";
 import { assessMatchIntent, matchScreeningPrompt, type MatchScreeningOptions } from "./match-intent-screening.js";
 import { conversationFlowGuidance, deriveConversationFlow } from "./conversation-flow.js";
 import { retrievePersonalMemories } from "./personal-memory-service.js";
@@ -191,6 +192,11 @@ export async function generateExtensionSuggestions(
     : deriveConversationFlow(storedConversation ? [...storedConversation.messages.slice(-80), ...observedMessages.slice(-12)] : observedMessages,
       storedConversation?.conversationFlow.known.map(fact => ({ ...fact, subject: "match" as const, confidence: 1 })) ?? [],
       { order: stageOrder });
+  const profileTopicHooks = matchProfileTopicGuidance(
+    capturedProfile?.normalizedProfile.fields, conversationFlow,
+    storedConversation ? [...storedConversation.messages.slice(-80), ...observedMessages.slice(-12)] : observedMessages,
+    { purpose: request.purpose, avoidedTopics: topicPreferences?.avoidedTopics }
+  );
   const avoidInstruction = Array.isArray(topicPreferences?.avoidedTopics) && topicPreferences.avoidedTopics.length
     ? "Do not proactively raise the user-avoided topics in the stored profile. If directly asked, respond normally without abruptly evading the question."
     : "";
@@ -210,6 +216,7 @@ export async function generateExtensionSuggestions(
     avoidInstruction,
     conversationFlow ? conversationFlowGuidance(conversationFlow) : "",
     matchScreening ? matchScreeningPrompt(matchScreening) : "",
+    profileTopicHooks,
     request.purpose === "opener"
       ? "Write ONE opening Tinder turn with 2 or 3 short lines separated by newline characters inside one JSON array string. The lines will be sent as separate Tinder bubbles, NOT alternative messages. The FIRST line must be ONLY a short greeting (Salut, Hello, Hi, or Salut cv?); the next one or two lines should be natural short follow-ups without repeating the greeting. No previous messages exist. Do not invent profile facts, feelings, compliments or reactions (for example claiming their profile made the sender smile). Only the match name/age explicitly shown in the conversation context are verified. No profile photo, bio or appearance is verified. A neutral greeting and one natural question are better than fake personalization."
       : "Use the recent conversation flow, answer what was actually said, and avoid abruptly changing subject.",
