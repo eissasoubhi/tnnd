@@ -340,6 +340,11 @@ async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void>
   }
   const after = await load();
   if (!isMatchCycleState(after, state)) return;
+  if (after.lastIncomingAt && after.matchPhaseStartedAt
+    && Date.parse(after.lastIncomingAt) > Date.parse(after.matchPhaseStartedAt)) {
+    await returnWatcherToMessages(after, "New incoming reply preempted Matches; returning to Messages.");
+    return;
+  }
   if (!after.autoOpenersEnabled) {
     await returnWatcherToMessages(after, "Matches checked; first messages are not enabled.");
     return;
@@ -401,7 +406,7 @@ async function tick(): Promise<void> {
     // The watcher must not abandon the chat just because other threads were
     // queued while this match was answering. The follow lease is renewed on
     // every new incoming message and send; it is independent of the reply delay.
-    if (state.mode === "watcher" && state.tabId !== null && state.activeConversationRef) {
+    if (state.mode === "watcher" && state.matchPhase === "idle" && state.tabId !== null && state.activeConversationRef) {
       const currentTab = await chrome.tabs.get(state.tabId);
       if (shouldFollowActiveConversation(state,
         tinderRefFromUrl(currentTab.url), [state.activeConversationRef])) return;
@@ -415,7 +420,8 @@ async function tick(): Promise<void> {
     const elapsed = state.lastActionAt ? Date.now() - Date.parse(state.lastActionAt) : Number.POSITIVE_INFINITY;
     const replyInProgress = state.phase === "generating" || state.phase === "sending"
       || (state.phase === "waiting" && state.phaseDetail.startsWith("Unanswered incoming message found"));
-    if (replyInProgress && Number.isFinite(elapsed) && elapsed >= 0 && elapsed < leaseMs) {
+    if (replyInProgress && !(state.mode === "watcher" && state.matchPhase === "verifying")
+      && Number.isFinite(elapsed) && elapsed >= 0 && elapsed < leaseMs) {
       // Keep the exact Tinder tab/thread open until Send succeeds, fails, or
       // the lease expires. A later cycle can continue other conversations.
       return;
