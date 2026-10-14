@@ -172,7 +172,7 @@ test("extension generation honors stored adaptive style and proactive topic excl
 test("extension flow uses the last observed exchange and allows the match to redirect", async () => {
   let submitted = "";
   const input = validateExtensionSuggestionRequest({
-    context: "You: Salut\\nYou: Ça va ?\\nThem: Ça va, tu fais quoi ce weekend ?",
+    context: "You: Salut\nYou: Ça va ?\nThem: Ça va, tu fais quoi ce weekend ?",
     purpose: "auto", count: 1, config: { conversationFlowEnabled: true },
     threadKey: "tinder-thread-123"
   });
