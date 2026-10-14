@@ -469,6 +469,7 @@ const server = createServer(async (request, response) => {
           status: conversation.status,
           currentTopic: conversation.currentTopic ?? null,
           lastMessageAt: conversation.lastMessageAt ?? conversation.updatedAt,
+          lastMessageDirection: conversation.lastMessageDirection ?? null,
           pendingHumanActions: conversation.pendingHumanActions ?? 0
         }))
       });
