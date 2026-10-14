@@ -63,3 +63,9 @@ test("conversation detail prioritizes draft and messages before collapsible adva
   assert.match(detail, /aria-label="Saved conversation history"/);
   assert.match(draft, /detail\.insertBefore\(section, messages\)/);
 });
+
+test("reply-waiting chats precede already replied and paused chats in TNND Web",()=>{
+ assert.match(panel,/prioritizeWaitingReplies\(filterConversationSummaries/);
+ assert.match(panel,/lastMessageDirection === "incoming"/);
+ assert.match(panel,/Reply waiting/);
+});
