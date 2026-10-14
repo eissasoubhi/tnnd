@@ -105,7 +105,7 @@ test("opener Gemini prompts demand sequential fragments, forbid fabricated profi
   assert.match(built, /2 or 3 short fragments/);
   assert.match(built, /The FIRST line MUST be only a short simple greeting/);
   assert.match(built, /ton profil m'a fait sourire/);
-  assert.match(user, /2 or 3 short lines/);
+  assert.match(user, /2 or 3 separate short bubbles/);
   assert.match(user, /profile reaction/);
   const api = await (await import("node:fs/promises")).readFile(new URL("../apps/api/src/extension-suggestions.ts", import.meta.url),"utf8");
   assert.match(api, /The lines will be sent as separate Tinder bubbles/);
