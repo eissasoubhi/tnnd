@@ -5,6 +5,8 @@ import { groupForPanelId, viewForHash, workspaceCopy } from "./workspace-section
 test("each visible navigation target opens its own workspace section", () => {
   assert.equal(viewForHash("#workspace-overview"), "overview");
   assert.equal(viewForHash("#conversation-panel"), "conversations");
+  assert.equal(viewForHash("#workspace-conversations-section"), "conversations");
+  assert.equal(viewForHash("#workspace-actions-section"), "actions");
   assert.equal(viewForHash("#identity-builder-panel"), "identity");
   assert.equal(viewForHash("#personal-memory-panel"), "memories");
   assert.equal(viewForHash("#action-center-section"), "actions");

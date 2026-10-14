@@ -584,7 +584,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
  .preferences-grid, .adaptive-preference, .conversation-layout, .memory-workspace,
  .conversation-detail, .setup-story-item, .workspace-actions) { min-width: 0; }
 #app .panel :is(button, input, select, textarea, a) { max-width: 100%; }
-#app .panel :is(button, .secondary) { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+#app .panel :is(button, .secondary) { min-width: 44px; min-height: 44px; white-space: normal; overflow-wrap: anywhere; }
 #app .panel :is(.workspace-actions, .action-item__buttons, .temporary-instruction-actions,
  .conversation-status-actions, .setup-recommendations) { flex-wrap: wrap; }
 #app .panel :is(.panel-heading, .workspace-review-heading, .conversation-detail-heading) > * { min-width: 0; }
@@ -656,9 +656,9 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
     overscroll-behavior-x: contain; scrollbar-width: thin;
     background: var(--nb-surface); box-shadow: var(--nb-shadow);
   }
-  html { scroll-padding-top: 90px; }
+  html { scroll-padding-top: 76px; }
   #app .workspace-section,
-  #app .workspace-section-panels > .panel { scroll-margin-top: 90px; }
+  #app .workspace-section-panels > .panel { scroll-margin-top: 0; }
   #app .workspace-section-panels { grid-template-columns: minmax(0,1fr); gap: 14px; }
 }
 @media(max-width: 700px) {
@@ -727,7 +727,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
   flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
-  min-height: 36px;
+  min-height: 44px;
   padding: 8px 12px;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -814,9 +814,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
   #app .guide-actions { gap: 7px; }
 }
 
-/* Web version stays visible under the brand in the sticky desktop rail and
- * at the start of the scrollable mobile navigation. It is informational, not
- * a navigation item. */
+/* Build information follows the navigation links so it never hides a section. */
 #app .workspace-nav .workspace-build-version {
   display: block;
   align-self: flex-start;
@@ -830,9 +828,6 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
 }
 @media (max-width: 840px) {
   #app .workspace-nav .workspace-build-version {
-    position: sticky;
-    left: 0;
-    z-index: 2;
     display: inline-flex;
     align-items: center;
     flex: 0 0 auto;
@@ -840,7 +835,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
     max-width: none;
     margin: 0 5px 0 0;
     padding: 8px 10px;
-    border-right: 1px solid var(--nb-border);
+    border-left: 1px solid var(--nb-border);
     border-radius: 8px;
     background: var(--nb-surface);
   }

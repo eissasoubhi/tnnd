@@ -25,16 +25,16 @@ test("unknown Tinder profiles show a neutral avatar and optional user-saved name
 test("conversation flow appears on detail cards without creating a send action or exposing private text", () => {
   assert.match(panel,/renderConversationFlow\(detail\)/);
   assert.match(panel,/aria-label="Conversation Flow"/);
-  assert.match(panel,/Les réponses du match passent toujours en priorité/);
+  assert.match(panel,/What the match says always takes priority/);
   assert.match(client,/normalizeConversationFlow\(input\.conversationFlow\)/);
 });
 
 test("conversation flow remains visible with actionable diagnostics on old API", () => {
  assert.match(panel,/if \(!flow\) \{/);
  assert.match(panel,/aria-label="Conversation Flow"/);
- assert.match(panel,/version 0\.2\.18 ou supérieure/);
- assert.match(panel,/conversationFlow/);
- assert.match(panel,/Indisponible/);
+ assert.match(panel,/version 0\.2\.18 or later/);
+ assert.match(panel,/Refresh this page/);
+ assert.match(panel,/Unavailable/);
  assert.match(panel,/renderConversationFlow\(detail\)/);
 });
 
@@ -68,4 +68,10 @@ test("reply-waiting chats precede already replied and paused chats in TNND Web",
  assert.match(panel,/prioritizeWaitingReplies\(filterConversationSummaries/);
  assert.match(panel,/lastMessageDirection === "incoming"/);
  assert.match(panel,/Reply waiting/);
+});
+
+test("conversation search and selected chat appear before summary counts", () => {
+  const markup = panel.slice(panel.indexOf('panel.innerHTML = `'), panel.indexOf('  grid.prepend(panel);'));
+  assert.ok(markup.indexOf('id="conversation-search"') < markup.indexOf('id="conversation-list"'));
+  assert.ok(markup.indexOf('id="conversation-list"') < markup.indexOf('id="conversation-operational-summary"'));
 });

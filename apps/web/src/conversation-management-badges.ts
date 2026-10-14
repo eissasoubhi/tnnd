@@ -39,9 +39,9 @@ function installStyles(): void {
     .conversation-management-inline[data-state="moved-off-tinder"],.conversation-management-inline[data-state="archived"]{border-style:dashed}
     .conversation-sync-inline[data-state="never-synced"]{border-style:dashed;opacity:.55}
     .conversation-detail-management{display:inline-flex;align-items:center;gap:5px;margin-left:6px}
-    .conversation-management-filter{display:flex;align-items:center;gap:7px;font-size:12px}.conversation-management-filter select{width:auto;min-width:150px}
-    .conversation-management-filter-summary{opacity:.7;min-width:44px;text-align:right}
-    .conversation-management-filter-reset{font:inherit;padding:4px 7px;border:1px solid currentColor;border-radius:6px;background:transparent;cursor:pointer}
+    .conversation-management-filter{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:7px;min-width:0;font-size:12px}.conversation-management-filter label{grid-column:1/-1;font-weight:750}.conversation-management-filter select{width:100%;min-width:0;min-height:44px}
+    .conversation-management-filter-summary{opacity:.7;min-width:32px;text-align:right}
+    .conversation-management-filter-reset{font:inherit;min-width:44px;min-height:44px;padding:8px 10px;border:1px solid currentColor;border-radius:10px;background:transparent;cursor:pointer;white-space:nowrap}
     .conversation-management-filter-reset:disabled{opacity:.4;cursor:default}
     .conversation-management-filtered-out{display:none!important}
   `;
@@ -51,9 +51,9 @@ function installStyles(): void {
 function ensureFilterControl(): void {
   const toolbar = document.querySelector<HTMLElement>(".conversation-toolbar");
   if (!toolbar || toolbar.querySelector("#conversation-management-filter")) return;
-  const label = document.createElement("label");
-  label.className = "conversation-management-filter";
-  label.innerHTML = `Management
+  const filter = document.createElement("div");
+  filter.className = "conversation-management-filter";
+  filter.innerHTML = `<label for="conversation-management-filter">Management</label>
     <select id="conversation-management-filter">
       <option value="all">All management states</option>
       <option value="ai-managed">AI managed</option>
@@ -64,8 +64,8 @@ function ensureFilterControl(): void {
     </select>
     <span class="conversation-management-filter-summary" data-management-filter-summary aria-live="polite"></span>
     <button class="conversation-management-filter-reset" type="button" data-management-filter-reset>Reset</button>`;
-  const select = label.querySelector<HTMLSelectElement>("select")!;
-  const reset = label.querySelector<HTMLButtonElement>("[data-management-filter-reset]")!;
+  const select = filter.querySelector<HTMLSelectElement>("select")!;
+  const reset = filter.querySelector<HTMLButtonElement>("[data-management-filter-reset]")!;
   select.value = activeManagementFilter;
   select.addEventListener("change", () => {
     const value = select.value as ConversationManagementState | "all";
@@ -77,7 +77,7 @@ function ensureFilterControl(): void {
     select.value = "all";
     renderBadges();
   });
-  toolbar.prepend(label);
+  toolbar.prepend(filter);
 }
 
 function applyManagementFilter(): void {

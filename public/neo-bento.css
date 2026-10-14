@@ -84,6 +84,46 @@ input[type=checkbox], input[type=range] { min-height: 0; accent-color: var(--nb-
   color: var(--nb-muted);
   line-height: 1.5;
 }
+.runner-help { margin-top: 8px; }
+.runner-help summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--nb-border);
+  border-radius: var(--nb-radius-sm);
+  color: var(--nb-text);
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.runner-help[open] summary { background: var(--nb-surface-soft); }
+.runner-help p { padding: 9px 3px 4px; }
+.runner-status-panel {
+  background: var(--nb-surface-soft);
+  border-color: var(--nb-border);
+  color: var(--nb-text);
+}
+.runner-state-line strong { background: var(--nb-surface); color: var(--nb-text); }
+.runner-current, .runner-metrics strong { color: var(--nb-text); }
+.runner-metrics span {
+  background: var(--nb-surface);
+  border-color: var(--nb-border);
+  color: var(--nb-text);
+}
+#chatEditor > .card {
+  background: var(--nb-surface-soft) !important;
+  color: var(--nb-text);
+  border-color: var(--nb-border);
+}
+.tnnd-advanced-tools > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  background: var(--nb-surface);
+  border-color: var(--nb-border);
+  color: var(--nb-text);
+}
 body:has(#extensionVersion):has(#webDiagnosticCard) { width: 380px; max-width: 100vw; }
 body:has(#webDiagnosticCard) main { padding: 14px; }
 body:has(#webDiagnosticCard) header {

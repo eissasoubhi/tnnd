@@ -74,7 +74,7 @@ app.innerHTML = `
       <span class="status">Private by design</span>
     </header>
 
-    <nav class="workspace-nav" aria-label="Workspace sections"><a href="#workspace-overview" aria-current="location">Overview</a><a href="#conversation-panel">Conversations</a><a href="#identity-builder-panel">Identity</a><a href="#personal-memory-panel">Memories</a><a href="#action-center-section">Action Center</a><a href="#analytics-panel">Analytics</a><a href="#profile-settings">Settings</a></nav>
+    <nav class="workspace-nav" aria-label="Workspace sections"><a href="#workspace-overview" aria-current="location">Overview</a><a href="#workspace-conversations-section">Conversations</a><a href="#workspace-identity-section">Identity</a><a href="#workspace-memories-section">Memories</a><a href="#workspace-actions-section">Action Center</a><a href="#workspace-analytics-section">Analytics</a><a href="#workspace-settings-section">Settings</a></nav>
 
     <section class="metrics" aria-label="Conversation overview">
       ${cards.map((card) => `
@@ -184,7 +184,7 @@ buildBadge.className = "workspace-build-version";
 buildBadge.textContent = build.label;
 buildBadge.title = build.description;
 buildBadge.setAttribute("aria-label", build.description);
-document.querySelector<HTMLElement>(".workspace-nav")?.prepend(buildBadge);
+document.querySelector<HTMLElement>(".workspace-nav")?.append(buildBadge);
 
 void import("./auth-panel").then(() => loadOptionalPanels()).catch((error) => {
   console.error("Unable to load TNND authentication panel", error);
