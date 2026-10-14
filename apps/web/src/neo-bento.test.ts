@@ -35,15 +35,17 @@ test("Neo Bento keeps a responsive navigation and panel layout", () => {
 });
 
 
-test("Single-page navigation keeps all panels mounted with sticky scroll spy", () => {
+test("Section-first navigation preserves mounted forms and hides other views", () => {
   assert.match(entrypoint, /initWorkspaceScrollNavigation\(\);/);
   assert.match(navigation, /function initWorkspaceScrollNavigation\(\)/);
-  assert.match(navigation, /new IntersectionObserver\(scheduleSpy/);
-  assert.match(navigation, /window\.addEventListener\("scroll", scheduleSpy/);
-  assert.match(navigation, /link\.setAttribute\("aria-current", "location"\)/);
+  assert.match(navigation, /section\.hidden = sectionView !== view/);
   assert.match(navigation, /areas\.get\(locate\(panel\)\)\?\.append\(panel\)/);
-  assert.doesNotMatch(navigation, /panel\.hidden\s*=/);
-  assert.match(css, /html \{ scroll-behavior: smooth;/);
+  assert.match(navigation, /link\.setAttribute\("aria-current", "location"\)/);
+  assert.match(navigation, /pendingTargetId/);
+  assert.match(navigation, /document\.title = copy\.label/);
+  assert.doesNotMatch(navigation, /new IntersectionObserver\(scheduleSpy/);
+  assert.match(css, /\.workspace-section\[hidden\] \{ display: none !important;/);
+  assert.match(css, /\.shell\[data-workspace-view\]:not\(\[data-workspace-view="overview"\]\) \.metrics \{ display: none;/);
   assert.match(css, /#app \.workspace-nav \{ z-index: 25; align-self: start;/);
 });
 
