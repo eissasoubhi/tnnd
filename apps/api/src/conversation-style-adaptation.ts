@@ -1,5 +1,6 @@
 import type { ConversationOverrides } from "./conversation-overrides.js";
 import { DEFAULT_LANGUAGE_WEIGHTS, parseStyleBaseline } from "../../../src/adaptive-preferences.js";
+import { detectMatchLanguage } from "../../../src/conversation-reply-style.js";
 
 export interface StyleMessage { direction: "incoming" | "outgoing"; text: string }
 export interface AdaptedStyle {
@@ -34,24 +35,18 @@ function normalizeWeights(source: Partial<Record<Language, number>>): LanguageWe
   const fr = Math.round(safe[0] * 100 / total), darija = Math.round(safe[1] * 100 / total);
   return { fr, darija, en: 100 - fr - darija };
 }
-const wordHits = (text: string, pattern: RegExp): number => (text.match(pattern) ?? []).length;
-function detectedLanguage(text: string): Language | null {
-  const t = text.toLocaleLowerCase();
-  const darija = wordHits(t, /\b(wach|kifach|bzzaf|bzaf|daba|labas|3lach|safi|mzyan|fin|chno|hanta|khoya|nti|nta|zwin)\b|واش|بزاف|لاباس|دابا|مزيان|شنو|فين/g);
-  const french = wordHits(t, /\b(bonjour|salut|avec|pourquoi|comment|est|une|dans|merci|bien|oui|non|demain|soir|travail|quoi|tu|je|ça|c'est)\b/g);
-  const english = wordHits(t, /\b(hey|hello|how|what|why|when|you|your|are|the|this|that|have|with|good|yeah|thanks|today|tomorrow|nice)\b/g);
-  const values: Array<[Language,number]> = [["darija",darija],["fr",french],["en",english]];
-  values.sort((a,b)=>b[1]-a[1]);
-  return values[0][1] > 0 && values[0][1] > values[1][1] ? values[0][0] : null;
-}
 function adaptLanguages(messages: string[], baseline: LanguageWeights): LanguageWeights {
   if (messages.length < 2) return baseline;
-  const samples = messages.map(detectedLanguage).filter((x): x is Language => x !== null);
+  const samples = messages.map(detectMatchLanguage).filter((x): x is Language => x !== "unknown");
   if (samples.length < 2) return baseline;
   const counts: LanguageWeights = { fr: 0, darija: 0, en: 0 };
   for (const lang of samples) counts[lang]++;
+  // The last incoming turn matters more than older exchanges when a match
+  // changes language mid-chat; a single isolated foreign word is insufficient.
+  const latest = detectMatchLanguage(messages.at(-1) ?? "");
+  if (latest !== "unknown") counts[latest] += 2;
   const observed = normalizeWeights(counts);
-  const weight = clamp(samples.length / 8, 0, 0.65);
+  const weight = clamp(samples.length / 6, 0, latest !== "unknown" ? 0.78 : 0.65);
   return normalizeWeights({
     fr: (1-weight)*baseline.fr + weight*observed.fr,
     darija: (1-weight)*baseline.darija + weight*observed.darija,
@@ -74,7 +69,7 @@ export function resolveAdaptiveStyle(
   const texts = incomingMessages(history, latestIncoming);
   const enough = texts.length >= 2;
   const serious = texts.length > 0 && /\b(sorry for your loss|grief|died|hospital|ill|funeral|deuil|décès|malade|triste|urgence|difficult|stressed|anxious)\b|وفاة|مريض|حزين/iu.test(texts.at(-1)!);
-  const jokeRate = texts.length ? texts.filter(t => /\b(lol|haha+|hihi+|mdr|ptdr|jaja)\b|[😂🤣😆😜😉]/iu.test(t)).length/texts.length : 0;
+  const jokeRate = texts.length ? texts.filter(t => /\b(lol|haha+|hihi+|h{3,}|mdr|ptdr|jaja)\b|[😂🤣😆😜😉]/iu.test(t)).length/texts.length : 0;
   const questionRate = texts.length ? texts.filter(t => /[?？؟]/u.test(t)).length/texts.length : 0;
   const lastIncomingRun = history.slice(-4).reverse().findIndex(m => m.direction === "outgoing");
   const consecutiveIncoming = lastIncomingRun === -1 ? history.slice(-4).filter(m=>m.direction==="incoming").length : lastIncomingRun;

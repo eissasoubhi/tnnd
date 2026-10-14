@@ -1,5 +1,6 @@
 import { buildSystemInstruction, buildUserPrompt } from "./prompt";
 import type { AppConfig, ChatSettings, GeneratePurpose } from "./types";
+import { limitReplyLaughter, readLabeledReplyHistory, readReplyStyleCues } from "./conversation-reply-style";
 
 interface GeminiResponse {
   candidates?: Array<{ finishReason?: string; content?: { parts?: Array<{ text?: string }> } }>;
@@ -59,5 +60,8 @@ export async function generateSuggestions(apiKey: string, config: AppConfig, con
   if (candidate?.finishReason === "MAX_TOKENS") throw new Error("Gemini response was truncated. Try again.");
   const text = candidate?.content?.parts?.map((part) => part.text ?? "").join("").trim();
   if (!text) throw new Error("Gemini returned an empty response.");
-  return parseSuggestions(text, safeCount);
+  const suggestions = parseSuggestions(text, safeCount);
+  if (purpose === "opener") return suggestions;
+  const cues = readReplyStyleCues(readLabeledReplyHistory(context));
+  return suggestions.map(suggestion => limitReplyLaughter(suggestion, cues));
 }
