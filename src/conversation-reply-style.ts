@@ -92,7 +92,7 @@ export function limitReplyLaughter(reply: string, cues: ReplyStyleCues): string 
   });
   return result
     .replace(/[^\S\n]{2,}/g, " ")
-    .replace(/[ \t]+([,.;!?؟])/g, "$1")
+    .replace(/[ \t]+([,.])/g, "$1")
     .replace(/^[ \t]+|[ \t]+$/gm, "")
     .trim();
 }
