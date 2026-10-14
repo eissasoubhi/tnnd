@@ -76,3 +76,21 @@ test("rejects non read-only or malformed source envelopes", () => {
   assert.throws(() => parseMatchProfileSourceCapture({ ...source, captureMode: "interactive" }), /invalid_match_profile_capture/);
   assert.throws(() => parseMatchProfileSourceCapture({ ...source, capturedAt: "not-a-date" }), /invalid_match_profile_captured_at/);
 });
+
+test("retains verified height, goal and bounded lifestyle prompts", () => {
+  const parsed = parseMatchProfileSourceCapture({
+    ...source,
+    visibleFields: {
+      ...source.visibleFields,
+      relationshipGoal: "Long-term partner",
+      heightCm: 169,
+      prompts: [{ section: "My Weekends", question: "Weekends are for...", answer: "Resting" }]
+    }
+  });
+  assert.equal(parsed.visibleFields.relationshipGoal, "Long-term partner");
+  assert.equal(parsed.visibleFields.heightCm, 169);
+  assert.deepEqual(parsed.visibleFields.prompts, [
+    { section: "My Weekends", question: "Weekends are for...", answer: "Resting" }
+  ]);
+  assert.equal(normalizeMatchProfile(parsed).fields.heightCm, 169);
+});
