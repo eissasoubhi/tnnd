@@ -39,7 +39,7 @@ test("reply attempt is persisted before Tinder send; old message claims survive 
   assert.match(content, /adapter\.inspectUnanswered\(\)/);
   assert.match(content, /Unanswered incoming message found \(old or new\)/);
   assert.match(content, /snapshot\.legacyIncomingKey/);
-  assert.ok(content.indexOf("await saveState(freshState)") < content.indexOf("await adapter.send(reply)"));
+  assert.ok(content.indexOf("await saveState(freshState)") < content.indexOf("await adapter.send(part)"));
   assert.match(content, /finalSnapshot\.latestIncomingKey !== currentSnapshot\.latestIncomingKey/);
   assert.match(content, /autoReplyPausedAfterGlobalStop\(conversationRef\)/);
   assert.match(background, /date: today\(\)/);

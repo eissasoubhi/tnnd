@@ -36,6 +36,11 @@ export interface IdentityProfile {
   instagram: string;
   whatsapp: string;
   contactPreference: ContactPreference;
+  originCity?: string;
+  residenceCity?: string;
+  currentCity?: string;
+  originNeighborhood?: string;
+  residenceNeighborhood?: string;
 }
 
 export interface AutomationConfig {
@@ -47,6 +52,10 @@ export interface AutomationConfig {
   /** Delay between consecutive bubbles in one Tinder match opener (separate from replies). */
   openerDelayMinSeconds?: number;
   openerDelayMaxSeconds?: number;
+  multiPartRepliesEnabled?: boolean;
+  multiPartMinCharacters?: number;
+  multiPartDelayMinSeconds?: number;
+  multiPartDelayMaxSeconds?: number;
   quietHoursEnabled: boolean;
   quietStart: string;
   quietEnd: string;

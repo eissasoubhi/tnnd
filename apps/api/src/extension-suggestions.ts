@@ -3,6 +3,8 @@ import { findConversationByExternalThreadId } from "./conversation-thread-lookup
 import { getConversation } from "./conversation-service.js";
 import { getConversationMatchProfile } from "./match-profile-service.js";
 import { matchProfileTopicGuidance } from "./match-profile-topic-hooks.js";
+import { missingPersonalLocationDetail, personalLocationAnswerPolicy } from "./personal-location-policy.js";
+import { createHumanAction, listHumanActions } from "./human-action-service.js";
 import { assessMatchIntent, matchScreeningPrompt, type MatchScreeningOptions } from "./match-intent-screening.js";
 import { conversationFlowGuidance, deriveConversationFlow } from "./conversation-flow.js";
 import { retrievePersonalMemories } from "./personal-memory-service.js";
@@ -192,6 +194,30 @@ export async function generateExtensionSuggestions(
     : deriveConversationFlow(storedConversation ? [...storedConversation.messages.slice(-80), ...observedMessages.slice(-12)] : observedMessages,
       storedConversation?.conversationFlow.known.map(fact => ({ ...fact, subject: "match" as const, confidence: 1 })) ?? [],
       { order: stageOrder });
+  // A missing, specific personal fact is a human action, not a Gemini
+  // creativity task. This check happens BEFORE any call to Gemini or Send.
+  if (request.purpose === "auto" && storedConversation) {
+    const latestIncoming = [...observedMessages].reverse().find(m => m.direction === "incoming");
+    const identity = generationContext.userProfile?.identity as Record<string, string> | undefined;
+    const missing = latestIncoming
+      ? missingPersonalLocationDetail(latestIncoming.text, identity) : null;
+    if (missing) {
+      const pending = (await listHumanActions(userId)).some(item =>
+        item.conversationRef === storedConversation.id && item.status === "pending"
+        && item.context.kind === "missing-personal-location"
+        && item.context.field === missing);
+      if (!pending) {
+        await createHumanAction(userId,{
+          conversationRef:storedConversation.id,
+          title:"Personal location detail needed",
+          detail:"Match asked a precise question that needs your verified answer. Fill in the location in Profile → Location or reply manually, then resolve this action.",
+          severity:"action-required",
+          context:{kind:"missing-personal-location",field:missing}
+        });
+      }
+      throw new Error("human_clarification_required");
+    }
+  }
   const profileTopicHooks = matchProfileTopicGuidance(
     capturedProfile?.normalizedProfile.fields, conversationFlow,
     storedConversation ? [...storedConversation.messages.slice(-80), ...observedMessages.slice(-12)] : observedMessages,
@@ -217,6 +243,7 @@ export async function generateExtensionSuggestions(
     conversationFlow ? conversationFlowGuidance(conversationFlow) : "",
     matchScreening ? matchScreeningPrompt(matchScreening) : "",
     profileTopicHooks,
+    personalLocationAnswerPolicy(generationContext.userProfile?.identity as Record<string, string> | undefined),
     request.purpose === "opener"
       ? "Write ONE opening Tinder turn with 2 or 3 short lines separated by newline characters inside one JSON array string. The lines will be sent as separate Tinder bubbles, NOT alternative messages. The FIRST line must be ONLY a short greeting (Salut, Hello, Hi, or Salut cv?); the next one or two lines should be natural short follow-ups without repeating the greeting. No previous messages exist. Do not invent profile facts, feelings, compliments or reactions (for example claiming their profile made the sender smile). Only the match name/age explicitly shown in the conversation context are verified. No profile photo, bio or appearance is verified. A neutral greeting and one natural question are better than fake personalization."
       : "Use the recent conversation flow, answer what was actually said, and avoid abruptly changing subject.",

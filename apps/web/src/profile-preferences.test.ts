@@ -252,3 +252,35 @@ describe("short dating expressions", () => {
     assert.deepEqual((saved.datingIntent as any).matchScreening.casualExpressions, ["pp", "ok", "plan payant"]);
   });
 });
+
+describe("separate location and multipart preferences",()=>{
+ it("persists residence, origin, current city and neighborhoods without changing passport cities",()=>{
+  const old=profile(); old.identity={city:"Paris",origin:"Casablanca"};
+  const preferences=readEditablePreferences(old);
+  assert.equal(preferences.residenceCity,"Paris");
+  assert.equal(preferences.originCity,"Casablanca");
+  const saved=writeEditablePreferences(old,{
+    ...preferences,originCity:"Casablanca",residenceCity:"Paris",
+    currentCity:"Rabat",originNeighborhood:"",residenceNeighborhood:""
+  });
+  const identity=saved.identity as Record<string,unknown>;
+  assert.equal(identity.currentCity,"Rabat");
+  assert.equal(identity.residenceCity,"Paris");
+  assert.equal(identity.originCity,"Casablanca");
+  assert.equal(identity.originNeighborhood,"");
+  assert.deepEqual((saved.datingIntent as Record<string,unknown>).targetCities,[]);
+  assert.equal(readEditablePreferences(saved).currentCity,"Rabat");
+ });
+ it("keeps two-bubble replies opt-in and bounds the minimum length",()=>{
+  const starting=profile();
+  assert.equal(readEditablePreferences(starting).multiPartRepliesEnabled,false);
+  const saved=writeEditablePreferences(starting,{
+    ...readEditablePreferences(starting),
+    multiPartRepliesEnabled:true,multiPartMinCharacters:110
+  });
+  const style=saved.textingStyle as Record<string,unknown>;
+  assert.equal(style.multiPartRepliesEnabled,true);
+  assert.equal(style.multiPartMinCharacters,110);
+  assert.equal(readEditablePreferences(saved).multiPartMinCharacters,110);
+ });
+});
