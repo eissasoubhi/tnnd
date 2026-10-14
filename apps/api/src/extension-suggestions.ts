@@ -9,7 +9,8 @@ import { assessMatchIntent, matchScreeningPrompt, type MatchScreeningOptions } f
 import { conversationFlowGuidance, deriveConversationFlow } from "./conversation-flow.js";
 import { retrievePersonalMemories } from "./personal-memory-service.js";
 import { loadAiProviderSettings } from "./ai-provider-settings-service.js";
-import { resolveAdaptiveStyle, type StyleMessage } from "./conversation-style-adaptation.js";
+import { resolveAdaptiveStyle } from "./conversation-style-adaptation.js";
+import { limitReplyLaughter, readLabeledReplyHistory, readReplyStyleCues, replyStyleGuidance } from "../../../src/conversation-reply-style.js";
 import type { ConversationOverrides } from "./conversation-overrides.js";
 
 export interface ExtensionSuggestionRequest {
@@ -152,11 +153,10 @@ export async function generateExtensionSuggestions(
   const memoryContext = generationContext.memories;
   const storedStyle = generationContext.userProfile?.textingStyle as Record<string, unknown> | undefined;
   const topicPreferences = generationContext.userProfile?.topicEngine as { avoidedTopics?: string[] } | undefined;
-  // Only clearly marked incoming lines count as evidence; unstructured text falls back to baseline.
-  const history: StyleMessage[] = request.context.split("\n").slice(-24).flatMap(line => {
-    const match = line.match(/^\s*(them|match|incoming|elle|lui)\s*:\s*(.+)$/i);
-    return match ? [{ direction: "incoming" as const, text: match[2].slice(0, 1200) }] : [];
-  });
+  // Only incoming lines determine the match's language; outgoing turns are
+  // retained separately so the generator stops echoing the sender's "haha".
+  const observedMessages = readLabeledReplyHistory(request.context);
+  const history = observedMessages.filter(message => message.direction === "incoming");
   const manual = request.chat ?? {};
   const adaptive = resolveAdaptiveStyle(
     { ...configWithoutIdentity, ...manual } as ConversationOverrides,
@@ -167,18 +167,14 @@ export async function generateExtensionSuggestions(
     (generationContext.userProfile?.languages ?? {}) as Partial<{fr:number;darija:number;en:number}>
   );
   const effectiveConfig = { ...configWithoutIdentity, ...adaptive.settings };
+  const styleCues = readReplyStyleCues(observedMessages);
+  const adaptLanguages = adaptive.autoFields.includes("languages");
   // Do not make another LLM call to track the stage. Use durable messages
   // already synchronized under this authenticated user and its existing facts.
   const flowEnabled = configWithoutIdentity.conversationFlowEnabled !== false;
   const flowLookup = flowEnabled && request.purpose !== "opener" && request.threadKey
     ? await findConversationByExternalThreadId(userId, request.threadKey) : null;
   const storedConversation = flowLookup ? await getConversation(userId, flowLookup.id) : null;
-  const observedMessages = request.context.split("\n").slice(-50).flatMap(line => {
-    const match = /^\s*(them|match|incoming|elle|lui|me|you|moi|outgoing)\s*:\s*(.+)$/i.exec(line);
-    if (!match) return [];
-    return [{ direction: /^(me|you|moi|outgoing)$/i.test(match[1]) ? "outgoing" as const : "incoming" as const,
-      text: match[2].slice(0, 600) }];
-  });
   const stageOrder = configWithoutIdentity.conversationFlowOrder === "work-first"
     ? ["occupation", "location", "interests"] as const
     : configWithoutIdentity.conversationFlowOrder === "interests-first"
@@ -231,6 +227,7 @@ export async function generateExtensionSuggestions(
   const prompt = [
     "You are TNND, a dating conversation writing engine acting from the user's configured identity.",
     "Write concise, natural dating-app messages. Avoid assistant prose, canned pickup lines, pressure, manipulation, and invented personal facts.",
+    request.purpose !== "opener" ? replyStyleGuidance(styleCues, adaptLanguages) : "",
     `Generation purpose: ${request.purpose}.`,
     `Effective TNND configuration JSON: ${boundedJson(effectiveConfig, 12_000)}`,
     generationContext.userProfile ? `Stored user identity/style JSON: ${boundedJson(generationContext.userProfile, 5_000)}` : "",
@@ -290,7 +287,7 @@ export async function generateExtensionSuggestions(
   if (!raw) throw new Error("gemini_empty_response");
 
   return {
-    suggestions: parseSuggestions(raw, request.count),
+    suggestions: parseSuggestions(raw, request.count).map(suggestion => request.purpose === "opener" ? suggestion : limitReplyLaughter(suggestion, styleCues)),
     model: settings.model
   };
 }

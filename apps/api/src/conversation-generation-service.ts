@@ -16,6 +16,7 @@ import { loadGenerationProfile } from "./generation-user-profile-context.js";
 import { loadGenerationSupplementalContext } from "./generation-supplemental-context.js";
 import { matchProfileTopicGuidance } from "./match-profile-topic-hooks.js";
 import { resolveAdaptiveStyle } from "./conversation-style-adaptation.js";
+import { limitReplyLaughter, readReplyStyleCues, replyStyleGuidance } from "../../../src/conversation-reply-style.js";
 import { markPersonalMemoriesUsed, retrievePersonalMemories } from "./personal-memory-service.js";
 
 export interface ConversationGenerationResult extends GeminiGenerationResult {
@@ -112,7 +113,9 @@ export async function generateConversationReply(
     context.provenance.overriddenFields,
     (generationProfile.userProfile?.languages ?? context.settings.languages ?? {}) as Partial<{fr:number;darija:number;en:number}>
   );
+  const styleCues = readReplyStyleCues(recentMessages, normalizedMessage);
   const effectiveContext = { ...context, settings: adaptive.settings, instructions: [...context.instructions,
+    replyStyleGuidance(styleCues, adaptive.autoFields.includes("languages")),
     conversationFlowGuidance(conversation.conversationFlow),
     matchProfileTopicGuidance(
       supplementalContext.matchProfile?.fields, conversation.conversationFlow, recentMessages,
@@ -149,6 +152,7 @@ export async function generateConversationReply(
   return {
     conversationId,
     ...generated,
+    text: limitReplyLaughter(generated.text, styleCues),
     ...(usedId ? { usedPersonalMemoryId: usedId } : {}),
     provenance: {
       overriddenFields: context.provenance.overriddenFields.map(String),
