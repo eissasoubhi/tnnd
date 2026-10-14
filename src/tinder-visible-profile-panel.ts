@@ -60,7 +60,10 @@ export function readVisibleTinderProfilePanel(
       .map(node => text(node, limit)).filter(Boolean);
     // Prefer explicit content nodes, never the label itself.
     const headingText = Array.from(card.querySelectorAll("h2")).map(node => norm(text(node, 80)));
-    return (blocks.find(block => !headingText.includes(norm(block))) || "").slice(0, limit);
+    const fallbackText = text(card, limit + 90);
+    const heading = text(card.querySelector("h2"), 80);
+    const fallback = fallbackText.startsWith(heading) ? fallbackText.slice(heading.length).trim() : "";
+    return (blocks.find(block => !headingText.includes(norm(block))) || fallback).slice(0, limit);
   };
 
   const goalCard = sectionFor(["looking for", "je recherche", "recherche"]);
