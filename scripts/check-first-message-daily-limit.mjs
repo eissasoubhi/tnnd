@@ -59,3 +59,20 @@ test("options, runner and backend share one cap; replies use a distinct daily co
   assert.doesNotMatch(opener, /freshState\.dailyCount \+= 1|freshState\.dailyCount >=/);
   assert.match(content, /state\.dailyCount >= config\.automation\.maxAutoRepliesPerDay/);
 });
+
+
+test("first-message cap UX explains UTC reset, global scope and attempt semantics without implying confirmed delivery", async () => {
+  const read = async (file) => readFile(new URL("../" + file, import.meta.url), "utf8");
+  const [optionsHtml, popupHtml, popup] = await Promise.all([
+    "public/options.html", "public/popup.html", "src/popup.ts"
+  ].map(read));
+  assert.match(optionsHtml, /First-message opener attempts \/ UTC day \(all matches\)/);
+  assert.match(optionsHtml, /aria-describedby="firstMessageLimitHelp"/);
+  assert.match(optionsHtml, /resets at <strong>00:00 UTC<\/strong>/);
+  assert.match(optionsHtml, /not five messages to the same conversation/);
+  assert.match(optionsHtml, /another opener to the same previously attempted match the next day/);
+  assert.match(popupHtml, /One attempted opener per match, not 5 messages to the same chat/);
+  assert.match(popup, /Resets at 00:00 UTC; no automatic retry/);
+  assert.match(popup, /Tinder send action completed; delivery is not independently confirmed/);
+  assert.doesNotMatch(popup, /First message sent on Tinder\./);
+});

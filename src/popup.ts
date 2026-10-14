@@ -577,7 +577,7 @@ startFirstMessage.addEventListener("click", () => {
     }) as { ok?: boolean; sent?: boolean; error?: string };
     if (!result?.ok) throw new Error(result?.error ?? "No first message was sent. Check Tinder.");
     firstMessageStatus.textContent = result.sent
-      ? `First message sent on Tinder. ${result.error ?? "AI can now continue when the match replies and all auto-chat settings stay enabled."}`
+      ? `Tinder send action completed; delivery is not independently confirmed. ${result.error ?? "AI can continue if the match replies and all auto-chat settings stay enabled."}`
       : "Nothing sent.";
   })().catch((error) => {
     firstMessageStatus.textContent = error instanceof Error ? error.message : "Unable to start chat; no send confirmed.";
@@ -867,7 +867,7 @@ async function renderNewMatchObservation(): Promise<void> {
   if (!result?.ok || !result.state) { newMatchObservationStatus.textContent = "Unable to read new match detection state."; return; }
   const state = result.state;
   const cap = firstMessageDailyLimit((await getConfig()).automation.maxFirstMessagesPerDay);
-  document.getElementById("newMatchLimitHint")!.textContent = `Maximum ${cap} first-message attempts/day, shared across existing matches, future matches and individual starts. Change in Settings; no automatic retry.`;
+  document.getElementById("newMatchLimitHint")!.textContent = `Up to ${cap} first-message opener attempts per UTC day across existing and future matches and individual starts. One attempted opener per match, not ${cap} messages in the same chat. Resets at 00:00 UTC; no automatic retry. Change in Settings.`;
   startNewMatchObservation.disabled = state.enabled;
   (document.getElementById("startExistingMatchBatch") as HTMLButtonElement).disabled = state.enabled;
   stopNewMatchObservation.disabled = !state.enabled;
