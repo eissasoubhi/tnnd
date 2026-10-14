@@ -54,3 +54,37 @@ export function newlyVisibleUnread(previous: readonly string[], current: readonl
   const old = new Set(previous);
   return [...new Set(current)].filter(ref => !old.has(ref));
 }
+
+/** Keep a live chat in focus briefly after an incoming message or outgoing
+ * reply. Every newly observed incoming message extends the lease. Other
+ * pending chats remain queued, and eventually get their turn after silence.
+ * This time is distinct from the Tinder reply delay and tab dwell setting.
+ */
+export const ACTIVE_CHAT_FOLLOW_MS = 3 * 60_000;
+export interface ActiveConversationFollow {
+  activeConversationRef: string | null;
+  activeConversationUntil: string | null;
+}
+export function extendActiveConversation(
+  ref: string,
+  at = new Date().toISOString(),
+  durationMs = ACTIVE_CHAT_FOLLOW_MS
+): ActiveConversationFollow {
+  const time = Date.parse(at);
+  return {
+    activeConversationRef: ref,
+    activeConversationUntil: new Date(time + durationMs).toISOString()
+  };
+}
+export function shouldFollowActiveConversation(
+  active: ActiveConversationFollow,
+  currentRef: string | null,
+  eligibleRefs: readonly string[],
+  now = Date.now()
+): boolean {
+  return Boolean(active.activeConversationRef && active.activeConversationRef === currentRef
+    && eligibleRefs.includes(currentRef!)
+    && active.activeConversationUntil
+    && Number.isFinite(Date.parse(active.activeConversationUntil))
+    && Date.parse(active.activeConversationUntil) > now);
+}
