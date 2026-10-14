@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { recordSharedSocialContacts } from "./social-contact-service.js";
 import { listConversationFacts } from "./conversation-fact-service.js";
 import { deriveConversationFlow, type ConversationFlowState } from "./conversation-flow.js";
 import { analyzeAndRecordConversationFacts } from "./conversation-fact-orchestration-service.js";
@@ -152,6 +153,8 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
     void analyzeAndRecordConversationTopics(userId, result.conversationId).catch(() => undefined);
     void summarizeConversationIfNeeded(userId, result.conversationId).catch(() => undefined);
     void analyzeAndRecordConversationFacts(userId, result.conversationId).catch(() => undefined);
+    void recordSharedSocialContacts(userId, result.conversationId, input.messages, result.acceptedMessageIds)
+      .catch((error) => console.warn("TNND contact alert creation failed", error));
   }
   return result;
 }
