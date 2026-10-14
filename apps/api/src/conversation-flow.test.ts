@@ -62,3 +62,20 @@ test("failed or unseen message history does not become fabricated knowledge", ()
   assert.equal(s.known.length, 0);
   assert.doesNotMatch(conversationFlowGuidance(s), /Marseille/);
 });
+
+
+test("authenticated detail route serializes conversationFlow along with saved messages", async () => {
+  // Regression: the underlying getConversation returned flow, but main.ts
+  // manually selected response fields and silently omitted it.
+  const main = await (await import("node:fs/promises")).readFile(new URL("./main.ts", import.meta.url), "utf8");
+  const detailRoute = main.slice(
+    main.indexOf('if (request.method === "GET" && url.pathname.startsWith("/api/v1/conversations/"))'),
+    main.indexOf('if ((request.method === "GET" || request.method === "POST") && url.pathname === "/api/v1/human-actions")')
+  );
+  assert.match(detailRoute, /const conversation = await getConversation\(session\.user\.id, conversationId\)/);
+  assert.match(detailRoute, /conversation:\s*\{/);
+  assert.match(detailRoute, /messages: conversation\.messages/);
+  assert.match(detailRoute, /topicState: conversation\.topicState/);
+  assert.match(detailRoute, /conversationFlow: conversation\.conversationFlow/);
+  assert.doesNotMatch(detailRoute, /listConversations\(/);
+});
