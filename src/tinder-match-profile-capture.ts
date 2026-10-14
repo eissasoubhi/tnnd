@@ -12,6 +12,7 @@ export type TinderProfileCaptureInput = {
   interests?: string[] | null;
   relationshipGoal?: string | null;
   heightCm?: number | null;
+  prompts?: Array<{ section: string; question: string; answer: string }> | null;
 };
 
 export type TinderVisibleProfileSource = {
@@ -31,6 +32,7 @@ export type TinderVisibleProfileSource = {
     interests?: string[];
     relationshipGoal?: string;
     heightCm?: number;
+    prompts?: Array<{ section: string; question: string; answer: string }>;
   };
 };
 
@@ -60,6 +62,11 @@ export function buildReadOnlyProfileSource(
   input: TinderProfileCaptureInput,
   capturedAt = new Date().toISOString()
 ): TinderVisibleProfileSource {
+  const prompts = (input.prompts ?? []).slice(0, 24).map(value => ({
+    section: boundedText(value.section)?.slice(0, 80) ?? "",
+    question: boundedText(value.question)?.slice(0, 120) ?? "",
+    answer: boundedText(value.answer)?.slice(0, 120) ?? ""
+  })).filter(value => value.section && value.question && value.answer);
   const interests = (input.interests ?? [])
     .map((item) => boundedText(item))
     .filter((item): item is string => Boolean(item))
@@ -80,6 +87,7 @@ export function buildReadOnlyProfileSource(
       education: boundedText(input.education),
       location: boundedText(input.location),
       interests: interests.length ? interests : undefined,
+      ...(prompts.length ? { prompts } : {}),
       relationshipGoal: boundedText(input.relationshipGoal),
       ...(Number.isInteger(input.heightCm) && Number(input.heightCm) >= 100 && Number(input.heightCm) <= 230 ? { heightCm: Number(input.heightCm) } : {}),
     },
@@ -99,12 +107,13 @@ export function hasMeaningfulVisibleProfileFields(source: TinderVisibleProfileSo
     || fields.relationshipGoal
     || fields.heightCm
     || fields.interests?.length
+    || fields.prompts?.length
   );
 }
 
 export function buildProfileCaptureDedupeKey(source: TinderVisibleProfileSource): string {
   const fields = source.visibleFields;
-  return JSON.stringify({
+  const serialized = JSON.stringify({
     schemaVersion: source.schemaVersion,
     source: source.source,
     route: source.route,
@@ -117,10 +126,21 @@ export function buildProfileCaptureDedupeKey(source: TinderVisibleProfileSource)
       education: fields.education ?? null,
       location: fields.location ?? null,
       interests: fields.interests ?? [],
+      prompts: fields.prompts ?? [],
       relationshipGoal: fields.relationshipGoal ?? null,
       heightCm: fields.heightCm ?? null
     }
   });
+  // The local sync store only permits 256 chars per value. Raw JSON was
+  // silently truncated, causing repeated re-uploads of every rich profile.
+  // Hash stable *content*, never the capture time or personal data in clear.
+  let first = 2166136261, second = 0x811c9dc7 ^ 0x9e3779b9;
+  for (let index = 0; index < serialized.length; index++) {
+    const unit = serialized.charCodeAt(index);
+    first = Math.imul(first ^ unit, 16777619) >>> 0;
+    second = Math.imul(second ^ unit, 2246822519) >>> 0;
+  }
+  return `v2:${serialized.length}:${first.toString(16)}:${second.toString(16)}`;
 }
 
 export function normalizeProfileCaptureSource(sourceSnapshot: TinderVisibleProfileSource): TinderProfileCapture {

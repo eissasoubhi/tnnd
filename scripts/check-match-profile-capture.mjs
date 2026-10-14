@@ -71,3 +71,8 @@ const oversized = Object.fromEntries(Array.from({ length: 105 }, (_, index) => [
 assert.equal(Object.keys(normalizeMatchProfileSyncStateMap(oversized)).length, 100);
 
 console.log("Match profile capture contract checks passed.");
+
+// A long private profile must never be kept in the 256-character extension checkpoint.
+const rich = buildReadOnlyProfileSource({ ...input, bio: "A".repeat(500), interests: Array(20).fill("Movies") });
+assert.ok(buildProfileCaptureDedupeKey(rich).length < 100);
+assert.ok(!buildProfileCaptureDedupeKey(rich).includes("Movies"));

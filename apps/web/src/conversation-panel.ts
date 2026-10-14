@@ -1,4 +1,5 @@
 import { readSession } from "./auth-client";
+import { mountConversationMatchProfile } from "./conversation-match-profile";
 import {
   clearTemporaryInstruction,
   getConversation,
@@ -233,6 +234,7 @@ function renderDetail(detail: ConversationDetail): string {
     <div class="conversation-status-actions" aria-label="Conversation controls">
       ${renderStatusActions(detail)}
     </div>
+    <section id="conversation-match-profile" aria-label="Captured Tinder MatchProfile"></section>
     <section class="conversation-messages" aria-label="Saved conversation history">
       <h3 class="conversation-message-heading">Message history</h3>
       ${messages}
@@ -535,6 +537,8 @@ async function loadDetail(conversationId: string): Promise<void> {
     // Keep the live reply target on its owning detail node, never in storage.
     elements.detail.dataset.replyTarget = replyTargetFromHistory(detail.messages) ?? "";
     elements.detail.dataset.replyTargetHint = replyTargetHint(detail.messages);
+    const profileHost = elements.detail.querySelector<HTMLElement>("#conversation-match-profile");
+    if (profileHost) mountConversationMatchProfile(profileHost, session, conversationId);
     bindDisplayIdentityActions(conversationId);
     bindStatusActions(conversationId);
     bindTemporaryInstructionActions(conversationId);

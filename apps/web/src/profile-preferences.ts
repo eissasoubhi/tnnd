@@ -108,7 +108,7 @@ export function writeEditablePreferences(profile: ImportedProfile, preferences: 
     : [...new Set(preferences.targetCities.split(/[,;\n]+/).map(city => city.replace(/\s+/g, " ").trim()).filter(city => city.length >= 2 && city.length <= 80))].slice(0, 20);
   const existingScreening = objectValue(datingIntent.matchScreening);
   const boundedExpressions = (value: string | undefined, previous: unknown) => value === undefined
-    ? (Array.isArray(previous) ? previous : []) : [...new Set(value.split(/[,;\n]+/).map(v => v.trim()).filter(v => v.length >= 4 && v.length <= 80))].slice(0, 20);
+    ? (Array.isArray(previous) ? previous : []) : [...new Set(value.split(/[,;\n]+/).map(v => v.trim()).filter(v => v.length >= 2 && v.length <= 80))].slice(0, 20);
   const height = preferences.maximumHeightCm === undefined ? existingScreening.maximumHeightCm
     : /^(?:1[0-9]{2}|2[0-2][0-9]|230)$/.test(preferences.maximumHeightCm.trim()) ? Number(preferences.maximumHeightCm.trim()) : null;
   const datingGoalDetails = requestedDatingGoalDetails === undefined
