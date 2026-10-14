@@ -68,3 +68,12 @@ TNND already saves chat messages, topic state and verified conversation facts in
 You can inspect the per-conversation stage and known facts in **TNND Web → Conversations → Conversation Flow**. In **TNND extension → Options → Tinder auto-chat**, enable/disable the flow and select the preferred discovery order (ville first, travail first or centres d’intérêt first). Existing **Extra instructions** remain in force and are not erased or duplicated. The saved user profile still has authority over identity; no claims are made about a match photo or biography without evidence.
 
 Extension generation includes an authenticated Tinder thread reference, enabling the backend to use that exact user-scoped conversation's synced history; if no conversation exists yet, it falls back to observed messages rather than inventing a stored match memory. ChatGPT is not connected to Tinder directly: test drafts manually before enabling automation.
+
+
+## Reply watcher · version 0.2.20
+
+In **TNND extension → Existing conversations**, click **Watch new replies** to enter a separate watcher mode. Unlike the existing backlog runner, the watcher only opens AI-managed, enabled, non-paused Tinder chats with new evidence: a visible unread badge or a newer backend-synchronized incoming message. It does **not** scan all conversations or bulk-enable disabled chats. The catch-up runner remains separate; only one mode can run at a time.
+
+With Tinder open, the content script observes unread sidebar hints and sends a wake-up event. At startup and after service-worker wakeup, the watcher requests a read-only snapshot of currently visible unread threads; a Chrome alarm provides a 30-second fallback. The persistent account-scoped index keeps pending work and avoids reprocessing a checked incoming-message version. Existing authenticated backend management, per-chat approvals, reply caps, quiet hours and the independent **20–60 second incoming reply delay** still apply.
+
+The watcher displays **Waiting / New replies / Processing / Paused / Disconnected** and a confirmed pending count. Stop it with **Stop watcher**. It needs an open Tinder tab, a functioning local API and live authorization. It cannot see Tinder conversations that are not currently rendered, cannot monitor while Chrome/Tinder are unavailable, and does not guarantee instant sends. This does not affect the 5-first-match-openers/day quota or 3–10 second opener-fragment delay.
