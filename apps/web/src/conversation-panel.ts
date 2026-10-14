@@ -213,10 +213,19 @@ function renderDetail(detail: ConversationDetail): string {
     <div class="conversation-status-actions" aria-label="Conversation controls">
       ${renderStatusActions(detail)}
     </div>
-    ${renderTopicState(detail)}
-    ${renderConversationFlow(detail)}
-    ${renderTemporaryInstruction(detail)}
-    <div class="conversation-messages">${messages}</div>
+    <section class="conversation-messages" aria-label="Saved conversation history">
+      <h3 class="conversation-message-heading">Message history</h3>
+      ${messages}
+    </section>
+    <details class="conversation-secondary-section"${detail.temporaryInstruction ? " open" : ""}>
+      <summary>Temporary instruction${detail.temporaryInstruction ? " · Active" : ""} <span class="subtle">(advanced)</span></summary>
+      ${renderTemporaryInstruction(detail)}
+    </details>
+    <details class="conversation-secondary-section">
+      <summary>Conversation topics and progress <span class="subtle">(advanced)</span></summary>
+      ${renderTopicState(detail)}
+      ${renderConversationFlow(detail)}
+    </details>
   `;
 }
 
@@ -258,7 +267,7 @@ function installStyles(): void {
     .conversation-status-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.conversation-status-action{width:auto;padding:7px 10px;border:1px solid var(--border,#d4d4d8);border-radius:8px;background:transparent;color:inherit;cursor:pointer}.conversation-status-action:hover{border-color:currentColor}.conversation-status-action.danger{border-style:dashed}.conversation-status-action:disabled{opacity:.55;cursor:wait}
     .conversation-topic-panel{display:grid;gap:9px;padding:11px;margin-bottom:12px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:rgba(127,127,127,.04)}.conversation-topic-heading{display:flex;align-items:start;justify-content:space-between;gap:10px}.conversation-topic-heading>div,.conversation-topic-primary{display:grid;gap:3px}.conversation-topic-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}.conversation-topic-chip{display:inline-flex;padding:4px 7px;border:1px solid var(--border,#d4d4d8);border-radius:999px;font-size:11px}.conversation-topic-recent{margin:0}
     .temporary-instruction-panel{display:grid;gap:9px;padding:11px;margin-bottom:12px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:rgba(127,127,127,.04)}.temporary-instruction-heading{display:flex;align-items:start;justify-content:space-between;gap:10px}.temporary-instruction-heading>div{display:grid;gap:3px}.temporary-instruction-panel textarea{width:100%;min-height:74px;resize:vertical}.temporary-instruction-controls{display:grid;grid-template-columns:1fr 110px;gap:8px}.temporary-instruction-controls label{display:grid;gap:4px;font-size:11px}.temporary-instruction-controls select,.temporary-instruction-controls input{width:100%}.temporary-instruction-actions{display:flex;gap:8px}.temporary-instruction-actions button{width:auto;padding:7px 10px;border:1px solid var(--border,#d4d4d8);border-radius:8px;background:transparent;color:inherit;cursor:pointer}.temporary-instruction-actions .danger{border-style:dashed}.temporary-instruction-actions button:disabled{opacity:.55;cursor:wait}
-    .conversation-messages{display:grid;gap:8px;max-height:340px;overflow:auto}.conversation-message{max-width:86%;padding:9px 10px;border-radius:10px;background:rgba(127,127,127,.12)}.conversation-message.outgoing{justify-self:end}.conversation-message.incoming{justify-self:start}.conversation-message span{font-size:10px;font-weight:700;opacity:.7}.conversation-message p{margin:3px 0 4px;white-space:pre-wrap}
+    .conversation-messages{display:grid;gap:8px;max-height:340px;overflow:auto}.conversation-message-heading{margin:0 0 4px;font-size:14px;line-height:1.4}.conversation-secondary-section{margin-top:12px;border:1px solid var(--nb-border,#c8d8cd);border-radius:12px;padding:0 10px;background:var(--nb-surface,#fff)}.conversation-secondary-section>summary{min-height:44px;cursor:pointer;font-size:13px;font-weight:750;padding:12px 4px;line-height:1.4}.conversation-secondary-section>summary:focus-visible{outline:3px solid var(--nb-focus,#7565de);outline-offset:2px}.conversation-secondary-section[open]{padding-bottom:10px}.conversation-secondary-section .conversation-topic-panel,.conversation-secondary-section .conversation-flow-panel,.conversation-secondary-section .temporary-instruction-panel{margin:8px 0}.conversation-message{max-width:86%;padding:9px 10px;border-radius:10px;background:rgba(127,127,127,.12)}.conversation-message.outgoing{justify-self:end}.conversation-message.incoming{justify-self:start}.conversation-message span{font-size:10px;font-weight:700;opacity:.7}.conversation-message p{margin:3px 0 4px;white-space:pre-wrap}
     @media(max-width:760px){.conversation-layout{grid-template-columns:1fr}.conversation-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.temporary-instruction-controls{grid-template-columns:1fr}}
   `;
   document.head.append(style);

@@ -51,3 +51,10 @@ Status: **source review and first improvement**, not a finished screen-by-screen
 - **P2 (source review):** Distinguish zero synced conversations from an empty search. The toolbar now exposes a keyboard-friendly Clear filters button that restores all conversations.
 - Signed-out state no longer presents invented/irrelevant `0 shown · 0 total` counters.
 - Unit tests cover state labels and response guards; integration assertions protect wiring. Live browser session testing and screenshot-based UX audit remain pending.
+
+## Fourth targeted UX pass — conversation hierarchy
+
+- **P2 source-confirmed:** The detailed conversation view placed Topic Engine, Conversation Flow and temporary instruction before saved messages; the AI draft editor was mounted immediately before the message list, so advanced technical information appeared ahead of the primary task.
+- **Change:** The AI draft editor now appears before the saved message history through the existing `insertBefore(section, messages)` mounting behavior. The message history has a clear heading and accessible region. Temporary instructions and topic/progress diagnostics are grouped after the history in keyboard-operable disclosure sections. An active temporary instruction expands automatically.
+- All existing elements, behavioral selectors, syncing and Tinder send controls are retained. No edits to feature/API logic.
+- Browser screenshots and actual responsive design review remain pending. Static hierarchy tests and existing CI/browser synthetic checks are validation, not a full usability study.
