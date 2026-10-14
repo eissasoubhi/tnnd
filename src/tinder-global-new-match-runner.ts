@@ -255,9 +255,16 @@ export async function sendSingleWatchedMatch(
     // No automatic retry after a partial send, failure, tab interruption or
     // service worker restart. All existing first-message claim logs remain.
     const after = await readNewMatchState();
-    await saveNewMatchState(stopNewMatchObservation(after));
-    await chrome.storage.local.remove(OWNED_TAB);
-    await chrome.alarms.clear(ALARM);
+    // Preserve the prior disabled match-runner history (completed/failed IDs).
+    // Do not overwrite a newly started independent mode after Stop.
+    if (after.mode === "watcher" && after.userId === userId) {
+      await saveNewMatchState(current);
+      const owned = (await chrome.storage.local.get(OWNED_TAB))[OWNED_TAB] as
+        { userId?: string; tabId?: number } | undefined;
+      if (owned?.userId === userId && owned.tabId === tabId)
+        await chrome.storage.local.remove(OWNED_TAB);
+      await chrome.alarms.clear(ALARM);
+    }
   }
 }
 
