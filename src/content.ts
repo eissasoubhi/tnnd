@@ -803,6 +803,20 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   return true;
 });
 
+// Read-only snapshot for a watcher started after the sidebar was already
+// rendered. No message text, profile details or send permissions are exposed.
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (!message || typeof message !== "object"
+    || (message as { type?: string }).type !== "TNND_WATCHER_READ_UNREAD") return false;
+  if (sender.id !== chrome.runtime.id || !hasLiveExtensionContext()) {
+    sendResponse({ ok: false, error: "watcher_snapshot_not_authorized" });
+    return false;
+  }
+  const refs = discoverUnreadThreadCandidates().map(candidate => candidate.conversationRef);
+  sendResponse({ ok: true, refs });
+  return false;
+});
+
 let lastUnreadFingerprint = "";
 window.setInterval(() => {
   if (!hasLiveExtensionContext() || spaNavigationBusy || busy) return;
