@@ -23,8 +23,8 @@ test("unknown Tinder profiles show a neutral avatar and optional user-saved name
 });
 
 test("conversation flow appears on detail cards without creating a send action or exposing private text", () => {
-  assert.match(panel,/renderConversationFlow\\(detail\\)/);
+  assert.match(panel,/renderConversationFlow\(detail\)/);
   assert.match(panel,/aria-label="Conversation Flow"/);
   assert.match(panel,/Les réponses du match passent toujours en priorité/);
-  assert.match(client,/normalizeConversationFlow\\(input\\.conversationFlow\\)/);
+  assert.match(client,/normalizeConversationFlow\(input\.conversationFlow\)/);
 });
