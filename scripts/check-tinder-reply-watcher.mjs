@@ -149,5 +149,5 @@ test("watcher extends focus after distinct incoming/sent events, not an old proc
   assert.match(content,/reportExistingRunner\("incoming", "New reply in the current conversation\."\)/);
   assert.match(content,/phase !== "sent" && phase !== "incoming"/);
   assert.match(popup,/Following current conversation/);
-  assert.equal(JSON.parse(manifest).version,"0.2.22");
+  assert.equal(JSON.parse(manifest).version,"0.2.23");
 });
