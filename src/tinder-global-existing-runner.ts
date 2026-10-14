@@ -4,7 +4,7 @@ import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import { partitionExistingChatPermissions } from "./tinder-existing-chat-settings-policy";
 import { eligibleExistingThreadRefs } from "./tinder-global-existing-policy";
 import { reconcileExistingIndex, markThreadChecked, observeUnreadThreads, nextIndexedExistingThread, isExistingThreadIndex, type ExistingThreadIndex } from "./tinder-existing-thread-index";
-import { nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus, newlyVisibleUnread } from "./tinder-reply-watcher";
+import { nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus, newlyVisibleUnread, extendActiveConversation, shouldFollowActiveConversation } from "./tinder-reply-watcher";
 
 const KEY = "tnnd.globalExistingRunner.v2";
 const ALARM = "tnnd.globalExistingRunner.cycle";
@@ -18,7 +18,7 @@ async function getCadenceSeconds(): Promise<number> {
 const API = "http://127.0.0.1:4000";
 const LOG_LIMIT = 16;
 const WORK_INDEX_KEY = "tnnd.existingThreadWorkIndex.v1";
-const PHASES = ["starting", "checking", "loading", "waiting", "generating", "sending", "sent", "skipped", "error", "stopped"] as const;
+const PHASES = ["starting", "checking", "loading", "incoming", "waiting", "generating", "sending", "sent", "skipped", "error", "stopped"] as const;
 type RunnerPhase = typeof PHASES[number];
 
 interface RunnerActivity {
@@ -47,6 +47,8 @@ interface GlobalExistingRunnerState {
   skippedCount: number;
   errorCount: number;
   lastRef: string | null;
+  activeConversationRef: string | null;
+  activeConversationUntil: string | null;
   cursorRef: string | null;
   startedAt: string | null;
   lastActionAt: string | null;
@@ -58,7 +60,7 @@ const initial = (): GlobalExistingRunnerState => ({
   enabled: false, mode: "runner", pendingReplies: 0, visibleUnreadRefs: [], watcherStatus: "stopped", userId: null, tabId: null, tabMode: null, pausedOnStop: false,
   phase: "stopped", dwellSeconds: DEFAULT_CADENCE, phaseDetail: "Runner stopped.", currentLabel: null,
   eligibleCount: 0, visitedCount: 0, sentCount: 0, skippedCount: 0, errorCount: 0,
-  lastRef: null, cursorRef: null, startedAt: null, lastActionAt: null, lastVisitAt: null,
+  lastRef: null, activeConversationRef: null, activeConversationUntil: null, cursorRef: null, startedAt: null, lastActionAt: null, lastVisitAt: null,
   lastError: null, activity: []
 });
 let busy = false;
@@ -103,6 +105,8 @@ async function load(): Promise<GlobalExistingRunnerState> {
     ...initial(), ...value,
     activity: Array.isArray(value.activity) ? value.activity.slice(-LOG_LIMIT) : [],
     mode: value.mode === "watcher" ? "watcher" : "runner",
+    activeConversationRef: typeof value.activeConversationRef === "string" ? value.activeConversationRef : null,
+    activeConversationUntil: typeof value.activeConversationUntil === "string" ? value.activeConversationUntil : null,
     pendingReplies: typeof value.pendingReplies === "number" && value.pendingReplies >= 0 ? value.pendingReplies : 0,
     visibleUnreadRefs: Array.isArray(value.visibleUnreadRefs) ? value.visibleUnreadRefs.filter(ref => typeof ref === "string").slice(0, 100) : [],
     phase: PHASES.includes(value.phase as RunnerPhase) ? value.phase as RunnerPhase : "stopped"
@@ -199,6 +203,14 @@ async function tick(): Promise<void> {
     const state = await load();
     if (!state.enabled) return;
     const dwellSeconds = await getCadenceSeconds();
+    // The watcher must not abandon the chat just because other threads were
+    // queued while this match was answering. The follow lease is renewed on
+    // every new incoming message and send; it is independent of the reply delay.
+    if (state.mode === "watcher" && state.tabId !== null && state.activeConversationRef) {
+      const currentTab = await chrome.tabs.get(state.tabId);
+      if (shouldFollowActiveConversation(state,
+        tinderRefFromUrl(currentTab.url), [state.activeConversationRef])) return;
+    }
     if (state.lastVisitAt && Date.now() - Date.parse(state.lastVisitAt) < dwellSeconds * 1000) return;
     // A loaded old conversation can still be waiting for the configured cadence
     // or Gemini. Do not navigate away before that pending reply completes.
@@ -266,6 +278,11 @@ async function tick(): Promise<void> {
       "loading", `Opening ${label} · visit ${current.visitedCount + 1}…`, nextRef));
     const tab = await chrome.tabs.get(tabId);
     const expectedRef = tinderRefFromUrl(tab.url);
+    // An incoming message can arrive while the backend work list is fetched.
+    // Recheck the live focus immediately before any SPA navigation.
+    const beforeNavigation = await load();
+    if (beforeNavigation.mode === "watcher"
+      && shouldFollowActiveConversation(beforeNavigation, expectedRef, refs)) return;
     const result = await chrome.tabs.sendMessage(tabId, {
       type: "TNND_EXISTING_SPA_NAVIGATE", ref: nextRef, expectedRef
     }) as { ok?: boolean; error?: string; currentRef?: string };
@@ -290,7 +307,9 @@ async function tick(): Promise<void> {
     if (!latest.enabled) return;
     const checked = markThreadChecked(queued, nextRef);
     await saveWorkIndex(checked);
-    await save({ ...latest, pendingReplies: pendingWatchedReplies(checked), lastRef: nextRef, cursorRef: nextRef, currentLabel: label, visitedCount: latest.visitedCount + 1,
+    await save({ ...latest, pendingReplies: pendingWatchedReplies(checked), lastRef: nextRef,
+      ...(latest.mode === "watcher" ? extendActiveConversation(nextRef) : {}),
+      cursorRef: nextRef, currentLabel: label, visitedCount: latest.visitedCount + 1,
       lastVisitAt: new Date().toISOString() });
     // Reply sending remains solely in Tinder content script, guarded by both
     // server management and per-chat settings. Runner never calls Send.
@@ -350,7 +369,12 @@ export async function startExistingRunner(enablePreviouslyDisabled = false, mode
     const { refs } = await listEligible();
     if (!refs.length) throw new Error("No chat is enabled after checking current permissions.");
     let next = initial();
+    const selectedTab = await chrome.tabs.get(tab.id);
+    const selectedRef = mode === "watcher" ? tinderRefFromUrl(selectedTab.url) : null;
+    const activeRef = selectedRef && refs.includes(selectedRef) ? selectedRef : null;
     next = activity({ ...next, enabled: true, mode, userId: session.user.id, tabId: tab.id, tabMode: tab.mode,
+      ...(activeRef ? { lastRef: activeRef, currentLabel: selection.labels.get(activeRef) ?? `Thread ${activeRef.slice(0, 8)}`,
+        ...extendActiveConversation(activeRef) } : {}),
       eligibleCount: refs.length, dwellSeconds: await getCadenceSeconds(), startedAt: new Date().toISOString() },
       "starting", `${mode === "watcher" ? "Watching" : "Checking"} ${refs.length} eligible chats on ${tab.mode === "reused" ? "the existing" : "a newly opened"} Tinder tab.`);
     await save(next);
@@ -365,7 +389,7 @@ async function stop(reason = "Runner stopped. Tinder tab kept open."): Promise<G
   const state = await load();
   // Do not close a reused or newly created tab; it belongs to the user after
   // taking over the sole Tinder session. Never force logout by opening another.
-  const next = activity({ ...state, enabled: false, userId: null, pendingReplies: 0, pausedOnStop: state.tabId !== null }, "stopped", reason);
+  const next = activity({ ...state, enabled: false, userId: null, pendingReplies: 0, activeConversationRef: null, activeConversationUntil: null, pausedOnStop: state.tabId !== null }, "stopped", reason);
   await save(next);
   await chrome.alarms.clear(ALARM);
   return next;
@@ -376,13 +400,21 @@ async function contentEvent(sender: chrome.runtime.MessageSender, message: { pha
   const senderRef = tinderRefFromUrl(sender.url);
   if (!senderRef || state.lastRef !== senderRef || message.ref !== senderRef) return;
   if (typeof message.phase !== "string" || !PHASES.includes(message.phase as RunnerPhase)
-    || !["waiting", "generating", "sending", "sent", "skipped", "error"].includes(message.phase)) return;
+    || !["incoming", "waiting", "generating", "sending", "sent", "skipped", "error"].includes(message.phase)) return;
   const phase = message.phase as RunnerPhase;
   const detail = typeof message.detail === "string" ? message.detail.slice(0, 240) : phase;
   // Ignore duplicate status events, especially periodic "no incoming" scans.
-  if (state.phase === phase && state.phaseDetail === detail && phase !== "sent") return;
+  if (state.phase === phase && state.phaseDetail === detail && phase !== "sent" && phase !== "incoming") return;
   // Reject late navigation events from an older chat tab.
-  await save(activity(state, phase, detail, senderRef));
+  const fresh = await load();
+  if (!fresh.enabled || fresh.lastRef !== senderRef || fresh.tabId !== sender.tab.id) return;
+  const extendFocus = fresh.mode === "watcher" && (
+    phase === "incoming" || phase === "generating" || phase === "sending" || phase === "sent"
+    || (phase === "waiting" && detail.startsWith("Unanswered incoming message found"))
+  );
+  await save(activity({
+    ...fresh, ...(extendFocus ? extendActiveConversation(senderRef) : {})
+  }, phase, detail, senderRef));
 }
 chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === ALARM) void tick();

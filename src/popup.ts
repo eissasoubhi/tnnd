@@ -684,7 +684,7 @@ interface GlobalRunnerState {
   enabled: boolean;
   mode?: "runner" | "watcher";
   pendingReplies?: number;
-  watcherStatus?: "stopped" | "waiting" | "new-replies" | "processing" | "paused" | "disconnected";
+  watcherStatus?: "stopped" | "waiting" | "new-replies" | "following" | "processing" | "paused" | "disconnected";
   tabId: number | null;
   dwellSeconds: number;
   tabMode: "reused" | "created" | null;
@@ -707,7 +707,7 @@ interface GlobalExistingControlResponse {
   state?: GlobalRunnerState;
 }
 const runnerPhaseLabels: Record<string, string> = {
-  starting: "Starting", checking: "Checking", loading: "Opening chat",
+  starting: "Starting", checking: "Checking", loading: "Opening chat", incoming: "Incoming reply",
   waiting: "Waiting", generating: "Generating reply", sending: "Sending",
   sent: "Send action completed", skipped: "Skipped", error: "Error", stopped: "Stopped"
 };
@@ -729,6 +729,7 @@ function displayRunnerState(state: GlobalRunnerState): void {
   stopWatcher.disabled = !watcher;
   const statusLabel: Record<string, string> = {
     stopped: "Stopped", waiting: "Waiting for replies", "new-replies": "New replies found",
+    following: "Following current conversation",
     processing: "Processing a conversation", paused: "Paused", disconnected: "Disconnected"
   };
   const displayStatus = state.watcherStatus ?? (watcher ? "waiting" : "stopped");
