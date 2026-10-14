@@ -33,8 +33,8 @@ test("extension only runs indexed server-authorized refs and never stores messag
  const content=await readFile(new URL("../src/content.ts",import.meta.url),"utf8");
  assert.match(runner,/eligibleExistingThreadRefs\(records, summaries\)/);
  assert.match(runner,/reconcileExistingIndex\(await readWorkIndex\(session\.user\.id\)/);
- assert.match(runner,/nextIndexedExistingThread\(work\)/);
- assert.match(runner,/markThreadChecked\(work, nextRef\)/);
+ assert.match(runner,/state\.mode === "watcher" \? nextWatchedReply\(queued\) : nextIndexedExistingThread\(queued\)/);
+ assert.match(runner,/markThreadChecked\(queued, nextRef\)/);
  assert.match(content,/discoverUnreadThreadCandidates\(\)/);
  assert.match(content,/TNND_EXISTING_RUNNER_UNREAD/);
  assert.match(runner,/sender\.tab\?\.id !== state\.tabId/);
