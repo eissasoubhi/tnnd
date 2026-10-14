@@ -219,7 +219,7 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
         firstName: message.identity.firstName,
         age: message.identity.age,
         photoUrl: message.identity.photoUrl,
-        ...(verified ? {
+        ...(verified && observed ? {
           bio: observed.bio,
           relationshipGoal: observed.relationshipGoal,
           heightCm: observed.heightCm,
