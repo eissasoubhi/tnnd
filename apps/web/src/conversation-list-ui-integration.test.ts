@@ -8,7 +8,7 @@ test("conversation list gives a clear reset for search/status filters", () => {
   assert.match(source, /id="conversation-clear-filters"/);
   assert.match(source, /hasConversationFilters\(elements\.search\.value, elements\.filter\.value\)/);
   assert.match(source, /conversationEmptyState\(total, filtered\)/);
-  assert.match(source, /elements\.clearFilters\.addEventListener\("click"/);
+  assert.match(source, /clearFilters\.addEventListener\("click"/);
 });
 test("switching accounts invalidates old async list and detail results", () => {
   assert.match(source, /let refreshRequestSequence = 0/);
