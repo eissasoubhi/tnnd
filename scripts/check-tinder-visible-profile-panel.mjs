@@ -78,7 +78,7 @@ test("capture uses the existing authenticated backend sync; Web shows the saved 
   ].map(read));
   assert.match(content, /readVisibleTinderProfilePanel\(ref, identity\)/);
   assert.match(content, /TNND_SYNC_VISIBLE_MATCH_IDENTITY/);
-  assert.match(background, /verified \? \{/);
+  assert.match(background, /verified && observed \? \{/);
   assert.match(background, /prompts: observed\.prompts/);
   assert.match(apiContract, /prompts\?: Array/);
   assert.match(apiStore, /jsonb_set\(EXCLUDED\.source_capture/);
