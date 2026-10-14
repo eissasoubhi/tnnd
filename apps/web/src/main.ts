@@ -127,7 +127,18 @@ app.innerHTML = `
               <small>Examples fill the field without saving. You can edit the text before choosing “Save preferences”.</small>
             </div>
           </div>
-          <label>Disclosure<select id="disclosure-strategy">${options(disclosureStrategies)}</select></label>
+          <div class="dating-goal-editor">
+            <h3>Match screening · Optional rules</h3>
+            <p class="subtle">A Tinder “Long-term partner” label does not prove marriage intent. Clarify what the match wants first. Automation only pauses on a clearly confirmed answer when you enable the rule.</p>
+            <label><input id="pause-on-marriage" type="checkbox"> Pause after explicit confirmation of marriage intent</label>
+            <label for="max-match-height">Pause if verified height exceeds (cm, optional)</label>
+            <input id="max-match-height" type="number" min="100" max="230" step="1" placeholder="e.g. 170">
+            <label for="marriage-expressions">Expressions suggesting marriage (comma-separated)</label>
+            <input id="marriage-expressions" maxlength="1600" placeholder="mariage, se marier">
+            <label for="casual-expressions">Expressions suggesting casual intentions (comma-separated)</label>
+            <input id="casual-expressions" maxlength="1600" placeholder="plan cul, one night stand">
+            <p class="subtle">Custom expressions suggest an intention; they never auto-pause a match. Do not infer height or intentions from photographs.</p>
+          </div><label>Disclosure<select id="disclosure-strategy">${options(disclosureStrategies)}</select></label>
           <label>Formality<select id="text-formality"><option value="very-casual">very-casual</option><option value="casual">casual</option><option value="neutral">neutral</option></select></label>
           <label>Capitalization<select id="capitalization"><option value="relaxed">relaxed</option><option value="standard">standard</option><option value="lowercase-heavy">lowercase-heavy</option></select></label>
           <label>Emoji frequency<select id="emoji-frequency"><option value="none">none</option><option value="low">low</option><option value="medium">medium</option></select></label>
@@ -191,6 +202,10 @@ const preferencesSave = document.querySelector<HTMLButtonElement>("#preferences-
 const datingGoal = document.querySelector<HTMLSelectElement>("#dating-goal");
 const datingGoalDetails = document.querySelector<HTMLTextAreaElement>("#dating-goal-details");
 const targetCities = document.querySelector<HTMLInputElement>("#target-cities");
+const pauseOnMarriage = document.querySelector<HTMLInputElement>("#pause-on-marriage");
+const maxMatchHeight = document.querySelector<HTMLInputElement>("#max-match-height");
+const marriageExpressions = document.querySelector<HTMLInputElement>("#marriage-expressions");
+const casualExpressions = document.querySelector<HTMLInputElement>("#casual-expressions");
 const disclosureStrategy = document.querySelector<HTMLSelectElement>("#disclosure-strategy");
 const textFormality = document.querySelector<HTMLSelectElement>("#text-formality");
 const capitalization = document.querySelector<HTMLSelectElement>("#capitalization");
@@ -302,7 +317,7 @@ async function refreshProfile(): Promise<void> {
 }
 
 function refreshPreferences(profile: ImportedProfile | null): void {
-  const controls = [datingGoal, datingGoalDetails, targetCities, disclosureStrategy, textFormality, capitalization, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, fragmentStyle, grammarStyle, directness, questionFrequency, teasingStyle, humorStyle, doubleTexting, frenchStyle, darijaStyle, englishStyle, matchProfileRetentionDays, ...Object.values(adaptiveCheckboxes), preferencesSave];
+  const controls = [datingGoal, datingGoalDetails, targetCities, pauseOnMarriage, maxMatchHeight, marriageExpressions, casualExpressions, disclosureStrategy, textFormality, capitalization, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, fragmentStyle, grammarStyle, directness, questionFrequency, teasingStyle, humorStyle, doubleTexting, frenchStyle, darijaStyle, englishStyle, matchProfileRetentionDays, ...Object.values(adaptiveCheckboxes), preferencesSave];
   controls.forEach((control) => { if (control) control.disabled = !profile; });
   if (!profile) {
     if (preferencesStatus) preferencesStatus.textContent = "Import a profile first";
@@ -313,6 +328,10 @@ function refreshPreferences(profile: ImportedProfile | null): void {
   if (datingGoal) datingGoal.value = preferences.datingGoal;
   if (datingGoalDetails) datingGoalDetails.value = preferences.datingGoalDetails ?? "";
   if (targetCities) targetCities.value = preferences.targetCities ?? "";
+  if (pauseOnMarriage) pauseOnMarriage.checked = preferences.pauseOnConfirmedMarriage === true;
+  if (maxMatchHeight) maxMatchHeight.value = preferences.maximumHeightCm ?? "";
+  if (marriageExpressions) marriageExpressions.value = preferences.marriageExpressions ?? "";
+  if (casualExpressions) casualExpressions.value = preferences.casualExpressions ?? "";
   if (disclosureStrategy) disclosureStrategy.value = preferences.disclosureStrategy;
   if (textFormality) textFormality.value = preferences.formality;
   if (capitalization) capitalization.value = preferences.capitalization;
@@ -412,11 +431,15 @@ document.querySelectorAll<HTMLButtonElement>("[data-goal-example]").forEach(butt
 });
 
 preferencesSave?.addEventListener("click", async () => {
-  if (!currentProfile || !datingGoal || !datingGoalDetails || !targetCities || !disclosureStrategy || !textFormality || !capitalization || !emojiFrequency || !abbreviations || !messageLength || !punctuationDensity || !slangLevel || !fragmentStyle || !grammarStyle || !directness || !questionFrequency || !teasingStyle || !humorStyle || !doubleTexting || !frenchStyle || !darijaStyle || !englishStyle || !matchProfileRetentionDays) return;
+  if (!currentProfile || !datingGoal || !datingGoalDetails || !targetCities || !pauseOnMarriage || !maxMatchHeight || !marriageExpressions || !casualExpressions || !disclosureStrategy || !textFormality || !capitalization || !emojiFrequency || !abbreviations || !messageLength || !punctuationDensity || !slangLevel || !fragmentStyle || !grammarStyle || !directness || !questionFrequency || !teasingStyle || !humorStyle || !doubleTexting || !frenchStyle || !darijaStyle || !englishStyle || !matchProfileRetentionDays) return;
   const updated = writeEditablePreferences(currentProfile, {
     datingGoal: datingGoal.value,
     datingGoalDetails: datingGoalDetails.value,
     targetCities: targetCities.value,
+    pauseOnConfirmedMarriage: pauseOnMarriage.checked,
+    maximumHeightCm: maxMatchHeight.value,
+    marriageExpressions: marriageExpressions.value,
+    casualExpressions: casualExpressions.value,
     disclosureStrategy: disclosureStrategy.value,
     formality: textFormality.value,
     capitalization: capitalization.value,
