@@ -845,3 +845,27 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
     background: var(--nb-surface);
   }
 }
+
+/*
+ * UX phase 1 — single-purpose section navigation.
+ * All feature panels stay mounted but only the current section is visible.
+ * This replaces the previous full-document scroll layout without changing
+ * the Neo Bento tokens, form controllers, or responsive rail.
+ */
+#app .shell[data-workspace-view] .workspace-section[hidden] { display: none !important; }
+#app .shell[data-workspace-view]:not([data-workspace-view="overview"]) .metrics { display: none; }
+#app .shell[data-workspace-view]:not([data-workspace-view="overview"]) .grid { grid-row: 2; }
+#app .shell[data-workspace-view]:not([data-workspace-view="overview"]) .topbar {
+  min-height: 128px;
+  padding: 24px clamp(22px, 3vw, 34px);
+}
+#app .shell[data-workspace-view]:not([data-workspace-view="overview"]) .topbar h1 {
+  font-size: clamp(26px, 2.6vw, 36px);
+  margin: 6px 0 8px;
+}
+#app .shell[data-workspace-view] .workspace-section-heading { display: none; }
+#app .shell[data-workspace-view] .workspace-section { margin-top: 0; }
+#app .shell[data-workspace-view] .workspace-section-panels { align-content: start; }
+@media (max-width: 840px) {
+  #app .shell[data-workspace-view]:not([data-workspace-view="overview"]) .topbar { min-height: 116px; }
+}

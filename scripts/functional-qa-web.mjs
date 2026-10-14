@@ -370,16 +370,35 @@ async function main() {
     for (const width of [1440, 390]) {
       await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
       await sleep(180);
-      const metrics = await cdp.evaluate(`(() => ({
-        width: innerWidth,
-        overflow: Math.max(0, document.documentElement.scrollWidth - innerWidth),
-        buttons: [...document.querySelectorAll("button")].filter(b=>b.getClientRects().length && !b.disabled).length,
-        clipped: [...document.querySelectorAll("button")].filter(b=>b.getClientRects().length && !b.disabled && (b.getBoundingClientRect().left < -2 || b.getBoundingClientRect().right > innerWidth + 2)).length
-      }))()`);
-      assert.ok(metrics.overflow <= 2 && metrics.clipped === 0, width + "px screen horizontal overflow/clipped buttons: " + JSON.stringify(metrics));
-      results.push({ name: "No horizontal overflow or clipped buttons at " + width + "px", passed: true, ...metrics });
-      const png = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
-      await writeFile(join(output, "signed-in-" + width + ".png"), Buffer.from(png.data, "base64"));
+      // Capture actual section-by-section screen states. A long all-panels
+      // screenshot can otherwise hide problems in focused navigation.
+      for (const view of ["overview", "conversations", "identity", "memories", "actions", "analytics", "settings"]) {
+        const state = await cdp.evaluate(`(() => {
+          const link = document.querySelector('.workspace-nav a[href="#workspace-${view === "overview" ? "overview" : view + "-section"}"]');
+          link?.click();
+          const activeSections = [...document.querySelectorAll("[data-workspace-section]")].filter(section => !section.hidden);
+          return {
+            current: document.querySelector(".shell")?.dataset.workspaceView,
+            active: link?.getAttribute("aria-current"),
+            activeSections: activeSections.map(section => section.dataset.workspaceSection),
+            title: document.querySelector("#workspace-title")?.textContent
+          };
+        })()`);
+        assert.equal(state.current, view, "Wrong visible workspace: " + JSON.stringify(state));
+        assert.equal(state.active, "location", "Active navigation marker missing in " + view);
+        assert.deepEqual(state.activeSections, [view], "More than one visible section in " + view);
+        await sleep(60);
+        const metrics = await cdp.evaluate(`(() => ({
+          width: innerWidth,
+          overflow: Math.max(0, document.documentElement.scrollWidth - innerWidth),
+          buttons: [...document.querySelectorAll("button")].filter(b=>b.getClientRects().length && !b.disabled).length,
+          clipped: [...document.querySelectorAll("button")].filter(b=>b.getClientRects().length && !b.disabled && (b.getBoundingClientRect().left < -2 || b.getBoundingClientRect().right > innerWidth + 2)).length
+        }))()`);
+        assert.ok(metrics.overflow <= 2 && metrics.clipped === 0, width + "px " + view + " screen overflow: " + JSON.stringify(metrics));
+        results.push({ name: "Focused " + view + " has no horizontal overflow at " + width + "px", passed: true, ...metrics });
+        const png = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
+        await writeFile(join(output, "signed-in-" + view + "-" + width + ".png"), Buffer.from(png.data, "base64"));
+      }
     }
 
     const targets = await cdp.send("Target.getTargets");

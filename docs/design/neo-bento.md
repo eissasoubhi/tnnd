@@ -150,3 +150,19 @@ extension.
 - **After `git pull` restart Web**, e.g. `docker compose up -d --force-recreate
   web`, and hard-reload the page. The displayed commit is the version that Vite
   started with, not a live check against GitHub.
+
+## UX visual review of the October 15 user-provided full-page screenshot — phase 1
+
+The six-page capture shows Overview, Conversations, Identity, Memories, Action Center,
+Analytics and Settings consecutively in one long document. This makes routine
+navigation depend on scrolling, repeats titles, and places infrequent technical
+controls along the main reading path. The first improvement returns to the
+previously approved **section-first** information architecture: each nav entry
+shows only its own workspace section, while keeping *all* panels and unsaved form
+values mounted in the DOM. Overview alone retains the global metrics; the active
+section title is shown once in the page header. Deep links and browser history
+activate the owning section, including lazily mounted feature panels.
+
+This phase changes navigation and hierarchy only. It does not validate all
+screens visually or redesign the existing complex settings and management forms.
+Actual browser screenshots, responsive review and user testing remain required.
