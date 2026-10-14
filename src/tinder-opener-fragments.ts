@@ -8,14 +8,14 @@ const UNVERIFIED_PROFILE_REACTION =
 const DEFAULT_FRAGMENTS = ["Salut", "Bien ou bien ?"] as const;
 
 function isApprovedShortGreeting(value: string): boolean {
-  const text = normalizedForRules(value).replace(/\\s+/g, " ").trim();
+  const text = normalizedForRules(value).replace(/\s+/g, " ").trim();
   // An opener starts with one of the user's four simple formats,
   // even if Gemini generates an invented hook or a long introductory line.
-  return /^(?:salut|hello|hi|salut cv\\s*\\?)!?$/i.test(text);
+  return /^(?:salut|hello|hi|salut cv\s*\?)!?$/i.test(text);
 }
 
 function looksLikeOtherGreeting(value: string): boolean {
-  return /^(?:hey|coucou|bonjour|bonsoir|salam|yo|slt|hello|hi|salut)\\b/i.test(normalizedForRules(value));
+  return /^(?:hey|coucou|bonjour|bonsoir|salam|yo|slt|hello|hi|salut)\b/i.test(normalizedForRules(value));
 }
 
 function normalizedForRules(text: string): string {
