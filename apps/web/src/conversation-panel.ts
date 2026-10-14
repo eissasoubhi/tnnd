@@ -53,6 +53,7 @@ function renderList(items: ConversationListItem[], total: number, filtered: bool
       </span>
       <span class="conversation-row-meta">
         <span class="pill">${escapeHtml(item.status)}</span>
+        ${item.status === "active" && item.lastMessageDirection === "incoming" ? '<span class="pill">Reply waiting</span>' : ""}
         <small>${escapeHtml(formatDate(item.lastMessageAt))}</small>
       </span>
     </button>
@@ -354,11 +355,21 @@ let detailRequestSequence = 0;
 let refreshRequestSequence = 0;
 let displayedSessionToken: string | null = null;
 
+/** TNND Web sorting uses synchronized direction, not Tinder sidebar position. */
+export function prioritizeWaitingReplies(items: readonly ConversationListItem[]): ConversationListItem[] {
+  const priority = (item: ConversationListItem): number => item.status === "active"
+    && item.lastMessageDirection === "incoming" ? 2 : item.status === "waiting-for-user" ? 1 : 0;
+  return [...items].sort((a, b) =>
+    priority(b) - priority(a)
+    || (Date.parse(b.lastMessageAt ?? "") || 0) - (Date.parse(a.lastMessageAt ?? "") || 0)
+    || a.id.localeCompare(b.id));
+}
+
 function filteredItems(): ConversationListItem[] {
-  return filterConversationSummaries(cachedItems, {
+  return prioritizeWaitingReplies(filterConversationSummaries(cachedItems, {
     status: (elements?.filter.value ?? "all") as ConversationStatus | "all",
     query: elements?.search.value ?? ""
-  });
+  }));
 }
 
 function bindRows(items: ConversationListItem[]): void {
