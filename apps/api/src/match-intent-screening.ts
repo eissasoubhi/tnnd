@@ -81,7 +81,10 @@ export function assessMatchIntent(
   }
   const knownProfileIntent = intentFromProfile(profile?.relationshipGoal);
   const recent = messages.slice(-80);
-  const lastIncomingIndex = recent.findLastIndex(m => m.direction === "incoming" && m.text.trim());
+  let lastIncomingIndex = -1;
+  for (let index = recent.length - 1; index >= 0; index--) {
+    if (recent[index].direction === "incoming" && recent[index].text.trim()) { lastIncomingIndex = index; break; }
+  }
   const incoming = lastIncomingIndex >= 0 ? recent[lastIncomingIndex].text : "";
   const outgoingBefore = lastIncomingIndex >= 0
     ? recent.slice(0, lastIncomingIndex).filter(m => m.direction === "outgoing").slice(-10) : [];
