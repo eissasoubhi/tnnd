@@ -22,6 +22,28 @@ import { hasReachedFirstMessageDailyLimit } from "./tinder-first-message-daily-l
 const AUTO_STATE_KEY = "tnnd.autoState";
 const FIRST_MESSAGE_CLAIMS_KEY = "tnnd.firstMessageAttempts.v1";
 const pendingFirstMessageClaims = new Set<string>();
+/** Backed by authenticated server facts and saved user opt-in rules.
+ * Never let a profile guess or generic long-term label trigger a pause.
+ */
+async function matchScreeningAllowsSend(conversationId: string): Promise<boolean> {
+  const session = await getBackendSession();
+  if (!session) return false;
+  const api = `http://127.0.0.1:4000/api/v1/conversations/${encodeURIComponent(conversationId)}`;
+  const detail = await fetch(api, { headers: { authorization: `Bearer ${session.token}` } });
+  if (!detail.ok) return false;
+  const json = await detail.json() as { conversation?: { matchScreening?: { action?: string } } };
+  const action = json.conversation?.matchScreening?.action;
+  if (action !== "continue" && action !== "clarify" && action !== "pause") return false;
+  if (action !== "pause") return true;
+  // Persist the user-authorized pause, never bypass manual/permission gates.
+  await fetch(api, {
+    method: "PATCH",
+    headers: { authorization: `Bearer ${session.token}`, "content-type": "application/json" },
+    body: JSON.stringify({ status: "paused" })
+  }).catch(() => null);
+  return false;
+}
+
 
 function normalizeFirstMessageClaims(value: unknown): Record<string, number> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -54,7 +76,8 @@ async function checkFirstMessagePermission(ref: string, ignoreOwnClaim = false):
   const payload = await response.json() as { conversation?: { messages?: unknown[] } };
   if (!Array.isArray(payload?.conversation?.messages)) return { ok: true, allowed: false, reason: "unknown_backend_history" };
   const savedMessageCount = payload.conversation.messages.length;
-  return { ok: true, allowed: savedMessageCount === 0, savedMessageCount,
+  const screeningAllows = savedMessageCount === 0 && await matchScreeningAllowsSend(backend.conversationId);
+  return { ok: true, allowed: savedMessageCount === 0 && screeningAllows, savedMessageCount,
     ...(savedMessageCount ? { reason: "backend_history_present" } : {}) };
 }
 
@@ -276,7 +299,8 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
         return { ok: true, allowed: false };
       }
       const backend = await loadTinderConversationManagement(ref);
-      return { ok: true, allowed: mayAutomaticallySendToTinder(backend) };
+      return { ok: true, allowed: mayAutomaticallySendToTinder(backend)
+        && Boolean(backend.conversationId) && await matchScreeningAllowsSend(backend.conversationId!) };
     })().then(sendResponse).catch(() => sendResponse({ ok: true, allowed: false }));
     return true;
   }
