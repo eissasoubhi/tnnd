@@ -8,6 +8,7 @@ import { nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus, newlyVis
 import { emptyWatchedMatches, isWatchedMatches, observeWatchedMatches, type WatchedMatches } from "./tinder-match-watcher";
 import { sendSingleWatchedMatch } from "./tinder-global-new-match-runner";
 import { nextWatcherMatchAction, nextMatchOpener, type WatcherMatchPhase } from "./tinder-watcher-match-cycle";
+import { firstMessageDailyLimit, hasReachedFirstMessageDailyLimit } from "./tinder-first-message-daily-limit";
 
 const KEY = "tnnd.globalExistingRunner.v2";
 const ALARM = "tnnd.globalExistingRunner.cycle";
@@ -350,6 +351,21 @@ async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void>
     await readOpenerAttempts(session.user.id));
   if (!ref) {
     await returnWatcherToMessages(after, "No eligible unattempted match tiles; watching Messages.");
+    return;
+  }
+  // Do not burn a match's one-shot watcher claim when today's daily opener
+  // quota is already exhausted. It remains eligible on a later UTC day.
+  const currentConfig = await getConfig();
+  const journals = await chrome.storage.local.get([
+    "tnnd.newMatchDailyAttempts.v1", "tnnd.firstMessageAttempts.v1"
+  ]);
+  const daily = journals["tnnd.newMatchDailyAttempts.v1"] as { date?: string; refs?: string[] } | undefined;
+  const claims = journals["tnnd.firstMessageAttempts.v1"] as Record<string, number> | undefined;
+  const today = new Date().toISOString().slice(0, 10);
+  const dailyUsed = daily?.date === today && Array.isArray(daily.refs) ? daily.refs.length : 0;
+  const limit = firstMessageDailyLimit(currentConfig.automation.maxFirstMessagesPerDay);
+  if (dailyUsed >= limit || hasReachedFirstMessageDailyLimit(claims ?? {}, limit)) {
+    await returnWatcherToMessages(after, `Daily first-message quota (${limit}) reached; retry next UTC day without claiming a match.`);
     return;
   }
   // Explicit opt-in, verified Matches tile, no incoming reply and same account.
