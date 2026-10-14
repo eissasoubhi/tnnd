@@ -46,7 +46,7 @@ test("one-tab guarded round-trip and shared daily send journal remain enforced",
    "src/tinder-global-new-match-runner.ts","src/tinder-new-match-background.ts",
    "src/popup.ts","public/popup.html"
  ].map(rd));
- assert.match(runner,/TNND_WATCHER_AUTO_START/);
+ assert.match(runner,/TNND_GLOBAL_WATCHER_AUTO_START/);
  assert.match(runner,/autoOpenersEnabled/);
  assert.match(runner,/lastIncomingAt/);
  assert.match(runner,/scanMatchesCycle/);
