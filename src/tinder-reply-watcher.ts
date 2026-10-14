@@ -33,18 +33,22 @@ export function pendingWatchedReplies(state: ExistingThreadIndex): number {
 }
 
 export type WatcherDisplayStatus = "stopped" | "waiting" | "new-replies"
-  | "processing" | "paused" | "disconnected";
+  | "following" | "processing" | "paused" | "disconnected";
 export function watcherDisplayStatus(state: {
   enabled: boolean;
   pausedOnStop: boolean;
   phase: string;
   phaseDetail: string;
   pendingReplies: number;
+  activeConversationRef?: string | null;
+  activeConversationUntil?: string | null;
 }): WatcherDisplayStatus {
   if (state.phase === "error" && /receiver|missing|disconnect|tab|navigate/i.test(state.phaseDetail)) return "disconnected";
   if (!state.enabled) return state.pausedOnStop ? "paused" : "stopped";
   if (state.phase === "error" || /tab.*disconnect|tab.*navigated|receiver.*missing/i.test(state.phaseDetail)) return "disconnected";
-  if (["loading", "generating", "sending", "sent"].includes(state.phase)) return "processing";
+  if (["loading", "generating", "sending"].includes(state.phase)) return "processing";
+  if (state.activeConversationRef && state.activeConversationUntil
+    && Date.parse(state.activeConversationUntil) > Date.now()) return "following";
   return state.pendingReplies > 0 ? "new-replies" : "waiting";
 }
 
