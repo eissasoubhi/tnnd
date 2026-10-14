@@ -128,7 +128,8 @@ async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[];
       id: typeof record.id === "string" ? record.id : "",
       status: typeof record.status === "string" ? record.status : "",
       lastMessageAt: typeof record.lastMessageAt === "string" ? record.lastMessageAt : null,
-      lastMessageDirection: record.lastMessageDirection === "incoming" || record.lastMessageDirection === "outgoing" ? record.lastMessageDirection : null,
+      lastMessageDirection: record.lastMessageDirection === "incoming" || record.lastMessageDirection === "outgoing"
+        ? record.lastMessageDirection as "incoming" | "outgoing" : null,
       pendingHumanActions: typeof record.pendingHumanActions === "number" ? record.pendingHumanActions : 0,
       displayName: typeof record.displayName === "string" ? record.displayName : ""
     }));
