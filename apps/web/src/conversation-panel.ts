@@ -155,29 +155,28 @@ function renderConversationFlow(detail: ConversationDetail): string {
     // An older API response does not contain conversationFlow. Never hide
     // the panel silently, otherwise a freshly updated Web looks broken.
     return '<section class="conversation-flow-panel" aria-label="Conversation Flow">'
-      + '<div class="conversation-topic-heading"><strong>Conversation Flow</strong><span class="pill">Indisponible</span></div>'
-      + '<p class="subtle">Les étapes ne sont pas disponibles pour cette conversation. Vérifie que l’API TNND et le Web sont tous les deux à jour (version 0.2.18 ou supérieure), puis redémarre l’API et actualise la page.</p>'
-      + '<p class="subtle">Si le problème continue, contrôle la réponse de GET /api/v1/conversations/{id} : elle doit contenir le champ conversationFlow.</p>'
+      + '<div class="conversation-topic-heading"><strong>Conversation Flow</strong><span class="pill">Unavailable</span></div>'
+      + '<p class="subtle">Conversation stages could not be loaded. Refresh this page. If they are still missing, update both TNND Web and API to version 0.2.18 or later.</p>'
       + '</section>';
   }
   const labels: Record<string, string> = {
-    greeting: "Salutation", "check-in": "Prendre des nouvelles",
-    location: "Ville / origine", occupation: "Quotidien / travail",
-    interests: "Centres d'intérêt", "free-conversation": "Discussion libre"
+    greeting: "Greeting", "check-in": "Check-in",
+    location: "Location / background", occupation: "Daily life / work",
+    interests: "Interests", "free-conversation": "Open conversation"
   };
   const steps = flow.stages.map(step => {
     const status = step.status === "covered" ? "✓" : step.status === "next" ? "→" : "·";
-    const extra = step.reason === "known" || step.reason === "mentioned" ? " (déjà connu)" : step.reason === "asked" ? " (déjà abordé)" : "";
+    const extra = step.reason === "known" || step.reason === "mentioned" ? " (already known)" : step.reason === "asked" ? " (already discussed)" : "";
     return '<li class="conversation-flow-step" data-flow-status="' + escapeHtml(step.status) + '"><span aria-hidden="true">' + status + '</span><span>' + escapeHtml(labels[step.id] ?? step.id) + escapeHtml(extra) + '</span></li>';
   }).join("");
   const known = flow.known.length
     ? flow.known.map(fact => '<span class="conversation-topic-chip">' + escapeHtml(fact.key) + ' : ' + escapeHtml(fact.value) + '</span>').join("")
-    : '<span class="subtle">Aucune information confirmée.</span>';
-  return '<section class="conversation-flow-panel" aria-label="Conversation Flow"><div class="conversation-topic-heading"><strong>Conversation Flow</strong><span class="pill">Adaptatif</span></div>'
-    + '<p class="subtle">Progression indicative, pas un questionnaire. Les réponses du match passent toujours en priorité.</p>'
+    : '<span class="subtle">No confirmed information yet.</span>';
+  return '<section class="conversation-flow-panel" aria-label="Conversation Flow"><div class="conversation-topic-heading"><strong>Conversation Flow</strong><span class="pill">Adaptive</span></div>'
+    + '<p class="subtle">This is a guide, not a script. What the match says always takes priority.</p>'
     + '<ol class="conversation-flow-steps">' + steps + '</ol>'
-    + (flow.respondToLatestFirst ? '<p class="subtle">Le match a posé une question : y répondre avant de changer de sujet.</p>' : '')
-    + '<p class="subtle">Informations connues du match</p><div class="conversation-topic-chips">' + known + '</div></section>';
+    + (flow.respondToLatestFirst ? '<p class="subtle">The match asked a question. Answer it before changing topics.</p>' : '')
+    + '<p class="subtle">Known details about the match</p><div class="conversation-topic-chips">' + known + '</div></section>';
 }
 
 function renderMatchScreening(detail: ConversationDetail): string {
@@ -308,7 +307,6 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
       <span class="pill" id="conversation-panel-status">Sign in required</span>
     </div>
     <p class="subtle">Synced Tinder conversations from the backend. Select one to inspect its current status, topic and message history.</p>
-    <div id="conversation-operational-summary" class="conversation-stats"></div>
     <div class="conversation-toolbar" role="search" aria-label="Find conversations">
       <label class="conversation-search-label" for="conversation-search">Search
         <input id="conversation-search" type="search" autocomplete="off" placeholder="Name or topic…" aria-label="Search conversations by name or topic" />
@@ -334,6 +332,7 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
       <div id="conversation-list" class="conversation-list" aria-label="Conversations"></div>
       <div id="conversation-detail" class="conversation-detail"><p class="subtle">Select a conversation.</p></div>
     </div>
+    <div id="conversation-operational-summary" class="conversation-stats" aria-label="Conversation status counts"></div>
   `;
   grid.prepend(panel);
   return {

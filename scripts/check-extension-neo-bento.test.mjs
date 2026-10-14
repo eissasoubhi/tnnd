@@ -52,3 +52,15 @@ test("popup reaches its primary tasks in one jump and keeps advanced explanation
   assert.match(popup,/:focus-visible/);
   assert.doesNotMatch(popup,/automatically delivered all Tinder messages/);
 });
+
+test("popup keeps automation prerequisites readable without hiding runner controls", () => {
+  const popup = read("public/popup.html");
+  assert.match(popup, /Enable automatic replies in Settings first/);
+  assert.match(popup, /<details class="runner-help"><summary>How existing chat automation works<\/summary>/);
+  assert.match(popup, /id="startGlobalExisting"/);
+  assert.match(popup, /id="stopGlobalExisting"/);
+  assert.match(css, /\.runner-help summary \{/);
+  assert.match(css, /#chatEditor > \.card \{/);
+  assert.match(css, /\.runner-status-panel \{/);
+  assert.match(css, /\.tnnd-advanced-tools > summary \{/);
+});

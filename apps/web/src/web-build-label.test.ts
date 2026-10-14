@@ -75,7 +75,7 @@ test("Web UI renders a single subtle badge, and Vite injects the actual checkout
   const styles = readFileSync(join(webRoot, "src", "neo-bento.css"), "utf8");
   const vite = readFileSync(join(webRoot, "vite.config.ts"), "utf8");
   assert.match(main, /buildBadge\.textContent = build\.label/);
-  assert.match(main, /\.workspace-nav"\)\?\.prepend\(buildBadge\)/);
+  assert.match(main, /\.workspace-nav"\)\?\.append\(buildBadge\)/);
   assert.match(styles, /#app \.workspace-nav \.workspace-build-version/);
   assert.match(vite, /__TNND_WEB_VERSION__: JSON\.stringify\(webVersion\)/);
   assert.match(vite, /__TNND_WEB_COMMIT__: JSON\.stringify\(webCommit\)/);
