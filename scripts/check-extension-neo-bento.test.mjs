@@ -38,3 +38,17 @@ test("extension view behavior IDs are preserved", () => {
   assert.ok(read("public/options.html").includes('id="settings-form"'));
   assert.ok(read("public/preview.html").includes('id="generateMatrix"'));
 });
+
+test("popup reaches its primary tasks in one jump and keeps advanced explanations optional",()=>{
+  const popup=read("public/popup.html");
+  assert.match(popup,/aria-label="Quick access to Tinder tasks"/);
+  for(const id of ["globalExistingChatCard","globalNewMatchCard","chatEditor"]){
+    assert.match(popup,new RegExp('href="#'+id+'"'));
+    assert.match(popup,new RegExp('id="'+id+'"'));
+  }
+  assert.match(popup,/class="runner-help"/);
+  assert.match(popup,/Find waiting replies first; watch for new incoming messages/);
+  assert.match(popup,/min-height:44px/);
+  assert.match(popup,/:focus-visible/);
+  assert.doesNotMatch(popup,/automatically delivered all Tinder messages/);
+});
