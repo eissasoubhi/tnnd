@@ -403,7 +403,7 @@ async function observeRuntimeReadMode(): Promise<void> {
   }
 }
 
-let lastWatchedIncomingEvidence = "";
+const lastWatchedIncomingEvidence = new Map<string, string>();
 let lastExistingRunnerEventKey = "";
 let lastExistingRunnerEventAt = 0;
 /** Telemetry contains only operational metadata, never Tinder message text. */
@@ -468,9 +468,12 @@ async function scan(): Promise<void> {
     // Signal each distinct verified incoming bubble from the OPEN chat, even
     // if the scheduled reply delay has not elapsed. Only a keyed operational
     // notification is sent, never message text or its fingerprint.
-    const incomingEvidence = `${conversationRef}\u001f${snapshot.latestIncomingKey}`;
-    if (lastWatchedIncomingEvidence !== incomingEvidence) {
-      lastWatchedIncomingEvidence = incomingEvidence;
+    const incomingEvidence = snapshot.latestIncomingKey;
+    if (lastWatchedIncomingEvidence.get(conversationRef) !== incomingEvidence) {
+      lastWatchedIncomingEvidence.set(conversationRef, incomingEvidence);
+      if (lastWatchedIncomingEvidence.size > 100) {
+        lastWatchedIncomingEvidence.delete(lastWatchedIncomingEvidence.keys().next().value!);
+      }
       reportExistingRunner("incoming", "New reply in the current conversation.");
     }
     if (!await backendAllowsAutomaticReply(conversationRef)) {
