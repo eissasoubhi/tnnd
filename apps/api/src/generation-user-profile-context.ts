@@ -91,9 +91,12 @@ export async function loadGenerationProfile(userId: string): Promise<LoadedGener
   const avoidedTopics = Array.isArray(profile.topicEngine?.avoidedTopics)
     ? profile.topicEngine.avoidedTopics.filter((v): v is string => typeof v === "string" && v.length <= 80).slice(0, 50)
     : [];
+  const targetCities = Array.isArray(profile.datingIntent?.targetCities)
+    ? profile.datingIntent.targetCities.filter((city): city is string => typeof city === "string" && city.length >= 2 && city.length <= 80).slice(0, 20) : [];
   const userProfile: GenerationUserProfileContext = {
     ...(compactIdentityForGeneration(profile.identity) ? { identity: compactIdentityForGeneration(profile.identity) } : {}),
     ...(compactSection(profile.datingIntent) ? { datingIntent: compactSection(profile.datingIntent) } : {}),
+    ...(targetCities.length ? { targetCities } : {}),
     ...(compactSection(profile.languages) ? { languages: compactSection(profile.languages) } : {}),
     ...(compactSection(profile.textingStyle) ? { textingStyle: compactSection(profile.textingStyle) } : {}),
     ...(avoidedTopics.length ? { topicEngine: { avoidedTopics } } : {})
