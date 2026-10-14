@@ -81,7 +81,7 @@ export function buildReadOnlyProfileSource(
       location: boundedText(input.location),
       interests: interests.length ? interests : undefined,
       relationshipGoal: boundedText(input.relationshipGoal),
-      heightCm: Number.isInteger(input.heightCm) && Number(input.heightCm) >= 100 && Number(input.heightCm) <= 230 ? Number(input.heightCm) : undefined,
+      ...(Number.isInteger(input.heightCm) && Number(input.heightCm) >= 100 && Number(input.heightCm) <= 230 ? { heightCm: Number(input.heightCm) } : {}),
     },
   };
 }
