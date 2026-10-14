@@ -1,5 +1,6 @@
 import { TinderDomAdapter } from "./tinder-adapter";
 import { readVisibleTinderMatchIdentity } from "./tinder-chat-identity";
+import { readVisibleTinderProfilePanel } from "./tinder-visible-profile-panel";
 import { detectVisibleTinderSidebarTab, visibleTinderThreadRefs } from "./tinder-visible-thread-links";
 import { firstMessageAttemptKey, firstMessageBlocker, firstMessageContext } from "./tinder-first-message";
 import { groundedOpenerFragments, sameOpenerThreadUninterrupted } from "./tinder-opener-fragments";
@@ -315,13 +316,15 @@ async function observeVisibleIdentity(): Promise<void> {
   if (!ref || identitySyncBusy || !hasLiveExtensionContext()) return;
   const identity = readVisibleTinderMatchIdentity(ref);
   if (!identity.firstName) return;
-  const fingerprint = JSON.stringify({ ref, identity });
+  const profile = readVisibleTinderProfilePanel(ref, identity);
+  const fingerprint = JSON.stringify({ ref, identity, profile });
   if (fingerprint === lastIdentityFingerprint || Date.now() - lastIdentityAttemptAt < 30000) return;
   identitySyncBusy = true;
   lastIdentityAttemptAt = Date.now();
   try {
     const result = await sendRuntimeMessage<{ ok: boolean; synced?: boolean }>({
-      type: "TNND_SYNC_VISIBLE_MATCH_IDENTITY", conversationRef: ref, identity
+      type: "TNND_SYNC_VISIBLE_MATCH_IDENTITY", conversationRef: ref, identity,
+      ...(profile ? { profile } : {})
     });
     if (result?.ok && result.synced) lastIdentityFingerprint = fingerprint;
   } finally { identitySyncBusy = false; }
