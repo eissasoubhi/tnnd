@@ -29,6 +29,7 @@ test("brief Matches visit, two confirmed observations, recover when reply arrive
  assert.equal(WATCHER_MATCH_VERIFICATION_MS,16000);
  assert.equal(nextWatcherMatchAction(verifying,{...idle,now:t+17000}),"verify");
  assert.equal(nextWatcherMatchAction(verifying,{...idle,now:t+8000,pendingReplies:1}),"recover");
+ assert.equal(nextWatcherMatchAction({...verifying,lastIncomingAt:new Date(t+3000).toISOString()}, {...idle,now:t+5000}),"recover");
  assert.equal(nextWatcherMatchAction(verifying,{...idle,now:t+70000}),"recover");
  assert.equal(nextWatcherMatchAction({...verifying,matchPhase:"opener"},{...idle,now:t+5000}),"none");
  assert.equal(nextWatcherMatchAction({...verifying,matchPhase:"opener"},{...idle,now:t+200000}),"recover");
@@ -67,7 +68,7 @@ test("one-tab guarded round-trip and shared daily send journal remain enforced",
  assert.match(newRunner,/TNND_AUTO_START_NEW_MATCH/);
  assert.match(newRunner,/newMatchDailyAttempts/);
  assert.match(newRunner,/mode: "watcher" as const/);
- assert.match(newRunner,/stopNewMatchObservation\(after\)/);
+ assert.match(newRunner,/await saveNewMatchState\(current\)/);
  assert.match(newPermission,/watcher\.matchPhase !== "opener"/);
  assert.match(popup,/startAutoMatchWatcher/);
  assert.match(popup,/window\.confirm\(/);
