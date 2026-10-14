@@ -87,7 +87,7 @@ export function buildSystemInstruction(config: AppConfig, count: number, purpose
     avoided.length ? `Avoid these words or expressions: ${avoided.join(", ")}.` : "",
     config.extraInstructions ? `Global conversation instructions: ${config.extraInstructions}` : "",
     perChatGuidance(chat),
-    purpose === "opener" ? "For the opener, make ONE natural turn containing 2 or 3 very short fragments separated by newline characters inside a single JSON string. Example: Salut then Bien ou bien ? as separate lines. These are sequential Tinder bubbles, NOT independent alternatives. Do not write 'ton profil m'a fait sourire', claims about photos/looks or inferred personality. A plain greeting and one genuine question are better than imagined compliments. No repeated questions or pressure." : "",
+    purpose === "opener" ? "For the opener, make ONE natural turn of 2 or 3 short fragments on separate lines inside a single JSON string. The FIRST line MUST be only a short simple greeting: Salut, Hello, Hi, or Salut cv? (no additional text on the same line). The next one or two lines may be a natural brief question or follow-up, with no redundant greeting. These will be sent as separate Tinder bubbles, NOT independent alternatives. Do not write 'ton profil m'a fait sourire', claims about photos/looks or inferred personality. A plain greeting and one genuine question are better than imagined compliments. No repeated questions or pressure." : "",
     `Return only a valid JSON array containing exactly ${count} distinct message string${count === 1 ? "" : "s"}. No markdown, explanation or labels.`
   ].filter(Boolean).join("\n");
 }
@@ -95,7 +95,7 @@ export function buildSystemInstruction(config: AppConfig, count: number, purpose
 export function buildUserPrompt(context: string, purpose: GeneratePurpose): string {
   return [
     purpose === "opener"
-      ? "Write a very first Tinder turn with 2 or 3 short lines intended as separate chat bubbles. There is no incoming message to answer; do not imply prior conversation or claim an emotional reaction to a profile."
+      ? "Write a first Tinder turn with 2 or 3 separate short bubbles. First line exactly a simple greeting like Salut, Hello, Hi or Salut cv?; add one or two brief follow-up lines. There is no incoming message to answer; do not imply prior conversation or claim an emotional reaction to a profile."
       : purpose === "auto" ? "Write the next reply to the latest incoming Tinder message." : "Draft the next dating-app message from this conversation/profile context.",
     "Use the recent conversation flow, answer what was actually said, and avoid abruptly changing subject.",
     purpose === "opener" ? "Only the match name/age explicitly listed in the current Tinder context are verified. No photo, bio, appearance, interests or feelings are known. A simple hello is better than inventing a profile reaction." : "Use only grounded conversation context; never infer unseen profile details.",

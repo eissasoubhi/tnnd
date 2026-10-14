@@ -3,6 +3,7 @@ import { readVisibleTinderMatchIdentity } from "./tinder-chat-identity";
 import { detectVisibleTinderSidebarTab, visibleTinderThreadRefs } from "./tinder-visible-thread-links";
 import { firstMessageAttemptKey, firstMessageBlocker, firstMessageContext } from "./tinder-first-message";
 import { groundedOpenerFragments, sameOpenerThreadUninterrupted } from "./tinder-opener-fragments";
+import { openerDelaySeconds } from "./tinder-opener-timing";
 import { syncConversationDelta } from "./conversation-sync";
 import { observeTinderRuntime } from "./tinder-runtime-observation";
 import { readCurrentTinderUiState } from "./tinder-runtime-state";
@@ -625,10 +626,11 @@ async function startFirstMessage(expectedThreadKey: string, mode: "individual" |
     });
     for (const [index, part] of openerParts.entries()) {
       if (index > 0) {
-        // The user's existing reply-delay window governs messages in ONE chat.
-        // Conversation-switch cadence is separate, and no new match may start
-        // until this burst has finished or has been safely cancelled.
-        const gap = randomCadenceSeconds(config.automation);
+        // The first-message bubble gap (3–10s by default) is independent of
+        // the incoming-reply delay (20–60s) and conversation-switch cadence.
+        const entropy = new Uint32Array(1);
+        crypto.getRandomValues(entropy);
+        const gap = openerDelaySeconds(config.automation, entropy[0] / 0x100000000);
         await new Promise((resolve) => setTimeout(resolve, gap * 1000));
         if (!hasLiveExtensionContext()
           || currentConversationRef() !== conversationRef
