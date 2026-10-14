@@ -128,14 +128,14 @@ test("opener burst is one pre-send claim, then each bubble is synchronized and g
 });
 
 test("every opener begins with a short, approved greeting; no long first bubble", () => {
-  const allowed = /^(?:salut|hello|hi|salut cv\\?)!?$/i;
+  const allowed = /^(?:salut|hello|hi|salut cv\?)!?$/i;
   const cases = [
-    ["Hi\\nHow's your day?", "Hi"],
-    ["Hello!\\nHow is everything?", "Hello!"],
-    ["Salut cv?\\nQuoi de neuf ?", "Salut cv?"],
-    ["Salut\\nBien ou bien ?", "Salut"],
-    ["Ton profil m'a fait sourire\\nÇa va ?", "Salut"],
-    ["Hey!\\nHow's everything?", "Salut"],
+    ["Hi\nHow's your day?", "Hi"],
+    ["Hello!\nHow is everything?", "Hello!"],
+    ["Salut cv?\nQuoi de neuf ?", "Salut cv?"],
+    ["Salut\nBien ou bien ?", "Salut"],
+    ["Ton profil m'a fait sourire\nÇa va ?", "Salut"],
+    ["Hey!\nHow's everything?", "Salut"],
     ["Ça va ?", "Salut"]
   ];
   for (const [generated, first] of cases) {
@@ -162,14 +162,14 @@ test("opening-bubble gap is 3–10s by default and separate from 20–60s reply 
   const [types, config, opts, html, profile, content] = await Promise.all([
     "src/types.ts","src/storage.ts","src/options.ts","public/options.html","src/profile-bundle.ts","src/content.ts"
   ].map(read));
-  assert.match(types, /openerDelayMinSeconds\\?: number/);
+  assert.match(types, /openerDelayMinSeconds\?: number/);
   assert.match(config, /openerDelayMinSeconds: DEFAULT_OPENER_MIN_SECONDS/);
-  assert.match(config, /openerDelayWindow\\(savedAutomation\\)/);
+  assert.match(config, /openerDelayWindow\(savedAutomation\)/);
   assert.match(opts, /openerDelayMinSeconds: el<HTMLInputElement>/);
   assert.match(opts, /openerDelayMaxSeconds: el<HTMLInputElement>/);
   assert.match(html, /id="openerDelayMinSeconds"[^>]*value="3"/);
   assert.match(html, /id="openerDelayMaxSeconds"[^>]*value="10"/);
-  assert.match(profile, /openerDelayWindow\\(automation\\)/);
-  assert.match(content, /const delaySeconds = randomCadenceSeconds\\(config.automation\\)/);
-  assert.match(content, /const gap = openerDelaySeconds\\(config.automation/);
+  assert.match(profile, /openerDelayWindow\(automation\)/);
+  assert.match(content, /const delaySeconds = randomCadenceSeconds\(config.automation\)/);
+  assert.match(content, /const gap = openerDelaySeconds\(config.automation/);
 });
