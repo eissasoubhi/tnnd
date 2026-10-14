@@ -16,6 +16,16 @@ function profile(datingGoalDetails?: string): ImportedProfile {
   };
 }
 
+describe("target cities / Tinder Passport preference", () => {
+  it("does not infer current location from target locations", () => {
+    const sample = profile();
+    const edited = writeEditablePreferences(sample, { ...readEditablePreferences(sample), targetCities: "Paris, Casablanca, Rabat, Paris" });
+    assert.deepEqual((edited.datingIntent as Record<string, unknown>).targetCities, ["Paris", "Casablanca", "Rabat"]);
+    assert.equal(readEditablePreferences(edited).targetCities, "Paris, Casablanca, Rabat");
+    assert.equal((edited.identity as Record<string, unknown> | undefined)?.location, undefined);
+  });
+});
+
 describe("dating goal details preferences", () => {
   it("reads an existing optional detail", () => {
     assert.equal(readEditablePreferences(profile("Take things slowly")).datingGoalDetails, "Take things slowly");
