@@ -61,10 +61,22 @@ function intentFromProfile(value: unknown): MatchIntent {
 }
 function possibleExpression(haystack: string, expressions: unknown): boolean {
   if (!Array.isArray(expressions)) return false;
+  const message = normalize(haystack);
+  return expressions.slice(0, 20).some(value => {
+    if (typeof value !== "string" || value.length < 2 || value.length > 80) return false;
+    const term = normalize(value);
+    if (!term) return false;
+    // Match whole tokens, never fragments inside unrelated words.
+    // Two-letter acronyms only suggest an intent; they never auto-pause.
+    const escaped = term.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\function possibleExpression(haystack: string, expressions: unknown): boolean {
+  if (!Array.isArray(expressions)) return false;
   return expressions.slice(0, 20).some(value => {
     if (typeof value !== "string" || value.length < 4 || value.length > 80) return false;
     const term = normalize(value);
     return term && normalize(haystack).includes(term);
+  });
+}").replace(/\s+/g, "\\s+");
+    return new RegExp("(?<![\\p{L}\\p{N}])" + escaped + "(?![\\p{L}\\p{N}])", "u").test(message);
   });
 }
 
