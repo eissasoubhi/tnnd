@@ -1,5 +1,5 @@
-import { parseVisibleMatchHeading, type VisibleTinderMatchIdentity } from "./tinder-chat-identity";
-import type { TinderProfileCaptureInput } from "./tinder-match-profile-capture";
+import { parseVisibleMatchHeading, type VisibleTinderMatchIdentity } from "./tinder-chat-identity.ts";
+import type { TinderProfileCaptureInput } from "./tinder-match-profile-capture.ts";
 
 /** Verified against an Oct 2026 redacted Tinder diagnostic:
  * opened conversation owns aside .chatProfile .profileContent, whose
