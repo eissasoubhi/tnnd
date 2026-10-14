@@ -273,10 +273,13 @@ async function returnWatcherToMessages(state: GlobalExistingRunnerState, note: s
       "waiting", note));
   } catch (error) {
     const live = await load();
-    if (isMatchCycleState(live, state))
-      await save(activity({ ...live, matchPhase: "idle", matchPhaseStartedAt: null },
-        "error", "Matches cycle paused; switch back to Messages manually: "
+    if (isMatchCycleState(live, state)) {
+      await save(activity({ ...live, enabled: false, autoOpenersEnabled: false,
+        matchPhase: "idle", matchPhaseStartedAt: null, pausedOnStop: true },
+        "error", "Watcher paused to protect current Tinder state; switch to Messages manually: "
           + (error instanceof Error ? error.message : "sidebar_not_available")));
+      await chrome.alarms.clear(ALARM);
+    }
   }
 }
 async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void> {
@@ -340,7 +343,10 @@ async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void>
     await returnWatcherToMessages(after, "Matches checked; first messages are not enabled.");
     return;
   }
-  const ref = nextMatchOpener(inventory.existingRefs, inventory.newRefs,
+  const currentlyVisible = new Set(snapshot.refs.filter((ref): ref is string => typeof ref === "string"));
+  const ref = nextMatchOpener(
+    inventory.existingRefs.filter(ref => currentlyVisible.has(ref)),
+    inventory.newRefs.filter(ref => currentlyVisible.has(ref)),
     await readOpenerAttempts(session.user.id));
   if (!ref) {
     await returnWatcherToMessages(after, "No eligible unattempted match tiles; watching Messages.");
