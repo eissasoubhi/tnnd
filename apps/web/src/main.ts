@@ -9,6 +9,7 @@ import { downloadProfile, parseImportedProfile, type ImportedProfile } from "./p
 import { datingGoals, disclosureStrategies, readEditablePreferences, writeEditablePreferences } from "./profile-preferences";
 import { initWorkspaceScrollNavigation } from "./workspace-scroll-navigation";
 import { webBuildInfo } from "./web-build-label";
+import { preferenceSections } from "./preference-sections";
 
 let optionalPanelsLoaded = false;
 
@@ -159,7 +160,14 @@ app.innerHTML = `
           <div class="adaptive-preference adaptive-languages"><label class="adaptive-toggle"><input id="adapt-languages" type="checkbox" checked> Auto-adapt language across English, French & Darija</label><small>Language styles above remain your defaults; language mixing follows the conversation.</small></div>
           <label>Temporary Tinder profile retention (days)<input id="match-profile-retention-days" type="number" min="1" max="30" step="1" value="7" /></label>
         </div>
-        <button id="preferences-save" type="button">Save preferences</button>
+        <div class="preferences-save-bar">
+          <div class="preferences-save-message">
+            <strong>Save your preferences</strong>
+            <p class="subtle">Changes are applied only after saving. Nothing is sent to Tinder.</p>
+            <p id="preferences-save-feedback" role="status" aria-live="polite" class="subtle"></p>
+          </div>
+          <button id="preferences-save" type="button">Save preferences</button>
+        </div>
         <p class="subtle">Signed-in profiles are stored in the backend. Browser storage is only a disconnected fallback.</p>
       </article>
 
@@ -199,6 +207,7 @@ const input = document.querySelector<HTMLInputElement>("#profile-file");
 const exportButton = document.querySelector<HTMLButtonElement>("#profile-export");
 const preferencesStatus = document.querySelector<HTMLElement>("#preferences-status");
 const preferencesSave = document.querySelector<HTMLButtonElement>("#preferences-save");
+const preferencesSaveFeedback = document.querySelector<HTMLElement>("#preferences-save-feedback");
 const datingGoal = document.querySelector<HTMLSelectElement>("#dating-goal");
 const datingGoalDetails = document.querySelector<HTMLTextAreaElement>("#dating-goal-details");
 const targetCities = document.querySelector<HTMLInputElement>("#target-cities");
@@ -445,7 +454,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-goal-example]").forEach(butt
 });
 
 preferencesSave?.addEventListener("click", async () => {
-  if (!currentProfile || !datingGoal || !datingGoalDetails || !targetCities || !pauseOnMarriage || !maxMatchHeight || !marriageExpressions || !casualExpressions || !disclosureStrategy || !textFormality || !capitalization || !emojiFrequency || !abbreviations || !messageLength || !punctuationDensity || !slangLevel || !fragmentStyle || !grammarStyle || !directness || !questionFrequency || !teasingStyle || !humorStyle || !doubleTexting || !frenchStyle || !darijaStyle || !englishStyle || !matchProfileRetentionDays) return;
+  if (!preferencesSave || !currentProfile || !datingGoal || !datingGoalDetails || !targetCities || !pauseOnMarriage || !maxMatchHeight || !marriageExpressions || !casualExpressions || !disclosureStrategy || !textFormality || !capitalization || !emojiFrequency || !abbreviations || !messageLength || !punctuationDensity || !slangLevel || !fragmentStyle || !grammarStyle || !directness || !questionFrequency || !teasingStyle || !humorStyle || !doubleTexting || !frenchStyle || !darijaStyle || !englishStyle || !matchProfileRetentionDays) return;
   const updated = writeEditablePreferences(currentProfile, {
     datingGoal: datingGoal.value,
     datingGoalDetails: datingGoalDetails.value,
@@ -482,12 +491,20 @@ preferencesSave?.addEventListener("click", async () => {
     autoAdapt: Object.fromEntries(Object.entries(adaptiveCheckboxes).map(([key, input]) => [key, input?.checked ?? false])) as ReturnType<typeof readEditablePreferences>["autoAdapt"],
     temporaryMatchProfileRetentionDays: Number(matchProfileRetentionDays.value)
   });
+  preferencesSave.disabled = true;
+  if (preferencesSaveFeedback) preferencesSaveFeedback.textContent = "Saving preferences…";
   try {
     await persistProfile(updated);
     if (preferencesStatus) preferencesStatus.textContent = readSession() ? "Synced" : "Saved locally";
-    if (message) message.textContent = readSession() ? "Preferences saved to backend." : "Preferences saved to local fallback.";
+    const success = readSession() ? "Preferences saved to TNND." : "Preferences saved locally. Sign in to sync them.";
+    if (message) message.textContent = success;
+    if (preferencesSaveFeedback) preferencesSaveFeedback.textContent = success;
   } catch (error) {
-    if (message) message.textContent = error instanceof Error ? error.message : "Unable to save preferences.";
+    const failure = error instanceof Error ? error.message : "Unable to save preferences. Check your connection and try again.";
+    if (message) message.textContent = failure;
+    if (preferencesSaveFeedback) preferencesSaveFeedback.textContent = failure;
+  } finally {
+    preferencesSave.disabled = false;
   }
 });
 
@@ -503,16 +520,9 @@ function organizeProfilePreferences(): void {
   const original = document.querySelector<HTMLElement>("#profile-preferences-grid");
   if (!original || original.dataset.organized) return;
   original.dataset.organized = "true";
-  const groups = [
-    { title: "Conversation identity", description: "Your intent and how you present yourself.", expanded: true, ids: ["dating-goal", "dating-goal-details", "disclosure-strategy"] },
-    { title: "Your baseline & Auto-adapt", description: "Choose a starting style. TNND adapts without rewriting your preference.", expanded: true, ids: ["message-length", "directness", "teasing-style", "humor-style", "double-texting"] },
-    { title: "Language & culture", description: "French, English and Moroccan Darija keep their own natural style.", expanded: true, ids: ["french-style", "darija-style", "english-style", "adapt-languages"] },
-    { title: "Writing details", description: "Fine-tune grammar, punctuation and emoji usage when you need to.", expanded: false, ids: ["text-formality", "capitalization", "emoji-frequency", "abbreviations", "punctuation-density", "slang-level", "fragment-style", "grammar-style", "question-frequency"] },
-    { title: "Privacy & retention", description: "Choose how long temporary match context remains available.", expanded: false, ids: ["match-profile-retention-days"] }
-  ];
   const layout = document.createElement("div");
   layout.className = "preference-sections";
-  for (const group of groups) {
+  for (const group of preferenceSections) {
     const details = document.createElement("details");
     details.className = "preference-section";
     details.open = group.expanded;
@@ -533,9 +543,22 @@ function organizeProfilePreferences(): void {
     details.append(fields);
     layout.append(details);
   }
+  // Keep future or unsupported preference controls accessible, but never
+  // silently mix them into the most prominent Dating intentions section.
   if (original.children.length) {
-    const other = layout.querySelector<HTMLElement>(".preference-section-grid");
-    other?.append(...Array.from(original.children));
+    const details = document.createElement("details");
+    details.className = "preference-section";
+    const summary = document.createElement("summary");
+    const title = document.createElement("strong");
+    title.textContent = "Other preferences";
+    const description = document.createElement("span");
+    description.textContent = "Additional settings not listed in the main groups.";
+    summary.append(title, description);
+    const fields = document.createElement("div");
+    fields.className = "preferences-grid preference-section-grid";
+    fields.append(...Array.from(original.children));
+    details.append(summary, fields);
+    layout.append(details);
   }
   original.replaceWith(layout);
 }

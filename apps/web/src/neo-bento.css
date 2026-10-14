@@ -907,3 +907,25 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
   #app #setup-guidance-panel .setup-ready-actions { display: grid; }
   #app #setup-guidance-panel .setup-ready-link { width: 100%; }
 }
+
+/* UX phase 3 — Settings: compact advanced groups, always-reachable Save. */
+#app #profile-settings .preferences-save-bar {
+  position: sticky; bottom: 12px; z-index: 5;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px; margin-top: 18px; padding: 15px 18px;
+  border: 1px solid var(--nb-border); border-radius: var(--nb-radius-lg);
+  background: var(--nb-surface); box-shadow: var(--nb-shadow);
+}
+#app #profile-settings .preferences-save-message { min-width: 0; flex: 1 1 240px; }
+#app #profile-settings .preferences-save-message strong { font-size: 14px; }
+#app #profile-settings .preferences-save-message p { margin: 3px 0 0; }
+#app #profile-settings #preferences-save-feedback { min-height: 1.3em; }
+#app #profile-settings .preferences-save-bar #preferences-save { flex: 0 0 auto; min-height: 44px; }
+#app #profile-settings .preference-section > summary { min-height: 56px; }
+#app #profile-settings .preference-section > summary:focus-visible {
+  outline: 3px solid var(--nb-focus); outline-offset: -3px;
+}
+@media(max-width: 560px) {
+  #app #profile-settings .preferences-save-bar { bottom: 6px; padding: 12px; }
+  #app #profile-settings .preferences-save-bar #preferences-save { width: 100%; }
+}

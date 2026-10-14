@@ -36,7 +36,7 @@ const steps = [
   },
   {
     title: "Test one draft, without sending",
-    description: "Select a conversation, paste its latest incoming message, click Generate a reply, then copy the result. No message is sent to Tinder.",
+    description: "Select a synced conversation and choose Generate a reply. TNND uses the latest saved incoming message; you only type a custom message for optional testing. No message is sent to Tinder.",
     location: "#conversation-panel",
     action: "Try your first draft",
     expected: "Draft ready and a copy button appear. If not, read the error guidance and export diagnostics."
