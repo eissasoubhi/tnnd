@@ -38,7 +38,7 @@ export async function generateSuggestions(apiKey: string, config: AppConfig, con
     headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: buildSystemInstruction(config, safeCount, purpose, chat) }] },
-      contents: [{ role: "user", parts: [{ text: buildUserPrompt(context, purpose) }] }],
+      contents: [{ role: "user", parts: [{ text: buildUserPrompt(context, purpose, !chat?.languages) }] }],
       generationConfig: {
         temperature: 0.95,
         maxOutputTokens: 2048,
