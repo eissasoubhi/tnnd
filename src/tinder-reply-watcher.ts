@@ -41,10 +41,9 @@ export function watcherDisplayStatus(state: {
   phaseDetail: string;
   pendingReplies: number;
 }): WatcherDisplayStatus {
+  if (state.phase === "error" && /receiver|missing|disconnect|tab|navigate/i.test(state.phaseDetail)) return "disconnected";
   if (!state.enabled) return state.pausedOnStop ? "paused" : "stopped";
-  if (state.phase === "error" || /tab.*disconnect|tab.*navigated|receiver.*missing/i.test(state.phaseDetail)) {
-    return "disconnected";
-  }
+  if (state.phase === "error" || /tab.*disconnect|tab.*navigated|receiver.*missing/i.test(state.phaseDetail)) return "disconnected";
   if (["loading", "generating", "sending", "sent"].includes(state.phase)) return "processing";
   return state.pendingReplies > 0 ? "new-replies" : "waiting";
 }
