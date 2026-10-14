@@ -17,6 +17,8 @@ export const disclosureStrategies = ["subtle", "progressive", "clear", "very-dir
 export interface EditablePreferences {
   datingGoal: string;
   datingGoalDetails?: string;
+  /** Passport / target city is NOT the user's current residence. */
+  targetCities?: string;
   disclosureStrategy: string;
   formality: string;
   capitalization: string;
@@ -64,6 +66,7 @@ export function readEditablePreferences(profile: ImportedProfile): EditablePrefe
   return {
     datingGoal: stringValue(datingIntent.defaultGoal, "open-to-see"),
     datingGoalDetails: optionalStringValue(datingIntent.datingGoalDetails),
+    targetCities: Array.isArray(datingIntent.targetCities) ? datingIntent.targetCities.filter((city): city is string => typeof city === "string").join(", ") : "",
     disclosureStrategy: stringValue(datingIntent.defaultDisclosureStrategy, "progressive"),
     formality: stringValue(textingStyle.formality, "very-casual"),
     capitalization: stringValue(textingStyle.capitalization, "relaxed"),
@@ -91,6 +94,9 @@ export function writeEditablePreferences(profile: ImportedProfile, preferences: 
   const datingIntent = objectValue(profile.datingIntent);
   const textingStyle = objectValue(profile.textingStyle);
   const requestedDatingGoalDetails = preferences.datingGoalDetails;
+  const targetCities = preferences.targetCities === undefined
+    ? (Array.isArray(datingIntent.targetCities) ? datingIntent.targetCities : [])
+    : [...new Set(preferences.targetCities.split(/[,;\n]+/).map(city => city.replace(/\s+/g, " ").trim()).filter(city => city.length >= 2 && city.length <= 80))].slice(0, 20);
   const datingGoalDetails = requestedDatingGoalDetails === undefined
     ? datingIntent.datingGoalDetails
     : requestedDatingGoalDetails.trim() || undefined;
@@ -100,6 +106,7 @@ export function writeEditablePreferences(profile: ImportedProfile, preferences: 
       ...datingIntent,
       defaultGoal: preferences.datingGoal,
       datingGoalDetails,
+      targetCities,
       defaultDisclosureStrategy: preferences.disclosureStrategy,
       needsReview: false
     },
