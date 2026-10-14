@@ -1,4 +1,5 @@
 import { withGenerationStage } from "./conversation-generation-stage.js";
+import { conversationFlowGuidance } from "./conversation-flow.js";
 import { resolveReplyTarget } from "./conversation-reply-target.js";
 import { loadAiProviderSettings } from "./ai-provider-settings-service.js";
 import { listConversationFacts } from "./conversation-fact-service.js";
@@ -110,7 +111,8 @@ export async function generateConversationReply(
     context.provenance.overriddenFields,
     (generationProfile.userProfile?.languages ?? context.settings.languages ?? {}) as Partial<{fr:number;darija:number;en:number}>
   );
-  const effectiveContext = { ...context, settings: adaptive.settings, instructions: [...context.instructions, ...(adaptive.autoFields.length ? [`Auto-adaptive fields: ${adaptive.autoFields.join(", ")}. Adapt around the saved style baseline, not by imitating the interlocutor. Keep jokes and teasing reciprocal and appropriate; return to the baseline when the mood lightens. ${adaptive.autoFields.includes("languages") ? "Mirror the interlocutor language naturally, treating language weights as soft guidance rather than word quotas; preserve the saved French, English and Darija writing styles." : "Honor the fixed or manually overridden language choices."} Double texting is only a style signal; produce exactly one draft and never send extra messages.`] : [])] };
+  const effectiveContext = { ...context, settings: adaptive.settings, instructions: [...context.instructions,
+    conversationFlowGuidance(conversation.conversationFlow), ...(adaptive.autoFields.length ? [`Auto-adaptive fields: ${adaptive.autoFields.join(", ")}. Adapt around the saved style baseline, not by imitating the interlocutor. Keep jokes and teasing reciprocal and appropriate; return to the baseline when the mood lightens. ${adaptive.autoFields.includes("languages") ? "Mirror the interlocutor language naturally, treating language weights as soft guidance rather than word quotas; preserve the saved French, English and Darija writing styles." : "Honor the fixed or manually overridden language choices."} Double texting is only a style signal; produce exactly one draft and never send extra messages.`] : [])] };
   // Use the credentials/model saved in Settings → Gemini for this user.
   // The env-based provider remains a fallback for deployments with no user
   // configuration. Explicit injected test providers are never replaced.
