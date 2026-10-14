@@ -429,6 +429,16 @@ async function tick(): Promise<void> {
     }
     await saveWorkIndex(queued);
     const pendingReplies = pendingWatchedReplies(queued);
+    // Complete/abort an in-flight Matches scan before any reply navigation:
+    // it always switches back to Messages first.
+    if (state.mode === "watcher" && state.matchPhase !== "idle") {
+      const pendingState = await load();
+      if (pendingState.enabled && pendingState.mode === "watcher") {
+        if (pendingState.matchPhase === "verifying")
+          await scanMatchesCycle({ ...pendingState, pendingReplies });
+      }
+      return;
+    }
     const nextRef = state.mode === "watcher" ? nextWatchedReply(queued) : nextIndexedExistingThread(queued);
     if (!nextRef) {
       const detail = state.mode === "watcher"
@@ -439,6 +449,8 @@ async function tick(): Promise<void> {
           latestWaiting.pendingReplies !== pendingReplies) {
         await save(activity({ ...latestWaiting, eligibleCount: refs.length, pendingReplies }, "waiting", detail));
       }
+      if (state.mode === "watcher")
+        await scanMatchesCycle({ ...await load(), pendingReplies });
       return;
     }
     const current = await load();
@@ -499,13 +511,14 @@ async function tick(): Promise<void> {
     }
   } finally { busy = false; }
 }
-export async function startExistingRunner(enablePreviouslyDisabled = false, mode: "runner" | "watcher" = "runner"): Promise<GlobalExistingRunnerState> {
+export async function startExistingRunner(enablePreviouslyDisabled = false, mode: "runner" | "watcher" = "runner", autoOpenersEnabled = false): Promise<GlobalExistingRunnerState> {
   if (starting) throw new Error("Runner is already starting.");
   starting = true;
   try {
     const current = await load();
     if (current.enabled) {
-      if (current.mode !== mode) throw new Error("Stop the current runner or watcher before switching modes.");
+      if (current.mode !== mode || (mode === "watcher" && current.autoOpenersEnabled !== autoOpenersEnabled))
+        throw new Error("Stop the current runner or watcher before switching modes.");
       return current;
     }
     if (mode === "watcher" && enablePreviouslyDisabled) throw new Error("Watcher cannot enable disabled chats in bulk.");
@@ -543,7 +556,8 @@ export async function startExistingRunner(enablePreviouslyDisabled = false, mode
     const selectedTab = await chrome.tabs.get(tab.id);
     const selectedRef = mode === "watcher" ? tinderRefFromUrl(selectedTab.url) : null;
     const activeRef = selectedRef && refs.includes(selectedRef) ? selectedRef : null;
-    next = activity({ ...next, enabled: true, mode, userId: session.user.id, tabId: tab.id, tabMode: tab.mode,
+    next = activity({ ...next, enabled: true, mode, autoOpenersEnabled: mode === "watcher" && autoOpenersEnabled,
+      userId: session.user.id, tabId: tab.id, tabMode: tab.mode,
       ...(mode === "watcher" ? { watchedMatches: emptyWatchedMatches(session.user.id) } : {}),
       ...(activeRef ? { lastRef: activeRef, currentLabel: selection.labels.get(activeRef) ?? `Thread ${activeRef.slice(0, 8)}`,
         ...extendActiveConversation(activeRef) } : {}),
@@ -573,7 +587,8 @@ async function stop(reason = "Runner stopped. Tinder tab kept open."): Promise<G
   const state = await load();
   // Do not close a reused or newly created tab; it belongs to the user after
   // taking over the sole Tinder session. Never force logout by opening another.
-  const next = activity({ ...state, enabled: false, userId: null, pendingReplies: 0, watchedMatches: null, activeConversationRef: null, activeConversationUntil: null, pausedOnStop: state.tabId !== null }, "stopped", reason);
+  const next = activity({ ...state, enabled: false, autoOpenersEnabled: false,
+    matchPhase: "idle", matchPhaseStartedAt: null, userId: null, pendingReplies: 0, watchedMatches: null, activeConversationRef: null, activeConversationUntil: null, pausedOnStop: state.tabId !== null }, "stopped", reason);
   await save(next);
   await chrome.alarms.clear(ALARM);
   return next;
@@ -696,7 +711,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       .catch(() => sendResponse({ ok: false }));
     return true;
   }
-  if (!["TNND_GLOBAL_EXISTING_STATE", "TNND_GLOBAL_EXISTING_PREFLIGHT", "TNND_GLOBAL_EXISTING_SET_CADENCE", "TNND_GLOBAL_EXISTING_START", "TNND_GLOBAL_WATCHER_START", "TNND_GLOBAL_EXISTING_STOP"].includes(String(input.type))) return false;
+  if (!["TNND_GLOBAL_EXISTING_STATE", "TNND_GLOBAL_EXISTING_PREFLIGHT", "TNND_GLOBAL_EXISTING_SET_CADENCE", "TNND_GLOBAL_EXISTING_START", "TNND_GLOBAL_WATCHER_START", "TNND_GLOBAL_WATCHER_AUTO_START", "TNND_GLOBAL_EXISTING_STOP"].includes(String(input.type))) return false;
   if (input.type === "TNND_GLOBAL_EXISTING_STATE" && (popupSender(sender) || webReadOnlySender(sender))) {
     void Promise.all([load(), getCadenceSeconds()]).then(([state, dwellSeconds]) => sendResponse({ ok: true, state: { ...state, dwellSeconds } }))
       .catch(() => sendResponse({ ok: false, error: "state_unavailable" }));
@@ -732,7 +747,9 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     ? startExistingRunner(input.enablePreviouslyDisabled === true)
     : input.type === "TNND_GLOBAL_WATCHER_START"
       ? startExistingRunner(false, "watcher")
-      : stop())
+      : input.type === "TNND_GLOBAL_WATCHER_AUTO_START"
+        ? startExistingRunner(false, "watcher", true)
+        : stop())
     .then(state => sendResponse({ ok: true, state }))
     .catch(error => sendResponse({ ok: false, error: error instanceof Error ? error.message : "runner_failed" }));
   return true;
