@@ -118,6 +118,8 @@ export interface BackendSuggestionInput {
   count: number;
   config: AppConfig;
   chat?: ChatSettings;
+  /** Opaque Tinder thread ref, looked up under authenticated user on server. */
+  threadKey?: string;
 }
 
 export async function generateBackendSuggestions(
