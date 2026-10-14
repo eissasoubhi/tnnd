@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { listConversationFacts } from "./conversation-fact-service.js";
+import { deriveConversationFlow, type ConversationFlowState } from "./conversation-flow.js";
 import { analyzeAndRecordConversationFacts } from "./conversation-fact-orchestration-service.js";
 import { getPool } from "./db-client.js";
 import { tryAcquireConversationThreadLock } from "./conversation-thread-lock-service.js";
@@ -50,6 +52,7 @@ export interface ConversationDetailRecord extends ConversationSummary {
   messages: ConversationMessageRecord[];
   temporaryInstruction?: TemporaryInstruction;
   topicState: ConversationTopicState;
+  conversationFlow: ConversationFlowState;
 }
 
 export async function syncConversation(userId: string, input: ConversationSyncRequest): Promise<ConversationSyncResponse> {
@@ -242,7 +245,7 @@ export async function getConversation(userId: string, conversationId: string): P
   const conversation = conversationResult.rows[0];
   if (!conversation) return null;
 
-  const [messagesResult, topicState] = await Promise.all([
+  const [messagesResult, topicState, flowFacts] = await Promise.all([
     getPool().query<{
       id: string;
       direction: "incoming" | "outgoing";
@@ -255,7 +258,8 @@ export async function getConversation(userId: string, conversationId: string): P
        ORDER BY sent_at ASC, created_at ASC`,
       [conversationId]
     ),
-    getConversationTopicState(conversationId)
+    getConversationTopicState(conversationId),
+    listConversationFacts(conversationId, 25)
   ]);
 
   const messages = messagesResult.rows.map((row) => ({
@@ -290,6 +294,7 @@ export async function getConversation(userId: string, conversationId: string): P
     updatedAt: conversation.updated_at.toISOString(),
     messages,
     topicState,
+    conversationFlow: deriveConversationFlow(messages, flowFacts),
     ...(temporaryInstruction ? { temporaryInstruction } : {})
   };
 }
