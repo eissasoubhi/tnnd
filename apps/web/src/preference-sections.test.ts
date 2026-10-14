@@ -6,10 +6,10 @@ test("durable web preferences are grouped with no duplicate field ownership", ()
   const ids = preferenceSections.flatMap(section => [...section.ids]);
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(new Set(preferenceSections.map(section => section.title)).size, preferenceSections.length);
-  assert.ok(preferenceSections.some(section => section.ids.includes("origin-city")));
-  assert.ok(preferenceSections.some(section => section.ids.includes("target-cities")));
-  assert.ok(preferenceSections.some(section => section.ids.includes("multi-part-replies")));
-  assert.ok(preferenceSections.some(section => section.ids.includes("pause-on-marriage")));
+  assert.ok(ids.includes("origin-city"));
+  assert.ok(ids.includes("target-cities"));
+  assert.ok(ids.includes("multi-part-replies"));
+  assert.ok(ids.includes("pause-on-marriage"));
 });
 
 test("advanced and safety-specific controls do not overload the default form", () => {
