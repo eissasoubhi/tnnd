@@ -46,3 +46,12 @@ test("height pause requires verified number, not an estimate", () => {
   assert.equal(assessMatchIntent([], { heightCm: null }, { maximumHeightCm: 170 }).action, "continue");
   assert.equal(assessMatchIntent([], { heightCm: 500 }, { maximumHeightCm: 170 }).action, "continue");
 });
+
+test("a two-letter custom expression is recognized only as a whole word", () => {
+  const options = { casualExpressions: ["plan payant", "pp"] };
+  assert.equal(assessMatchIntent([received("Tu cherches un pp ?")], null, options).intent, "casual");
+  assert.equal(assessMatchIntent([received("Je ne suis pas happy")], null, options).intent, "unknown");
+  assert.equal(assessMatchIntent([received("On parle d'une app")], null, options).intent, "unknown");
+  assert.equal(assessMatchIntent([received("Plan payant, c'est ça ?")], null, options).intent, "casual");
+  assert.equal(assessMatchIntent([out("Moi j'utilise le mot pp")], null, options).intent, "unknown");
+});
