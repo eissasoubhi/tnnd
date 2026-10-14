@@ -100,6 +100,7 @@ export function buildUserPrompt(context: string, purpose: GeneratePurpose): stri
     "Use the recent conversation flow, answer what was actually said, and avoid abruptly changing subject.",
     purpose === "opener" ? "Only the match name/age explicitly listed in the current Tinder context are verified. No photo, bio, appearance, interests or feelings are known. A simple hello is better than inventing a profile reaction." : "Use only grounded conversation context; never infer unseen profile details.",
     "If context is incomplete, stay generic rather than inventing details.",
+    purpose !== "opener" && config.conversationFlowEnabled !== false ? "Adaptive Conversation Flow, as OPTIONAL guidance: greeting → how are you → where from → daily life/work → interests → free conversation. ALWAYS answer the last incoming question first, continue their topic, skip anything asked or already known, and never interrogate. Extra instructions and per-chat instructions can adjust the order or style. Do not claim knowledge not in the chat." : "",
     "\n--- context ---",
     context.trim().slice(-9000),
     "--- end context ---"
