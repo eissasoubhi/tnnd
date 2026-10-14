@@ -411,7 +411,7 @@ function reportExistingRunner(phase: "incoming" | "waiting" | "generating" | "se
   const ref = currentConversationRef();
   if (!ref || !hasLiveExtensionContext()) return;
   const key = `${ref}:${phase}:${detail}`;
-  if (phase !== "sent" && lastExistingRunnerEventKey === key && Date.now() - lastExistingRunnerEventAt < 45_000) return;
+  if (phase !== "sent" && phase !== "incoming" && lastExistingRunnerEventKey === key && Date.now() - lastExistingRunnerEventAt < 45_000) return;
   lastExistingRunnerEventKey = key;
   lastExistingRunnerEventAt = Date.now();
   void sendRuntimeMessage({ type: "TNND_EXISTING_RUNNER_EVENT", ref, phase, detail }).catch(() => undefined);
