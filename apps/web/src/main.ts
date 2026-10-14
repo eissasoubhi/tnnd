@@ -112,7 +112,7 @@ app.innerHTML = `
           <span class="pill" id="preferences-status">Import a profile first</span>
         </div>
         <div class="preferences-grid" id="profile-preferences-grid">
-          <label>Dating goal<select id="dating-goal">${options(datingGoals)}</select></label>
+          <label>Dating goal<select id="dating-goal">${options(datingGoals)}</select></label><div class="dating-goal-editor"><label for="target-cities">Cities where you want to meet matches (Tinder Passport)</label><p class="subtle" id="target-cities-help">Separate from where you currently live. Enter cities separated by commas, e.g. Paris, Casablanca, Rabat. TNND uses these as preferences, not verified match locations.</p><input id="target-cities" type="text" maxlength="1600" aria-describedby="target-cities-help" placeholder="Paris, Casablanca, Rabat" autocomplete="off"></div>
           <div class="dating-goal-editor">
             <label for="dating-goal-details">What are you looking for? <span class="dating-goal-optional">Optional</span></label>
             <p id="dating-goal-help" class="subtle">Go beyond your dating goal. Describe the kind of connection you want and how you'd like things to develop. This helps TNND suggest replies that match your intentions.</p>
@@ -190,6 +190,7 @@ const preferencesStatus = document.querySelector<HTMLElement>("#preferences-stat
 const preferencesSave = document.querySelector<HTMLButtonElement>("#preferences-save");
 const datingGoal = document.querySelector<HTMLSelectElement>("#dating-goal");
 const datingGoalDetails = document.querySelector<HTMLTextAreaElement>("#dating-goal-details");
+const targetCities = document.querySelector<HTMLInputElement>("#target-cities");
 const disclosureStrategy = document.querySelector<HTMLSelectElement>("#disclosure-strategy");
 const textFormality = document.querySelector<HTMLSelectElement>("#text-formality");
 const capitalization = document.querySelector<HTMLSelectElement>("#capitalization");
@@ -301,7 +302,7 @@ async function refreshProfile(): Promise<void> {
 }
 
 function refreshPreferences(profile: ImportedProfile | null): void {
-  const controls = [datingGoal, datingGoalDetails, disclosureStrategy, textFormality, capitalization, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, fragmentStyle, grammarStyle, directness, questionFrequency, teasingStyle, humorStyle, doubleTexting, frenchStyle, darijaStyle, englishStyle, matchProfileRetentionDays, ...Object.values(adaptiveCheckboxes), preferencesSave];
+  const controls = [datingGoal, datingGoalDetails, targetCities, disclosureStrategy, textFormality, capitalization, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, fragmentStyle, grammarStyle, directness, questionFrequency, teasingStyle, humorStyle, doubleTexting, frenchStyle, darijaStyle, englishStyle, matchProfileRetentionDays, ...Object.values(adaptiveCheckboxes), preferencesSave];
   controls.forEach((control) => { if (control) control.disabled = !profile; });
   if (!profile) {
     if (preferencesStatus) preferencesStatus.textContent = "Import a profile first";
@@ -311,6 +312,7 @@ function refreshPreferences(profile: ImportedProfile | null): void {
   const preferences = readEditablePreferences(profile);
   if (datingGoal) datingGoal.value = preferences.datingGoal;
   if (datingGoalDetails) datingGoalDetails.value = preferences.datingGoalDetails ?? "";
+  if (targetCities) targetCities.value = preferences.targetCities ?? "";
   if (disclosureStrategy) disclosureStrategy.value = preferences.disclosureStrategy;
   if (textFormality) textFormality.value = preferences.formality;
   if (capitalization) capitalization.value = preferences.capitalization;
@@ -410,10 +412,11 @@ document.querySelectorAll<HTMLButtonElement>("[data-goal-example]").forEach(butt
 });
 
 preferencesSave?.addEventListener("click", async () => {
-  if (!currentProfile || !datingGoal || !datingGoalDetails || !disclosureStrategy || !textFormality || !capitalization || !emojiFrequency || !abbreviations || !messageLength || !punctuationDensity || !slangLevel || !fragmentStyle || !grammarStyle || !directness || !questionFrequency || !teasingStyle || !humorStyle || !doubleTexting || !frenchStyle || !darijaStyle || !englishStyle || !matchProfileRetentionDays) return;
+  if (!currentProfile || !datingGoal || !datingGoalDetails || !targetCities || !disclosureStrategy || !textFormality || !capitalization || !emojiFrequency || !abbreviations || !messageLength || !punctuationDensity || !slangLevel || !fragmentStyle || !grammarStyle || !directness || !questionFrequency || !teasingStyle || !humorStyle || !doubleTexting || !frenchStyle || !darijaStyle || !englishStyle || !matchProfileRetentionDays) return;
   const updated = writeEditablePreferences(currentProfile, {
     datingGoal: datingGoal.value,
     datingGoalDetails: datingGoalDetails.value,
+    targetCities: targetCities.value,
     disclosureStrategy: disclosureStrategy.value,
     formality: textFormality.value,
     capitalization: capitalization.value,
