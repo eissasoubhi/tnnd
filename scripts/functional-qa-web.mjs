@@ -224,16 +224,23 @@ async function main() {
 
     await waitFor(cdp, 'document.querySelector("#first-run-guide-panel") !== null');
     await step(cdp, "First-run tutorial shows one step and a next action",
-      'document.querySelector("#guide-progress")?.textContent?.includes("of 5") && !!document.querySelector("#guide-go")', Boolean);
+      'document.querySelector("#guide-progress")?.textContent?.includes("2 of 5") && document.querySelector("#guide-title")?.textContent === "Configure and test Gemini" && !!document.querySelector("#guide-go")', Boolean);
     await cdp.evaluate('document.querySelector("#guide-next").click()');
     await step(cdp, "Tutorial advances to the next explained task",
-      'document.querySelector("#guide-progress")?.textContent?.includes("2 of 5")', Boolean);
+      'document.querySelector("#guide-progress")?.textContent?.includes("3 of 5")', Boolean);
     await step(cdp, "Account sign-in and asynchronous workspace panels load",
       'document.querySelector("#auth-signed-in")?.hidden === false && document.querySelector("#login-form")?.hidden === true',
       Boolean);
     await step(cdp, "A synced fixture conversation opens with real messages",
       'document.querySelector("#conversation-detail")?.textContent?.includes("Hi! How are you?")',
       Boolean);
+    await waitFor(cdp, 'document.querySelector("#conversation-management-list-summary")?.textContent?.includes("1")');
+    await step(cdp, "Conversation management counter counts list rows only",
+      'document.querySelector("[data-management-filter-summary]")?.textContent === "1/1"', Boolean);
+    await step(cdp, "Long chat decision lists start collapsed with clear summaries",
+      'document.querySelector(".takeover-review")?.open === false && document.querySelector(".takeover-review > summary")?.textContent?.includes("1 undecided chat") && document.querySelector(".management-individual-details")?.open === false && document.querySelector("#conversation-management-list-summary")?.textContent?.includes("1")', Boolean);
+    await step(cdp, "Opening a chat reveals its management row",
+      `(() => { window.dispatchEvent(new CustomEvent("tnnd:open-conversation", { detail: { conversationRef: "${conversationId}" } })); const details = document.querySelector(".management-individual-details"); const revealed = details?.open === true && !!details.querySelector("[data-management-row]"); details.open = false; return revealed; })()`, Boolean);
     await waitFor(cdp, 'document.querySelector("#analytics-refresh-status")?.textContent?.includes("Insights are up to date")', 150);
     await step(cdp, "Analytics loads real fixture data and reports success only after rendering",
       'document.querySelector("#analytics-dashboard-panel")?.dataset.analyticsLoadedAt != null', Boolean);

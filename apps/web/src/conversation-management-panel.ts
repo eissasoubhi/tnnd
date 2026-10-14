@@ -61,6 +61,7 @@ function installStyles(): void {
     .conversation-management-explainer{padding:10px 14px;border:1px solid var(--nb-border,#c8d8cd);border-radius:12px;background:var(--nb-surface-soft,#edf4eb);font-size:12px;line-height:1.6}.conversation-management-explainer summary{cursor:pointer;font-weight:750}.conversation-management-explainer p{margin:8px 0 0}
     .management-runner-monitor{margin:14px 0;padding:14px;border:1px solid var(--nb-border,#c8d8cd);border-radius:12px;background:var(--nb-surface-soft,#f5f8f3)}.management-runner-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}.management-runner-heading h3{margin:0 0 5px;font-size:14px}.management-runner-phase{border-radius:999px;padding:5px 9px;white-space:nowrap;background:#e5e7eb;font-size:11px;font-weight:750}.management-runner-phase[data-phase="sending"],.management-runner-phase[data-phase="generating"],.management-runner-phase[data-phase="loading"]{background:#dbeafe;color:#1d4ed8}.management-runner-phase[data-phase="sent"],.management-runner-phase[data-phase="waiting"]{background:#dcfce7;color:#166534}.management-runner-phase[data-phase="error"],.management-runner-phase[data-phase="skipped"]{background:#fee2e2;color:#991b1b}.management-runner-current{font-weight:700;font-size:12px;margin:8px 0}.management-runner-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin:12px 0}.management-runner-stats span{border:1px solid var(--nb-border,#d6e0d7);border-radius:9px;background:#fff;padding:9px 3px;text-align:center;font-size:11px}.management-runner-stats strong{display:block;font-size:17px}.management-runner-history>summary{font-size:12px;font-weight:750;cursor:pointer}.management-runner-history ol{max-height:160px;overflow:auto;font-size:12px;padding-left:20px;line-height:1.6}.management-runner-history time{color:#767676;margin-right:8px}@media(max-width:760px){.management-runner-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
     .management-bulk-actions{display:flex;gap:8px;flex-wrap:wrap}.management-bulk-panel{padding:15px;border:1px solid var(--nb-border,#c8d8cd);border-radius:12px;background:var(--nb-surface-soft,#edf4eb);margin:14px 0}.management-bulk-panel h3{font-size:14px;margin:0 0 6px}.management-bulk-panel button{padding:8px 12px;margin-top:8px;cursor:pointer}.management-bulk-panel button:disabled{opacity:.5;cursor:not-allowed}.management-list{display:grid;gap:8px;margin-top:12px}.management-row{display:grid;grid-template-columns:minmax(0,1fr) 190px auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--border,#d4d4d8);border-radius:10px}.management-row-main{display:grid;gap:3px;min-width:0}.management-match-line{display:flex;align-items:center;gap:9px;min-width:0}.management-match-avatar{display:grid;flex:0 0 36px;place-items:center;width:36px;height:36px;border-radius:50%;object-fit:cover;background:var(--nb-mint,#d9efcc);color:var(--nb-primary,#264b40)}.management-row-main strong,.management-row-main small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.management-row small{opacity:.65}.management-row select{width:100%}.management-row button{width:auto;padding:7px 10px}.management-badge{font-size:10px;opacity:.72}.management-action-block{display:inline-flex;width:max-content;max-width:100%;font-size:11px;font-weight:700;padding:3px 7px;border-radius:999px;background:rgba(245,158,11,.14)}.management-action-block[data-severity="urgent"]{background:rgba(239,68,68,.16)}.management-note{margin-top:9px}.management-status{min-height:18px}.management-row[data-management-state="moved-off-tinder"]{border-style:dashed}.management-row[data-management-state="ai-managed"]{outline:1px solid currentColor;outline-offset:1px}.management-row[data-action-focus="true"]{box-shadow:0 0 0 3px rgba(99,102,241,.3)}@media(max-width:760px){.management-row{grid-template-columns:1fr}}
+    .management-individual-details>summary{min-height:44px;padding:10px 0;cursor:pointer;font-weight:750}.management-individual-details>summary:focus-visible{outline:3px solid var(--nb-focus,#27684f);outline-offset:2px}
   `;
   document.head.append(style);
 }
@@ -98,9 +99,12 @@ function mount(): { list: HTMLElement; status: HTMLElement } | null {
       <details class="management-runner-history"><summary>Recent runner events</summary><ol id="web-runner-activity"><li>No activity yet.</li></ol></details>
       <p class="subtle">Send actions are not delivery receipts. Chrome and Tinder must stay open. A running status with no recent updates may indicate a paused or disconnected tab.</p>
     </section>
-    <div id="conversation-management-list" class="management-list"></div>
-    <p class="subtle management-note">Switching to AI managed requires an explicit confirmation before it is saved.</p>
-    <p class="subtle management-status" id="conversation-management-message"></p>
+    <details class="management-individual-details">
+      <summary id="conversation-management-list-summary">Manage individual chats</summary>
+      <div id="conversation-management-list" class="management-list"></div>
+      <p class="subtle management-note">Switching to AI managed requires an explicit confirmation before it is saved.</p>
+      <p class="subtle management-status" id="conversation-management-message"></p>
+    </details>
   `;
   grid.prepend(panel);
   return {
@@ -234,6 +238,8 @@ document.querySelector("#management-bulk-pause")?.addEventListener("click", () =
 
 function render(): void {
   if (!elements) return;
+  const summary = document.querySelector<HTMLElement>("#conversation-management-list-summary");
+  if (summary) summary.textContent = `Manage individual chats · ${records.length}`;
   if (!records.length) {
     elements.list.innerHTML = '<p class="subtle">No synchronized conversations to manage yet.</p>';
     return;
@@ -333,6 +339,8 @@ async function refresh(): Promise<void> {
 function focusConversation(conversationRef: string): void {
   const row = elements?.list.querySelector<HTMLElement>(`[data-management-row="${CSS.escape(conversationRef)}"]`);
   if (!row) return;
+  const details = row.closest<HTMLDetailsElement>(".management-individual-details");
+  if (details) details.open = true;
   elements?.list.querySelectorAll<HTMLElement>("[data-action-focus]").forEach((item) => delete item.dataset.actionFocus);
   row.dataset.actionFocus = "true";
   row.scrollIntoView({ behavior: "smooth", block: "center" });

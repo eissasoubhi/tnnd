@@ -81,7 +81,7 @@ function ensureFilterControl(): void {
 }
 
 function applyManagementFilter(): void {
-  const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-conversation-id]"));
+  const rows = Array.from(document.querySelectorAll<HTMLElement>("#conversation-list [data-conversation-id]"));
   let eligible = 0;
   let visible = 0;
   for (const row of rows) {
@@ -118,7 +118,7 @@ function renderBadges(): void {
   try {
     installStyles();
     ensureFilterControl();
-  document.querySelectorAll<HTMLElement>("[data-conversation-id]").forEach((row) => {
+  document.querySelectorAll<HTMLElement>("#conversation-list [data-conversation-id]").forEach((row) => {
     const conversationId = row.dataset.conversationId;
     if (!conversationId) return;
     const record = records.get(conversationId);
@@ -139,7 +139,7 @@ function renderBadges(): void {
   });
   applyManagementFilter();
 
-  const selected = document.querySelector<HTMLElement>("[data-conversation-id].selected")?.dataset.conversationId;
+  const selected = document.querySelector<HTMLElement>("#conversation-list [data-conversation-id].selected")?.dataset.conversationId;
   const heading = document.querySelector<HTMLElement>("#conversation-detail .conversation-detail-heading");
   heading?.querySelector("[data-detail-management]")?.remove();
   heading?.querySelector("[data-sync-inline]")?.remove();
