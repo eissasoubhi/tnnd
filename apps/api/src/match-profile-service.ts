@@ -128,8 +128,14 @@ export async function saveMatchProfileCapture(
      ) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8)
      ON CONFLICT (user_id, conversation_id) WHERE conversation_id IS NOT NULL
      DO UPDATE SET
-       source_capture = EXCLUDED.source_capture,
-       normalized_profile = EXCLUDED.normalized_profile,
+       -- Preserve richer previously verified fields when a later observation
+       -- contains just an identity (e.g. right panel is closed).
+       source_capture = jsonb_set(EXCLUDED.source_capture, '{visibleFields}',
+         COALESCE(match_profiles.source_capture->'visibleFields', '{}'::jsonb)
+           || COALESCE(EXCLUDED.source_capture->'visibleFields', '{}'::jsonb)),
+       normalized_profile = jsonb_set(EXCLUDED.normalized_profile, '{fields}',
+         COALESCE(match_profiles.normalized_profile->'fields', '{}'::jsonb)
+           || COALESCE(EXCLUDED.normalized_profile->'fields', '{}'::jsonb)),
        captured_at = EXCLUDED.captured_at,
        expires_at = NULL,
        updated_at = now()
