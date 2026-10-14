@@ -38,7 +38,7 @@ export function firstMessageContext(firstName?: string, age?: number): string {
   const verifiedAge = Number.isInteger(age) && age! >= 18 && age! <= 120 ? age : undefined;
   return [
     "There are no previous messages in this Tinder conversation.",
-    "Write one first turn with two or three short fragments to send as separate chat bubbles; no invented profile reactions, feelings, compliments, familiarity or pickup lines.",
+    "Write two or three short separate Tinder bubbles. First bubble must be a short greeting (Salut, Hello, Hi, or Salut cv?); follow with one or two natural brief lines. No invented profile reactions, feelings, compliments, familiarity or pickup lines.",
     name ? `Visible Tinder match name: ${name}.` : "The match's name is not confirmed.",
     verifiedAge ? `Visible Tinder match age: ${verifiedAge}.` : ""
   ].filter(Boolean).join("\n");
