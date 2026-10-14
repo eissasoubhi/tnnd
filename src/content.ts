@@ -825,6 +825,15 @@ async function navigateWatcherSidebar(
     return { ok: false, error: "conversation_processing_in_progress" };
   if (currentConversationRef() !== expectedRef)
     return { ok: false, error: "unexpected_current_thread" };
+  // A human-typed but unsent draft is also an active conversation: do not
+  // replace their focused sidebar or interrupt manual takeover.
+  if (target === "matches") {
+    const draft = document.querySelector<HTMLElement>(
+      'textarea[placeholder*="message" i],textarea[aria-label*="message" i],[contenteditable="true"][role="textbox"]'
+    );
+    const draftText = draft instanceof HTMLTextAreaElement ? draft.value : draft?.innerText ?? "";
+    if (draftText.trim()) return { ok: false, error: "unsent_message_draft_present" };
+  }
   if (detectVisibleTinderSidebarTab() === target) {
     return { ok: true, sidebar: target,
       ...(target === "matches" ? { refs: visibleTinderThreadRefs() } : {}) };
