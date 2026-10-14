@@ -5,7 +5,8 @@ import {
   reconcileExistingIndex, markThreadChecked, observeUnreadThreads
 } from "../src/tinder-existing-thread-index.ts";
 import {
-  nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus, newlyVisibleUnread
+  nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus, newlyVisibleUnread,
+  extendActiveConversation, shouldFollowActiveConversation, ACTIVE_CHAT_FOLLOW_MS
 } from "../src/tinder-reply-watcher.ts";
 
 const base = "2026-10-14T19:00:00Z";
@@ -106,4 +107,47 @@ test("watcher keeps bounded observed unread list after worker restart",async()=>
  assert.match(runner,/newlyVisibleUnread\(state\.visibleUnreadRefs, visible\)/);
  assert.match(runner,/await chrome\.alarms\.create\(ALARM/);
  assert.match(runner,/chrome\.runtime\.onStartup\.addListener/);
+});
+
+test("watcher stays with a live chat despite other queued replies",()=>{
+  const at=Date.parse("2026-10-14T20:00:00Z");
+  let work=reconcileExistingIndex(null,"user",[
+    source("active","incoming","2026-10-14T19:59:00Z"),
+    source("waiting","incoming","2026-10-14T19:59:15Z")
+  ],"2026-10-14T20:00:00Z");
+  work=markThreadChecked(work,"active","2026-10-14T20:00:00Z");
+  assert.equal(nextWatchedReply(work),"waiting");
+  const follow=extendActiveConversation("active","2026-10-14T20:00:00Z");
+  assert.equal(ACTIVE_CHAT_FOLLOW_MS,180000);
+  assert.equal(shouldFollowActiveConversation(follow,"active",["active","waiting"],at+179000),true);
+  // A second reply extends the window instead of allowing the next navigation.
+  const renewed=extendActiveConversation("active","2026-10-14T20:02:00Z");
+  assert.equal(shouldFollowActiveConversation(renewed,"active",["active","waiting"],at+240000),true);
+  assert.equal(shouldFollowActiveConversation(renewed,"active",["active","waiting"],at+301000),false);
+  assert.equal(nextWatchedReply(work),"waiting","other matches remain queued while focused");
+});
+test("focus lease cannot hijack a different, disabled or manually switched chat",()=>{
+  const follow=extendActiveConversation("active","2026-10-14T20:00:00Z");
+  const at=Date.parse("2026-10-14T20:00:30Z");
+  assert.equal(shouldFollowActiveConversation(follow,"other",["active","other"],at),false);
+  assert.equal(shouldFollowActiveConversation(follow,"active",["other"],at),false);
+  assert.equal(shouldFollowActiveConversation({...follow,activeConversationUntil:"invalid"},"active",["active"],at),false);
+  assert.equal(shouldFollowActiveConversation({activeConversationRef:null,activeConversationUntil:null},"active",["active"],at),false);
+});
+test("watcher extends focus after distinct incoming/sent events, not an old processed bubble",async()=>{
+  const read=path=>readFile(new URL("../"+path,import.meta.url),"utf8");
+  const [runner,content,popup,manifest]=await Promise.all([
+    "src/tinder-global-existing-runner.ts","src/content.ts","src/popup.ts","public/manifest.json"
+  ].map(read));
+  assert.match(runner,/mode === "watcher" && state\.tabId !== null && state\.activeConversationRef/);
+  assert.match(runner,/shouldFollowActiveConversation\(state,/);
+  assert.match(runner,/shouldFollowActiveConversation\(beforeNavigation, expectedRef, refs\)/);
+  assert.match(runner,/extendActiveConversation\(nextRef\)/);
+  assert.match(runner,/extendActiveConversation\(activeRef\)/);
+  assert.match(runner,/phase === "incoming" \|\| phase === "generating" \|\| phase === "sending" \|\| phase === "sent"/);
+  assert.match(content,/lastWatchedIncomingEvidence\.get\(conversationRef\) !== incomingEvidence/);
+  assert.match(content,/reportExistingRunner\("incoming", "New reply in the current conversation\."\)/);
+  assert.match(content,/phase !== "sent" && phase !== "incoming"/);
+  assert.match(popup,/Following current conversation/);
+  assert.equal(JSON.parse(manifest).version,"0.2.21");
 });
