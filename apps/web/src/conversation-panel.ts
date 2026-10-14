@@ -142,6 +142,29 @@ function renderTopicState(detail: ConversationDetail): string {
   `;
 }
 
+function renderConversationFlow(detail: ConversationDetail): string {
+  const flow = detail.conversationFlow;
+  if (!flow) return "";
+  const labels: Record<string, string> = {
+    greeting: "Salutation", "check-in": "Prendre des nouvelles",
+    location: "Ville / origine", occupation: "Quotidien / travail",
+    interests: "Centres d'intérêt", "free-conversation": "Discussion libre"
+  };
+  const steps = flow.stages.map(step => {
+    const status = step.status === "covered" ? "✓" : step.status === "next" ? "→" : "·";
+    const extra = step.reason === "known" || step.reason === "mentioned" ? " (déjà connu)" : step.reason === "asked" ? " (déjà abordé)" : "";
+    return '<li class="conversation-flow-step" data-flow-status="' + escapeHtml(step.status) + '"><span aria-hidden="true">' + status + '</span><span>' + escapeHtml(labels[step.id] ?? step.id) + escapeHtml(extra) + '</span></li>';
+  }).join("");
+  const known = flow.known.length
+    ? flow.known.map(fact => '<span class="conversation-topic-chip">' + escapeHtml(fact.key) + ' : ' + escapeHtml(fact.value) + '</span>').join("")
+    : '<span class="subtle">Aucune information confirmée.</span>';
+  return '<section class="conversation-flow-panel" aria-label="Conversation Flow"><div class="conversation-topic-heading"><strong>Conversation Flow</strong><span class="pill">Adaptatif</span></div>'
+    + '<p class="subtle">Progression indicative, pas un questionnaire. Les réponses du match passent toujours en priorité.</p>'
+    + '<ol class="conversation-flow-steps">' + steps + '</ol>'
+    + (flow.respondToLatestFirst ? '<p class="subtle">Le match a posé une question : y répondre avant de changer de sujet.</p>' : '')
+    + '<p class="subtle">Informations connues du match</p><div class="conversation-topic-chips">' + known + '</div></section>';
+}
+
 function renderDetail(detail: ConversationDetail): string {
   const messages = detail.messages.length
     ? detail.messages.map((message) => `
@@ -177,6 +200,7 @@ function renderDetail(detail: ConversationDetail): string {
       ${renderStatusActions(detail)}
     </div>
     ${renderTopicState(detail)}
+    ${renderConversationFlow(detail)}
     ${renderTemporaryInstruction(detail)}
     <div class="conversation-messages">${messages}</div>
   `;
@@ -212,6 +236,7 @@ function installStyles(): void {
     .conversation-layout{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(280px,1.1fr);gap:14px;margin-top:14px}
     .conversation-identity-editor{margin:0 0 12px;padding:10px 13px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:var(--nb-surface-soft,#edf4eb)}.conversation-identity-editor summary{cursor:pointer;font-size:12px;font-weight:750}.conversation-identity-editor>p{font-size:12px;line-height:1.5}.conversation-identity-controls{display:flex;align-items:flex-end;flex-wrap:wrap;gap:9px}.conversation-identity-controls label{display:grid;gap:5px;flex:1 1 130px;font-size:12px}.conversation-identity-controls label:nth-child(2){flex:0 1 115px}.conversation-identity-controls input{min-width:0;max-width:100%}.conversation-identity-controls button{max-width:100%;width:auto;white-space:normal}
     .conversation-person-line{display:flex;align-items:center;gap:9px;min-width:0}.conversation-person-line strong{min-width:0;overflow-wrap:anywhere} .conversation-person-avatar{display:inline-grid;flex:0 0 40px;place-items:center;width:40px;height:40px;background:var(--nb-mint,#d9efcc);color:var(--nb-primary,#264b40);border-radius:50%;font-weight:800;overflow:hidden}.conversation-person-avatar img{display:block;width:100%;height:100%;object-fit:cover}.conversation-detail-heading>.conversation-person-avatar{width:48px;height:48px;flex-basis:48px}.conversation-status-help{margin:0 0 12px;padding:10px 13px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:var(--nb-surface-soft,#edf4eb)}.conversation-status-help summary{cursor:pointer;font-size:12px;font-weight:750}.conversation-status-help p{font-size:12px;line-height:1.55}.conversation-status-help a{font-size:12px;font-weight:750;color:inherit;text-decoration:underline}
+    .conversation-flow-panel{border:1px solid var(--border,#d4d4d8);border-radius:12px;padding:13px;margin:12px 0;background:var(--nb-surface-soft,#edf4eb)}.conversation-flow-panel .conversation-topic-heading{display:flex;justify-content:space-between}.conversation-flow-steps{display:grid;gap:8px;margin:12px 0;padding:0;list-style:none}.conversation-flow-step{display:flex;gap:9px;align-items:center;font-size:12px}.conversation-flow-step[data-flow-status="covered"]{opacity:.65}.conversation-flow-step[data-flow-status="next"]{font-weight:750}.conversation-flow-panel .conversation-topic-chips{display:flex;flex-wrap:wrap;gap:6px}
     .conversation-list{display:grid;gap:8px;align-content:start;max-height:430px;overflow:auto}
     .conversation-row{width:100%;display:flex;justify-content:space-between;gap:12px;text-align:left;padding:11px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:transparent;color:inherit;cursor:pointer}
     .conversation-row:hover{border-color:currentColor}.conversation-row.selected{outline:2px solid currentColor;outline-offset:1px}.conversation-row-main,.conversation-row-meta{display:grid;gap:4px}.conversation-row-meta{text-align:right;justify-items:end}.conversation-row small,.conversation-detail small,.conversation-message small{opacity:.65}
