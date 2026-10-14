@@ -403,10 +403,11 @@ async function observeRuntimeReadMode(): Promise<void> {
   }
 }
 
+let lastWatchedIncomingEvidence = "";
 let lastExistingRunnerEventKey = "";
 let lastExistingRunnerEventAt = 0;
 /** Telemetry contains only operational metadata, never Tinder message text. */
-function reportExistingRunner(phase: "waiting" | "generating" | "sending" | "sent" | "skipped" | "error", detail: string): void {
+function reportExistingRunner(phase: "incoming" | "waiting" | "generating" | "sending" | "sent" | "skipped" | "error", detail: string): void {
   const ref = currentConversationRef();
   if (!ref || !hasLiveExtensionContext()) return;
   const key = `${ref}:${phase}:${detail}`;
@@ -463,6 +464,14 @@ async function scan(): Promise<void> {
     if (!conversationRef || tinderThreadKeyFromPath(location.pathname) !== snapshot.threadKey) {
       reportExistingRunner("skipped", "Thread identity mismatch; no message sent.");
       return;
+    }
+    // Signal each distinct verified incoming bubble from the OPEN chat, even
+    // if the scheduled reply delay has not elapsed. Only a keyed operational
+    // notification is sent, never message text or its fingerprint.
+    const incomingEvidence = `${conversationRef}\u001f${snapshot.latestIncomingKey}`;
+    if (lastWatchedIncomingEvidence !== incomingEvidence) {
+      lastWatchedIncomingEvidence = incomingEvidence;
+      reportExistingRunner("incoming", "New reply in the current conversation.");
     }
     if (!await backendAllowsAutomaticReply(conversationRef)) {
       reportExistingRunner("skipped", "AI management not authorized by TNND backend.");
