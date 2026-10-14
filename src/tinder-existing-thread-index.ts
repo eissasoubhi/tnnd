@@ -6,6 +6,7 @@
 export interface IndexedThread {
   ref: string;
   serverMessageAt: string | null;
+  lastMessageDirection?: "incoming" | "outgoing" | null;
   checkedMessageAt: string | null;
   lastCheckedAt: string | null;
   queuedAt: string | null;
@@ -24,7 +25,7 @@ const goodRef = (ref: string) => Boolean(ref && ref.length <= 512 && !ref.includ
 export function reconcileExistingIndex(
   previous: ExistingThreadIndex | null,
   userId: string,
-  eligible: readonly { ref: string; lastMessageAt: string | null }[],
+  eligible: readonly { ref: string; lastMessageAt: string | null; lastMessageDirection?: "incoming" | "outgoing" | null }[],
   now = new Date().toISOString()
 ): ExistingThreadIndex {
   const previousEntries = previous?.userId === userId
@@ -32,16 +33,21 @@ export function reconcileExistingIndex(
     : new Map<string, IndexedThread>();
   const seen = new Set<string>();
   const threads: IndexedThread[] = [];
-  for (const { ref, lastMessageAt } of eligible) {
+  for (const { ref, lastMessageAt, lastMessageDirection } of eligible) {
     if (!goodRef(ref) || seen.has(ref)) continue;
     seen.add(ref);
     const old = previousEntries.get(ref);
     const nextMessageAt = lastMessageAt ?? null;
     const changed = Boolean(old && nextMessageAt && nextMessageAt !== old.checkedMessageAt);
-    const stale = old?.lastCheckedAt && Date.parse(now) - Date.parse(old.lastCheckedAt) >= RECHECK_IDLE_MS;
-    const pending = !old || Boolean(old.queuedAt) || changed || stale;
+    const direction = lastMessageDirection ?? null;
+    // Synced outgoing chats are already answered: skip initial pass, unless Tinder reports unread.
+    // Periodic safety recheck remains, but less frequently than for potential incoming chats.
+    const idleDelay = direction === "outgoing" ? 6 * 60 * 60_000 : RECHECK_IDLE_MS;
+    const stale = old?.lastCheckedAt && Date.parse(now) - Date.parse(old.lastCheckedAt) >= idleDelay;
+    const pending = (!old && direction !== "outgoing") || Boolean(old?.queuedAt)
+      || (changed && direction !== "outgoing") || stale;
     threads.push({
-      ref, serverMessageAt: nextMessageAt,
+      ref, serverMessageAt: nextMessageAt, lastMessageDirection: direction,
       checkedMessageAt: old?.checkedMessageAt ?? null,
       lastCheckedAt: old?.lastCheckedAt ?? null,
       queuedAt: pending ? (old?.queuedAt ?? now) : null,
@@ -82,6 +88,7 @@ export function nextIndexedExistingThread(state: ExistingThreadIndex): string | 
   if (!pending.length) return null;
   pending.sort((a,b) =>
     Number(Boolean(b.unreadAt)) - Number(Boolean(a.unreadAt))
+    || Number(b.lastMessageDirection === "incoming") - Number(a.lastMessageDirection === "incoming")
     || (a.queuedAt ?? "").localeCompare(b.queuedAt ?? "")
     || a.ref.localeCompare(b.ref)
   );

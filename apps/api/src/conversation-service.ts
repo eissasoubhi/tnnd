@@ -37,6 +37,7 @@ export interface ConversationSummary {
   userDisplayAge?: number;
   currentTopic?: string;
   lastMessageAt?: string;
+  lastMessageDirection?: "incoming" | "outgoing";
   pendingHumanActions?: number;
   updatedAt: string;
 }
@@ -167,6 +168,7 @@ export async function listConversations(userId: string): Promise<ConversationSum
     display_label: string | null;
     display_age: number | null;
     last_message_at: Date | null;
+    last_message_direction: "incoming" | "outgoing" | null;
     pending_human_actions: string | number;
     updated_at: Date;
   }>(
@@ -176,6 +178,8 @@ export async function listConversations(userId: string): Promise<ConversationSum
             (SELECT mp.normalized_profile->'fields'->>'age' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_age,
             (SELECT mp.normalized_profile->'fields'->>'photoUrl' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_photo_url,
             MAX(m.sent_at) AS last_message_at,
+            (SELECT lm.direction FROM conversation_messages lm WHERE lm.conversation_id = c.id
+              ORDER BY lm.sent_at DESC, lm.id DESC LIMIT 1) AS last_message_direction,
             (
               SELECT COUNT(*)
               FROM human_actions h
@@ -201,6 +205,7 @@ export async function listConversations(userId: string): Promise<ConversationSum
     ...(row.display_age !== null ? { userDisplayAge: row.display_age } : {}),
     ...(row.current_topic ? { currentTopic: row.current_topic } : {}),
     ...(row.last_message_at ? { lastMessageAt: row.last_message_at.toISOString() } : {}),
+    ...(row.last_message_direction ? { lastMessageDirection: row.last_message_direction } : {}),
     pendingHumanActions: Number(row.pending_human_actions) || 0,
     updatedAt: row.updated_at.toISOString()
   }));

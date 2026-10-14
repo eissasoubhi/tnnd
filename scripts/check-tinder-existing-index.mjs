@@ -39,3 +39,26 @@ test("extension only runs indexed server-authorized refs and never stores messag
  assert.match(content,/TNND_EXISTING_RUNNER_UNREAD/);
  assert.match(runner,/sender\.tab\?\.id !== state\.tabId/);
 });
+
+test("synced outgoing chats are not opened on the first pass; incoming and unread first",()=>{
+  const at0 = "2026-10-13T20:00:00Z";
+  const records = [
+    {ref:"answered",lastMessageAt:at0,lastMessageDirection:"outgoing"},
+    {ref:"needs-reply",lastMessageAt:at0,lastMessageDirection:"incoming"},
+    {ref:"unknown",lastMessageAt:at0},
+    {ref:"answered2",lastMessageAt:at0,lastMessageDirection:"outgoing"}
+  ];
+  let q=reconcileExistingIndex(null,"user-1",records,"2026-10-13T20:01:00Z");
+  assert.equal(q.threads.find(t=>t.ref==="answered")?.queuedAt,null);
+  assert.equal(nextIndexedExistingThread(q),"needs-reply");
+  // A real unread Tinder hint overrides stale synchronized outgoing status.
+  q=observeUnreadThreads(q,["answered"],"2026-10-13T20:02:00Z");
+  assert.equal(nextIndexedExistingThread(q),"answered");
+  q=markThreadChecked(q,"answered","2026-10-13T20:03:00Z");
+  q=reconcileExistingIndex(q,"user-1",records,"2026-10-13T20:04:00Z");
+  assert.equal(q.threads.find(t=>t.ref==="answered")?.queuedAt,null);
+  // Eventually recheck, because synced backend may miss offscreen Tinder changes.
+  q=reconcileExistingIndex(q,"user-1",records,"2026-10-14T03:04:00Z");
+  assert.equal(nextIndexedExistingThread(q),"needs-reply");
+  assert.notEqual(q.threads.find(t=>t.ref==="answered")?.queuedAt,null);
+});

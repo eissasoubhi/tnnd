@@ -104,7 +104,7 @@ async function save(state: GlobalExistingRunnerState): Promise<GlobalExistingRun
   await chrome.storage.local.set({ [KEY]: state });
   return state;
 }
-async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[]; labels: Map<string, string>; messageTimes: Map<string, string | null> }> {
+async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[]; labels: Map<string, string>; messageTimes: Map<string, string | null>; messageDirections: Map<string, "incoming" | "outgoing" | null> }> {
   const session = await getBackendSession();
   if (!session) throw new Error("TNND account is not connected.");
   const headers = { authorization: `Bearer ${session.token}` };
@@ -128,10 +128,13 @@ async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[];
       id: typeof record.id === "string" ? record.id : "",
       status: typeof record.status === "string" ? record.status : "",
       lastMessageAt: typeof record.lastMessageAt === "string" ? record.lastMessageAt : null,
+      lastMessageDirection: record.lastMessageDirection === "incoming" || record.lastMessageDirection === "outgoing"
+        ? record.lastMessageDirection as "incoming" | "outgoing" : null,
       pendingHumanActions: typeof record.pendingHumanActions === "number" ? record.pendingHumanActions : 0,
       displayName: typeof record.displayName === "string" ? record.displayName : ""
     }));
   const ids = new Map(records.map(item => [item.id, item.externalThreadId]));
+  const messageDirections = new Map<string, "incoming" | "outgoing" | null>();
   const messageTimes = new Map<string, string | null>();
   const labels = new Map<string, string>();
   for (const item of summaries) {
@@ -139,6 +142,7 @@ async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[];
     if (ref) {
       labels.set(ref, item.displayName && !item.displayName.startsWith("Conversation ") ? item.displayName : `Thread ${ref.slice(0, 8)}`);
       messageTimes.set(ref, item.lastMessageAt);
+      messageDirections.set(ref, item.lastMessageDirection);
     }
   }
 
@@ -149,7 +153,7 @@ async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[];
     settingsByRef.set(ref, await getChatSettings(threadKey));
   }
   const { ready, disabled } = partitionExistingChatPermissions(authorized, settingsByRef);
-  return { refs: ready, disabledRefs: disabled, labels, messageTimes };
+  return { refs: ready, disabledRefs: disabled, labels, messageTimes, messageDirections };
 }
 
 /** Reuse the EXISTING Tinder tab. Opening a second one can invalidate Tinder's
@@ -211,10 +215,10 @@ async function tick(): Promise<void> {
       await save(activity(await load(), "waiting", "Automatic replies are OFF in TNND Options. Enable them to continue."));
       return;
     }
-    const { refs, labels, messageTimes } = await listEligible();
+    const { refs, labels, messageTimes, messageDirections } = await listEligible();
     if (!(await load()).enabled) return;
     const work = reconcileExistingIndex(await readWorkIndex(session.user.id), session.user.id,
-      refs.map(ref => ({ ref, lastMessageAt: messageTimes.get(ref) ?? null })));
+      refs.map(ref => ({ ref, lastMessageAt: messageTimes.get(ref) ?? null, lastMessageDirection: messageDirections.get(ref) ?? null })));
     await saveWorkIndex(work);
     const nextRef = nextIndexedExistingThread(work);
     if (!nextRef) {
