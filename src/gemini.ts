@@ -1,6 +1,6 @@
 import { buildSystemInstruction, buildUserPrompt } from "./prompt";
 import type { AppConfig, ChatSettings, GeneratePurpose } from "./types";
-import { limitReplyLaughter, readLabeledReplyHistory, readReplyStyleCues } from "./conversation-reply-style";
+import { limitReplyLaughter, readLabeledReplyHistory, readReplyStyleCues } from "./conversation-reply-style.ts";
 
 interface GeminiResponse {
   candidates?: Array<{ finishReason?: string; content?: { parts?: Array<{ text?: string }> } }>;
