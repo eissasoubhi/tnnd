@@ -4,7 +4,7 @@ import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import { partitionExistingChatPermissions } from "./tinder-existing-chat-settings-policy";
 import { eligibleExistingThreadRefs } from "./tinder-global-existing-policy";
 import { reconcileExistingIndex, markThreadChecked, observeUnreadThreads, nextIndexedExistingThread, isExistingThreadIndex, type ExistingThreadIndex } from "./tinder-existing-thread-index";
-import { nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus } from "./tinder-reply-watcher";
+import { nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus, newlyVisibleUnread } from "./tinder-reply-watcher";
 
 const KEY = "tnnd.globalExistingRunner.v2";
 const ALARM = "tnnd.globalExistingRunner.cycle";
@@ -31,6 +31,7 @@ interface GlobalExistingRunnerState {
   enabled: boolean;
   mode: "runner" | "watcher";
   pendingReplies: number;
+  visibleUnreadRefs: string[];
   watcherStatus: ReturnType<typeof watcherDisplayStatus>;
   userId: string | null;
   tabId: number | null;
@@ -54,7 +55,7 @@ interface GlobalExistingRunnerState {
   activity: RunnerActivity[];
 }
 const initial = (): GlobalExistingRunnerState => ({
-  enabled: false, mode: "runner", pendingReplies: 0, watcherStatus: "stopped", userId: null, tabId: null, tabMode: null, pausedOnStop: false,
+  enabled: false, mode: "runner", pendingReplies: 0, visibleUnreadRefs: [], watcherStatus: "stopped", userId: null, tabId: null, tabMode: null, pausedOnStop: false,
   phase: "stopped", dwellSeconds: DEFAULT_CADENCE, phaseDetail: "Runner stopped.", currentLabel: null,
   eligibleCount: 0, visitedCount: 0, sentCount: 0, skippedCount: 0, errorCount: 0,
   lastRef: null, cursorRef: null, startedAt: null, lastActionAt: null, lastVisitAt: null,
@@ -103,6 +104,7 @@ async function load(): Promise<GlobalExistingRunnerState> {
     activity: Array.isArray(value.activity) ? value.activity.slice(-LOG_LIMIT) : [],
     mode: value.mode === "watcher" ? "watcher" : "runner",
     pendingReplies: typeof value.pendingReplies === "number" && value.pendingReplies >= 0 ? value.pendingReplies : 0,
+    visibleUnreadRefs: Array.isArray(value.visibleUnreadRefs) ? value.visibleUnreadRefs.filter(ref => typeof ref === "string").slice(0, 100) : [],
     phase: PHASES.includes(value.phase as RunnerPhase) ? value.phase as RunnerPhase : "stopped"
   };
 }
@@ -235,8 +237,10 @@ async function tick(): Promise<void> {
           type: "TNND_WATCHER_READ_UNREAD"
         }) as { ok?: boolean; refs?: unknown };
         if (snapshot?.ok && Array.isArray(snapshot.refs)) {
-          queued = observeUnreadThreads(queued,
-            snapshot.refs.filter((ref): ref is string => typeof ref === "string"));
+          const visible = snapshot.refs.filter((ref): ref is string => typeof ref === "string").slice(0, 100);
+          const currentState = await load();
+          queued = observeUnreadThreads(queued, newlyVisibleUnread(currentState.visibleUnreadRefs, visible));
+          await save({ ...currentState, visibleUnreadRefs: visible });
         }
       } catch { /* The open page/alarm may reconnect on the next cycle. */ }
     }
@@ -284,8 +288,9 @@ async function tick(): Promise<void> {
     }
     const latest = await load();
     if (!latest.enabled) return;
-    await saveWorkIndex(markThreadChecked(queued, nextRef));
-    await save({ ...latest, lastRef: nextRef, cursorRef: nextRef, currentLabel: label, visitedCount: latest.visitedCount + 1,
+    const checked = markThreadChecked(queued, nextRef);
+    await saveWorkIndex(checked);
+    await save({ ...latest, pendingReplies: pendingWatchedReplies(checked), lastRef: nextRef, cursorRef: nextRef, currentLabel: label, visitedCount: latest.visitedCount + 1,
       lastVisitAt: new Date().toISOString() });
     // Reply sending remains solely in Tinder content script, guarded by both
     // server management and per-chat settings. Runner never calls Send.
@@ -386,6 +391,7 @@ chrome.runtime.onStartup.addListener(() => {
   void load().then(async state => {
     if (!state.enabled) return;
     await chrome.alarms.create(ALARM, { periodInMinutes: 0.5 });
+    void tick();
   });
 });
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
@@ -425,11 +431,14 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
         || !isTinderUrl(sender.url) || !Array.isArray(input.refs)) return { ok: false };
       const current = await readWorkIndex(session.user.id);
       if (!current) return { ok: false };
-      const next = observeUnreadThreads(current, input.refs.filter((ref): ref is string => typeof ref === "string"));
+      const visible = input.refs.filter((ref): ref is string => typeof ref === "string").slice(0, 100);
+      const unseen = state.mode === "watcher"
+        ? newlyVisibleUnread(state.visibleUnreadRefs, visible) : visible;
+      const next = observeUnreadThreads(current, unseen);
       await saveWorkIndex(next);
       if (state.mode === "watcher") {
-        await save({ ...state, pendingReplies: pendingWatchedReplies(next) });
-        void tick();
+        await save({ ...state, visibleUnreadRefs: visible, pendingReplies: pendingWatchedReplies(next) });
+        if (unseen.length) void tick();
       }
       return { ok: true };
     })().then(sendResponse).catch(() => sendResponse({ ok: false }));
