@@ -1,4 +1,7 @@
 import { loadGenerationProfile } from "./generation-user-profile-context.js";
+import { findConversationByExternalThreadId } from "./conversation-thread-lookup-service.js";
+import { getConversation } from "./conversation-service.js";
+import { conversationFlowGuidance, deriveConversationFlow } from "./conversation-flow.js";
 import { retrievePersonalMemories } from "./personal-memory-service.js";
 import { loadAiProviderSettings } from "./ai-provider-settings-service.js";
 import { resolveAdaptiveStyle, type StyleMessage } from "./conversation-style-adaptation.js";
@@ -10,6 +13,7 @@ export interface ExtensionSuggestionRequest {
   count: number;
   config: Record<string, unknown>;
   chat?: Record<string, unknown>;
+  threadKey?: string;
 }
 
 export interface ExtensionSuggestionResult {
@@ -113,6 +117,8 @@ export function validateExtensionSuggestionRequest(value: unknown): ExtensionSug
   if (!input.config || typeof input.config !== "object" || Array.isArray(input.config)) throw new Error("invalid_extension_generation_config");
   boundedJson(input.config);
 
+  const threadKey = input.threadKey;
+  if (threadKey !== undefined && (typeof threadKey !== "string" || !threadKey.trim() || threadKey.length > 512)) throw new Error("invalid_extension_generation_thread");
   const chat = input.chat;
   if (chat !== undefined && (!chat || typeof chat !== "object" || Array.isArray(chat))) throw new Error("invalid_extension_generation_chat");
   if (chat !== undefined) boundedJson(chat, 8_000);
@@ -122,7 +128,8 @@ export function validateExtensionSuggestionRequest(value: unknown): ExtensionSug
     purpose,
     count,
     config: input.config as Record<string, unknown>,
-    ...(chat ? { chat: chat as Record<string, unknown> } : {})
+    ...(chat ? { chat: chat as Record<string, unknown> } : {}),
+    ...(threadKey ? { threadKey: threadKey.trim() } : {})
   };
 }
 
@@ -155,6 +162,26 @@ export async function generateExtensionSuggestions(
     (generationContext.userProfile?.languages ?? {}) as Partial<{fr:number;darija:number;en:number}>
   );
   const effectiveConfig = { ...configWithoutIdentity, ...adaptive.settings };
+  // Do not make another LLM call to track the stage. Use durable messages
+  // already synchronized under this authenticated user and its existing facts.
+  const flowEnabled = configWithoutIdentity.conversationFlowEnabled !== false;
+  const flowLookup = flowEnabled && request.purpose !== "opener" && request.threadKey
+    ? await findConversationByExternalThreadId(userId, request.threadKey) : null;
+  const storedConversation = flowLookup ? await getConversation(userId, flowLookup.id) : null;
+  const observedMessages = request.context.split("\\n").slice(-50).flatMap(line => {
+    const match = /^\\s*(them|match|incoming|elle|lui|me|you|moi|outgoing)\\s*:\\s*(.+)$/i.exec(line);
+    if (!match) return [];
+    return [{ direction: /^(me|you|moi|outgoing)$/i.test(match[1]) ? "outgoing" as const : "incoming" as const,
+      text: match[2].slice(0, 600) }];
+  });
+  const stageOrder = configWithoutIdentity.conversationFlowOrder === "work-first"
+    ? ["occupation", "location", "interests"] as const
+    : configWithoutIdentity.conversationFlowOrder === "interests-first"
+      ? ["interests", "location", "occupation"] as const : ["location", "occupation", "interests"] as const;
+  const conversationFlow = !flowEnabled || request.purpose === "opener" ? null
+    : deriveConversationFlow(storedConversation?.messages ?? observedMessages,
+      storedConversation?.conversationFlow.known.map(fact => ({ ...fact, subject: "match" as const, confidence: 1 })) ?? [],
+      { order: stageOrder });
   const avoidInstruction = Array.isArray(topicPreferences?.avoidedTopics) && topicPreferences.avoidedTopics.length
     ? "Do not proactively raise the user-avoided topics in the stored profile. If directly asked, respond normally without abruptly evading the question."
     : "";
@@ -172,6 +199,7 @@ export async function generateExtensionSuggestions(
       ? `Auto-adaptive relative to the saved user baseline: ${adaptive.autoFields.join(", ")}. Return to baseline when mood changes. Adapt conservatively; never force jokes or teasing. Double texting never causes extra sends.`
       : "",
     avoidInstruction,
+    conversationFlow ? conversationFlowGuidance(conversationFlow) : "",
     request.purpose === "opener"
       ? "Write ONE opening Tinder turn with 2 or 3 short lines separated by newline characters inside one JSON array string. The lines will be sent as separate Tinder bubbles, NOT alternative messages. The FIRST line must be ONLY a short greeting (Salut, Hello, Hi, or Salut cv?); the next one or two lines should be natural short follow-ups without repeating the greeting. No previous messages exist. Do not invent profile facts, feelings, compliments or reactions (for example claiming their profile made the sender smile). Only the match name/age explicitly shown in the conversation context are verified. No profile photo, bio or appearance is verified. A neutral greeting and one natural question are better than fake personalization."
       : "Use the recent conversation flow, answer what was actually said, and avoid abruptly changing subject.",
