@@ -53,6 +53,9 @@ export interface TemporaryInstruction {
   remainingReplies?: number;
 }
 
+export interface ConversationFlowStage { id: "greeting" | "check-in" | "location" | "occupation" | "interests" | "free-conversation"; status: "covered" | "next" | "later"; reason: "asked" | "known" | "mentioned" | "next" | "later"; }
+export interface ConversationFlowState { stage: ConversationFlowStage["id"]; stages: ConversationFlowStage[]; known: Array<{ key: string; value: string }>; respondToLatestFirst: boolean; }
+
 export interface ConversationDetail {
   id: string;
   displayName: string;
@@ -63,6 +66,7 @@ export interface ConversationDetail {
   status: ConversationStatus;
   currentTopic: string | null;
   topicState: ConversationTopicState;
+  conversationFlow?: ConversationFlowState;
   pendingHumanActions?: number;
   temporaryInstruction?: TemporaryInstruction | null;
   messages: ConversationMessage[];
@@ -129,6 +133,31 @@ function normalizeTopicState(value: unknown): ConversationTopicState {
   };
 }
 
+/** Older backend builds do not return flow yet; keep detail rendering safe. */
+function normalizeConversationFlow(value: unknown): ConversationFlowState | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const input = value as Record<string, unknown>;
+  const ids = ["greeting", "check-in", "location", "occupation", "interests", "free-conversation"];
+  if (!ids.includes(String(input.stage)) || !Array.isArray(input.stages)) return undefined;
+  const stages: ConversationFlowStage[] = input.stages.flatMap(stage => {
+    if (!stage || typeof stage !== "object") return [];
+    const item = stage as Record<string, unknown>;
+    if (!ids.includes(String(item.id)) || !["covered", "next", "later"].includes(String(item.status))
+      || !["asked", "known", "mentioned", "next", "later"].includes(String(item.reason))) return [];
+    return [{ id: item.id as ConversationFlowStage["id"], status: item.status as ConversationFlowStage["status"],
+      reason: item.reason as ConversationFlowStage["reason"] }];
+  }).slice(0, 6);
+  if (stages.length !== 6) return undefined;
+  const known = Array.isArray(input.known) ? input.known.flatMap(fact => {
+    if (!fact || typeof fact !== "object") return [];
+    const f = fact as Record<string, unknown>;
+    return typeof f.key === "string" && typeof f.value === "string"
+      ? [{ key: f.key.slice(0, 60), value: f.value.slice(0, 120) }] : [];
+  }).slice(0, 8) : [];
+  return { stage: input.stage as ConversationFlowState["stage"], stages, known,
+    respondToLatestFirst: input.respondToLatestFirst === true };
+}
+
 function normalizeConversationDetail(value: unknown): ConversationDetail {
   if (!value || typeof value !== "object") throw new Error("Conversation detail must be an object");
   const input = value as Record<string, unknown>;
@@ -149,6 +178,7 @@ function normalizeConversationDetail(value: unknown): ConversationDetail {
     status: input.status,
     currentTopic: typeof input.currentTopic === "string" ? input.currentTopic : null,
     topicState: normalizeTopicState(input.topicState),
+    conversationFlow: normalizeConversationFlow(input.conversationFlow),
     pendingHumanActions,
     temporaryInstruction: normalizeTemporaryInstruction(input.temporaryInstruction),
     messages: input.messages.map(normalizeMessage)
