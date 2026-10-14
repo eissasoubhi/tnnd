@@ -22,6 +22,16 @@ export function nextWatchedReply(state: ExistingThreadIndex): string | null {
   return pending[0]?.ref ?? null;
 }
 
+export function pendingWatchedReplies(state: ExistingThreadIndex): number {
+  return state.threads.filter(entry =>
+    entry.queuedAt !== null && (
+      entry.unreadAt !== null || (
+        entry.lastMessageDirection === "incoming" && entry.serverMessageAt !== null
+        && entry.serverMessageAt !== entry.checkedMessageAt
+      )
+    )).length;
+}
+
 export type WatcherDisplayStatus = "stopped" | "waiting" | "new-replies"
   | "processing" | "paused" | "disconnected";
 export function watcherDisplayStatus(state: {
