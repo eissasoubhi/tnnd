@@ -7,6 +7,8 @@ export type MatchProfileVisibleFields = {
   location?: string;
   interests?: string[];
   relationshipGoal?: string;
+  heightCm?: number;
+  prompts?: Array<{ section: string; question: string; answer: string }>;
 };
 
 export type MatchProfileRecord = {
@@ -57,7 +59,9 @@ function entries(fields: MatchProfileVisibleFields): Array<{ label: string; valu
     ["Education", fields.education],
     ["Location", fields.location],
     ["Interests", fields.interests],
-    ["Relationship goal", fields.relationshipGoal]
+    ["Relationship goal", fields.relationshipGoal],
+    ["Height", fields.heightCm === undefined ? undefined : `${fields.heightCm} cm`],
+    ["Lifestyle answers", fields.prompts?.map(item => `${item.section}: ${item.question} — ${item.answer}`).join(" | ")]
   ];
   return values
     .filter(([, value]) => value !== undefined && value !== "" && (!Array.isArray(value) || value.length > 0))
