@@ -57,3 +57,14 @@ A first message to a match is now **one opener composed of two or three separate
 The opener always begins with a short simple greeting (`Salut`, `Hello`, `Hi`, or `Salut cv?`). Separate **minimum/maximum opening-bubble gap** settings (3–10s by default) control the short pauses between first-message bubbles. The **minimum/maximum reply delay** (20–60s by default) is reserved for responding to an incoming match message. The separate time-per-conversation setting is not overridden. Immediately before each additional bubble, TNND confirms the same chat is open, that the previous bubble is really the last recognized outgoing message, and that the match has not replied. If any check fails or the runner is stopped, no further bubble is sent and the opener remains claimed as a single match attempt. Each successfully submitted bubble is synchronized individually; no automatic retries of partial/uncertain sends.
 
 The **daily first-message quota is per match opened**, not per fragment; two or three consecutive opener bubbles consume only one of the five default daily attempts.
+
+
+## Adaptive Conversation Flow (v0.2.18)
+
+The default progression is **salutation → prendre des nouvelles → ville/origine → quotidien/travail → centres d’intérêt → discussion libre**. It is **not a questionnaire**. The latest match message or a directly asked question takes priority over the next discovery suggestion. TNND never asks a question it already asked or that a high-confidence persisted **match** fact answers. Manual takeover, human-action pauses and all original per-chat send permissions still apply.
+
+TNND already saves chat messages, topic state and verified conversation facts in the backend. The new Conversation Flow state is **derived on demand from this history**, so it survives restarts and does not require another Gemini call or a second user-memory table. If a fact is uncertain or not yet synchronized, the stage is a *suggestion*, not a claim of knowing the answer. Outgoing questions count as covered to prevent interrogation.
+
+You can inspect the per-conversation stage and known facts in **TNND Web → Conversations → Conversation Flow**. In **TNND extension → Options → Tinder auto-chat**, enable/disable the flow and select the preferred discovery order (ville first, travail first or centres d’intérêt first). Existing **Extra instructions** remain in force and are not erased or duplicated. The saved user profile still has authority over identity; no claims are made about a match photo or biography without evidence.
+
+Extension generation includes an authenticated Tinder thread reference, enabling the backend to use that exact user-scoped conversation's synced history; if no conversation exists yet, it falls back to observed messages rather than inventing a stored match memory. ChatGPT is not connected to Tinder directly: test drafts manually before enabling automation.
