@@ -3,6 +3,7 @@
 ## Cadre et état initial
 
 - Base : `main` à `9148994` ; aucune PR ouverte lors du contrôle GitHub. Le dépôt local contenait trois `package-lock.json` non suivis, laissés intacts.
+- Avant publication, `main` a avancé jusqu'à `81bf6c5`. La branche a été rapprochée de cette version en conservant les raccourcis ajoutés au popup et le tri des conversations en attente. Les 70 captures Web et 32 captures extension « après » ont été refaites sur la version combinée ; les captures « avant » restent celles de `9148994`.
 - Docker : Web `:5173`, API `:4000` et PostgreSQL démarrés ; API et base signalées saines.
 - Référence : Neo Bento (`docs/design/PRODUCT_PROFILE.md`, `docs/design/neo-bento.md`). Le fichier Figma fourni n'était pas accessible depuis les outils de lecture de cet environnement ; aucune parité Figma n'est revendiquée.
 - Les captures proviennent du **vrai bundle TNND rendu dans Chrome** avec un compte et une API synthétiques, ou des pages HTML/CSS de l'extension avec scripts désactivés. Aucun profil, message ou jeton réel n'a été utilisé. Les captures de l'extension montrent des états visuels simulés, pas la connexion réelle à Tinder.
@@ -55,7 +56,7 @@ Les états « zéro conversation » et « aucun résultat de filtre » étaient 
 - Web : `npm run typecheck`, `npm test`, `npm run build` réussis.
 - QA Chrome avec API synthétique : **22 contrôles fonctionnels réussis**, navigation des 7 sections, brouillon, validation locale sans envoi, erreur et reprise ; audit des 57 boutons visibles et 17 disclosures sans alerte finale. Le port du serveur de fixture a été adapté localement car `:5173` était occupé par Docker ; le script CI original n'a pas été modifié.
 - Extension : **32 captures finales** ; smoke visuel sans débordement horizontal ni bouton de moins de 44 px dans les surfaces capturées.
-- Web : **70 captures finales** ; aucun débordement horizontal détecté et aucun bouton visible de moins de 44 px de haut dans les vues capturées. À 390 px, les titres de section sont à 76 px du haut, sous la navigation à 62 px.
+- Web : **70 captures finales** ; aucun débordement horizontal détecté et aucun bouton visible de moins de 44 px de haut dans les vues capturées. À 390 px, les titres mesurés sont à 76 px du haut, sous la navigation à 62 px.
 - L'audit visuel ne prouve pas la conformité WCAG complète : focus clavier, lecteur d'écran, contraste de chaque texte et zoom restent à tester manuellement.
 - Aucun vrai message Tinder envoyé, aucune action de suppression, aucun changement de permission, de sélecteur DOM ou de garde d'envoi. L'envoi externe confirmé et la prise en main manuelle restent des éléments ouverts du V1 Release Gate.
 - La CI GitHub et la PR seront consignées dans le suivi de la branche ; une compilation locale ne vaut pas validation des workflows distants.
