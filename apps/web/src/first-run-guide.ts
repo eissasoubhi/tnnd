@@ -1,4 +1,5 @@
 import { readSession } from "./auth-client";
+import { shouldShowGuidedTour } from "./overview-onboarding-state";
 
 /**
  * Optional, local-only walkthrough. It never performs a network mutation:
@@ -90,18 +91,35 @@ function render(): void {
 }
 previous.addEventListener("click", () => { index = Math.max(0, index - 1); render(); });
 next.addEventListener("click", () => { index = Math.min(steps.length - 1, index + 1); render(); });
+let reopenedManually = false;
+let setupComplete = document.querySelector<HTMLElement>("#setup-guidance-panel")?.dataset.setupComplete === "true";
+function updateGuideVisibility(): void {
+  panel.hidden = !shouldShowGuidedTour({
+    dismissed: localStorage.getItem(key) === "yes",
+    setupComplete,
+    reopenedManually
+  });
+}
 dismiss.addEventListener("click", () => {
+  reopenedManually = false;
   localStorage.setItem(key, "yes");
-  panel.hidden = true;
+  updateGuideVisibility();
 });
 render();
 window.addEventListener("tnnd:auth-session-changed", () => {
+  // Another session cannot inherit the previous account's setup completion.
+  setupComplete = false;
+  updateGuideVisibility();
   if (readSession() && index === 0) {
     index = 1;
     render();
   }
 });
-panel.hidden = localStorage.getItem(key) === "yes";
+updateGuideVisibility();
+window.addEventListener("tnnd:setup-completion-changed", (event: Event) => {
+  setupComplete = (event as CustomEvent<{ complete: boolean }>).detail?.complete === true;
+  updateGuideVisibility();
+});
 // When a user who has finished the tour wants to see it again, Overview
 // always has a small discoverable link. No extra prominent dashboard buttons.
 const reopen = document.createElement("a");
@@ -111,7 +129,8 @@ reopen.textContent = "Need help? Open the 5-step guide";
 const topbar = document.querySelector(".topbar");
 topbar?.append(reopen);
 reopen.addEventListener("click", () => {
-  panel.hidden = false;
+  reopenedManually = true;
   localStorage.removeItem(key);
+  updateGuideVisibility();
   render();
 });
