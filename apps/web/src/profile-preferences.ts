@@ -19,6 +19,10 @@ export interface EditablePreferences {
   datingGoalDetails?: string;
   /** Passport / target city is NOT the user's current residence. */
   targetCities?: string;
+  pauseOnConfirmedMarriage?: string;
+  maximumHeightCm?: string;
+  casualExpressions?: string;
+  marriageExpressions?: string;
   disclosureStrategy: string;
   formality: string;
   capitalization: string;
@@ -63,10 +67,15 @@ export function readEditablePreferences(profile: ImportedProfile): EditablePrefe
   const languageBehavior = objectValue(textingStyle.languageBehavior);
   const matchProfileCapture = objectValue(profile.matchProfileCapture);
   const { baseline, autoAdapt } = parseStyleBaseline(textingStyle);
+  const screening = objectValue(datingIntent.matchScreening);
   return {
     datingGoal: stringValue(datingIntent.defaultGoal, "open-to-see"),
     datingGoalDetails: optionalStringValue(datingIntent.datingGoalDetails),
     targetCities: Array.isArray(datingIntent.targetCities) ? datingIntent.targetCities.filter((city): city is string => typeof city === "string").join(", ") : "",
+    pauseOnConfirmedMarriage: screening.pauseOnConfirmedMarriage === true ? "true" : "false",
+    maximumHeightCm: Number.isInteger(screening.maximumHeightCm) ? String(screening.maximumHeightCm) : "",
+    casualExpressions: Array.isArray(screening.casualExpressions) ? screening.casualExpressions.filter((x): x is string => typeof x === "string").join(", ") : "",
+    marriageExpressions: Array.isArray(screening.marriageExpressions) ? screening.marriageExpressions.filter((x): x is string => typeof x === "string").join(", ") : "",
     disclosureStrategy: stringValue(datingIntent.defaultDisclosureStrategy, "progressive"),
     formality: stringValue(textingStyle.formality, "very-casual"),
     capitalization: stringValue(textingStyle.capitalization, "relaxed"),
@@ -97,6 +106,11 @@ export function writeEditablePreferences(profile: ImportedProfile, preferences: 
   const targetCities = preferences.targetCities === undefined
     ? (Array.isArray(datingIntent.targetCities) ? datingIntent.targetCities : [])
     : [...new Set(preferences.targetCities.split(/[,;\n]+/).map(city => city.replace(/\s+/g, " ").trim()).filter(city => city.length >= 2 && city.length <= 80))].slice(0, 20);
+  const existingScreening = objectValue(datingIntent.matchScreening);
+  const boundedExpressions = (value: string | undefined, previous: unknown) => value === undefined
+    ? (Array.isArray(previous) ? previous : []) : [...new Set(value.split(/[,;\n]+/).map(v => v.trim()).filter(v => v.length >= 4 && v.length <= 80))].slice(0, 20);
+  const height = preferences.maximumHeightCm === undefined ? existingScreening.maximumHeightCm
+    : /^(?:1[0-9]{2}|2[0-2][0-9]|230)$/.test(preferences.maximumHeightCm.trim()) ? Number(preferences.maximumHeightCm.trim()) : null;
   const datingGoalDetails = requestedDatingGoalDetails === undefined
     ? datingIntent.datingGoalDetails
     : requestedDatingGoalDetails.trim() || undefined;
@@ -107,6 +121,14 @@ export function writeEditablePreferences(profile: ImportedProfile, preferences: 
       defaultGoal: preferences.datingGoal,
       datingGoalDetails,
       targetCities,
+      matchScreening: {
+        ...existingScreening,
+        pauseOnConfirmedMarriage: preferences.pauseOnConfirmedMarriage === undefined
+          ? existingScreening.pauseOnConfirmedMarriage === true : preferences.pauseOnConfirmedMarriage === "true",
+        maximumHeightCm: height,
+        casualExpressions: boundedExpressions(preferences.casualExpressions, existingScreening.casualExpressions),
+        marriageExpressions: boundedExpressions(preferences.marriageExpressions, existingScreening.marriageExpressions)
+      },
       defaultDisclosureStrategy: preferences.disclosureStrategy,
       needsReview: false
     },

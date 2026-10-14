@@ -8,6 +8,7 @@ export type MatchProfileVisibleFields = {
   location?: string;
   interests?: string[];
   relationshipGoal?: string;
+  heightCm?: number;
 };
 
 export type MatchProfileSourceCapture = {
@@ -97,6 +98,7 @@ function normalizeFields(value: unknown): MatchProfileVisibleFields {
     location: normalizeText(input.location),
     interests: interests.length ? interests : undefined,
     relationshipGoal: normalizeText(input.relationshipGoal),
+    ...(Number.isInteger(input.heightCm) && Number(input.heightCm) >= 100 && Number(input.heightCm) <= 230 ? { heightCm: Number(input.heightCm) } : {}),
   };
 }
 

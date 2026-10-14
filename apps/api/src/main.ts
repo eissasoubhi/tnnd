@@ -21,6 +21,8 @@ import { getPool } from "./db-client.js";
 import { handleHumanActionManualAnswerRequest } from "./human-action-manual-answer-controller.js";
 import { createHumanAction, listHumanActions, updateHumanActionStatus, type HumanActionSeverity, type HumanActionStatus } from "./human-action-service.js";
 import { handleConversationMatchProfileRequest, handleMatchProfileCaptureRequest, handleMatchProfilePromoteRequest } from "./match-profile-controller.js";
+import { getConversationMatchProfile } from "./match-profile-service.js";
+import { assessMatchIntent, type MatchScreeningOptions } from "./match-intent-screening.js";
 import { profileSchemaVersion, publicProfileSchema, validateProfileEnvelope } from "./profile-schema.js";
 import { listUserTopicCoverage } from "./conversation-topic-service.js";
 import { setAvoidedTopic } from "./topic-preference-service.js";
@@ -703,6 +705,20 @@ const server = createServer(async (request, response) => {
         sendJson(response, 404, { error: "conversation_not_found" });
         return;
       }
+      const [profileRuleRow, capturedMatch] = await Promise.all([
+        getPool().query<{ profile_json: unknown }>(
+          "SELECT profile_json FROM user_profiles WHERE user_id = $1 LIMIT 1", [session.user.id]
+        ),
+        getConversationMatchProfile(session.user.id, conversation.id)
+      ]);
+      const profileSettings = profileRuleRow.rows[0]?.profile_json;
+      const dating = profileSettings && typeof profileSettings === "object" && !Array.isArray(profileSettings)
+        ? (profileSettings as { datingIntent?: { matchScreening?: MatchScreeningOptions } }).datingIntent : undefined;
+      const screening = assessMatchIntent(
+        conversation.messages,
+        capturedMatch?.normalizedProfile.fields ?? null,
+        dating?.matchScreening ?? {}
+      );
       sendJson(response, 200, {
         conversation: {
           id: conversation.id,
@@ -719,7 +735,8 @@ const server = createServer(async (request, response) => {
           topicState: conversation.topicState,
           // Flow is already derived in getConversation. The detail contract
           // must expose it or TNND Web can only show “Indisponible”.
-          conversationFlow: conversation.conversationFlow
+          conversationFlow: conversation.conversationFlow,
+          matchScreening: screening
         }
       });
       return;

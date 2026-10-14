@@ -56,7 +56,16 @@ export interface TemporaryInstruction {
 export interface ConversationFlowStage { id: "greeting" | "check-in" | "location" | "occupation" | "interests" | "free-conversation"; status: "covered" | "next" | "later"; reason: "asked" | "known" | "mentioned" | "next" | "later"; }
 export interface ConversationFlowState { stage: ConversationFlowStage["id"]; stages: ConversationFlowStage[]; known: Array<{ key: string; value: string }>; respondToLatestFirst: boolean; }
 
+export interface MatchScreeningState {
+  intent: "marriage" | "casual" | "long-term" | "unknown";
+  action: "continue" | "clarify" | "pause";
+  reason: string;
+  evidence: "incoming-message" | "visible-profile" | "none";
+  heightCm: number | null;
+  confirmedByReply: boolean;
+}
 export interface ConversationDetail {
+  matchScreening?: MatchScreeningState;
   id: string;
   displayName: string;
   userDisplayLabel?: string | null;
@@ -158,6 +167,21 @@ function normalizeConversationFlow(value: unknown): ConversationFlowState | unde
     respondToLatestFirst: input.respondToLatestFirst === true };
 }
 
+function normalizeMatchScreening(value: unknown): MatchScreeningState | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const x = value as Record<string, unknown>;
+  if (!["marriage", "casual", "long-term", "unknown"].includes(String(x.intent))
+    || !["continue", "clarify", "pause"].includes(String(x.action))
+    || !["incoming-message", "visible-profile", "none"].includes(String(x.evidence))) return undefined;
+  return {
+    intent: x.intent as MatchScreeningState["intent"],
+    action: x.action as MatchScreeningState["action"],
+    reason: typeof x.reason === "string" ? x.reason.slice(0, 100) : "",
+    evidence: x.evidence as MatchScreeningState["evidence"],
+    heightCm: typeof x.heightCm === "number" && Number.isInteger(x.heightCm) ? x.heightCm : null,
+    confirmedByReply: x.confirmedByReply === true
+  };
+}
 function normalizeConversationDetail(value: unknown): ConversationDetail {
   if (!value || typeof value !== "object") throw new Error("Conversation detail must be an object");
   const input = value as Record<string, unknown>;
@@ -179,6 +203,7 @@ function normalizeConversationDetail(value: unknown): ConversationDetail {
     currentTopic: typeof input.currentTopic === "string" ? input.currentTopic : null,
     topicState: normalizeTopicState(input.topicState),
     conversationFlow: normalizeConversationFlow(input.conversationFlow),
+    matchScreening: normalizeMatchScreening(input.matchScreening),
     pendingHumanActions,
     temporaryInstruction: normalizeTemporaryInstruction(input.temporaryInstruction),
     messages: input.messages.map(normalizeMessage)

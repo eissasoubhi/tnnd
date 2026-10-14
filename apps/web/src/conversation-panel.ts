@@ -179,6 +179,26 @@ function renderConversationFlow(detail: ConversationDetail): string {
     + '<p class="subtle">Informations connues du match</p><div class="conversation-topic-chips">' + known + '</div></section>';
 }
 
+function renderMatchScreening(detail: ConversationDetail): string {
+  const screening = detail.matchScreening;
+  if (!screening) return "";
+  const label = screening.action === "pause" ? "Pause demandée"
+    : screening.action === "clarify" ? "À clarifier" : "Aucun blocage";
+  const intent: Record<string, string> = {
+    marriage: "Mariage", casual: "Relation occasionnelle",
+    "long-term": "Relation durable (mariage non confirmé)", unknown: "Inconnue"
+  };
+  const guidance = screening.action === "clarify"
+    ? "Demander ce que la personne recherche réellement avant d'en tirer une conclusion."
+    : screening.action === "pause" ? "Règle configurée déclenchée : ne pas envoyer de réponse automatique."
+    : "Poursuivre uniquement si les préférences et autorisations le permettent.";
+  return '<section class="conversation-flow-panel" aria-label="Match screening"><div class="conversation-topic-heading">'
+    + '<strong>Intentions et règles du match</strong><span class="pill">' + escapeHtml(label) + '</span></div>'
+    + '<p>Intention détectée : ' + escapeHtml(intent[screening.intent] ?? "Inconnue")
+    + '</p><p class="subtle">' + escapeHtml(guidance) + '</p>'
+    + (screening.heightCm ? '<p class="subtle">Taille enregistrée : ' + screening.heightCm + ' cm</p>' : '')
+    + '<small class="subtle">Source : ' + escapeHtml(screening.evidence === "visible-profile" ? "Profil Tinder enregistré" : screening.evidence === "incoming-message" ? "Message reçu" : "Aucune information confirmée") + '</small></section>';
+}
 function renderDetail(detail: ConversationDetail): string {
   const messages = detail.messages.length
     ? detail.messages.map((message) => `
@@ -225,6 +245,7 @@ function renderDetail(detail: ConversationDetail): string {
       <summary>Conversation topics and progress <span class="subtle">(advanced)</span></summary>
       ${renderTopicState(detail)}
       ${renderConversationFlow(detail)}
+      ${renderMatchScreening(detail)}
     </details>
   `;
 }
