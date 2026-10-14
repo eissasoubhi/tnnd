@@ -115,10 +115,30 @@ async function load(): Promise<GlobalExistingRunnerState> {
     phase: PHASES.includes(value.phase as RunnerPhase) ? value.phase as RunnerPhase : "stopped"
   };
 }
+// Serialize changes from the content Match observer and runner ticks to
+// prevent an older tick from reverting an already observed Matches baseline.
+let pendingStateWrite: Promise<void> = Promise.resolve();
 async function save(state: GlobalExistingRunnerState): Promise<GlobalExistingRunnerState> {
-  const next = { ...state, watcherStatus: watcherDisplayStatus(state) };
-  await chrome.storage.local.set({ [KEY]: next });
-  return next;
+  const write = pendingStateWrite.then(async () => {
+    const raw = (await chrome.storage.local.get(KEY))[KEY] as GlobalExistingRunnerState | undefined;
+    // The user stopped this exact session while an async tick was in flight.
+    // Never allow a late observer callback to silently restart the watcher.
+    if (state.enabled && raw && !raw.enabled && raw.startedAt === state.startedAt
+      && raw.startedAt !== null) return raw;
+    const previous = raw?.enabled && raw.userId === state.userId && raw.mode === "watcher"
+      && state.mode === "watcher" && isWatchedMatches(raw.watchedMatches, state.userId ?? "")
+      ? raw.watchedMatches : null;
+    const proposed = state.watchedMatches;
+    const latestMatchWatch = previous && (!proposed || (previous.observedAt ?? "") > (proposed.observedAt ?? ""))
+      ? previous : proposed;
+    const merged = { ...state, watchedMatches: state.enabled && state.mode === "watcher"
+      ? latestMatchWatch : state.watchedMatches };
+    const next = { ...merged, watcherStatus: watcherDisplayStatus(merged) };
+    await chrome.storage.local.set({ [KEY]: next });
+    return next;
+  });
+  pendingStateWrite = write.then(() => undefined, () => undefined);
+  return write;
 }
 async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[]; labels: Map<string, string>; messageTimes: Map<string, string | null>; messageDirections: Map<string, "incoming" | "outgoing" | null> }> {
   const session = await getBackendSession();
