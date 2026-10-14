@@ -113,7 +113,7 @@ export function hasMeaningfulVisibleProfileFields(source: TinderVisibleProfileSo
 
 export function buildProfileCaptureDedupeKey(source: TinderVisibleProfileSource): string {
   const fields = source.visibleFields;
-  return JSON.stringify({
+  const serialized = JSON.stringify({
     schemaVersion: source.schemaVersion,
     source: source.source,
     route: source.route,
@@ -131,6 +131,16 @@ export function buildProfileCaptureDedupeKey(source: TinderVisibleProfileSource)
       heightCm: fields.heightCm ?? null
     }
   });
+  // The local sync store only permits 256 chars per value. Raw JSON was
+  // silently truncated, causing repeated re-uploads of every rich profile.
+  // Hash stable *content*, never the capture time or personal data in clear.
+  let first = 2166136261, second = 0x811c9dc7 ^ 0x9e3779b9;
+  for (let index = 0; index < serialized.length; index++) {
+    const unit = serialized.charCodeAt(index);
+    first = Math.imul(first ^ unit, 16777619) >>> 0;
+    second = Math.imul(second ^ unit, 2246822519) >>> 0;
+  }
+  return `v2:${serialized.length}:${first.toString(16)}:${second.toString(16)}`;
 }
 
 export function normalizeProfileCaptureSource(sourceSnapshot: TinderVisibleProfileSource): TinderProfileCapture {
