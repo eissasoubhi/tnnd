@@ -27,11 +27,6 @@ function currentRef(pathname: string): string {
   try { return decodeURIComponent(pathname.slice(ROUTE_PREFIX.length)).replace(/\/+$/, ""); }
   catch { return ""; }
 }
-function valueForHeading(root: Element, headings: readonly string[]): Element | null {
-  const heading = Array.from(root.querySelectorAll("h2"))
-    .find(node => matchingHeading(node, headings));
-  return heading?.parentElement?.nextElementSibling ?? null;
-}
 function boundedHeight(value: string): number | undefined {
   const found = /\b(1\d{2}|2[0-2]\d|230)\s*(?:cm|centim[eè]tres?)\b/i.exec(value);
   const cm = found ? Number(found[1]) : undefined;
@@ -45,32 +40,47 @@ export function readVisibleTinderProfilePanel(
 ): TinderProfileCaptureInput | null {
   if (!identity.firstName || !conversationRef || currentRef(pathname) !== conversationRef) return null;
   const root = doc.querySelector<HTMLElement>(PROFILE_SELECTOR);
-  const card = root?.querySelector<HTMLElement>(CARD_SELECTOR);
-  const heading = root?.querySelector<HTMLElement>("h1");
-  if (!root || !card || !heading || root.offsetParent === null) return null;
+  const heading = root?.querySelector<HTMLElement>("h1")
+    ?? root?.closest(".chatProfile")?.querySelector<HTMLElement>("h1");
+  if (!root || !heading || root.offsetParent === null) return null;
   const panelIdentity = parseVisibleMatchHeading(text(heading, 100));
   if (!panelIdentity.firstName || norm(panelIdentity.firstName) !== norm(identity.firstName)) return null;
   if (identity.age && panelIdentity.age && identity.age !== panelIdentity.age) return null;
 
-  const lookingFor = valueForHeading(card, ["looking for", "je recherche", "recherche"]);
-  const goalLabel = lookingFor?.querySelector("span:last-child") ?? lookingFor?.lastElementChild;
-  const relationshipGoal = text(goalLabel, 120) || undefined;
-  const bio = text(valueForHeading(card, ["about me", "a propos de moi", "à propos de moi"]), 500) || undefined;
-  const essentials = Array.from(card.querySelectorAll("section"))
-    .find(section => Array.from(section.querySelectorAll("h2")).some(h => matchingHeading(h, ["essentials", "essentiel", "l'essentiel"])));
-  const heightCm = essentials ? boundedHeight(text(essentials, 700)) : undefined;
-  const interestsRoot = Array.from(card.querySelectorAll("section"))
-    .find(section => Array.from(section.querySelectorAll("h2")).some(h => matchingHeading(h, ["interests", "centres d'interet", "centres d'intérêt"])));
-  const interests = interestsRoot
-    ? Array.from(interestsRoot.querySelectorAll("ul > li")).map(li => text(li, 100)).filter(Boolean).slice(0, 20)
+  // Tinder renders separate cards for Looking For / About Me / Essentials.
+  // Scoping everything to the first card would silently lose later fields.
+  const cards = Array.from(root.querySelectorAll<HTMLElement>(CARD_SELECTOR));
+  if (!cards.length) return null;
+  const sectionFor = (labels: readonly string[]): HTMLElement | null =>
+    cards.find(card => Array.from(card.querySelectorAll("h2"))
+      .some(h => matchingHeading(h, labels))) ?? null;
+  const sectionBody = (card: HTMLElement | null, limit: number): string => {
+    if (!card) return "";
+    const blocks = Array.from(card.querySelectorAll<HTMLElement>("p, li, [data-testid]"))
+      .map(node => text(node, limit)).filter(Boolean);
+    // Prefer explicit content nodes, never the label itself.
+    const headingText = Array.from(card.querySelectorAll("h2")).map(node => norm(text(node, 80)));
+    return (blocks.find(block => !headingText.includes(norm(block))) || "").slice(0, limit);
+  };
+
+  const goalCard = sectionFor(["looking for", "je recherche", "recherche"]);
+  const relationshipGoal = sectionBody(goalCard, 120) || undefined;
+  const bioCard = sectionFor(["about me", "a propos de moi", "à propos de moi"]);
+  const bio = sectionBody(bioCard, 500) || undefined;
+  const essentialsCard = sectionFor(["essentials", "essentiel", "l'essentiel"]);
+  const heightCm = essentialsCard ? boundedHeight(text(essentialsCard, 700)) : undefined;
+
+  const interestsCard = sectionFor(["interests", "centres d'interet", "centres d'intérêt"]);
+  const interests = interestsCard
+    ? Array.from(interestsCard.querySelectorAll("ul > li")).map(li => text(li, 100)).filter(Boolean).slice(0, 20)
     : [];
   const prompts: NonNullable<TinderProfileCaptureInput["prompts"]> = [];
-  for (const section of Array.from(card.querySelectorAll("section"))) {
-    const label = text(section.querySelector("h2"), 80);
+  for (const card of cards) {
+    const label = text(card.querySelector("h2"), 80);
     if (!["going out", "my weekends", "me & my phone"].includes(norm(label))) continue;
-    for (const item of Array.from(section.querySelectorAll("ul > li"))) {
+    for (const item of Array.from(card.querySelectorAll("ul > li"))) {
       const question = text(item.querySelector("h3"), 120);
-      const answer = text(item.querySelector("h3")?.nextElementSibling?.lastElementChild, 120);
+      const answer = text(item.querySelector("h3")?.nextElementSibling, 120);
       if (question && answer && prompts.length < 24) prompts.push({ section: label, question, answer });
     }
   }
