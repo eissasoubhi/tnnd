@@ -1,4 +1,5 @@
 import { readSession } from "./auth-client";
+import { isSetupComplete } from "./overview-onboarding-state";
 import { createAiProviderClient } from "./ai-provider-client";
 import { loadTopicCoverage, updateTopicPreference, avoidedTopicsFromProfile } from "./topic-coverage-client";
 import type { TopicInsight } from "../../../src/setup-progress";
@@ -13,19 +14,30 @@ panel.className = "panel panel-wide workspace-feature";
 panel.id = "setup-guidance-panel";
 panel.innerHTML = `
   <div class="panel-heading">
-    <div><p class="eyebrow">Getting started</p><h2>Complete your TNND setup</h2></div>
+    <div><p class="eyebrow">Getting started</p><h2 id="setup-headline">Complete your TNND setup</h2></div>
     <span class="pill" id="setup-progress-percent">Checking…</span>
   </div>
-  <p class="subtle">One identity, one account. Complete each essential step once. Add personal stories whenever you are ready.</p>
-  <progress id="setup-progress-bar" max="100" value="0" aria-label="TNND setup completion"></progress>
-  <ol class="setup-checklist" id="setup-checklist"></ol>
-  <p class="subtle" id="setup-load-message" role="status" aria-live="polite"></p>
-  <div class="setup-recommendations">
-    <h3>Suggestions for your stories</h3>
-    <p class="subtle">Based on your most discussed topics across your history and approved Personal Memories. Suggestions never invent your experiences.</p>
-    <div id="setup-story-suggestions"></div>
-    <button id="setup-recheck" type="button" class="secondary">Recheck progress</button>
+  <p class="subtle" id="setup-description">One identity, one account. Complete each essential step once. Add personal stories whenever you are ready.</p>
+  <div class="setup-ready-actions" id="setup-ready-actions" hidden>
+    <a class="setup-ready-link primary" href="#conversation-panel">Review conversations →</a>
+    <a class="setup-ready-link secondary" href="#personal-memory-panel">Add a personal memory →</a>
   </div>
+  <details class="setup-progress-details" id="setup-progress-details" open>
+    <summary id="setup-progress-summary">Your setup checklist</summary>
+    <div class="setup-progress-content">
+      <progress id="setup-progress-bar" max="100" value="0" aria-label="TNND setup completion"></progress>
+      <ol class="setup-checklist" id="setup-checklist"></ol>
+    </div>
+  </details>
+  <p class="subtle" id="setup-load-message" role="status" aria-live="polite"></p>
+  <details class="setup-recommendations" id="setup-recommendations-details">
+    <summary id="setup-recommendations-summary">Personal story ideas <span class="subtle">(optional)</span></summary>
+    <div class="setup-recommendations-content">
+      <p class="subtle">Based on your conversation topics and approved memories. TNND never invents your experiences.</p>
+      <div id="setup-story-suggestions"></div>
+      <button id="setup-recheck" type="button" class="secondary">Recheck progress</button>
+    </div>
+  </details>
 `;
 grid.prepend(panel);
 const progressLabel = panel.querySelector<HTMLElement>("#setup-progress-percent")!;
@@ -33,9 +45,31 @@ const progressBar = panel.querySelector<HTMLProgressElement>("#setup-progress-ba
 const checklist = panel.querySelector<HTMLOListElement>("#setup-checklist")!;
 const message = panel.querySelector<HTMLElement>("#setup-load-message")!;
 const recommendations = panel.querySelector<HTMLElement>("#setup-story-suggestions")!;
+const setupDetails = panel.querySelector<HTMLDetailsElement>("#setup-progress-details")!;
+const setupSummary = panel.querySelector<HTMLElement>("#setup-progress-summary")!;
+const setupHeadline = panel.querySelector<HTMLElement>("#setup-headline")!;
+const setupDescription = panel.querySelector<HTMLElement>("#setup-description")!;
+const readyActions = panel.querySelector<HTMLElement>("#setup-ready-actions")!;
+const storyDetails = panel.querySelector<HTMLDetailsElement>("#setup-recommendations-details")!;
+const storySummary = panel.querySelector<HTMLElement>("#setup-recommendations-summary")!;
 let refreshGeneration = 0;
+let lastComplete: boolean | null = null;
+let lastStorySuggestionCount: number | null = null;
 function renderSteps(snapshot: SetupSnapshot): void {
   const state = setupProgress(snapshot);
+  const complete = isSetupComplete(state.percent);
+  // Preserve a user's manual expansion until completion actually changes.
+  if (lastComplete !== complete) setupDetails.open = !complete;
+  lastComplete = complete;
+  panel.classList.toggle("setup-complete", complete);
+  panel.dataset.setupComplete = String(complete);
+  setupHeadline.textContent = complete ? "TNND is ready" : "Complete your TNND setup";
+  setupDescription.textContent = complete
+    ? "Your essential settings are verified. Review conversations or add a real memory whenever you're ready."
+    : "Complete each essential step once. Personal stories can be added later.";
+  setupSummary.textContent = complete ? "4 essential steps completed · View checklist" : "View setup checklist";
+  readyActions.hidden = !complete;
+  window.dispatchEvent(new CustomEvent("tnnd:setup-completion-changed", { detail: { complete } }));
   progressLabel.textContent = state.percent === null ? `${state.completed}/4 verified` : `${state.percent}% complete`;
   if (state.percent === null) progressBar.removeAttribute("value");
   else progressBar.value = state.percent;
@@ -65,6 +99,11 @@ function renderStories(
   avoidedTopics: string[]
 ): void {
   const missing = missingStoryRecommendations([], memories, Date.now(), insights, avoidedTopics);
+  storySummary.textContent = missing.length ? `Personal story ideas · ${missing.length} to explore` : "Personal story ideas (optional)";
+  if (lastStorySuggestionCount === null || (lastStorySuggestionCount === 0 && missing.length > 0)) {
+    storyDetails.open = missing.length > 0;
+  }
+  lastStorySuggestionCount = missing.length;
   recommendations.replaceChildren();
   if (!missing.length) {
     const hint = document.createElement("p");

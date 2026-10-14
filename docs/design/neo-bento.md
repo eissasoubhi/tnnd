@@ -166,3 +166,16 @@ activate the owning section, including lazily mounted feature panels.
 This phase changes navigation and hierarchy only. It does not validate all
 screens visually or redesign the existing complex settings and management forms.
 Actual browser screenshots, responsive review and user testing remain required.
+
+## UX visual review — phase 2: progressive onboarding
+
+The user screenshot showed a verified **100% setup checklist** below an active
+five-step tutorial. Both large panels were taking space from the user's actual
+tasks. After confirming all four essential setup steps (without treating unknown
+as verified), Overview now displays a compact **TNND is ready** state and direct
+links to Conversations and Personal Memories. The checklist remains mounted and
+can be expanded. Optional story suggestions are disclosed separately. The
+first-run tutorial automatically steps aside for verified complete accounts but
+can always be reopened explicitly. Neither behavior changes saved profiles or
+triggers Gemini/Tinder actions. This remains a source + user screenshot review;
+post-change visual browser inspection is still needed.

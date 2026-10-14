@@ -869,3 +869,41 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
 @media (max-width: 840px) {
   #app .shell[data-workspace-view]:not([data-workspace-view="overview"]) .topbar { min-height: 116px; }
 }
+
+/* UX phase 2 — completed onboarding yields space to actual daily work. */
+#app #setup-guidance-panel .setup-ready-actions {
+  display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0;
+}
+#app #setup-guidance-panel .setup-ready-link {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 44px; padding: 10px 16px; border-radius: var(--nb-radius-sm);
+  border: 1px solid var(--nb-primary); font-size: 14px; font-weight: 750;
+  text-decoration: none; text-align: center; line-height: 1.4;
+}
+#app #setup-guidance-panel .setup-ready-link.primary { color: var(--nb-on-primary); background: var(--nb-primary); }
+#app #setup-guidance-panel .setup-ready-link.secondary { color: var(--nb-primary); background: var(--nb-surface); }
+#app #setup-guidance-panel .setup-ready-link:focus-visible,
+#app #setup-guidance-panel .setup-progress-details > summary:focus-visible,
+#app #setup-guidance-panel .setup-recommendations > summary:focus-visible {
+  outline: 3px solid var(--nb-focus); outline-offset: 3px;
+}
+#app #setup-guidance-panel .setup-progress-details,
+#app #setup-guidance-panel .setup-recommendations {
+  display: block; border: 1px solid var(--nb-border);
+  border-radius: var(--nb-radius-md); background: var(--nb-surface);
+  margin: 12px 0 0; padding: 0; min-width: 0;
+}
+#app #setup-guidance-panel .setup-progress-details > summary,
+#app #setup-guidance-panel .setup-recommendations > summary {
+  min-height: 44px; padding: 13px 16px; cursor: pointer;
+  font-size: 13px; font-weight: 750; color: var(--nb-text);
+}
+#app #setup-guidance-panel .setup-progress-content,
+#app #setup-guidance-panel .setup-recommendations-content { padding: 0 16px 16px; }
+#app #setup-guidance-panel .setup-recommendations { border-top: 1px solid var(--nb-border); padding-top: 0; }
+#app #setup-guidance-panel.setup-complete { border-color: var(--nb-border); }
+#app #setup-guidance-panel .setup-ready-actions[hidden] { display: none !important; }
+@media(max-width: 560px) {
+  #app #setup-guidance-panel .setup-ready-actions { display: grid; }
+  #app #setup-guidance-panel .setup-ready-link { width: 100%; }
+}
