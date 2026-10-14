@@ -319,7 +319,7 @@ async function refresh(): Promise<void> {
     const bulkPlan = planExistingChatTakeover(records, summariesCache);
     const bulkPreview = document.querySelector<HTMLElement>("#management-bulk-preview");
     if (bulkPreview) bulkPreview.textContent = `${bulkPlan.alreadyReady} already AI-authorized · ${bulkPlan.eligible.length} to authorize · ${bulkPlan.resume.length} paused to resume · ${bulkPlan.skipped.manual} manual · ${bulkPlan.skipped.blocked} blocked · ${bulkPlan.skipped.unsynced} not yet synced · ${bulkPlan.skipped.archived} archived/moved · ${bulkPlan.skipped.disabled} disabled. The browser extension runner has its own Start/Stop.`;
-    names = new Map(summaries.map(item => [item.id, `${item.displayName.startsWith("Conversation ") ? "Profil Tinder à synchroniser" : item.displayName}${item.matchAge ? ` ${item.matchAge}` : ""}`]));
+    names = new Map(summaries.map(item => [item.id, `${item.displayName.startsWith("Conversation ") ? "Match name not yet synced" : item.displayName}${item.matchAge ? ` ${item.matchAge}` : ""}`]));
     photos = new Map(summaries.filter(item => item.matchPhotoUrl).map(item => [item.id, item.matchPhotoUrl!]));
     elements.status.textContent = `${records.length} conversations`;
     render();
