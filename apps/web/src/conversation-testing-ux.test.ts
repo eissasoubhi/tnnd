@@ -50,3 +50,16 @@ test("conversation identity and temporary-instruction labels are clear and acces
   assert.match(panel, /Based on synchronized conversation history/);
   assert.doesNotMatch(panel, /Live structured conversation context/);
 });
+
+test("conversation detail prioritizes draft and messages before collapsible advanced context", () => {
+  const detail = panel.slice(panel.indexOf("function renderDetail("), panel.indexOf("function countStatus("));
+  const historyAt = detail.indexOf('class="conversation-messages"');
+  const temporaryAt = detail.indexOf("renderTemporaryInstruction(detail)");
+  const topicAt = detail.indexOf("renderTopicState(detail)");
+  assert.ok(historyAt > 0 && temporaryAt > historyAt && topicAt > temporaryAt);
+  assert.match(detail, /<summary>Conversation topics and progress/);
+  assert.match(detail, /<summary>Temporary instruction/);
+  assert.match(detail, /detail\.temporaryInstruction \? " open" : ""/);
+  assert.match(detail, /aria-label="Saved conversation history"/);
+  assert.match(draft, /detail\.insertBefore\(section, messages\)/);
+});
