@@ -237,3 +237,18 @@ describe("anchored adaptive preferences", () => {
     assert.deepEqual([after.frenchStyle, after.darijaStyle, after.englishStyle], ["very-casual","natural","casual"]);
   });
 });
+
+describe("short dating expressions", () => {
+  it("keeps two-letter abbreviations next to longer expressions across save and reload", () => {
+    const initial = profile();
+    const saved = writeEditablePreferences(initial, { ...readEditablePreferences(initial),
+      casualExpressions: "plan payant, pp, PP, ons" });
+    assert.deepEqual((saved.datingIntent as any).matchScreening.casualExpressions, ["plan payant", "pp", "PP", "ons"]);
+    assert.equal(readEditablePreferences(saved).casualExpressions, "plan payant, pp, PP, ons");
+  });
+  it("rejects single-letter rules but keeps legitimate short expressions", () => {
+    const saved = writeEditablePreferences(profile(), { ...readEditablePreferences(profile()),
+      casualExpressions: "x, pp, ok,  , plan payant" });
+    assert.deepEqual((saved.datingIntent as any).matchScreening.casualExpressions, ["pp", "ok", "plan payant"]);
+  });
+});
