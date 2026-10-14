@@ -112,7 +112,7 @@ app.innerHTML = `
           <span class="pill" id="preferences-status">Import a profile first</span>
         </div>
         <div class="preferences-grid" id="profile-preferences-grid">
-          <label>Dating goal<select id="dating-goal">${options(datingGoals)}</select></label><div class="dating-goal-editor"><label for="target-cities">Cities where you want to meet matches (Tinder Passport)</label><p class="subtle" id="target-cities-help">Separate from where you currently live. Enter cities separated by commas, e.g. Paris, Casablanca, Rabat. TNND uses these as preferences, not verified match locations.</p><input id="target-cities" type="text" maxlength="1600" aria-describedby="target-cities-help" placeholder="Paris, Casablanca, Rabat" autocomplete="off"></div>
+          <div class="dating-goal-editor"><h3>Your locations · separate facts</h3><p class="subtle">Home and current location are different. Tinder Passport cities do NOT prove where you are. Leave unknown neighborhoods empty: Léa must ask you rather than invent them.</p><label>City of origin<input id="origin-city" maxlength="120" placeholder="Casablanca"></label><label>Usual residence city<input id="residence-city" maxlength="120" placeholder="Paris"></label><label>Current city (update when traveling)<input id="current-city" maxlength="120" placeholder="Paris, Casablanca or Rabat"></label><label>Origin neighborhood (optional)<input id="origin-neighborhood" maxlength="120" placeholder="Leave blank if unknown"></label><label>Residence neighborhood (optional)<input id="residence-neighborhood" maxlength="120" placeholder="Leave blank if unknown"></label></div><label>Dating goal<select id="dating-goal">${options(datingGoals)}</select></label><div class="dating-goal-editor"><label for="target-cities">Cities where you want to meet matches (Tinder Passport)</label><p class="subtle" id="target-cities-help">Separate from where you currently live. Enter cities separated by commas, e.g. Paris, Casablanca, Rabat. TNND uses these as preferences, not verified match locations.</p><input id="target-cities" type="text" maxlength="1600" aria-describedby="target-cities-help" placeholder="Paris, Casablanca, Rabat" autocomplete="off"></div>
           <div class="dating-goal-editor">
             <label for="dating-goal-details">What are you looking for? <span class="dating-goal-optional">Optional</span></label>
             <p id="dating-goal-help" class="subtle">Go beyond your dating goal. Describe the kind of connection you want and how you'd like things to develop. This helps TNND suggest replies that match your intentions.</p>
@@ -139,7 +139,7 @@ app.innerHTML = `
             <input id="casual-expressions" maxlength="1600" placeholder="plan cul, one night stand">
             <p class="subtle">Custom expressions suggest an intention; they never auto-pause a match. Do not infer height or intentions from photographs.</p>
           </div><label>Disclosure<select id="disclosure-strategy">${options(disclosureStrategies)}</select></label>
-          <label>Formality<select id="text-formality"><option value="very-casual">very-casual</option><option value="casual">casual</option><option value="neutral">neutral</option></select></label>
+          <div class="dating-goal-editor"><h3>Long replies in multiple bubbles</h3><label><input id="multi-part-replies" type="checkbox"> Sometimes send long replies in 2 separate Tinder bubbles</label><p class="subtle">One generated reply; natural sentence boundary only. 3–10 seconds between bubbles; stop if the match replies or you intervene.</p><label>Minimum reply characters<input id="multi-part-min-characters" type="number" min="90" max="400" step="10" value="150"></label></div><label>Formality<select id="text-formality"><option value="very-casual">very-casual</option><option value="casual">casual</option><option value="neutral">neutral</option></select></label>
           <label>Capitalization<select id="capitalization"><option value="relaxed">relaxed</option><option value="standard">standard</option><option value="lowercase-heavy">lowercase-heavy</option></select></label>
           <label>Emoji frequency<select id="emoji-frequency"><option value="none">none</option><option value="low">low</option><option value="medium">medium</option></select></label>
           <label>Abbreviations<select id="abbreviations"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
@@ -202,6 +202,13 @@ const preferencesSave = document.querySelector<HTMLButtonElement>("#preferences-
 const datingGoal = document.querySelector<HTMLSelectElement>("#dating-goal");
 const datingGoalDetails = document.querySelector<HTMLTextAreaElement>("#dating-goal-details");
 const targetCities = document.querySelector<HTMLInputElement>("#target-cities");
+const originCity = document.querySelector<HTMLInputElement>("#origin-city");
+const residenceCity = document.querySelector<HTMLInputElement>("#residence-city");
+const currentCity = document.querySelector<HTMLInputElement>("#current-city");
+const originNeighborhood = document.querySelector<HTMLInputElement>("#origin-neighborhood");
+const residenceNeighborhood = document.querySelector<HTMLInputElement>("#residence-neighborhood");
+const multiPartReplies = document.querySelector<HTMLInputElement>("#multi-part-replies");
+const multiPartMinCharacters = document.querySelector<HTMLInputElement>("#multi-part-min-characters");
 const pauseOnMarriage = document.querySelector<HTMLInputElement>("#pause-on-marriage");
 const maxMatchHeight = document.querySelector<HTMLInputElement>("#max-match-height");
 const marriageExpressions = document.querySelector<HTMLInputElement>("#marriage-expressions");
@@ -317,7 +324,7 @@ async function refreshProfile(): Promise<void> {
 }
 
 function refreshPreferences(profile: ImportedProfile | null): void {
-  const controls = [datingGoal, datingGoalDetails, targetCities, pauseOnMarriage, maxMatchHeight, marriageExpressions, casualExpressions, disclosureStrategy, textFormality, capitalization, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, fragmentStyle, grammarStyle, directness, questionFrequency, teasingStyle, humorStyle, doubleTexting, frenchStyle, darijaStyle, englishStyle, matchProfileRetentionDays, ...Object.values(adaptiveCheckboxes), preferencesSave];
+  const controls = [datingGoal, datingGoalDetails, targetCities, originCity, residenceCity, currentCity, originNeighborhood, residenceNeighborhood, multiPartReplies, multiPartMinCharacters, pauseOnMarriage, maxMatchHeight, marriageExpressions, casualExpressions, disclosureStrategy, textFormality, capitalization, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, fragmentStyle, grammarStyle, directness, questionFrequency, teasingStyle, humorStyle, doubleTexting, frenchStyle, darijaStyle, englishStyle, matchProfileRetentionDays, ...Object.values(adaptiveCheckboxes), preferencesSave];
   controls.forEach((control) => { if (control) control.disabled = !profile; });
   if (!profile) {
     if (preferencesStatus) preferencesStatus.textContent = "Import a profile first";
@@ -328,6 +335,13 @@ function refreshPreferences(profile: ImportedProfile | null): void {
   if (datingGoal) datingGoal.value = preferences.datingGoal;
   if (datingGoalDetails) datingGoalDetails.value = preferences.datingGoalDetails ?? "";
   if (targetCities) targetCities.value = preferences.targetCities ?? "";
+  if (originCity) originCity.value = preferences.originCity ?? "";
+  if (residenceCity) residenceCity.value = preferences.residenceCity ?? "";
+  if (currentCity) currentCity.value = preferences.currentCity ?? "";
+  if (originNeighborhood) originNeighborhood.value = preferences.originNeighborhood ?? "";
+  if (residenceNeighborhood) residenceNeighborhood.value = preferences.residenceNeighborhood ?? "";
+  if (multiPartReplies) multiPartReplies.checked = preferences.multiPartRepliesEnabled === true;
+  if (multiPartMinCharacters) multiPartMinCharacters.value = String(preferences.multiPartMinCharacters ?? 150);
   if (pauseOnMarriage) pauseOnMarriage.checked = preferences.pauseOnConfirmedMarriage === "true";
   if (maxMatchHeight) maxMatchHeight.value = preferences.maximumHeightCm ?? "";
   if (marriageExpressions) marriageExpressions.value = preferences.marriageExpressions ?? "";
@@ -436,6 +450,13 @@ preferencesSave?.addEventListener("click", async () => {
     datingGoal: datingGoal.value,
     datingGoalDetails: datingGoalDetails.value,
     targetCities: targetCities.value,
+    originCity: originCity?.value,
+    residenceCity: residenceCity?.value,
+    currentCity: currentCity?.value,
+    originNeighborhood: originNeighborhood?.value,
+    residenceNeighborhood: residenceNeighborhood?.value,
+    multiPartRepliesEnabled: multiPartReplies?.checked,
+    multiPartMinCharacters: multiPartMinCharacters?.valueAsNumber,
     pauseOnConfirmedMarriage: String(pauseOnMarriage.checked),
     maximumHeightCm: maxMatchHeight.value,
     marriageExpressions: marriageExpressions.value,
