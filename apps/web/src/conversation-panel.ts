@@ -144,7 +144,15 @@ function renderTopicState(detail: ConversationDetail): string {
 
 function renderConversationFlow(detail: ConversationDetail): string {
   const flow = detail.conversationFlow;
-  if (!flow) return "";
+  if (!flow) {
+    // An older API response does not contain conversationFlow. Never hide
+    // the panel silently, otherwise a freshly updated Web looks broken.
+    return '<section class="conversation-flow-panel" aria-label="Conversation Flow">'
+      + '<div class="conversation-topic-heading"><strong>Conversation Flow</strong><span class="pill">Indisponible</span></div>'
+      + '<p class="subtle">Les étapes ne sont pas disponibles pour cette conversation. Vérifie que l’API TNND et le Web sont tous les deux à jour (version 0.2.18 ou supérieure), puis redémarre l’API et actualise la page.</p>'
+      + '<p class="subtle">Si le problème continue, contrôle la réponse de GET /api/v1/conversations/{id} : elle doit contenir le champ conversationFlow.</p>'
+      + '</section>';
+  }
   const labels: Record<string, string> = {
     greeting: "Salutation", "check-in": "Prendre des nouvelles",
     location: "Ville / origine", occupation: "Quotidien / travail",
