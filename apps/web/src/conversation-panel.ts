@@ -30,7 +30,7 @@ function formatDate(value?: string | null): string {
 }
 
 function matchLabel(displayName: string, age?: number | null): string {
-  const name = displayName.startsWith("Conversation ") ? "Profil Tinder à synchroniser" : displayName;
+  const name = displayName.startsWith("Conversation ") ? "Match name not yet synced" : displayName;
   return `${name}${age ? ` ${age}` : ""}`;
 }
 
@@ -81,7 +81,9 @@ function renderTemporaryInstruction(detail: ConversationDetail): string {
         </div>
         ${instruction ? '<span class="pill">Active</span>' : '<span class="pill">None</span>'}
       </div>
-      <textarea id="conversation-temporary-instruction" maxlength="2000" placeholder="Example: be more direct now, change subject, keep the next replies shorter…">${escapeHtml(instruction?.text ?? "")}</textarea>
+      <label class="temporary-instruction-label" for="conversation-temporary-instruction">Instruction for this conversation</label>
+      <textarea id="conversation-temporary-instruction" aria-describedby="conversation-temporary-instruction-help" maxlength="2000" placeholder="Example: be more direct now, change subject, keep the next replies shorter…">${escapeHtml(instruction?.text ?? "")}</textarea>
+      <small id="conversation-temporary-instruction-help" class="subtle">Affects future AI-generated replies in this chat only. It does not change saved messages.</small>
       <div class="temporary-instruction-controls">
         <label>Scope
           <select id="conversation-temporary-instruction-scope">
@@ -98,7 +100,7 @@ function renderTemporaryInstruction(detail: ConversationDetail): string {
         <button type="button" data-temporary-instruction-save>Save instruction</button>
         ${instruction ? '<button type="button" class="danger" data-temporary-instruction-clear>Clear</button>' : ""}
       </div>
-      <p class="subtle" data-temporary-instruction-status>${instruction ? `Current scope: ${escapeHtml(scope)}${instruction.remainingReplies ? ` · ${instruction.remainingReplies} remaining` : ""}` : "No temporary instruction is active."}</p>
+      <p class="subtle" data-temporary-instruction-status role="status" aria-live="polite">${instruction ? `Current scope: ${escapeHtml(scope)}${instruction.remainingReplies ? ` · ${instruction.remainingReplies} remaining` : ""}` : "No temporary instruction is active."}</p>
     </section>
   `;
 }
@@ -125,7 +127,7 @@ function renderTopicState(detail: ConversationDetail): string {
   return `
     <section class="conversation-topic-panel" aria-label="Topic Engine state">
       <div class="conversation-topic-heading">
-        <div><strong>Topic Engine</strong><small>Live structured conversation context</small></div>
+        <div><strong>Topic Engine</strong><small>Based on synchronized conversation history</small></div>
         <span class="pill">${escapeHtml(confidence)}</span>
       </div>
       <div class="conversation-topic-primary">

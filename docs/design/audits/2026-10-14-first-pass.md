@@ -15,7 +15,7 @@ Status: **source review and first improvement**, not a finished screen-by-screen
 | --- | --- | --- | --- |
 | P1 | Extension settings and popup daily opener copy | "First AI messages / day" can be misread as N back-and-forth turns to one match, N chat threads, or permission to re-open the same unmatched/unanswered thread tomorrow. The actual policy counts **one opener attempt per match**, across existing/future/manual start modes; it uses UTC date and may count uncertain sends. | **Fixed in this PR**: explain unit, scope, reset time, uncertain attempts, distinct reply cap and non-repeat rule; link input to help text. |
 | P1 | Extension popup `startFirstMessage` feedback | "First message sent on Tinder" overstates verified delivery. The runtime acknowledges a send action, not independent recipient delivery. | **Fixed in this PR**: say send action completed, and explicitly state delivery is not independently confirmed. No sending gate changed. |
-| P2 | Conversations `conversation-panel.ts` | Unknown display name fallback "Profil Tinder à synchroniser" is French while surrounding UI is English; may produce confusing mixed-language hierarchy. Code evidence only. | Separate scoped copy pass with tests; preserve user-saved names. |
+| P2 | Conversations `conversation-panel.ts` and management | Unknown display name fallback was French while surrounding UI is English; may produce confusing mixed-language hierarchy. Code evidence only. | **Addressed in follow-up PR**: use a neutral English fallback consistently, preserve user-saved names. |
 | P2 | Conversation panels `conversation-panel.ts` and override draft panel | Technical "Topic Engine" and advanced controls compete with the primary task. Screen density and order need visual verification at desktop and mobile before refactoring. | Capture screens, inspect task hierarchy, keyboard focus and small screens. |
 | P2 — to verify | Extension `public/popup.html` | Dense status blocks and 10–11px supporting text may be hard to scan in a 380px popup, but the actual CSS/contrast must be checked in rendered light and dark layouts before claiming a defect. | Review actual screenshots at popup 380px, settings at 390/1280, preview and injected UI. |
 
@@ -36,3 +36,11 @@ Status: **source review and first improvement**, not a finished screen-by-screen
 - `npm run test:first-message-daily-limit` and `npm run test:extension-neo-bento`, `npm run build`.
 - CI web functional browser QA, extension visual QA and V1 release gate.
 - Live acceptance testing only with deliberate user consent; no automated production sends during visual design review.
+
+
+## Second targeted UX pass — conversations (2026-10-14)
+
+- Source finding: the conversation temporary-instruction textarea had no associated accessible name; its placeholder was insufficient. A linked label and help text now explain scope without changing behavior.
+- Source finding: "Live structured conversation context" overpromised real-time sync. Changed to "Based on synchronized conversation history".
+- Source finding: English UI contained the French placeholder "Profil Tinder à synchroniser" in two separate panels. Unified as "Match name not yet synced".
+- Updated `conversation-testing-ux.test.ts` with copy and semantic checks. Visual/browser accessibility verification remains pending.
