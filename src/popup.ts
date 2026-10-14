@@ -684,6 +684,7 @@ interface GlobalRunnerState {
   enabled: boolean;
   mode?: "runner" | "watcher";
   pendingReplies?: number;
+  watchedMatches?: { baselineReady: boolean; existingRefs: string[]; newRefs: string[]; observer: { candidates: unknown[] }; observedAt: string | null } | null;
   watcherStatus?: "stopped" | "waiting" | "new-replies" | "following" | "processing" | "paused" | "disconnected";
   tabId: number | null;
   dwellSeconds: number;
@@ -739,7 +740,13 @@ function displayRunnerState(state: GlobalRunnerState): void {
     + (watcher ? " · Tinder tab required" : "");
   watcherStatus.setAttribute("data-status", displayStatus);
   document.getElementById("replyWatcherPending")!.textContent =
-    `${state.pendingReplies ?? 0} confirmed replies waiting · existing chats only`;
+    `${state.pendingReplies ?? 0} confirmed replies waiting in conversations`;
+  const matches = state.watchedMatches;
+  document.getElementById("replyWatcherMatches")!.textContent = !watcher
+    ? "Match discovery is off."
+    : !matches?.baselineReady
+      ? "Match discovery waiting for Tinder → Matches to be visible (first scan sets the existing baseline)."
+      : `${matches.existingRefs.length} existing match tiles · ${matches.newRefs.length} newly confirmed matches · ${matches.observer.candidates.length} verifying. Detection only: first messages require separate explicit activation.`;
   const cadence = document.getElementById("globalExistingCadence") as HTMLSelectElement;
   if (document.activeElement !== cadence) cadence.value = String(state.dwellSeconds ?? 15);
   const phase = document.getElementById("globalExistingPhase")!;

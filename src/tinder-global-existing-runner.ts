@@ -5,6 +5,7 @@ import { partitionExistingChatPermissions } from "./tinder-existing-chat-setting
 import { eligibleExistingThreadRefs } from "./tinder-global-existing-policy";
 import { reconcileExistingIndex, markThreadChecked, observeUnreadThreads, nextIndexedExistingThread, isExistingThreadIndex, type ExistingThreadIndex } from "./tinder-existing-thread-index";
 import { nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus, newlyVisibleUnread, extendActiveConversation, shouldFollowActiveConversation } from "./tinder-reply-watcher";
+import { emptyWatchedMatches, isWatchedMatches, observeWatchedMatches, type WatchedMatches } from "./tinder-match-watcher";
 
 const KEY = "tnnd.globalExistingRunner.v2";
 const ALARM = "tnnd.globalExistingRunner.cycle";
@@ -31,6 +32,7 @@ interface GlobalExistingRunnerState {
   enabled: boolean;
   mode: "runner" | "watcher";
   pendingReplies: number;
+  watchedMatches: WatchedMatches | null;
   visibleUnreadRefs: string[];
   watcherStatus: ReturnType<typeof watcherDisplayStatus>;
   userId: string | null;
@@ -57,7 +59,7 @@ interface GlobalExistingRunnerState {
   activity: RunnerActivity[];
 }
 const initial = (): GlobalExistingRunnerState => ({
-  enabled: false, mode: "runner", pendingReplies: 0, visibleUnreadRefs: [], watcherStatus: "stopped", userId: null, tabId: null, tabMode: null, pausedOnStop: false,
+  enabled: false, mode: "runner", pendingReplies: 0, watchedMatches: null, visibleUnreadRefs: [], watcherStatus: "stopped", userId: null, tabId: null, tabMode: null, pausedOnStop: false,
   phase: "stopped", dwellSeconds: DEFAULT_CADENCE, phaseDetail: "Runner stopped.", currentLabel: null,
   eligibleCount: 0, visitedCount: 0, sentCount: 0, skippedCount: 0, errorCount: 0,
   lastRef: null, activeConversationRef: null, activeConversationUntil: null, cursorRef: null, startedAt: null, lastActionAt: null, lastVisitAt: null,
@@ -108,14 +110,35 @@ async function load(): Promise<GlobalExistingRunnerState> {
     activeConversationRef: typeof value.activeConversationRef === "string" ? value.activeConversationRef : null,
     activeConversationUntil: typeof value.activeConversationUntil === "string" ? value.activeConversationUntil : null,
     pendingReplies: typeof value.pendingReplies === "number" && value.pendingReplies >= 0 ? value.pendingReplies : 0,
+    watchedMatches: value.userId && isWatchedMatches(value.watchedMatches, value.userId) ? value.watchedMatches : null,
     visibleUnreadRefs: Array.isArray(value.visibleUnreadRefs) ? value.visibleUnreadRefs.filter(ref => typeof ref === "string").slice(0, 100) : [],
     phase: PHASES.includes(value.phase as RunnerPhase) ? value.phase as RunnerPhase : "stopped"
   };
 }
+// Serialize changes from the content Match observer and runner ticks to
+// prevent an older tick from reverting an already observed Matches baseline.
+let pendingStateWrite: Promise<void> = Promise.resolve();
 async function save(state: GlobalExistingRunnerState): Promise<GlobalExistingRunnerState> {
-  const next = { ...state, watcherStatus: watcherDisplayStatus(state) };
-  await chrome.storage.local.set({ [KEY]: next });
-  return next;
+  const write = pendingStateWrite.then(async () => {
+    const raw = (await chrome.storage.local.get(KEY))[KEY] as GlobalExistingRunnerState | undefined;
+    // The user stopped this exact session while an async tick was in flight.
+    // Never allow a late observer callback to silently restart the watcher.
+    if (state.enabled && raw && !raw.enabled && raw.startedAt === state.startedAt
+      && raw.startedAt !== null) return raw;
+    const previous = raw?.enabled && raw.userId === state.userId && raw.mode === "watcher"
+      && state.mode === "watcher" && isWatchedMatches(raw.watchedMatches, state.userId ?? "")
+      ? raw.watchedMatches : null;
+    const proposed = state.watchedMatches;
+    const latestMatchWatch = previous && (!proposed || (previous.observedAt ?? "") > (proposed.observedAt ?? ""))
+      ? previous : proposed;
+    const merged = { ...state, watchedMatches: state.enabled && state.mode === "watcher"
+      ? latestMatchWatch : state.watchedMatches };
+    const next = { ...merged, watcherStatus: watcherDisplayStatus(merged) };
+    await chrome.storage.local.set({ [KEY]: next });
+    return next;
+  });
+  pendingStateWrite = write.then(() => undefined, () => undefined);
+  return write;
 }
 async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[]; labels: Map<string, string>; messageTimes: Map<string, string | null>; messageDirections: Map<string, "incoming" | "outgoing" | null> }> {
   const session = await getBackendSession();
@@ -346,10 +369,10 @@ export async function startExistingRunner(enablePreviouslyDisabled = false, mode
     if (future?.enabled) throw new Error("New-match AI is active. Stop it before running existing chats: Tinder supports only one active tab.");
 
     const selection = await listEligible();
-    if (!selection.refs.length && !selection.disabledRefs.length) {
+    if (mode !== "watcher" && !selection.refs.length && !selection.disabledRefs.length) {
       throw new Error("No eligible existing conversations. Sync chats and authorize AI management in TNND Web.");
     }
-    if (!selection.refs.length && !enablePreviouslyDisabled) {
+    if (mode !== "watcher" && !selection.refs.length && !enablePreviouslyDisabled) {
       throw new Error(selection.disabledRefs.length + " eligible chat(s) are disabled individually. Start again and explicitly confirm bulk reactivation, or re-enable them one by one.");
     }
     // Check Tinder tabs before modifying per-chat settings.
@@ -367,17 +390,30 @@ export async function startExistingRunner(enablePreviouslyDisabled = false, mode
       }
     }
     const { refs } = await listEligible();
-    if (!refs.length) throw new Error("No chat is enabled after checking current permissions.");
+    if (!refs.length && mode !== "watcher") throw new Error("No chat is enabled after checking current permissions.");
     let next = initial();
     const selectedTab = await chrome.tabs.get(tab.id);
     const selectedRef = mode === "watcher" ? tinderRefFromUrl(selectedTab.url) : null;
     const activeRef = selectedRef && refs.includes(selectedRef) ? selectedRef : null;
     next = activity({ ...next, enabled: true, mode, userId: session.user.id, tabId: tab.id, tabMode: tab.mode,
+      ...(mode === "watcher" ? { watchedMatches: emptyWatchedMatches(session.user.id) } : {}),
       ...(activeRef ? { lastRef: activeRef, currentLabel: selection.labels.get(activeRef) ?? `Thread ${activeRef.slice(0, 8)}`,
         ...extendActiveConversation(activeRef) } : {}),
       eligibleCount: refs.length, dwellSeconds: await getCadenceSeconds(), startedAt: new Date().toISOString() },
       "starting", `${mode === "watcher" ? "Watching" : "Checking"} ${refs.length} eligible chats on ${tab.mode === "reused" ? "the existing" : "a newly opened"} Tinder tab.`);
     await save(next);
+    // Bootstrap Matches baseline if the user has the actual Tinder Matches tab
+    // selected. No attempt to navigate away from an active conversation.
+    if (mode === "watcher") {
+      try {
+        const baseline = await chrome.tabs.sendMessage(tab.id, { type: "TNND_WATCHER_READ_MATCHES" }) as { ok?: boolean; refs?: unknown };
+        if (baseline?.ok && Array.isArray(baseline.refs) && baseline.refs.length) {
+          const latest = await load();
+          if (latest.enabled && latest.mode === "watcher" && latest.userId === session.user.id && latest.watchedMatches)
+            await save({ ...latest, watchedMatches: observeWatchedMatches(latest.watchedMatches, baseline.refs) });
+        }
+      } catch { /* Matches may not be visible yet; observe once user opens them. */ }
+    }
     // Chrome alarms provide a 30s fallback. The open Tinder content script
     // requests faster rotation every ~2.5s, bounded by saved dwellSeconds.
     await chrome.alarms.create(ALARM, { periodInMinutes: 0.5 });
@@ -389,7 +425,7 @@ async function stop(reason = "Runner stopped. Tinder tab kept open."): Promise<G
   const state = await load();
   // Do not close a reused or newly created tab; it belongs to the user after
   // taking over the sole Tinder session. Never force logout by opening another.
-  const next = activity({ ...state, enabled: false, userId: null, pendingReplies: 0, activeConversationRef: null, activeConversationUntil: null, pausedOnStop: state.tabId !== null }, "stopped", reason);
+  const next = activity({ ...state, enabled: false, userId: null, pendingReplies: 0, watchedMatches: null, activeConversationRef: null, activeConversationUntil: null, pausedOnStop: state.tabId !== null }, "stopped", reason);
   await save(next);
   await chrome.alarms.clear(ALARM);
   return next;
@@ -451,6 +487,26 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
           await save({ ...state, pausedOnStop: false });
         }
       }
+      return { ok: true };
+    })().then(sendResponse).catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+  if (input.type === "TNND_WATCHER_MATCHES_SEEN") {
+    void (async () => {
+      const state = await load();
+      const session = await getBackendSession();
+      if (!state.enabled || state.mode !== "watcher" || !state.watchedMatches
+        || !session || session.user.id !== state.userId
+        || sender.id !== chrome.runtime.id || sender.tab?.id !== state.tabId
+        || !isTinderUrl(sender.url) || !Array.isArray(input.refs) || input.refs.length > 500) return { ok: false };
+      const watchedMatches = observeWatchedMatches(state.watchedMatches, input.refs);
+      if (watchedMatches === state.watchedMatches) return { ok: true };
+      const fresh = await load();
+      if (!fresh.enabled || fresh.mode !== "watcher" || fresh.userId !== state.userId
+        || fresh.tabId !== state.tabId) return { ok: false };
+      await save({ ...fresh, watchedMatches });
+      // Match discovery is read-only: it must never take over an active chat,
+      // enqueue an opener or call the first-message send worker.
       return { ok: true };
     })().then(sendResponse).catch(() => sendResponse({ ok: false }));
     return true;

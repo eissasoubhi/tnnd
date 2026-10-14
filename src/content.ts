@@ -342,6 +342,7 @@ async function observeNewMatchLinks(): Promise<void> {
   lastNewMatchObservation = fingerprint;
   lastNewMatchObservationAt = Date.now();
   await sendRuntimeMessage({ type: "TNND_NEW_MATCH_LINKS_SEEN", refs });
+  await sendRuntimeMessage({ type: "TNND_WATCHER_MATCHES_SEEN", refs });
 }
 
 async function observeRuntimeReadMode(): Promise<void> {
@@ -817,6 +818,20 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
 
 // Read-only snapshot for a watcher started after the sidebar was already
 // rendered. No message text, profile details or send permissions are exposed.
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (!message || typeof message !== "object"
+    || (message as { type?: string }).type !== "TNND_WATCHER_READ_MATCHES") return false;
+  if (sender.id !== chrome.runtime.id || !hasLiveExtensionContext()) {
+    sendResponse({ ok: false, error: "match_watch_snapshot_not_authorized" });
+    return false;
+  }
+  if (detectVisibleTinderSidebarTab() !== "matches") {
+    sendResponse({ ok: false, reason: "select_matches_tab" });
+    return false;
+  }
+  sendResponse({ ok: true, refs: visibleTinderThreadRefs() });
+  return false;
+});
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (!message || typeof message !== "object"
     || (message as { type?: string }).type !== "TNND_WATCHER_READ_UNREAD") return false;
