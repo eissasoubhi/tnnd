@@ -1,4 +1,4 @@
-import { emptyNewMatchState, observeNewMatchLinks, type NewMatchObservationState } from "./tinder-new-match-observation";
+import { emptyNewMatchState, observeNewMatchLinks, type NewMatchObservationState } from "./tinder-new-match-observation.ts";
 
 /** Read-only inventory scoped to the authenticated TNND user, never a send queue.
  * First visible Matches snapshot is the EXISTING baseline; later top-of-list
