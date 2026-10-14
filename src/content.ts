@@ -5,6 +5,7 @@ import { detectVisibleTinderSidebarTab, visibleTinderThreadRefs } from "./tinder
 import { firstMessageAttemptKey, firstMessageBlocker, firstMessageContext } from "./tinder-first-message";
 import { groundedOpenerFragments, sameOpenerThreadUninterrupted } from "./tinder-opener-fragments";
 import { openerDelaySeconds } from "./tinder-opener-timing";
+import { naturalReplyBubbles } from "./tinder-reply-bubbles";
 import { syncConversationDelta } from "./conversation-sync";
 import { observeTinderRuntime } from "./tinder-runtime-observation";
 import { readCurrentTinderUiState } from "./tinder-runtime-state";
@@ -538,9 +539,44 @@ async function scan(): Promise<void> {
     freshState.processed[finalSnapshot.latestIncomingKey] = Date.now();
     freshState.dailyCount += 1;
     if (!await saveState(freshState)) return;
+    const bubbles = naturalReplyBubbles(reply,{
+      enabled: config.automation.multiPartRepliesEnabled === true,
+      minCharacters: config.automation.multiPartMinCharacters
+    });
     reportExistingRunner("sending", "One-time reply attempt recorded · clicking Tinder Send…");
-    await adapter.send(reply);
-    reportExistingRunner("sent", "Tinder Send action completed; check delivery in the chat. No duplicate retry.");
+    let sentParts = 0;
+    for (const [index, part] of bubbles.entries()) {
+      if (index > 0) {
+        // The follow-up bubble is a continuation of ONE claimed reply, not a
+        // second independent automatic response. A new incoming bubble,
+        // manual intervention, account/permission change aborts the rest.
+        const entropy=new Uint32Array(1);
+        crypto.getRandomValues(entropy);
+        const gap=openerDelaySeconds({
+          openerDelayMinSeconds: config.automation.multiPartDelayMinSeconds ?? 3,
+          openerDelayMaxSeconds: config.automation.multiPartDelayMaxSeconds ?? 10
+        },entropy[0]/0x100000000);
+        await new Promise(resolve=>setTimeout(resolve,gap*1000));
+        const fresh = adapter.read();
+        const freshConfig = await getContentConfig();
+        if (!fresh || fresh.threadKey !== currentSnapshot.threadKey
+          || currentConversationRef() !== conversationRef
+          || fresh.latestIncomingKey !== currentSnapshot.latestIncomingKey
+          || !sameOpenerThreadUninterrupted(adapter.readVisibleMessages(), bubbles[index-1])
+          || !freshConfig?.automation.enabled
+          || !await backendAllowsAutomaticReply(conversationRef)
+          || await autoReplyPausedAfterGlobalStop(conversationRef)
+          || await getChatAutomationEnabled(currentSnapshot.threadKey) !== true) {
+          reportExistingRunner("skipped", "Multi-bubble reply interrupted: newer message, manual intervention or permissions changed. No retry.");
+          break;
+        }
+      }
+      await adapter.send(part);
+      sentParts++;
+    }
+    if (sentParts > 0) reportExistingRunner("sent", sentParts === bubbles.length
+      ? "Tinder reply bubbles sent; no duplicate retry."
+      : "Partial reply sent; remaining bubbles cancelled. No retry.");
     console.info("TNND attempted one reply to the last unanswered message.");
   } catch (error) {
     if (contentRuntimeAlive) {
