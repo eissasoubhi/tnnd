@@ -41,3 +41,13 @@ recipient delivery. No real Tinder sends in visual tests.
 - Current screenshot is *before* these changes. Post-change local TNND,
   tablet, dark mode, real extension interaction and live browser QA remain
   unverified in this connected GitHub session.
+
+## Conversation history recovery — subsequent targeted pass
+
+The screenshot shows a selected match with no synchronized messages while the
+reply-draft UI remains present. The empty state previously said only that no
+messages were synchronized, without explaining how to recover or whether this
+could be a new match. The revised copy differentiates a new match from an
+already-chatted match, gives safe read-only import instructions, and provides
+a Check synced history button. It reuses the existing read-only list/detail
+refresh flow without triggering generation, automation or Tinder sends.
