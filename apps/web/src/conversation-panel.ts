@@ -343,7 +343,7 @@ export function prioritizeWaitingReplies(items: readonly ConversationListItem[])
     : item.status === "waiting-for-user" ? 1 : 0;
   return [...items].sort((a, b) =>
     priority(b) - priority(a)
-    || Date.parse(b.lastMessageAt ?? b.updatedAt ?? "") - Date.parse(a.lastMessageAt ?? a.updatedAt ?? "")
+    || (Date.parse(b.lastMessageAt ?? "") || 0) - (Date.parse(a.lastMessageAt ?? "") || 0)
     || a.id.localeCompare(b.id));
 }
 
