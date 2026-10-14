@@ -592,7 +592,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
 #app .panel :is(.management-row, .conversation-row, .setup-story-item, .memory-list-item) { min-width: 0; overflow-wrap: anywhere; }
 
 #app .style-learning-retain { display: flex; align-items: center; gap: 10px; min-height: 44px; }
-#app .style-learning-retain input[type="checkbox"] { flex: 0 0 auto; width: 20px; height: 20px; margin: 0; }
+#app .style-learning-retain input[type="checkbox"] { flex: 0 0 auto; width: 20px; min-height: 20px; height: 20px; margin: 0; }
 #app .takeover-review > summary { min-height: 44px; padding: 10px 0; cursor: pointer; font-weight: 750; }
 #app .takeover-review > summary:focus-visible { outline: 3px solid var(--nb-focus); outline-offset: 2px; }
 
