@@ -19,7 +19,7 @@ export interface EditablePreferences {
   datingGoalDetails?: string;
   /** Passport / target city is NOT the user's current residence. */
   targetCities?: string;
-  pauseOnConfirmedMarriage?: boolean;
+  pauseOnConfirmedMarriage?: string;
   maximumHeightCm?: string;
   casualExpressions?: string;
   marriageExpressions?: string;
@@ -72,7 +72,7 @@ export function readEditablePreferences(profile: ImportedProfile): EditablePrefe
     datingGoal: stringValue(datingIntent.defaultGoal, "open-to-see"),
     datingGoalDetails: optionalStringValue(datingIntent.datingGoalDetails),
     targetCities: Array.isArray(datingIntent.targetCities) ? datingIntent.targetCities.filter((city): city is string => typeof city === "string").join(", ") : "",
-    pauseOnConfirmedMarriage: screening.pauseOnConfirmedMarriage === true,
+    pauseOnConfirmedMarriage: screening.pauseOnConfirmedMarriage === true ? "true" : "false",
     maximumHeightCm: Number.isInteger(screening.maximumHeightCm) ? String(screening.maximumHeightCm) : "",
     casualExpressions: Array.isArray(screening.casualExpressions) ? screening.casualExpressions.filter((x): x is string => typeof x === "string").join(", ") : "",
     marriageExpressions: Array.isArray(screening.marriageExpressions) ? screening.marriageExpressions.filter((x): x is string => typeof x === "string").join(", ") : "",
@@ -123,7 +123,8 @@ export function writeEditablePreferences(profile: ImportedProfile, preferences: 
       targetCities,
       matchScreening: {
         ...existingScreening,
-        pauseOnConfirmedMarriage: preferences.pauseOnConfirmedMarriage ?? (existingScreening.pauseOnConfirmedMarriage === true),
+        pauseOnConfirmedMarriage: preferences.pauseOnConfirmedMarriage === undefined
+          ? existingScreening.pauseOnConfirmedMarriage === true : preferences.pauseOnConfirmedMarriage === "true",
         maximumHeightCm: height,
         casualExpressions: boundedExpressions(preferences.casualExpressions, existingScreening.casualExpressions),
         marriageExpressions: boundedExpressions(preferences.marriageExpressions, existingScreening.marriageExpressions)
