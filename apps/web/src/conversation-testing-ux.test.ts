@@ -75,3 +75,12 @@ test("conversation search and selected chat appear before summary counts", () =>
   assert.ok(markup.indexOf('id="conversation-search"') < markup.indexOf('id="conversation-list"'));
   assert.ok(markup.indexOf('id="conversation-list"') < markup.indexOf('id="conversation-operational-summary"'));
 });
+
+test("empty synced history explains the difference between an unused match and a missing import", () => {
+  assert.match(panel, /No messages saved for this match yet/);
+  assert.match(panel, /Import visible chat \(read-only\)/);
+  assert.match(panel, /A new match may have no history yet/);
+  assert.match(panel, /data-refresh-conversation/);
+  assert.match(panel, /querySelector<HTMLButtonElement>\("\[data-refresh-conversation\]"\)/);
+  assert.match(panel, /void refresh\(\)/);
+});
