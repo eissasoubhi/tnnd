@@ -53,6 +53,13 @@ export async function newMatchSendPermission(ref: string, tabId: number): Promis
   const state = await readNewMatchState();
   const session = await getBackendSession();
   const stored = (await chrome.storage.local.get("tnnd.newMatchOwnedTab.v1"))["tnnd.newMatchOwnedTab.v1"] as { tabId?: number; ref?: string; userId?: string } | undefined;
+  if (state.mode === "watcher") {
+    const watcher = (await chrome.storage.local.get("tnnd.globalExistingRunner.v2"))["tnnd.globalExistingRunner.v2"] as
+      { enabled?: boolean; mode?: string; autoOpenersEnabled?: boolean; userId?: string; tabId?: number; matchPhase?: string } | undefined;
+    if (!watcher?.enabled || watcher.mode !== "watcher" || !watcher.autoOpenersEnabled
+      || watcher.userId !== session?.user.id || watcher.tabId !== tabId || watcher.matchPhase !== "opener")
+      return false;
+  }
   return Boolean(state.enabled && state.autoSendEnabled && session?.user.id === state.userId
     && state.pendingRefs.includes(ref) && stored?.tabId === tabId && stored?.ref === ref && stored?.userId === session?.user.id);
 }

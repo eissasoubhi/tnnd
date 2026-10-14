@@ -139,7 +139,7 @@ test("watcher extends focus after distinct incoming/sent events, not an old proc
   const [runner,content,popup,manifest]=await Promise.all([
     "src/tinder-global-existing-runner.ts","src/content.ts","src/popup.ts","public/manifest.json"
   ].map(read));
-  assert.match(runner,/mode === "watcher" && state\.tabId !== null && state\.activeConversationRef/);
+  assert.match(runner,/mode === "watcher" && state\.matchPhase === "idle" && state\.tabId !== null && state\.activeConversationRef/);
   assert.match(runner,/shouldFollowActiveConversation\(state,/);
   assert.match(runner,/shouldFollowActiveConversation\(beforeNavigation, expectedRef, refs\)/);
   assert.match(runner,/extendActiveConversation\(nextRef\)/);
@@ -149,5 +149,5 @@ test("watcher extends focus after distinct incoming/sent events, not an old proc
   assert.match(content,/reportExistingRunner\("incoming", "New reply in the current conversation\."\)/);
   assert.match(content,/phase !== "sent" && phase !== "incoming"/);
   assert.match(popup,/Following current conversation/);
-  assert.equal(JSON.parse(manifest).version,"0.2.22");
+  assert.equal(JSON.parse(manifest).version,"0.2.23");
 });

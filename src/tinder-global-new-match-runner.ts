@@ -1,6 +1,6 @@
 import { getBackendSession, getConfig, getChatSettings } from "./storage";
 import { readNewMatchState, saveNewMatchState, updateNewMatchAttempt, newMatchSendPermission } from "./tinder-new-match-background";
-import { stopNewMatchObservation } from "./tinder-new-match-observation";
+import { stopNewMatchObservation, emptyNewMatchState } from "./tinder-new-match-observation";
 import { assertTinderContentBridge, isMissingTinderReceiver, describeTinderBridgeError } from "./tinder-tab-connection";
 import { startExistingRunner } from "./tinder-global-existing-runner";
 import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
@@ -214,6 +214,60 @@ async function processNext(): Promise<void> {
   } finally { busy = false; }
 }
 
+/** One explicitly enabled unified-watcher opener, using the SAME existing
+ * owned-tab, backend-empty, daily-claim and Tinder Send checks as the normal
+ * first-message runner. The two modes NEVER execute simultaneously.
+ * An in-flight watcher send is never replayed after service-worker restart.
+ */
+export async function sendSingleWatchedMatch(
+  ref: string, tabId: number, userId: string
+): Promise<{ attempted: boolean; sent: boolean; reason: string }> {
+  if (busy) return { attempted: false, sent: false, reason: "opener_busy" };
+  const current = await readNewMatchState();
+  if (current.enabled) return { attempted: false, sent: false, reason: "separate_match_runner_active" };
+  const session = await getBackendSession();
+  if (!session || session.user.id !== userId || !/^[a-zA-Z0-9_-]{3,512}$/.test(ref))
+    return { attempted: false, sent: false, reason: "invalid_match_session" };
+  const tabs = await chrome.tabs.query({ url: ["https://tinder.com/*", "https://www.tinder.com/*"] });
+  if (tabs.length !== 1 || tabs[0]?.id !== tabId)
+    return { attempted: false, sent: false, reason: "single_tinder_tab_required" };
+  const watcher = (await chrome.storage.local.get("tnnd.globalExistingRunner.v2"))["tnnd.globalExistingRunner.v2"] as
+    { enabled?: boolean; mode?: string; autoOpenersEnabled?: boolean; userId?: string; tabId?: number; matchPhase?: string } | undefined;
+  if (!watcher?.enabled || watcher.mode !== "watcher" || !watcher.autoOpenersEnabled
+    || watcher.userId !== userId || watcher.tabId !== tabId || watcher.matchPhase !== "opener")
+    return { attempted: false, sent: false, reason: "watcher_opener_not_authorized" };
+  // A separate disabled former batch stays disabled when the operation ends.
+  const temporary = {
+    ...emptyNewMatchState(), enabled: true, autoSendEnabled: true,
+    mode: "watcher" as const, userId, baselineReady: true,
+    seenRefs: [ref], pendingRefs: [ref], updatedAt: new Date().toISOString()
+  };
+  await saveNewMatchState(temporary);
+  await chrome.storage.local.set({ [OWNED_TAB]: { tabId, userId, ref: null } });
+  try {
+    await processNext();
+    const after = await readNewMatchState();
+    return {
+      attempted: true, sent: after.completedRefs.includes(ref),
+      reason: after.lastResult ?? "Opener attempted; delivery unconfirmed"
+    };
+  } finally {
+    // No automatic retry after a partial send, failure, tab interruption or
+    // service worker restart. All existing first-message claim logs remain.
+    const after = await readNewMatchState();
+    // Preserve the prior disabled match-runner history (completed/failed IDs).
+    // Do not overwrite a newly started independent mode after Stop.
+    if (after.mode === "watcher" && after.userId === userId) {
+      await saveNewMatchState(current);
+      const owned = (await chrome.storage.local.get(OWNED_TAB))[OWNED_TAB] as
+        { userId?: string; tabId?: number } | undefined;
+      if (owned?.userId === userId && owned.tabId === tabId)
+        await chrome.storage.local.remove(OWNED_TAB);
+      await chrome.alarms.clear(ALARM);
+    }
+  }
+}
+
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (!message || typeof message !== "object" || (message as { type?: unknown }).type !== "TNND_MATCH_RUNNER_TICK") return false;
   void (async () => {
@@ -234,7 +288,11 @@ chrome.alarms.onAlarm.addListener(alarm => {
 
 export async function refreshNewMatchAlarm(): Promise<void> {
   const state = await readNewMatchState();
-  if (state.enabled && state.autoSendEnabled) {
+  if (state.enabled && state.mode === "watcher") {
+    await saveNewMatchState(stopNewMatchObservation(state));
+    await chrome.storage.local.remove(OWNED_TAB);
+    await chrome.alarms.clear(ALARM);
+  } else if (state.enabled && state.autoSendEnabled) {
     await chrome.alarms.create(ALARM, { periodInMinutes: 1 });
   } else {
     await chrome.alarms.clear(ALARM);

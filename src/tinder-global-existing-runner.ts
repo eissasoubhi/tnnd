@@ -6,6 +6,9 @@ import { eligibleExistingThreadRefs } from "./tinder-global-existing-policy";
 import { reconcileExistingIndex, markThreadChecked, observeUnreadThreads, nextIndexedExistingThread, isExistingThreadIndex, type ExistingThreadIndex } from "./tinder-existing-thread-index";
 import { nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus, newlyVisibleUnread, extendActiveConversation, shouldFollowActiveConversation } from "./tinder-reply-watcher";
 import { emptyWatchedMatches, isWatchedMatches, observeWatchedMatches, type WatchedMatches } from "./tinder-match-watcher";
+import { sendSingleWatchedMatch } from "./tinder-global-new-match-runner";
+import { nextWatcherMatchAction, nextMatchOpener, type WatcherMatchPhase } from "./tinder-watcher-match-cycle";
+import { firstMessageDailyLimit, hasReachedFirstMessageDailyLimit } from "./tinder-first-message-daily-limit";
 
 const KEY = "tnnd.globalExistingRunner.v2";
 const ALARM = "tnnd.globalExistingRunner.cycle";
@@ -19,6 +22,7 @@ async function getCadenceSeconds(): Promise<number> {
 const API = "http://127.0.0.1:4000";
 const LOG_LIMIT = 16;
 const WORK_INDEX_KEY = "tnnd.existingThreadWorkIndex.v1";
+const WATCHER_ATTEMPTS_KEY = "tnnd.watcherOpenerAttempted.v1";
 const PHASES = ["starting", "checking", "loading", "incoming", "waiting", "generating", "sending", "sent", "skipped", "error", "stopped"] as const;
 type RunnerPhase = typeof PHASES[number];
 
@@ -32,6 +36,11 @@ interface GlobalExistingRunnerState {
   enabled: boolean;
   mode: "runner" | "watcher";
   pendingReplies: number;
+  autoOpenersEnabled: boolean;
+  matchPhase: WatcherMatchPhase;
+  matchPhaseStartedAt: string | null;
+  lastMatchScanAt: string | null;
+  lastIncomingAt: string | null;
   watchedMatches: WatchedMatches | null;
   visibleUnreadRefs: string[];
   watcherStatus: ReturnType<typeof watcherDisplayStatus>;
@@ -59,7 +68,8 @@ interface GlobalExistingRunnerState {
   activity: RunnerActivity[];
 }
 const initial = (): GlobalExistingRunnerState => ({
-  enabled: false, mode: "runner", pendingReplies: 0, watchedMatches: null, visibleUnreadRefs: [], watcherStatus: "stopped", userId: null, tabId: null, tabMode: null, pausedOnStop: false,
+  enabled: false, mode: "runner", pendingReplies: 0, autoOpenersEnabled: false,
+  matchPhase: "idle", matchPhaseStartedAt: null, lastMatchScanAt: null, lastIncomingAt: null, watchedMatches: null, visibleUnreadRefs: [], watcherStatus: "stopped", userId: null, tabId: null, tabMode: null, pausedOnStop: false,
   phase: "stopped", dwellSeconds: DEFAULT_CADENCE, phaseDetail: "Runner stopped.", currentLabel: null,
   eligibleCount: 0, visitedCount: 0, sentCount: 0, skippedCount: 0, errorCount: 0,
   lastRef: null, activeConversationRef: null, activeConversationUntil: null, cursorRef: null, startedAt: null, lastActionAt: null, lastVisitAt: null,
@@ -110,6 +120,11 @@ async function load(): Promise<GlobalExistingRunnerState> {
     activeConversationRef: typeof value.activeConversationRef === "string" ? value.activeConversationRef : null,
     activeConversationUntil: typeof value.activeConversationUntil === "string" ? value.activeConversationUntil : null,
     pendingReplies: typeof value.pendingReplies === "number" && value.pendingReplies >= 0 ? value.pendingReplies : 0,
+    autoOpenersEnabled: value.autoOpenersEnabled === true,
+    matchPhase: ["idle", "verifying", "opener"].includes(String(value.matchPhase)) ? value.matchPhase! : "idle",
+    matchPhaseStartedAt: typeof value.matchPhaseStartedAt === "string" ? value.matchPhaseStartedAt : null,
+    lastMatchScanAt: typeof value.lastMatchScanAt === "string" ? value.lastMatchScanAt : null,
+    lastIncomingAt: typeof value.lastIncomingAt === "string" ? value.lastIncomingAt : null,
     watchedMatches: value.userId && isWatchedMatches(value.watchedMatches, value.userId) ? value.watchedMatches : null,
     visibleUnreadRefs: Array.isArray(value.visibleUnreadRefs) ? value.visibleUnreadRefs.filter(ref => typeof ref === "string").slice(0, 100) : [],
     phase: PHASES.includes(value.phase as RunnerPhase) ? value.phase as RunnerPhase : "stopped"
@@ -219,6 +234,168 @@ async function readWorkIndex(userId: string): Promise<ExistingThreadIndex | null
 async function saveWorkIndex(state: ExistingThreadIndex): Promise<void> {
   await chrome.storage.local.set({ [WORK_INDEX_KEY]: state });
 }
+function isMatchCycleState(state: GlobalExistingRunnerState, source: GlobalExistingRunnerState): boolean {
+  return state.enabled && state.mode === "watcher" && state.startedAt === source.startedAt
+    && state.userId === source.userId && state.tabId === source.tabId;
+}
+async function readOpenerAttempts(userId: string): Promise<string[]> {
+  const stored = (await chrome.storage.local.get(WATCHER_ATTEMPTS_KEY))[WATCHER_ATTEMPTS_KEY] as
+    { userId?: string; refs?: unknown } | undefined;
+  return stored?.userId === userId && Array.isArray(stored.refs)
+    ? stored.refs.filter((ref): ref is string => typeof ref === "string").slice(-500) : [];
+}
+async function claimWatchedOpener(userId: string, ref: string): Promise<boolean> {
+  // This is durable BEFORE navigating or attempting the irreversible Send.
+  // A service-worker crash is fail-closed; no automatic replay.
+  const prior = await readOpenerAttempts(userId);
+  if (prior.includes(ref)) return false;
+  await chrome.storage.local.set({ [WATCHER_ATTEMPTS_KEY]: {
+    userId, refs: [...prior, ref].slice(-500)
+  } });
+  return true;
+}
+async function watcherSidebar(
+  tabId: number, target: "messages" | "matches", expectedRef: string | null
+): Promise<{ ok?: boolean; error?: string; refs?: unknown }> {
+  return chrome.tabs.sendMessage(tabId, {
+    type: "TNND_WATCHER_SELECT_SIDEBAR", target, expectedRef
+  });
+}
+async function returnWatcherToMessages(state: GlobalExistingRunnerState, note: string): Promise<void> {
+  if (state.tabId === null) return;
+  try {
+    const tab = await chrome.tabs.get(state.tabId);
+    const result = await watcherSidebar(state.tabId, "messages", tinderRefFromUrl(tab.url));
+    if (!result?.ok) throw new Error(result?.error ?? "messages_switch_not_confirmed");
+    const live = await load();
+    if (!isMatchCycleState(live, state)) return;
+    await save(activity({ ...live, matchPhase: "idle", matchPhaseStartedAt: null,
+      lastRef: tinderRefFromUrl(tab.url), activeConversationRef: null, activeConversationUntil: null },
+      "waiting", note));
+  } catch (error) {
+    const live = await load();
+    if (isMatchCycleState(live, state)) {
+      await save(activity({ ...live, enabled: false, autoOpenersEnabled: false,
+        matchPhase: "idle", matchPhaseStartedAt: null, pausedOnStop: true },
+        "error", "Watcher paused to protect current Tinder state; switch to Messages manually: "
+          + (error instanceof Error ? error.message : "sidebar_not_available")));
+      await chrome.alarms.clear(ALARM);
+    }
+  }
+}
+async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void> {
+  if (state.tabId === null || !state.userId) return;
+  const action = nextWatcherMatchAction(state, {
+    activeFollow: false, pendingReplies: state.pendingReplies, replyProcessing: false
+  });
+  if (action === "none") return;
+  if (action === "recover") {
+    await returnWatcherToMessages(state, "Returning to Messages to prioritize replies.");
+    return;
+  }
+  if (action === "scan") {
+    const tab = await chrome.tabs.get(state.tabId);
+    const ref = tinderRefFromUrl(tab.url);
+    const result = await watcherSidebar(state.tabId, "matches", ref);
+    const live = await load();
+    if (!isMatchCycleState(live, state)) return;
+    if (!result?.ok) {
+      await save(activity({ ...live, lastMatchScanAt: new Date().toISOString() },
+        "waiting", "Cannot safely open Tinder Matches: " + (result?.error ?? "not_confirmed")));
+      return;
+    }
+    const now = new Date().toISOString();
+    const observed = Array.isArray(result.refs) && live.watchedMatches
+      ? observeWatchedMatches(live.watchedMatches, result.refs, now) : live.watchedMatches;
+    await save(activity({ ...live, watchedMatches: observed, matchPhase: "verifying",
+      matchPhaseStartedAt: now, lastMatchScanAt: now, lastRef: ref },
+      "waiting", "Briefly checking visible Tinder Matches; verifying new tiles without sending."));
+    return;
+  }
+  // >=16 s after first observation: confirm new Matches tiles, then prioritize
+  // any newly synced replies before considering at most one first message.
+  const snapshot = await chrome.tabs.sendMessage(state.tabId, { type: "TNND_WATCHER_READ_MATCHES" }) as
+    { ok?: boolean; refs?: unknown };
+  const current = await load();
+  if (!isMatchCycleState(current, state)) return;
+  if (!snapshot?.ok || !Array.isArray(snapshot.refs) || !current.watchedMatches) {
+    await returnWatcherToMessages(current, "Matches not visible; returning to Messages.");
+    return;
+  }
+  const inventory = observeWatchedMatches(current.watchedMatches, snapshot.refs);
+  await save({ ...current, watchedMatches: inventory });
+  const session = await getBackendSession();
+  if (!session || session.user.id !== state.userId) {
+    await stop("TNND account changed while checking Matches.");
+    return;
+  }
+  const { refs, messageTimes, messageDirections } = await listEligible();
+  const work = reconcileExistingIndex(await readWorkIndex(session.user.id), session.user.id,
+    refs.map(ref => ({ ref, lastMessageAt: messageTimes.get(ref) ?? null,
+      lastMessageDirection: messageDirections.get(ref) ?? null })));
+  await saveWorkIndex(work);
+  if (pendingWatchedReplies(work) > 0) {
+    await returnWatcherToMessages(await load(), "New reply detected; prioritizing Messages.");
+    return;
+  }
+  const after = await load();
+  if (!isMatchCycleState(after, state)) return;
+  if (after.lastIncomingAt && after.matchPhaseStartedAt
+    && Date.parse(after.lastIncomingAt) > Date.parse(after.matchPhaseStartedAt)) {
+    await returnWatcherToMessages(after, "New incoming reply preempted Matches; returning to Messages.");
+    return;
+  }
+  if (!after.autoOpenersEnabled) {
+    await returnWatcherToMessages(after, "Matches checked; first messages are not enabled.");
+    return;
+  }
+  const currentlyVisible = new Set(snapshot.refs.filter((ref): ref is string => typeof ref === "string"));
+  const ref = nextMatchOpener(
+    inventory.existingRefs.filter(ref => currentlyVisible.has(ref)),
+    inventory.newRefs.filter(ref => currentlyVisible.has(ref)),
+    await readOpenerAttempts(session.user.id));
+  if (!ref) {
+    await returnWatcherToMessages(after, "No eligible unattempted match tiles; watching Messages.");
+    return;
+  }
+  // Do not burn a match's one-shot watcher claim when today's daily opener
+  // quota is already exhausted. It remains eligible on a later UTC day.
+  const currentConfig = await getConfig();
+  const journals = await chrome.storage.local.get([
+    "tnnd.newMatchDailyAttempts.v1", "tnnd.firstMessageAttempts.v1"
+  ]);
+  const daily = journals["tnnd.newMatchDailyAttempts.v1"] as { date?: string; refs?: string[] } | undefined;
+  const claims = journals["tnnd.firstMessageAttempts.v1"] as Record<string, number> | undefined;
+  const today = new Date().toISOString().slice(0, 10);
+  const dailyUsed = daily?.date === today && Array.isArray(daily.refs) ? daily.refs.length : 0;
+  const limit = firstMessageDailyLimit(currentConfig.automation.maxFirstMessagesPerDay);
+  if (dailyUsed >= limit || hasReachedFirstMessageDailyLimit(claims ?? {}, limit)) {
+    await returnWatcherToMessages(after, `Daily first-message quota (${limit}) reached; retry next UTC day without claiming a match.`);
+    return;
+  }
+  // Explicit opt-in, verified Matches tile, no incoming reply and same account.
+  // Store a one-shot watcher claim before entering the normal first-message
+  // worker. Never retry automatically if navigation/send acknowledgement fails.
+  if (!(await claimWatchedOpener(session.user.id, ref))) {
+    await returnWatcherToMessages(after, "Match already attempted; watching Messages.");
+    return;
+  }
+  await save(activity({ ...after, matchPhase: "opener", matchPhaseStartedAt: new Date().toISOString() }, "loading",
+    "Checking one match opener against daily limits and empty-thread permission."));
+  let outcome: { attempted: boolean; sent: boolean; reason: string } | null = null;
+  try {
+    outcome = await sendSingleWatchedMatch(ref, state.tabId, session.user.id);
+  } catch (error) {
+    outcome = { attempted: false, sent: false,
+      reason: error instanceof Error ? error.message : "opener_failed" };
+  }
+  const finished = await load();
+  if (!isMatchCycleState(finished, state)) return;
+  await returnWatcherToMessages(finished, outcome.sent
+    ? "First message attempted successfully; returned to Messages."
+    : "Opener skipped without automatic retry: " + outcome.reason);
+}
+
 async function tick(): Promise<void> {
   if (busy) return;
   busy = true;
@@ -229,7 +406,7 @@ async function tick(): Promise<void> {
     // The watcher must not abandon the chat just because other threads were
     // queued while this match was answering. The follow lease is renewed on
     // every new incoming message and send; it is independent of the reply delay.
-    if (state.mode === "watcher" && state.tabId !== null && state.activeConversationRef) {
+    if (state.mode === "watcher" && state.matchPhase === "idle" && state.tabId !== null && state.activeConversationRef) {
       const currentTab = await chrome.tabs.get(state.tabId);
       if (shouldFollowActiveConversation(state,
         tinderRefFromUrl(currentTab.url), [state.activeConversationRef])) return;
@@ -243,7 +420,8 @@ async function tick(): Promise<void> {
     const elapsed = state.lastActionAt ? Date.now() - Date.parse(state.lastActionAt) : Number.POSITIVE_INFINITY;
     const replyInProgress = state.phase === "generating" || state.phase === "sending"
       || (state.phase === "waiting" && state.phaseDetail.startsWith("Unanswered incoming message found"));
-    if (replyInProgress && Number.isFinite(elapsed) && elapsed >= 0 && elapsed < leaseMs) {
+    if (replyInProgress && !(state.mode === "watcher" && state.matchPhase === "verifying")
+      && Number.isFinite(elapsed) && elapsed >= 0 && elapsed < leaseMs) {
       // Keep the exact Tinder tab/thread open until Send succeeds, fails, or
       // the lease expires. A later cycle can continue other conversations.
       return;
@@ -281,6 +459,14 @@ async function tick(): Promise<void> {
     }
     await saveWorkIndex(queued);
     const pendingReplies = pendingWatchedReplies(queued);
+    // Complete/abort an in-flight Matches scan before any reply navigation:
+    // it always switches back to Messages first.
+    if (state.mode === "watcher" && state.matchPhase !== "idle") {
+      const pendingState = await load();
+      if (pendingState.enabled && pendingState.mode === "watcher")
+        await scanMatchesCycle({ ...pendingState, pendingReplies });
+      return;
+    }
     const nextRef = state.mode === "watcher" ? nextWatchedReply(queued) : nextIndexedExistingThread(queued);
     if (!nextRef) {
       const detail = state.mode === "watcher"
@@ -291,6 +477,8 @@ async function tick(): Promise<void> {
           latestWaiting.pendingReplies !== pendingReplies) {
         await save(activity({ ...latestWaiting, eligibleCount: refs.length, pendingReplies }, "waiting", detail));
       }
+      if (state.mode === "watcher")
+        await scanMatchesCycle({ ...await load(), pendingReplies });
       return;
     }
     const current = await load();
@@ -351,13 +539,14 @@ async function tick(): Promise<void> {
     }
   } finally { busy = false; }
 }
-export async function startExistingRunner(enablePreviouslyDisabled = false, mode: "runner" | "watcher" = "runner"): Promise<GlobalExistingRunnerState> {
+export async function startExistingRunner(enablePreviouslyDisabled = false, mode: "runner" | "watcher" = "runner", autoOpenersEnabled = false): Promise<GlobalExistingRunnerState> {
   if (starting) throw new Error("Runner is already starting.");
   starting = true;
   try {
     const current = await load();
     if (current.enabled) {
-      if (current.mode !== mode) throw new Error("Stop the current runner or watcher before switching modes.");
+      if (current.mode !== mode || (mode === "watcher" && current.autoOpenersEnabled !== autoOpenersEnabled))
+        throw new Error("Stop the current runner or watcher before switching modes.");
       return current;
     }
     if (mode === "watcher" && enablePreviouslyDisabled) throw new Error("Watcher cannot enable disabled chats in bulk.");
@@ -395,7 +584,8 @@ export async function startExistingRunner(enablePreviouslyDisabled = false, mode
     const selectedTab = await chrome.tabs.get(tab.id);
     const selectedRef = mode === "watcher" ? tinderRefFromUrl(selectedTab.url) : null;
     const activeRef = selectedRef && refs.includes(selectedRef) ? selectedRef : null;
-    next = activity({ ...next, enabled: true, mode, userId: session.user.id, tabId: tab.id, tabMode: tab.mode,
+    next = activity({ ...next, enabled: true, mode, autoOpenersEnabled: mode === "watcher" && autoOpenersEnabled,
+      userId: session.user.id, tabId: tab.id, tabMode: tab.mode,
       ...(mode === "watcher" ? { watchedMatches: emptyWatchedMatches(session.user.id) } : {}),
       ...(activeRef ? { lastRef: activeRef, currentLabel: selection.labels.get(activeRef) ?? `Thread ${activeRef.slice(0, 8)}`,
         ...extendActiveConversation(activeRef) } : {}),
@@ -425,7 +615,8 @@ async function stop(reason = "Runner stopped. Tinder tab kept open."): Promise<G
   const state = await load();
   // Do not close a reused or newly created tab; it belongs to the user after
   // taking over the sole Tinder session. Never force logout by opening another.
-  const next = activity({ ...state, enabled: false, userId: null, pendingReplies: 0, watchedMatches: null, activeConversationRef: null, activeConversationUntil: null, pausedOnStop: state.tabId !== null }, "stopped", reason);
+  const next = activity({ ...state, enabled: false, autoOpenersEnabled: false,
+    matchPhase: "idle", matchPhaseStartedAt: null, userId: null, pendingReplies: 0, watchedMatches: null, activeConversationRef: null, activeConversationUntil: null, pausedOnStop: state.tabId !== null }, "stopped", reason);
   await save(next);
   await chrome.alarms.clear(ALARM);
   return next;
@@ -449,7 +640,8 @@ async function contentEvent(sender: chrome.runtime.MessageSender, message: { pha
     || (phase === "waiting" && detail.startsWith("Unanswered incoming message found"))
   );
   await save(activity({
-    ...fresh, ...(extendFocus ? extendActiveConversation(senderRef) : {})
+    ...fresh, ...(extendFocus ? extendActiveConversation(senderRef) : {}),
+    ...(phase === "incoming" ? { lastIncomingAt: new Date().toISOString() } : {})
   }, phase, detail, senderRef));
 }
 chrome.alarms.onAlarm.addListener(alarm => {
@@ -548,7 +740,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       .catch(() => sendResponse({ ok: false }));
     return true;
   }
-  if (!["TNND_GLOBAL_EXISTING_STATE", "TNND_GLOBAL_EXISTING_PREFLIGHT", "TNND_GLOBAL_EXISTING_SET_CADENCE", "TNND_GLOBAL_EXISTING_START", "TNND_GLOBAL_WATCHER_START", "TNND_GLOBAL_EXISTING_STOP"].includes(String(input.type))) return false;
+  if (!["TNND_GLOBAL_EXISTING_STATE", "TNND_GLOBAL_EXISTING_PREFLIGHT", "TNND_GLOBAL_EXISTING_SET_CADENCE", "TNND_GLOBAL_EXISTING_START", "TNND_GLOBAL_WATCHER_START", "TNND_GLOBAL_WATCHER_AUTO_START", "TNND_GLOBAL_EXISTING_STOP"].includes(String(input.type))) return false;
   if (input.type === "TNND_GLOBAL_EXISTING_STATE" && (popupSender(sender) || webReadOnlySender(sender))) {
     void Promise.all([load(), getCadenceSeconds()]).then(([state, dwellSeconds]) => sendResponse({ ok: true, state: { ...state, dwellSeconds } }))
       .catch(() => sendResponse({ ok: false, error: "state_unavailable" }));
@@ -584,7 +776,9 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     ? startExistingRunner(input.enablePreviouslyDisabled === true)
     : input.type === "TNND_GLOBAL_WATCHER_START"
       ? startExistingRunner(false, "watcher")
-      : stop())
+      : input.type === "TNND_GLOBAL_WATCHER_AUTO_START"
+        ? startExistingRunner(false, "watcher", true)
+        : stop())
     .then(state => sendResponse({ ok: true, state }))
     .catch(error => sendResponse({ ok: false, error: error instanceof Error ? error.message : "runner_failed" }));
   return true;

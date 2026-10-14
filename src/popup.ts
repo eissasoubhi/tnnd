@@ -684,6 +684,9 @@ interface GlobalRunnerState {
   enabled: boolean;
   mode?: "runner" | "watcher";
   pendingReplies?: number;
+  autoOpenersEnabled?: boolean;
+  matchPhase?: "idle" | "verifying" | "opener";
+  lastMatchScanAt?: string | null;
   watchedMatches?: { baselineReady: boolean; existingRefs: string[]; newRefs: string[]; observer: { candidates: unknown[] }; observedAt: string | null } | null;
   watcherStatus?: "stopped" | "waiting" | "new-replies" | "following" | "processing" | "paused" | "disconnected";
   tabId: number | null;
@@ -726,6 +729,8 @@ function displayRunnerState(state: GlobalRunnerState): void {
   const watcher = state.enabled && state.mode === "watcher";
   const startWatcher = document.getElementById("startReplyWatcher") as HTMLButtonElement;
   const stopWatcher = document.getElementById("stopReplyWatcher") as HTMLButtonElement;
+  const startAutoWatcher = document.getElementById("startAutoMatchWatcher") as HTMLButtonElement;
+  startAutoWatcher.disabled = state.enabled;
   startWatcher.disabled = state.enabled;
   stopWatcher.disabled = !watcher;
   const statusLabel: Record<string, string> = {
@@ -741,6 +746,11 @@ function displayRunnerState(state: GlobalRunnerState): void {
   watcherStatus.setAttribute("data-status", displayStatus);
   document.getElementById("replyWatcherPending")!.textContent =
     `${state.pendingReplies ?? 0} confirmed replies waiting in conversations`;
+  document.getElementById("replyWatcherAutoStatus")!.textContent = watcher
+    ? state.autoOpenersEnabled
+      ? `Automatic Matches cycle ON · ${state.matchPhase === "verifying" ? "verifying matches" : state.matchPhase === "opener" ? "checking first-message permission" : "waiting for idle window"} · next scan no sooner than 5 minutes after previous scan. Daily first-message limit applies.`
+      : "Match detection only · automatic first messages OFF."
+    : "Automatic Matches cycle stopped.";
   const matches = state.watchedMatches;
   document.getElementById("replyWatcherMatches")!.textContent = !watcher
     ? "Match discovery is off."
@@ -848,6 +858,30 @@ async function refreshGlobalExisting(): Promise<void> {
   })().catch(error => {
     document.getElementById("replyWatcherStatus")!.textContent =
       error instanceof Error ? error.message : "Watcher start failed.";
+    void refreshGlobalExisting();
+  });
+});
+// Separate, explicitly confirmed opt-in. An extension update must NOT convert
+// existing read-only watchers into unsolicited first-message senders.
+(document.getElementById("startAutoMatchWatcher") as HTMLButtonElement).addEventListener("click", () => {
+  void (async () => {
+    const limit = firstMessageDailyLimit((await getConfig()).automation.maxFirstMessagesPerDay);
+    if (!window.confirm(
+      "Enable automatic Matches scanning and AI first messages? TNND will periodically " +
+      "switch the SINGLE Tinder page between Messages and Matches only when conversations " +
+      "are idle, and may send one opener to a verified empty existing/new match per scan. " +
+      "Maximum " + limit + " opener attempts per UTC day, no automatic retries, " +
+      "and all individual/chat/backend permissions still apply. " +
+      "Tinder must remain open. Continue?"
+    )) return;
+    const response = await chrome.runtime.sendMessage({
+      type: "TNND_GLOBAL_WATCHER_AUTO_START"
+    }) as GlobalExistingControlResponse;
+    if (!response?.ok) throw new Error(response?.error ?? "Automatic watcher could not start.");
+    if (response.state) displayRunnerState(response.state);
+  })().catch(error => {
+    document.getElementById("replyWatcherStatus")!.textContent =
+      error instanceof Error ? error.message : "Automatic watcher start failed.";
     void refreshGlobalExisting();
   });
 });
