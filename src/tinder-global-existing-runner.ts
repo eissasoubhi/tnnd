@@ -9,6 +9,7 @@ import { emptyWatchedMatches, isWatchedMatches, observeWatchedMatches, type Watc
 import { sendSingleWatchedMatch } from "./tinder-global-new-match-runner";
 import { nextWatcherMatchAction, nextMatchOpener, type WatcherMatchPhase } from "./tinder-watcher-match-cycle";
 import { firstMessageDailyLimit, hasReachedFirstMessageDailyLimit } from "./tinder-first-message-daily-limit";
+import { withSpaNavigationTimeout, isStalledOpening, SpaNavigationTimeoutError } from "./tinder-runner-navigation-timeout";
 
 const KEY = "tnnd.globalExistingRunner.v2";
 const ALARM = "tnnd.globalExistingRunner.cycle";
@@ -402,6 +403,14 @@ async function tick(): Promise<void> {
   try {
     const state = await load();
     if (!state.enabled) return;
+    if (isStalledOpening(state.phase, state.lastActionAt)) {
+      // Chrome can suspend the worker between a navigation and its response.
+      // Do not leave an old Opening chat state running for minutes.
+      const paused = activity(state, "error", "Chat opening was never confirmed. Runner paused safely after 20 seconds; inspect Tinder tab and restart. No retry or send.");
+      await save({ ...paused, enabled: false, userId: null, pausedOnStop: true });
+      await chrome.alarms.clear(ALARM);
+      return;
+    }
     const dwellSeconds = await getCadenceSeconds();
     // The watcher must not abandon the chat just because other threads were
     // queued while this match was answering. The follow lease is renewed on
@@ -494,9 +503,9 @@ async function tick(): Promise<void> {
     const beforeNavigation = await load();
     if (beforeNavigation.mode === "watcher"
       && shouldFollowActiveConversation(beforeNavigation, expectedRef, refs)) return;
-    const result = await chrome.tabs.sendMessage(tabId, {
+    const result = await withSpaNavigationTimeout(chrome.tabs.sendMessage(tabId, {
       type: "TNND_EXISTING_SPA_NAVIGATE", ref: nextRef, expectedRef
-    }) as { ok?: boolean; error?: string; currentRef?: string };
+    })) as { ok?: boolean; error?: string; currentRef?: string; identity?: { firstName?: string; age?: number } };
     if (!result?.ok || result.currentRef !== nextRef) {
       const latest = await load();
       const reason = result?.error ?? "spa_navigation_unconfirmed";
@@ -518,16 +527,27 @@ async function tick(): Promise<void> {
     if (!latest.enabled) return;
     const checked = markThreadChecked(queued, nextRef);
     await saveWorkIndex(checked);
-    await save({ ...latest, pendingReplies: pendingWatchedReplies(checked), lastRef: nextRef,
+    const name = typeof result.identity?.firstName === "string" &&
+      /^[\p{L}][\p{L}\p{M}\p{N} ._'’\-]{1,79}$/u.test(result.identity.firstName)
+      ? result.identity.firstName : null;
+    const displayedLabel = name ?? label;
+    // A successful navigation is NOT a 3-minute "Opening chat" phase.
+    // The 3-minute lease still protects a genuinely active conversation.
+    await save(activity({ ...latest, pendingReplies: pendingWatchedReplies(checked), lastRef: nextRef,
       ...(latest.mode === "watcher" ? extendActiveConversation(nextRef) : {}),
-      cursorRef: nextRef, currentLabel: label, visitedCount: latest.visitedCount + 1,
-      lastVisitAt: new Date().toISOString() });
+      cursorRef: nextRef, currentLabel: displayedLabel, visitedCount: latest.visitedCount + 1,
+      lastVisitAt: new Date().toISOString() }, "waiting",
+      `Opened ${displayedLabel}. Listening for incoming replies.`, nextRef));
     // Reply sending remains solely in Tinder content script, guarded by both
     // server management and per-chat settings. Runner never calls Send.
   } catch (error) {
     const latest = await load();
     if (latest.enabled) {
-      if (isMissingTinderReceiver(error)) {
+      if (error instanceof SpaNavigationTimeoutError) {
+        const failed = activity(latest, "error", error.message);
+        await save({ ...failed, enabled: false, userId: null, pausedOnStop: true });
+        await chrome.alarms.clear(ALARM);
+      } else if (isMissingTinderReceiver(error)) {
         const failed = activity(latest, "error", describeTinderBridgeError(error));
         // Pause, preserve the tab and leave the error visible instead of
         // accumulating failures on every 30-second alarm.
@@ -656,7 +676,7 @@ chrome.runtime.onStartup.addListener(() => {
 });
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (!message || typeof message !== "object") return false;
-  const input = message as { type?: unknown; phase?: unknown; detail?: unknown; ref?: unknown; refs?: unknown; enablePreviouslyDisabled?: unknown; cadenceSeconds?: unknown };
+  const input = message as { type?: unknown; phase?: unknown; detail?: unknown; ref?: unknown; refs?: unknown; conversationRef?: unknown; firstName?: unknown; enablePreviouslyDisabled?: unknown; cadenceSeconds?: unknown };
   if (input.type === "TNND_EXISTING_RUNNER_TAB_PAUSED") {
     const statePromise = load();
     void statePromise.then(state => sendResponse({
@@ -679,6 +699,26 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
           await save({ ...state, pausedOnStop: false });
         }
       }
+      return { ok: true };
+    })().then(sendResponse).catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+  if (input.type === "TNND_EXISTING_RUNNER_IDENTITY") {
+    void (async () => {
+      if (sender.id !== chrome.runtime.id || !isTinderUrl(sender.url) || !sender.tab?.id) return { ok: false };
+      const state = await load();
+      if (!state.enabled || state.tabId !== sender.tab.id || typeof input.conversationRef !== "string"
+        || state.lastRef !== input.conversationRef || typeof input.firstName !== "string") return { ok: false };
+      const firstName = input.firstName.trim();
+      if (!/^[\\p{L}][\\p{L}\\p{M}\\p{N} ._'’\\-]{1,79}$/u.test(firstName)
+        || /^(?:conversation|messages?|profile|tinder)$/i.test(firstName)) return { ok: false };
+      // Sender's captured SPA URL may be stale; verify the actual live Tinder
+      // tab route before changing a label for this exact match.
+      const tab = await chrome.tabs.get(sender.tab.id);
+      if (tinderRefFromUrl(tab.url) !== state.lastRef) return { ok: false };
+      const fresh = await load();
+      if (!fresh.enabled || fresh.tabId !== state.tabId || fresh.lastRef !== state.lastRef) return { ok: false };
+      if (fresh.currentLabel !== firstName) await save({ ...fresh, currentLabel: firstName });
       return { ok: true };
     })().then(sendResponse).catch(() => sendResponse({ ok: false }));
     return true;
