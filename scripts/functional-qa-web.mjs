@@ -259,10 +259,10 @@ async function main() {
       }
       return result;
     })()`);
-    assert.equal(nav.length, 7);
+    assert.equal(nav.length, 8);
     assert.ok(nav.every(x => x.active), "Some workspace navigation clicks did not activate their section: " + JSON.stringify(nav));
-    results.push({ name: "All seven navigation buttons change active section", passed: true });
-    console.log("PASS All seven navigation buttons change active section");
+    results.push({ name: "All eight navigation buttons change active section", passed: true });
+    console.log("PASS All eight navigation buttons change active section");
 
     await cdp.evaluate(`(() => {
       const details = document.querySelector(".preference-section");
@@ -433,8 +433,8 @@ async function main() {
       return await new Promise(resolve => listener({type:"TNND_RUN_WEB_UI_AUDIT"}, {}, resolve));
     })()`);
     assert.ok(audit?.ok && audit.report, "Compiled extension UI audit failed: " + JSON.stringify(audit));
-    assert.equal(audit.report.sections, 7, "Expected all workspace sections");
-    assert.equal(audit.report.navLinks, 7, "Extension audit did not click all nav links");
+    assert.equal(audit.report.sections, 8, "Expected all workspace sections");
+    assert.equal(audit.report.navLinks, 8, "Extension audit did not click all nav links");
     const failing = audit.report.checks.filter(check => check.result === "failed");
     assert.deepEqual(failing, [], "Compiled extension audit found broken navigation/disclosures");
     results.push({

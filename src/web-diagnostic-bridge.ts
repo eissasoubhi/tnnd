@@ -29,10 +29,45 @@ if (isTnndLocalWebUrl(window.location.href)) {
     });
   });
 
-  // Status-only bridge; the Web app cannot start, stop or control the runner.
+  // Local bridge: watcher status is read-only; only the validated focus ceiling can be saved.
   // The background accepts these read requests only from TNND's local Web origin.
   const isTnndApp = ["http://127.0.0.1:5173", "http://localhost:5173"].includes(window.location.origin);
   if (isTnndApp) {
+    // Narrow, account-checked attention channel. No arbitrary Chrome APIs or
+    // extension storage access are exposed to the Web page.
+    window.addEventListener("message", (event) => {
+      if (!alive || event.source !== window || event.origin !== window.location.origin
+        || !hasLiveExtensionContext()) return;
+      const payload = event.data as {
+        source?: unknown; requestId?: unknown; action?: unknown;
+        userId?: unknown; capSeconds?: unknown;
+      } | null;
+      if (!payload || payload.source !== "TNND_ATTENTION_WEB_REQUEST_V1"
+        || typeof payload.requestId !== "string" || !/^[A-Za-z0-9_-]{8,80}$/.test(payload.requestId)
+        || !["read", "save"].includes(String(payload.action))
+        || typeof payload.userId !== "string" || payload.userId.length < 1
+        || payload.userId.length > 128) return;
+      const request = payload.action === "save"
+        ? { type: "TNND_GLOBAL_ATTENTION_SET_CAP", userId: payload.userId, capSeconds: payload.capSeconds }
+        : { type: "TNND_GLOBAL_ATTENTION_READ", userId: payload.userId };
+      const requestId = payload.requestId;
+      void sendRuntimeMessageSafely(
+        request,
+        (message) => chrome.runtime.sendMessage(message),
+        () => { alive = false; }
+      ).then((result) => {
+        if (!alive) return;
+        window.postMessage({
+          source: "TNND_ATTENTION_WEB_RESPONSE_V1", requestId,
+          result: result ?? { ok: false, error: "attention_extension_disconnected" }
+        }, window.location.origin);
+      }).catch(() => {
+        if (!alive) return;
+        window.postMessage({ source: "TNND_ATTENTION_WEB_RESPONSE_V1", requestId,
+          result: { ok: false, error: "attention_extension_disconnected" } }, window.location.origin);
+      });
+    });
+
     const publishRunnerState = async (): Promise<void> => {
       if (!alive || !hasLiveExtensionContext()) return;
       try {

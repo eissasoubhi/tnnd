@@ -1,4 +1,4 @@
-export const workspaceViews = ["overview", "conversations", "identity", "memories", "actions", "analytics", "settings"] as const;
+export const workspaceViews = ["overview", "conversations", "identity", "memories", "actions", "attention", "analytics", "settings"] as const;
 export type WorkspaceView = typeof workspaceViews[number];
 
 export const workspaceCopy: Record<WorkspaceView, { title: string; subtitle: string; label: string }> = {
@@ -7,6 +7,7 @@ export const workspaceCopy: Record<WorkspaceView, { title: string; subtitle: str
   identity: { label: "Identity", title: "Make TNND sound like you.", subtitle: "Manage your approved identity and help TNND understand your natural writing style." },
   memories: { label: "Memories", title: "Your real stories, ready when needed.", subtitle: "Build a library of approved anecdotes that give replies a personal touch." },
   actions: { label: "Action Center", title: "Everything needing your attention.", subtitle: "Review requests and important decisions without losing conversation context." },
+  attention: { label: "Attention", title: "Make time for active conversations.", subtitle: "See measured engagement scores and control the most Léa will wait after a message." },
   analytics: { label: "Analytics", title: "Insights that help you improve.", subtitle: "Track activity and understand how TNND uses your approved memories." },
   settings: { label: "Settings", title: "Make TNND work your way.", subtitle: "Tune your communication style, languages, AI provider and account settings." }
 };
@@ -17,6 +18,8 @@ const groups: Record<string, WorkspaceView> = {
   "workspace-identity-section": "identity",
   "workspace-memories-section": "memories",
   "workspace-actions-section": "actions",
+  "workspace-attention-section": "attention",
+  "conversation-attention-panel": "attention",
   "workspace-analytics-section": "analytics",
   "workspace-settings-section": "settings",
   "setup-guidance-panel": "overview",

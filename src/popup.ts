@@ -4,6 +4,7 @@ import { renderExtensionSetupProgress } from "./setup-extension-panel";
 import { getBackendSession, getChatSettings, getConfig, saveChatSettings } from "./storage";
 import { firstMessageDailyLimit } from "./tinder-first-message-daily-limit";
 import { conversationAttention, type ConversationActivity } from "./tinder-conversation-activity";
+import { cappedAttentionWaitMs } from "./tinder-attention-cap";
 import { syncConversationDelta } from "./conversation-sync";
 import { loadTinderConversationManagement } from "./tinder-backend-management";
 import { prepareReadOnlyImport, type VisibleTinderMessage } from "./tinder-manual-import";
@@ -693,6 +694,7 @@ interface GlobalRunnerState {
   activeConversationRef?: string | null;
   activeConversationUntil?: string | null;
   conversationActivities?: ConversationActivity[];
+  attentionCapSeconds?: number;
   tabId: number | null;
   dwellSeconds: number;
   tabMode: "reused" | "created" | null;
@@ -760,13 +762,14 @@ function displayRunnerState(state: GlobalRunnerState): void {
         : "Adaptive chat attention starts when the watcher is running.";
     } else {
       const estimate = conversationAttention(entries, ref);
+      const cappedMs = cappedAttentionWaitMs(estimate.waitMs, estimate.score, state.attentionCapSeconds ?? 180);
       const stage: Record<string, string> = {
         cold: "Cold", reconnecting: "Reconnecting", active: "Active", "very-active": "Very active"
       };
       const last = Date.parse(entry.lastInteractionAt);
       const expiry = Date.parse(state.activeConversationUntil ?? "");
       const remaining = Number.isFinite(last) && Number.isFinite(expiry)
-        ? Math.max(0, Math.min(expiry, last + estimate.waitMs) - Date.now()) : 0;
+        ? Math.max(0, Math.min(expiry, last + cappedMs) - Date.now()) : 0;
       attentionLine.textContent = "Chat activity (estimated): " + (stage[estimate.stage] ?? "Unknown")
         + " · " + estimate.score + "/100 · "
         + (remaining ? Math.ceil(remaining / 1000) + "s focus remaining" : "ready to check other chats")

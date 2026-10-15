@@ -91,6 +91,7 @@ export function initWorkspaceScrollNavigation(): void {
     if (title) title.textContent = copy.title;
     if (description) description.textContent = copy.subtitle;
     document.title = copy.label + " · TNND";
+    window.dispatchEvent(new CustomEvent("tnnd:workspace-view-changed", { detail: { view } }));
     for (const link of links) {
       if (viewForHash(link.hash) === view) link.setAttribute("aria-current", "location");
       else link.removeAttribute("aria-current");

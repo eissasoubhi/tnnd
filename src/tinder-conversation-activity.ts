@@ -1,3 +1,4 @@
+import { cappedAttentionWaitMs, DEFAULT_ATTENTION_CAP_SECONDS } from "./tinder-attention-cap.ts";
 /** Conversation attention is a scheduling hint, never permission to send.
  * Only bounded timing metadata is kept. No message bodies, profile content,
  * online-status guesses, or Tinder DOM selectors are stored here.
@@ -25,6 +26,7 @@ export interface AdaptiveConversationFollow {
   activeConversationRef: string | null;
   activeConversationUntil: string | null;
   conversationActivities: ConversationActivity[];
+  attentionCapSeconds?: number;
 }
 
 export const MAX_ADAPTIVE_WAIT_MS = 180_000;
@@ -160,7 +162,9 @@ export function followConversationAfterSignal(
   const now = timestamp(at);
   if (now === null || !validRef(ref)) return current;
   const conversationActivities = observeConversationActivity(current.conversationActivities, ref, signal, at);
-  const { waitMs } = conversationAttention(conversationActivities, ref, now);
+  const attention = conversationAttention(conversationActivities, ref, now);
+  const waitMs = cappedAttentionWaitMs(attention.waitMs, attention.score,
+    current.attentionCapSeconds ?? DEFAULT_ATTENTION_CAP_SECONDS);
   return {
     conversationActivities,
     activeConversationRef: ref,
@@ -182,6 +186,8 @@ export function shouldKeepConversationInFocus(
   const entry = current.conversationActivities.find(item => item.ref === tabRef);
   const interacted = entry ? timestamp(entry.lastInteractionAt) : null;
   if (expires === null || interacted === null || now < interacted) return false;
-  const { waitMs } = conversationAttention(current.conversationActivities, tabRef, now);
+  const attention = conversationAttention(current.conversationActivities, tabRef, now);
+  const waitMs = cappedAttentionWaitMs(attention.waitMs, attention.score,
+    current.attentionCapSeconds ?? DEFAULT_ATTENTION_CAP_SECONDS);
   return now < Math.min(expires, interacted + waitMs);
 }

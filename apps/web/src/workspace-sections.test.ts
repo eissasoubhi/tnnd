@@ -7,6 +7,8 @@ test("each visible navigation target opens its own workspace section", () => {
   assert.equal(viewForHash("#conversation-panel"), "conversations");
   assert.equal(viewForHash("#workspace-conversations-section"), "conversations");
   assert.equal(viewForHash("#workspace-actions-section"), "actions");
+  assert.equal(viewForHash("#workspace-attention-section"), "attention");
+  assert.equal(viewForHash("#conversation-attention-panel"), "attention");
   assert.equal(viewForHash("#identity-builder-panel"), "identity");
   assert.equal(viewForHash("#personal-memory-panel"), "memories");
   assert.equal(viewForHash("#action-center-section"), "actions");
@@ -18,6 +20,7 @@ test("deep links and dynamically appended panels are placed consistently", () =>
   assert.equal(viewForHash("#memory-source", "personal-memory-panel"), "memories");
   assert.equal(viewForHash("#setup-story-suggestions", "setup-guidance-panel"), "overview");
   assert.equal(groupForPanelId("conversation-management-panel"), "conversations");
+  assert.equal(groupForPanelId("conversation-attention-panel"), "attention");
   assert.equal(groupForPanelId("conversation-takeover-panel"), "conversations");
   assert.equal(groupForPanelId("texting-style-examples"), "identity");
   assert.equal(groupForPanelId("some-future-feature"), "settings");
