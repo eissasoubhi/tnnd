@@ -734,7 +734,8 @@ function displayRunnerState(state: GlobalRunnerState): void {
   const startWatcher = document.getElementById("startReplyWatcher") as HTMLButtonElement;
   const stopWatcher = document.getElementById("stopReplyWatcher") as HTMLButtonElement;
   const startAutoWatcher = document.getElementById("startAutoMatchWatcher") as HTMLButtonElement;
-  startAutoWatcher.disabled = state.enabled;
+  // Read-only watch can be upgraded after explicit consent without a stop/restart.
+  startAutoWatcher.disabled = state.enabled && !(watcher && !state.autoOpenersEnabled);
   startWatcher.disabled = state.enabled;
   stopWatcher.disabled = !watcher;
   const statusLabel: Record<string, string> = {
@@ -776,9 +777,9 @@ function displayRunnerState(state: GlobalRunnerState): void {
     `${state.pendingReplies ?? 0} confirmed replies waiting in conversations`;
   document.getElementById("replyWatcherAutoStatus")!.textContent = watcher
     ? state.autoOpenersEnabled
-      ? `Automatic Matches cycle ON · ${state.matchPhase === "verifying" ? "verifying matches" : state.matchPhase === "opener" ? "checking first-message permission" : "waiting for idle window"} · next scan no sooner than 5 minutes after previous scan. Daily first-message limit applies.`
-      : "Match detection only · automatic first messages OFF."
-    : "Automatic Matches cycle stopped.";
+      ? `Automatic first messages ON · ${state.matchPhase === "verifying" ? "verifying visible matches" : state.matchPhase === "opener" ? "checking one empty match and send permission" : "waiting for a safe idle scan"} · at most one opener per 5-minute scan, subject to eligibility, per-chat approval and daily limits. See runner status below for the last skip reason.`
+      : "First messages OFF · monitoring existing conversations only. Enable the separate send option when ready."
+    : "Automatic first-message watcher stopped. For a batch of existing matches, use the separate action below.";
   const matches = state.watchedMatches;
   document.getElementById("replyWatcherMatches")!.textContent = !watcher
     ? "Match discovery is off."
