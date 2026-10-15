@@ -1,7 +1,9 @@
 import { mountAnalyticsDashboard } from "./analytics-dashboard-mount";
+import { readSession } from "./auth-client";
 
 const panelId = "analytics-dashboard-panel";
 const refreshButtonId = "analytics-dashboard-refresh";
+let latestRefresh = 0;
 
 function ensureAnalyticsPanel(): HTMLElement | null {
   const existing = document.querySelector<HTMLElement>(`#${panelId}`);
@@ -32,6 +34,8 @@ function ensureAnalyticsPanel(): HTMLElement | null {
 async function refreshAnalytics(): Promise<void> {
   const container = ensureAnalyticsPanel();
   if (!container) return;
+  const requestId = ++latestRefresh;
+  const sessionToken = readSession()?.token ?? null;
 
   const refreshButton = document.querySelector<HTMLButtonElement>(`#${refreshButtonId}`);
   if (refreshButton) refreshButton.disabled = true;
@@ -39,11 +43,13 @@ async function refreshAnalytics(): Promise<void> {
   if (status) status.textContent = "Refreshing insights…";
   try {
     const result = await mountAnalyticsDashboard(container);
-    if (status) status.textContent = result.mounted ? "Insights are up to date." : result.reason === "missing-session" ? "Sign in to see analytics." : "Could not load analytics. Check the API connection and retry.";
+    if (requestId !== latestRefresh || readSession()?.token !== sessionToken) return;
+    if (result.reason === "stale-request") return;
+    if (status) status.textContent = result.mounted ? "Insights updated from the latest available snapshot." : result.reason === "missing-session" ? "Sign in to see analytics." : "Could not load analytics. Check the API connection and retry.";
   } catch (error) {
-    if (status) status.textContent = error instanceof Error ? error.message : "Unable to load insights. Try refreshing.";
+    if (requestId === latestRefresh && readSession()?.token === sessionToken && status) status.textContent = "Unable to load insights. Try refreshing.";
   } finally {
-    if (refreshButton) refreshButton.disabled = false;
+    if (requestId === latestRefresh && refreshButton) refreshButton.disabled = false;
   }
 }
 

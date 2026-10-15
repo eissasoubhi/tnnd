@@ -241,7 +241,7 @@ async function main() {
       'document.querySelector(".takeover-review")?.open === false && document.querySelector(".takeover-review > summary")?.textContent?.includes("1 undecided chat") && document.querySelector(".management-individual-details")?.open === false && document.querySelector("#conversation-management-list-summary")?.textContent?.includes("1")', Boolean);
     await step(cdp, "Opening a chat reveals its management row",
       `(() => { window.dispatchEvent(new CustomEvent("tnnd:open-conversation", { detail: { conversationRef: "${conversationId}" } })); const details = document.querySelector(".management-individual-details"); const revealed = details?.open === true && !!details.querySelector("[data-management-row]"); details.open = false; return revealed; })()`, Boolean);
-    await waitFor(cdp, 'document.querySelector("#analytics-refresh-status")?.textContent?.includes("Insights are up to date")', 150);
+    await waitFor(cdp, 'document.querySelector("#analytics-refresh-status")?.textContent?.includes("Insights updated from the latest available snapshot.")', 150);
     await step(cdp, "Analytics loads real fixture data and reports success only after rendering",
       'document.querySelector("#analytics-dashboard-panel")?.dataset.analyticsLoadedAt != null', Boolean);
     assert.ok(requests.some(x => x.path === "/api/v1/analytics" && x.method === "GET"));

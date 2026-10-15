@@ -30,7 +30,7 @@ export function presentAnalyticsDashboard(model: AnalyticsDashboardModel): Analy
   return {
     headline: "Conversation intelligence",
     attentionSummary: attention === 0
-      ? "Nothing needs your attention right now."
+      ? "No conversations flagged in the latest snapshot."
       : `${attention} conversation${attention === 1 ? "" : "s"} need${attention === 1 ? "s" : ""} your attention.`,
     generatedAt: model.generatedAt,
     operational: model.operational,
@@ -45,7 +45,7 @@ export function presentAnalyticsDashboard(model: AnalyticsDashboardModel): Analy
     },
     suggestions: {
       title: "What should I tell TNND about myself?",
-      emptyMessage: "TNND has enough personal context for the topics it currently sees.",
+      emptyMessage: "No new personal context suggestions are available from this snapshot.",
       items: model.suggestions.map((suggestion) => ({
         topic: suggestion.topic,
         title: suggestion.title,
