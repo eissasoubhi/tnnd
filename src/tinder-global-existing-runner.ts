@@ -4,7 +4,8 @@ import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import { partitionExistingChatPermissions } from "./tinder-existing-chat-settings-policy";
 import { eligibleExistingThreadRefs } from "./tinder-global-existing-policy";
 import { reconcileExistingIndex, markThreadChecked, observeUnreadThreads, nextIndexedExistingThread, isExistingThreadIndex, type ExistingThreadIndex } from "./tinder-existing-thread-index";
-import { nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus, newlyVisibleUnread, extendActiveConversation, shouldFollowActiveConversation } from "./tinder-reply-watcher";
+import { nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus, newlyVisibleUnread } from "./tinder-reply-watcher";
+import { followConversationAfterSignal, shouldKeepConversationInFocus, normalizeConversationActivities, type ConversationActivity } from "./tinder-conversation-activity";
 import { emptyWatchedMatches, isWatchedMatches, observeWatchedMatches, type WatchedMatches } from "./tinder-match-watcher";
 import { sendSingleWatchedMatch } from "./tinder-global-new-match-runner";
 import { nextWatcherMatchAction, nextMatchOpener, type WatcherMatchPhase } from "./tinder-watcher-match-cycle";
@@ -61,6 +62,7 @@ interface GlobalExistingRunnerState {
   lastRef: string | null;
   activeConversationRef: string | null;
   activeConversationUntil: string | null;
+  conversationActivities: ConversationActivity[];
   cursorRef: string | null;
   startedAt: string | null;
   lastActionAt: string | null;
@@ -73,7 +75,7 @@ const initial = (): GlobalExistingRunnerState => ({
   matchPhase: "idle", matchPhaseStartedAt: null, lastMatchScanAt: null, lastIncomingAt: null, watchedMatches: null, visibleUnreadRefs: [], watcherStatus: "stopped", userId: null, tabId: null, tabMode: null, pausedOnStop: false,
   phase: "stopped", dwellSeconds: DEFAULT_CADENCE, phaseDetail: "Runner stopped.", currentLabel: null,
   eligibleCount: 0, visitedCount: 0, sentCount: 0, skippedCount: 0, errorCount: 0,
-  lastRef: null, activeConversationRef: null, activeConversationUntil: null, cursorRef: null, startedAt: null, lastActionAt: null, lastVisitAt: null,
+  lastRef: null, activeConversationRef: null, activeConversationUntil: null, conversationActivities: [], cursorRef: null, startedAt: null, lastActionAt: null, lastVisitAt: null,
   lastError: null, activity: []
 });
 let busy = false;
@@ -120,6 +122,7 @@ async function load(): Promise<GlobalExistingRunnerState> {
     mode: value.mode === "watcher" ? "watcher" : "runner",
     activeConversationRef: typeof value.activeConversationRef === "string" ? value.activeConversationRef : null,
     activeConversationUntil: typeof value.activeConversationUntil === "string" ? value.activeConversationUntil : null,
+    conversationActivities: normalizeConversationActivities(value.conversationActivities),
     pendingReplies: typeof value.pendingReplies === "number" && value.pendingReplies >= 0 ? value.pendingReplies : 0,
     autoOpenersEnabled: value.autoOpenersEnabled === true,
     matchPhase: ["idle", "verifying", "opener"].includes(String(value.matchPhase)) ? value.matchPhase! : "idle",
@@ -412,12 +415,11 @@ async function tick(): Promise<void> {
       return;
     }
     const dwellSeconds = await getCadenceSeconds();
-    // The watcher must not abandon the chat just because other threads were
-    // queued while this match was answering. The follow lease is renewed on
-    // every new incoming message and send; it is independent of the reply delay.
+    // Current attention is derived from recent reciprocal response speed;
+    // it shrinks as the chat cools down, independently from reply delay.
     if (state.mode === "watcher" && state.matchPhase === "idle" && state.tabId !== null && state.activeConversationRef) {
       const currentTab = await chrome.tabs.get(state.tabId);
-      if (shouldFollowActiveConversation(state,
+      if (shouldKeepConversationInFocus(state,
         tinderRefFromUrl(currentTab.url), [state.activeConversationRef])) return;
     }
     if (state.lastVisitAt && Date.now() - Date.parse(state.lastVisitAt) < dwellSeconds * 1000) return;
@@ -502,7 +504,7 @@ async function tick(): Promise<void> {
     // Recheck the live focus immediately before any SPA navigation.
     const beforeNavigation = await load();
     if (beforeNavigation.mode === "watcher"
-      && shouldFollowActiveConversation(beforeNavigation, expectedRef, refs)) return;
+      && shouldKeepConversationInFocus(beforeNavigation, expectedRef, refs)) return;
     const result = await withSpaNavigationTimeout(chrome.tabs.sendMessage(tabId, {
       type: "TNND_EXISTING_SPA_NAVIGATE", ref: nextRef, expectedRef
     })) as { ok?: boolean; error?: string; currentRef?: string; identity?: { firstName?: string; age?: number } };
@@ -531,10 +533,10 @@ async function tick(): Promise<void> {
       /^[\p{L}][\p{L}\p{M}\p{N} ._'’\-]{1,79}$/u.test(result.identity.firstName)
       ? result.identity.firstName : null;
     const displayedLabel = name ?? label;
-    // A successful navigation is NOT a 3-minute "Opening chat" phase.
-    // The 3-minute lease still protects a genuinely active conversation.
+    // Merely opening an old conversation is not proof that the match is online.
+    // A cold thread gets only a short observation window.
     await save(activity({ ...latest, pendingReplies: pendingWatchedReplies(checked), lastRef: nextRef,
-      ...(latest.mode === "watcher" ? extendActiveConversation(nextRef) : {}),
+      ...(latest.mode === "watcher" ? followConversationAfterSignal(latest, nextRef, "opened") : {}),
       cursorRef: nextRef, currentLabel: displayedLabel, visitedCount: latest.visitedCount + 1,
       lastVisitAt: new Date().toISOString() }, "waiting",
       `Opened ${displayedLabel}. Listening for incoming replies.`, nextRef));
@@ -608,7 +610,7 @@ export async function startExistingRunner(enablePreviouslyDisabled = false, mode
       userId: session.user.id, tabId: tab.id, tabMode: tab.mode,
       ...(mode === "watcher" ? { watchedMatches: emptyWatchedMatches(session.user.id) } : {}),
       ...(activeRef ? { lastRef: activeRef, currentLabel: selection.labels.get(activeRef) ?? `Thread ${activeRef.slice(0, 8)}`,
-        ...extendActiveConversation(activeRef) } : {}),
+        ...followConversationAfterSignal(next, activeRef, "opened") } : {}),
       eligibleCount: refs.length, dwellSeconds: await getCadenceSeconds(), startedAt: new Date().toISOString() },
       "starting", `${mode === "watcher" ? "Watching" : "Checking"} ${refs.length} eligible chats on ${tab.mode === "reused" ? "the existing" : "a newly opened"} Tinder tab.`);
     await save(next);
@@ -655,12 +657,12 @@ async function contentEvent(sender: chrome.runtime.MessageSender, message: { pha
   // Reject late navigation events from an older chat tab.
   const fresh = await load();
   if (!fresh.enabled || fresh.lastRef !== senderRef || fresh.tabId !== sender.tab.id) return;
-  const extendFocus = fresh.mode === "watcher" && (
-    phase === "incoming" || phase === "generating" || phase === "sending" || phase === "sent"
-    || (phase === "waiting" && detail.startsWith("Unanswered incoming message found"))
-  );
+  // Generating/sending is protected by the existing in-flight operation lease;
+  // only observed incoming or confirmed outgoing events affect activity scores.
+  const focus = fresh.mode === "watcher" && (phase === "incoming" || phase === "sent")
+    ? followConversationAfterSignal(fresh, senderRef, phase) : {};
   await save(activity({
-    ...fresh, ...(extendFocus ? extendActiveConversation(senderRef) : {}),
+    ...fresh, ...focus,
     ...(phase === "incoming" ? { lastIncomingAt: new Date().toISOString() } : {})
   }, phase, detail, senderRef));
 }
