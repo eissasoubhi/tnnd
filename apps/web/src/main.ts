@@ -1,6 +1,7 @@
 import "./styles.css";
 import "./neo-bento.css";
-import { bindActionCenter, loadHumanActions, readHumanActions, renderActionCenter, type HumanActionItem } from "./action-center";
+import { bindActionCenter, loadHumanActions, readHumanActions, renderActionCenter, resetActionCenterSession, type HumanActionItem } from "./action-center";
+import { isLatestSessionResponse } from "./workspace-request-guard";
 import { readSession } from "./auth-client";
 import { listConversations } from "./conversation-client";
 import { countOverviewStatuses } from "./overview-metrics";
@@ -387,17 +388,33 @@ function refreshActionCounts(items: HumanActionItem[] = readHumanActions()): voi
   if (humanActionMetric) humanActionMetric.textContent = String(pending);
 }
 
+let actionCenterRequestSequence = 0;
 async function refreshActionCenter(): Promise<void> {
   if (!actionCenter) return;
+  const requestId = ++actionCenterRequestSequence;
+  const session = readSession();
+  if (!session) {
+    resetActionCenterSession();
+    actionCenter.innerHTML = '<div class="action-empty" role="status"><strong>Sign in to review actions</strong><p>Your action queue is only available when your TNND account is connected.</p></div>';
+    if (actionCount) actionCount.textContent = "Sign in required";
+    if (humanActionMetric) humanActionMetric.textContent = "—";
+    return;
+  }
+  // Loading or API failure must not look like a verified zero-action queue.
+  actionCenter.innerHTML = '<p class="workspace-empty" role="status">Checking your pending actions…</p>';
+  if (actionCount) actionCount.textContent = "Checking…";
+  if (humanActionMetric) humanActionMetric.textContent = "—";
   try {
     const items = await loadHumanActions();
+    if (!isLatestSessionResponse(requestId, actionCenterRequestSequence, session.token, readSession()?.token)) return;
     renderActionCenter(actionCenter, items);
     refreshActionCounts(items);
-  } catch (error) {
-    const fallback = readHumanActions();
-    renderActionCenter(actionCenter, fallback);
-    refreshActionCounts(fallback);
-    console.error("Unable to load TNND actions", error);
+  } catch {
+    if (!isLatestSessionResponse(requestId, actionCenterRequestSequence, session.token, readSession()?.token)) return;
+    actionCenter.innerHTML = '<div class="action-empty" role="alert"><strong>Action Center unavailable</strong><p>TNND could not verify your current pending actions. Check the API connection and try again. No actions were marked completed.</p><button type="button" id="action-center-retry" class="secondary">Retry</button></div>';
+    actionCenter.querySelector<HTMLButtonElement>("#action-center-retry")?.addEventListener("click", () => void refreshActionCenter());
+    if (actionCount) actionCount.textContent = "Unavailable";
+    if (humanActionMetric) humanActionMetric.textContent = "—";
   }
 }
 
@@ -509,6 +526,7 @@ preferencesSave?.addEventListener("click", async () => {
 });
 
 window.addEventListener("tnnd:auth-session-changed", () => {
+  resetActionCenterSession();
   void refreshProfile();
   void refreshActionCenter();
 });

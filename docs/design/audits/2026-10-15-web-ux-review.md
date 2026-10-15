@@ -61,3 +61,8 @@ refresh flow without triggering generation, automation or Tinder sends.
 - **P1, source-confirmed:** Identity Builder and Analytics previously accepted API responses from an account that could have signed out or switched in the meantime. Added per-load request and session-token guards, including late identity analyze/approve results. Identity clears the previous account's private About Me and summary immediately.
 - **P2:** Analytics now surfaces four key conversation statuses, with five additional categories available on demand. The snapshot timestamp and non-live nature of stored counts are explicit; a zero attention count is described as a snapshot finding, not a live guarantee. Responsive 4→2→1 column layout follows Neo Bento tokens.
 - Web tests verify correct source wiring and states; synthetic CI captures are not a substitute for real-user browser review.
+
+## Seventh pass — Action Center source-of-truth and recovery
+- **P1:** filter clicks previously lost the verified authenticated response by re-reading unscoped local storage, potentially showing an empty queue or a previous account's cached actions. The UI now keeps the actual latest rendered server items when filtering and resets in-memory manual answer drafts on account changes.
+- **P1:** signed-out / network-error states previously could show a misleading "No human action needed" queue from local fallback. New sign-in / checking / unavailable-with-retry states are explicit, and old async action loads are rejected on account change. Unknown counts show an em dash, never fictional zero.
+- No changes to server-side human-action status semantics, manual answer approval or Tinder sending. UI wording distinguishes last verified queue from live Tinder.
