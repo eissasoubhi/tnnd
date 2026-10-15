@@ -1,4 +1,5 @@
 import { TinderDomAdapter } from "./tinder-adapter";
+import { observeDiscoveryControls } from "./tinder-smart-swipe-discovery";
 import { readVisibleTinderMatchIdentity, type VisibleTinderMatchIdentity } from "./tinder-chat-identity";
 import { readVisibleTinderProfilePanel } from "./tinder-visible-profile-panel";
 import { detectVisibleTinderSidebarTab, visibleTinderThreadRefs } from "./tinder-visible-thread-links";
@@ -976,6 +977,18 @@ function scheduleScan(): void {
     void scan();
   }, 900);
 }
+
+/** A trusted extension request only. Observation never clicks or reads profiles. */
+chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+  if (!message || typeof message !== "object" ||
+      (message as { type?: string }).type !== "TNND_SMART_SWIPE_DISCOVERY_PROBE") return false;
+  if (!hasLiveExtensionContext()) {
+    sendResponse({ ok: false, error: "extension_disconnected" });
+    return false;
+  }
+  sendResponse({ ok: true, evidence: observeDiscoveryControls() });
+  return false;
+});
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
   if (!message || typeof message !== "object" || (message as { type?: string }).type !== "TNND_GET_DIAGNOSTICS") return false;
