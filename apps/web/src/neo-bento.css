@@ -1048,3 +1048,6 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
   .attention-time { grid-column: 1 / -1; border-top: 1px solid var(--nb-border); padding-top: 9px; }
   .attention-list-head { align-items: flex-start; }
 }
+
+.attention-score-bar { width: 100%; max-width: 120px; height: 7px; overflow: hidden; border-radius: 999px; background: var(--nb-border); }
+.attention-score-bar span { display: block; height: 100%; border-radius: inherit; background: var(--nb-primary); }
