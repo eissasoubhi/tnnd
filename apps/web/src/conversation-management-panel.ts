@@ -94,10 +94,13 @@ function mount(): { list: HTMLElement; status: HTMLElement } | null {
     <section class="management-runner-monitor" aria-label="Tinder AI runner live activity">
       <div class="management-runner-heading"><div><h3>Global AI runner · live activity</h3><p class="subtle">Read-only status from the TNND Chrome extension. Start and stop the runner in the extension popup.</p></div><span id="web-runner-phase" class="management-runner-phase" data-phase="unknown">Waiting for extension</span></div>
       <p id="web-runner-summary" class="subtle" role="status" aria-live="polite">Open TNND in Chrome with the updated extension installed. Runner updates appear here automatically.</p>
-      <p id="web-runner-current" class="management-runner-current">No conversation being processed yet.</p>
-      <div class="management-runner-stats"><span><strong id="web-runner-eligible">0</strong> eligible</span><span><strong id="web-runner-visited">0</strong> visited</span><span><strong id="web-runner-sent">0</strong> send actions</span><span><strong id="web-runner-skipped">0</strong> skipped</span><span><strong id="web-runner-errors">0</strong> errors</span></div>
-      <details class="management-runner-history"><summary>Recent runner events</summary><ol id="web-runner-activity"><li>No activity yet.</li></ol></details>
-      <p class="subtle">Send actions are not delivery receipts. Chrome and Tinder must stay open. A running status with no recent updates may indicate a paused or disconnected tab.</p>
+      <details class="management-runner-details">
+        <summary>Runner diagnostics and counters <span class="subtle">(advanced)</span></summary>
+        <p id="web-runner-current" class="management-runner-current">No conversation being processed yet.</p>
+        <div class="management-runner-stats"><span><strong id="web-runner-eligible">—</strong> eligible</span><span><strong id="web-runner-visited">—</strong> visited</span><span><strong id="web-runner-sent">—</strong> send actions</span><span><strong id="web-runner-skipped">—</strong> skipped</span><span><strong id="web-runner-errors">—</strong> errors</span></div>
+        <details class="management-runner-history"><summary>Recent runner events</summary><ol id="web-runner-activity"><li>No activity yet.</li></ol></details>
+        <p class="subtle">These counters are supplied by the extension when connected. Send actions are not delivery receipts. Chrome and Tinder must stay open; a running status with no recent updates may indicate a disconnected tab.</p>
+      </details>
     </section>
     <details class="management-individual-details">
       <summary id="conversation-management-list-summary">Manage individual chats</summary>
@@ -149,7 +152,7 @@ window.addEventListener("message", event => {
   };
   for (const [id, value] of Object.entries(counters)) {
     const element = document.getElementById(id);
-    if (element) element.textContent = String(Number.isFinite(value) ? value : 0);
+    if (element) element.textContent = Number.isFinite(value) && value >= 0 ? String(value) : "—";
   }
   const log = document.querySelector<HTMLOListElement>("#web-runner-activity");
   if (!log) return;

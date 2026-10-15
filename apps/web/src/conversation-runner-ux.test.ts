@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+const base = dirname(fileURLToPath(import.meta.url));
+const ui = readFileSync(resolve(base,"conversation-management-panel.ts"),"utf8");
+const css = readFileSync(resolve(base,"neo-bento.css"),"utf8");
+test("runner primary status remains visible while optional technical counters are collapsed", () => {
+  const start = ui.indexOf('<section class="management-runner-monitor"');
+  const end = ui.indexOf('<details class="management-individual-details"',start);
+  const markup = ui.slice(start,end);
+  assert.ok(markup.indexOf('id="web-runner-phase"') < markup.indexOf('class="management-runner-details"'));
+  assert.ok(markup.indexOf('id="web-runner-summary"') < markup.indexOf('class="management-runner-details"'));
+  assert.match(markup,/summary>Runner diagnostics and counters/);
+  assert.match(markup,/id="web-runner-eligible">—/);
+  assert.match(markup,/id="web-runner-sent">—/);
+  assert.match(ui,/Number\.isFinite\(value\) && value >= 0 \? String\(value\) : "—"/);
+  assert.match(css,/#app \.management-runner-monitor \.management-runner-details/);
+});

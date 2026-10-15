@@ -66,3 +66,8 @@ refresh flow without triggering generation, automation or Tinder sends.
 - **P1:** filter clicks previously lost the verified authenticated response by re-reading unscoped local storage, potentially showing an empty queue or a previous account's cached actions. The UI now keeps the actual latest rendered server items when filtering and resets in-memory manual answer drafts on account changes.
 - **P1:** signed-out / network-error states previously could show a misleading "No human action needed" queue from local fallback. New sign-in / checking / unavailable-with-retry states are explicit, and old async action loads are rejected on account change. Unknown counts show an em dash, never fictional zero.
 - No changes to server-side human-action status semantics, manual answer approval or Tinder sending. UI wording distinguishes last verified queue from live Tinder.
+
+## Eighth pass — Conversations operational hierarchy + browser screenshot matrix
+- **P2:** Runner phase and warning stay visible, while verbose counters, current chat and event diagnostics live in an accessible advanced disclosure. Runner counters remain unknown (`—`) until actual extension telemetry arrives, rather than showing made-up zero activity. Dark-mode runner surfaces use Neo Bento semantic colors.
+- Synthetic Chrome QA now checks every work area at **1440, 840, 390 and 375px** in **both light and dark media modes**; saves section-specific screenshots and verifies active navigation, the requested media theme, horizontal overflow and button clipping.
+- This covers *simulated* browser fixture views. Real signed-in TNND, live Chrome extension, actual Tinder and human qualitative comparison of screenshots still require manual/Work Local access and remain explicitly unverified.

@@ -367,9 +367,18 @@ async function main() {
     await step(cdp, "Retry success clears previous failure guidance",
       'document.querySelector("[data-generation-error-help]")?.hidden === true', Boolean);
 
-    for (const width of [1440, 390]) {
+    for (const theme of ["light", "dark"]) {
+      await cdp.send("Emulation.setEmulatedMedia", {
+        features: [
+          { name: "prefers-reduced-motion", value: "reduce" },
+          { name: "prefers-color-scheme", value: theme }
+        ]
+      });
+      for (const width of [1440, 840, 390, 375]) {
       await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
       await sleep(180);
+      const actualTheme = await cdp.evaluate("matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'");
+      assert.equal(actualTheme, theme, "Chrome did not apply the requested color scheme");
       // Capture actual section-by-section screen states. A long all-panels
       // screenshot can otherwise hide problems in focused navigation.
       for (const view of ["overview", "conversations", "identity", "memories", "actions", "analytics", "settings"]) {
@@ -394,10 +403,11 @@ async function main() {
           buttons: [...document.querySelectorAll("button")].filter(b=>b.getClientRects().length && !b.disabled).length,
           clipped: [...document.querySelectorAll("button")].filter(b=>b.getClientRects().length && !b.disabled && (b.getBoundingClientRect().left < -2 || b.getBoundingClientRect().right > innerWidth + 2)).length
         }))()`);
-        assert.ok(metrics.overflow <= 2 && metrics.clipped === 0, width + "px " + view + " screen overflow: " + JSON.stringify(metrics));
-        results.push({ name: "Focused " + view + " has no horizontal overflow at " + width + "px", passed: true, ...metrics });
+        assert.ok(metrics.overflow <= 2 && metrics.clipped === 0, width + "px " + theme + " " + view + " screen overflow: " + JSON.stringify(metrics));
+        results.push({ name: "Focused " + view + " has no horizontal overflow at " + width + "px (" + theme + ")", passed: true, ...metrics });
         const png = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
-        await writeFile(join(output, "signed-in-" + view + "-" + width + ".png"), Buffer.from(png.data, "base64"));
+        await writeFile(join(output, "signed-in-" + view + "-" + width + "-" + theme + ".png"), Buffer.from(png.data, "base64"));
+      }
       }
     }
 
