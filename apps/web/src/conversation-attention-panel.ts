@@ -144,6 +144,19 @@ function render(): void {
     };
     stage.textContent = namesByStage[row.stage];
     stats.append(label, stage);
+    if (row.score !== null) {
+      const bar = document.createElement("div");
+      bar.className = "attention-score-bar";
+      bar.setAttribute("role", "progressbar");
+      bar.setAttribute("aria-label", row.name + " activity score");
+      bar.setAttribute("aria-valuemin", "0");
+      bar.setAttribute("aria-valuemax", "100");
+      bar.setAttribute("aria-valuenow", String(row.score));
+      const fill = document.createElement("span");
+      fill.style.width = row.score + "%";
+      bar.append(fill);
+      stats.append(bar);
+    }
     const timing = document.createElement("div");
     timing.className = "attention-time";
     const wait = document.createElement("strong");
