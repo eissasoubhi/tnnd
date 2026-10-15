@@ -174,7 +174,7 @@ async function loadNames(userId: string): Promise<void> {
 }
 
 async function refresh(): Promise<void> {
-  if (inFlight || saving || panel.closest(".workspace-section")?.hidden) return;
+  if (inFlight || saving || panel.closest<HTMLElement>(".workspace-section")?.hidden) return;
   const session = readSession();
   if (!session) {
     activeUser = "";
