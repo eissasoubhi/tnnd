@@ -150,8 +150,26 @@ async function save(state: GlobalExistingRunnerState): Promise<GlobalExistingRun
     const proposed = state.watchedMatches;
     const latestMatchWatch = previous && (!proposed || (previous.observedAt ?? "") > (proposed.observedAt ?? ""))
       ? previous : proposed;
-    const merged = { ...state, watchedMatches: state.enabled && state.mode === "watcher"
-      ? latestMatchWatch : state.watchedMatches };
+    // A content-script reply event may arrive while an async tick is reading
+    // the backend. Never let that older tick roll back the newest attention
+    // observation or its focus window.
+    const sameSession = state.enabled && raw?.enabled && raw.userId === state.userId
+      && raw.startedAt === state.startedAt;
+    const rawAttention = sameSession ? normalizeConversationActivities(raw.conversationActivities) : [];
+    const proposedAttention = normalizeConversationActivities(state.conversationActivities);
+    const rawIsNewer = Boolean(sameSession && (rawAttention[0]?.lastInteractionAt ?? "")
+      > (proposedAttention[0]?.lastInteractionAt ?? ""));
+    const merged = {
+      ...state,
+      ...(rawIsNewer ? {
+        activeConversationRef: raw!.activeConversationRef,
+        activeConversationUntil: raw!.activeConversationUntil
+      } : {}),
+      conversationActivities: state.enabled
+        ? normalizeConversationActivities([...proposedAttention, ...rawAttention]) : [],
+      watchedMatches: state.enabled && state.mode === "watcher"
+        ? latestMatchWatch : state.watchedMatches
+    };
     const next = { ...merged, watcherStatus: watcherDisplayStatus(merged) };
     await chrome.storage.local.set({ [KEY]: next });
     return next;
