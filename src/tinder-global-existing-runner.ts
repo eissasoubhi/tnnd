@@ -440,7 +440,11 @@ async function tick(): Promise<void> {
       if (shouldKeepConversationInFocus(state,
         tinderRefFromUrl(currentTab.url), [state.activeConversationRef])) return;
     }
-    if (state.lastVisitAt && Date.now() - Date.parse(state.lastVisitAt) < dwellSeconds * 1000) return;
+    // The configurable dwell applies to the legacy sweep runner only.
+    // In watcher mode the dynamic per-chat window (above) replaces it:
+    // a cold resumed thread should not be held for the old 15s minimum.
+    if (state.mode !== "watcher" && state.lastVisitAt
+      && Date.now() - Date.parse(state.lastVisitAt) < dwellSeconds * 1000) return;
     // A loaded old conversation can still be waiting for the configured cadence
     // or Gemini. Do not navigate away before that pending reply completes.
     const configForLease = await getConfig();
