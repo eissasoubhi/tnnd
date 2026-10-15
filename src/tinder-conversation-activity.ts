@@ -46,7 +46,7 @@ function validEntry(value: unknown): value is ConversationActivity {
   const item = value as Partial<ConversationActivity>;
   return validRef(item.ref)
     && typeof item.score === "number" && Number.isFinite(item.score) && item.score >= 0 && item.score <= 100
-    && Number.isInteger(item.quickReplyStreak) && item.quickReplyStreak! >= 0 && item.quickReplyStreak! <= 5
+    && typeof item.quickReplyStreak === "number" && Number.isInteger(item.quickReplyStreak) && item.quickReplyStreak >= 0 && item.quickReplyStreak <= 5
     && (item.lastIncomingAt === null || (typeof item.lastIncomingAt === "string" && timestamp(item.lastIncomingAt) !== null))
     && (item.lastOutgoingAt === null || (typeof item.lastOutgoingAt === "string" && timestamp(item.lastOutgoingAt) !== null))
     && typeof item.lastInteractionAt === "string" && timestamp(item.lastInteractionAt) !== null;
