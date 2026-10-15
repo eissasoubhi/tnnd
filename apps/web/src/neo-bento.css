@@ -973,3 +973,34 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
 @media(max-width: 390px) {
   #app .analytics-dashboard .analytics-status-grid { grid-template-columns: 1fr; }
 }
+
+/* Conversation runner: status is primary, technical metrics are optional. */
+#app .management-runner-monitor .management-runner-details {
+  border-top: 1px solid var(--nb-border); margin-top: 12px;
+}
+#app .management-runner-monitor .management-runner-details > summary,
+#app .management-runner-monitor .management-runner-history > summary {
+  min-height: 44px; display: flex; align-items: center;
+  gap: 8px; cursor: pointer; font-weight: 750;
+}
+#app .management-runner-monitor :is(.management-runner-details,.management-runner-history) > summary:focus-visible {
+  outline: 3px solid var(--nb-focus); outline-offset: 3px;
+}
+#app .management-runner-monitor .management-runner-stats span {
+  background: var(--nb-surface); color: var(--nb-text); border-color: var(--nb-border);
+}
+#app .management-runner-monitor .management-runner-phase {
+  background: var(--nb-surface); color: var(--nb-text); border: 1px solid var(--nb-border);
+}
+#app .management-runner-monitor .management-runner-phase[data-phase="error"],
+#app .management-runner-monitor .management-runner-phase[data-phase="skipped"] {
+  background: var(--nb-peach); color: var(--nb-text);
+}
+#app .management-runner-monitor .management-runner-phase[data-phase="sent"],
+#app .management-runner-monitor .management-runner-phase[data-phase="waiting"] {
+  background: var(--nb-mint); color: var(--nb-text);
+}
+@media(max-width: 420px) {
+  #app .management-runner-monitor .management-runner-heading { flex-wrap: wrap; }
+  #app .management-runner-monitor .management-runner-stats { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
