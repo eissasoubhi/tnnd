@@ -1,4 +1,4 @@
-import { shouldKeepConversationInFocus, type ConversationActivity } from "./tinder-conversation-activity";
+import { shouldKeepConversationInFocus, type ConversationActivity } from "./tinder-conversation-activity.ts";
 import type { ExistingThreadIndex } from "./tinder-existing-thread-index";
 
 /** Watch mode only responds to positive evidence, never a broad sweep.
