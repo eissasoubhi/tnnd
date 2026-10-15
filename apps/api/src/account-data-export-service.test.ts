@@ -23,11 +23,12 @@ test("account export scopes every persistence read to the authenticated user and
   const exported = await buildAccountDataExport("  user-test  ", query);
 
   assert.ok(exported);
-  assert.equal(calls.length, 11);
+  assert.equal(calls.length, 12);
   for (const call of calls) assert.deepEqual(call.values, ["user-test"]);
 
   const sql = calls.map((call) => call.text).join("\n").toLowerCase();
   assert.doesNotMatch(sql, /password_hash|api_key|token_hash|session_token|refresh_token/);
+  assert.match(sql, /user_smart_auto_swipe_settings/);
 
   assert.equal((exported.account as { id: string }).id, "user-test");
   assert.deepEqual(exported.conversations, [{ id: "conversation-test", user_id: "user-test" }]);

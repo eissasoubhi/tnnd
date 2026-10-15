@@ -54,6 +54,18 @@ test("main server exposes production AI routes without breaking health", async (
     assert.equal(settings.status, 401);
     assert.deepEqual(await settings.json(), { error: "invalid_or_expired_session" });
 
+    const smartSwipeGet = await fetch(`${base}/api/v1/automation/smart-swipe`);
+    assert.equal(smartSwipeGet.status, 401);
+    assert.deepEqual(await smartSwipeGet.json(), { error: "invalid_or_expired_session" });
+
+    const smartSwipePut = await fetch(`${base}/api/v1/automation/smart-swipe`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled: true })
+    });
+    assert.equal(smartSwipePut.status, 401);
+    assert.deepEqual(await smartSwipePut.json(), { error: "invalid_or_expired_session" });
+
     const accountExport = await fetch(`${base}/api/v1/account/export`);
     assert.equal(accountExport.status, 401);
     assert.deepEqual(await accountExport.json(), { error: "invalid_or_expired_session" });

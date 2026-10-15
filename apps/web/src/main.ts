@@ -19,6 +19,7 @@ async function loadOptionalPanels(): Promise<void> {
   optionalPanelsLoaded = true;
   for (const loader of [
     () => import("./ai-provider-panel"),
+    () => import("./smart-auto-swipe-panel"),
     () => import("./identity-builder-panel"),
     () => import("./personal-memory-panel"),
     () => import("./conversation-panel"),
