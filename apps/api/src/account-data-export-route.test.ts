@@ -13,6 +13,7 @@ function exportFixture(): AccountDataExport {
     account: { id: "user-test" },
     profile: null,
     aiProvider: null,
+    smartAutoSwipeSettings: null,
     textingStyleSourceExamples: null,
     conversations: [],
     messages: [],
