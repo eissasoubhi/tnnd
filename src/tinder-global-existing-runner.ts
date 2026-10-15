@@ -710,7 +710,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       if (!state.enabled || state.tabId !== sender.tab.id || typeof input.conversationRef !== "string"
         || state.lastRef !== input.conversationRef || typeof input.firstName !== "string") return { ok: false };
       const firstName = input.firstName.trim();
-      if (!/^[\\p{L}][\\p{L}\\p{M}\\p{N} ._'’\\-]{1,79}$/u.test(firstName)
+      if (!/^[\p{L}][\p{L}\p{M}\p{N} ._'’\-]{1,79}$/u.test(firstName)
         || /^(?:conversation|messages?|profile|tinder)$/i.test(firstName)) return { ok: false };
       // Sender's captured SPA URL may be stale; verify the actual live Tinder
       // tab route before changing a label for this exact match.
