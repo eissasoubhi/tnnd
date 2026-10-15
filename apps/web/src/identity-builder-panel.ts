@@ -1,4 +1,5 @@
 import { readSession } from "./auth-client";
+import { isLatestSessionResponse } from "./workspace-request-guard";
 import {
   analyzeIdentity,
   approveIdentity,
@@ -68,6 +69,8 @@ const approvedCount = panel.querySelector<HTMLElement>("#identity-approved-count
 const editButton = panel.querySelector<HTMLButtonElement>("#identity-builder-edit")!;
 let current: IdentityBuilderState | null = null;
 let busy = false;
+let loadSequence = 0;
+let displayedSessionToken: string | null = null;
 
 const fields: Array<{ key: keyof IdentityStructuredAnalysis; label: string; hint?: string }> = [
   { key: "summary", label: "Compact identity summary", hint: "Short overview used when relevant" },
@@ -168,7 +171,15 @@ function setBusy(value: boolean): void {
 }
 
 async function refresh(): Promise<void> {
+  const requestId = ++loadSequence;
   const session = readSession();
+  if ((session?.token ?? null) !== displayedSessionToken) {
+    displayedSessionToken = session?.token ?? null;
+    busy = false;
+    source.value = "";
+    render(null);
+    message.textContent = session ? "Loading your identity…" : "Sign in to build your identity.";
+  }
   if (!session) {
     render(null);
     source.disabled = true;
@@ -177,12 +188,16 @@ async function refresh(): Promise<void> {
   }
   source.disabled = false;
   try {
-    render(await loadIdentityBuilder(session));
+    const state = await loadIdentityBuilder(session);
+    if (!isLatestSessionResponse(requestId, loadSequence, session.token, readSession()?.token)) return;
+    render(state);
     message.textContent = current?.reviewStatus === "approved"
       ? "Your approved identity is saved. Only the compact structure is reused."
       : current ? "Review the extracted details, edit if needed, then approve." : "Describe yourself, then analyze once.";
   } catch (error) {
-    message.textContent = error instanceof Error ? error.message : "Unable to load identity.";
+    if (!isLatestSessionResponse(requestId, loadSequence, session.token, readSession()?.token)) return;
+    render(null);
+    message.textContent = "Could not load your identity. Check the connection and sign in again.";
   }
 }
 
@@ -205,13 +220,16 @@ analyzeButton.addEventListener("click", () => {
     setBusy(true);
     message.textContent = "Analyzing identity…";
     const result = await analyzeIdentity(session, source.value);
+    if (readSession()?.token !== session.token) return;
     render(result.state);
     message.textContent = result.cached
       ? "Reused the saved analysis. No new Gemini analysis was needed."
       : "Identity analyzed and saved as a draft. Review it before approving.";
   })().catch((error) => {
-    message.textContent = error instanceof Error ? error.message : "Identity analysis failed.";
-  }).finally(() => setBusy(false));
+    if (readSession()?.token === session.token) message.textContent = error instanceof Error ? error.message : "Identity analysis failed.";
+  }).finally(() => {
+    if (readSession()?.token === session.token) setBusy(false);
+  });
 });
 
 approveButton.addEventListener("click", () => {
@@ -230,12 +248,16 @@ approveButton.addEventListener("click", () => {
     }
     setBusy(true);
     message.textContent = "Saving your approved identity…";
-    render(await approveIdentity(session, analysis));
+    const approved = await approveIdentity(session, analysis);
+    if (readSession()?.token !== session.token) return;
+    render(approved);
     message.textContent = "Identity approved and saved. Your original About Me is not sent with each conversation.";
     window.dispatchEvent(new CustomEvent("tnnd:profile-updated"));
   })().catch((error) => {
-    message.textContent = error instanceof Error ? error.message : "Unable to approve identity.";
-  }).finally(() => setBusy(false));
+    if (readSession()?.token === session.token) message.textContent = error instanceof Error ? error.message : "Unable to approve identity.";
+  }).finally(() => {
+    if (readSession()?.token === session.token) setBusy(false);
+  });
 });
 
 window.addEventListener("tnnd:auth-session-changed", () => void refresh());

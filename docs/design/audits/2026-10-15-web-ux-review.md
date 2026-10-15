@@ -56,3 +56,8 @@ refresh flow without triggering generation, automation or Tinder sends.
 - **P1 source-confirmed:** filter changes formerly updated only the list while leaving a stale selected memory editor, and async fetches could render after account switches. The selected editor now follows visible filtered stories except when the user has unsaved edits, in which case the editor is preserved with a clear notice. A visible Clear filters action restores the full list.
 - Requests use a generation + auth-session guard; switching accounts clears private form and review state before reloading. Signed-out and failed loads have explicit nonzero/nonfictional states.
 - Added model and integration tests. No memory content, profile details, or screenshot committed; real-account/browser QA remains pending.
+
+## Sixth pass — Identity Builder and Analytics
+- **P1, source-confirmed:** Identity Builder and Analytics previously accepted API responses from an account that could have signed out or switched in the meantime. Added per-load request and session-token guards, including late identity analyze/approve results. Identity clears the previous account's private About Me and summary immediately.
+- **P2:** Analytics now surfaces four key conversation statuses, with five additional categories available on demand. The snapshot timestamp and non-live nature of stored counts are explicit; a zero attention count is described as a snapshot finding, not a live guarantee. Responsive 4→2→1 column layout follows Neo Bento tokens.
+- Web tests verify correct source wiring and states; synthetic CI captures are not a substitute for real-user browser review.

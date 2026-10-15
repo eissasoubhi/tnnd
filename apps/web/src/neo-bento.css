@@ -940,3 +940,36 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
   background: var(--nb-lilac); color: var(--nb-text);
   padding: 10px 14px; margin: 12px 0; line-height: 1.5;
 }
+
+/* Analytics: task-focused headline metrics and optional status detail. */
+#app .analytics-dashboard .analytics-snapshot { font-size: 12px; line-height: 1.5; }
+#app .analytics-dashboard .analytics-insight-group { margin: 22px 0; min-width: 0; }
+#app .analytics-dashboard .analytics-insight-group > h3 { margin-bottom: 12px; font-size: 17px; }
+#app .analytics-dashboard .analytics-status-grid {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;
+}
+#app .analytics-dashboard .analytics-status-metric {
+  min-width: 0; padding: 16px; border-radius: var(--nb-radius-md);
+  border: 1px solid var(--nb-border); background: var(--nb-mint);
+  display: grid; gap: 6px;
+}
+#app .analytics-dashboard .analytics-status-metric:nth-child(even) { background: var(--nb-lilac); }
+#app .analytics-dashboard .analytics-status-metric span { font-size: 12px; color: var(--nb-text-muted); }
+#app .analytics-dashboard .analytics-status-metric strong { font-size: clamp(24px, 2.3vw, 36px); color: var(--nb-text); }
+#app .analytics-dashboard .analytics-advanced-status {
+  background: var(--nb-surface-soft); border: 1px solid var(--nb-border);
+  border-radius: var(--nb-radius-lg); padding: 0 16px;
+}
+#app .analytics-dashboard .analytics-advanced-status > summary {
+  min-height: 44px; cursor: pointer; padding: 13px 0; font-weight: 750;
+}
+#app .analytics-dashboard .analytics-advanced-status > summary:focus-visible {
+  outline: 3px solid var(--nb-focus); outline-offset: 3px;
+}
+#app .analytics-dashboard .analytics-advanced-status[open] { padding-bottom: 16px; }
+@media(max-width: 940px) {
+  #app .analytics-dashboard .analytics-status-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media(max-width: 390px) {
+  #app .analytics-dashboard .analytics-status-grid { grid-template-columns: 1fr; }
+}
