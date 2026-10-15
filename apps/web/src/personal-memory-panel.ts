@@ -1,4 +1,5 @@
 import { readSession } from "./auth-client";
+import { isLatestSessionResponse } from "./workspace-request-guard";
 import {
   approvePersonalMemory,
   createPersonalMemoryFromAnecdote,
@@ -27,7 +28,7 @@ panel.innerHTML = `
       <p class="eyebrow">02 / Personal Memories</p>
       <h2>Your story library</h2>
     </div>
-    <span class="pill" id="memory-count">0 memories</span>
+    <span class="pill" id="memory-count" role="status">Loading memories…</span>
   </div>
   <p>Save real moments and stories. Review each memory before TNND can use it in a conversation.</p>
   <label for="memory-source" class="workspace-field-label">A memory worth sharing</label>
@@ -48,7 +49,10 @@ panel.innerHTML = `
         <option value="approved">Approved</option>
       </select>
     </label>
+    <button id="memory-clear-filters" class="secondary" type="button" hidden>Clear filters</button>
+    <p id="memory-filter-summary" class="subtle" role="status" aria-live="polite"></p>
   </div>
+  <p id="memory-editor-notice" class="subtle" role="status" aria-live="polite"></p>
   <div class="memory-workspace">
     <div id="memory-list" class="memory-list" aria-label="Saved memories"></div>
     <div id="memory-review" class="memory-detail" aria-label="Selected memory"></div>
@@ -64,10 +68,15 @@ const list = panel.querySelector<HTMLElement>("#memory-list")!;
 const review = panel.querySelector<HTMLElement>("#memory-review")!;
 const search = panel.querySelector<HTMLInputElement>("#memory-search")!;
 const filter = panel.querySelector<HTMLSelectElement>("#memory-filter")!;
+const clearFilters = panel.querySelector<HTMLButtonElement>("#memory-clear-filters")!;
+const filterSummary = panel.querySelector<HTMLElement>("#memory-filter-summary")!;
+const editorNotice = panel.querySelector<HTMLElement>("#memory-editor-notice")!;
 let items: PersonalMemoryLibraryItem[] = [];
 let selectedId: string | null = null;
 let workingDraft: PersonalMemoryReviewDraft | null = null;
 let busy = false;
+let refreshSequence = 0;
+let displayedSessionToken: string | null = null;
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
@@ -95,7 +104,22 @@ function setBusy(value: boolean): void {
 }
 
 async function refresh(selectId?: string): Promise<void> {
+  const requestId = ++refreshSequence;
   const session = readSession();
+  const token = session?.token ?? null;
+  if (token !== displayedSessionToken) {
+    displayedSessionToken = token;
+    items = [];
+    selectedId = null;
+    workingDraft = null;
+    source.value = "";
+    search.value = "";
+    filter.value = "all";
+    list.innerHTML = "";
+    review.innerHTML = "";
+    editorNotice.textContent = "";
+    filterSummary.textContent = "";
+  }
   if (!session) {
     items = [];
     selectedId = null;
@@ -105,17 +129,34 @@ async function refresh(selectId?: string): Promise<void> {
     count.textContent = "Sign in required";
     list.innerHTML = '<p class="workspace-empty">Sign in to view your memories.</p>';
     review.innerHTML = "";
+    clearFilters.hidden = true;
+    filterSummary.textContent = "";
     return;
   }
   source.disabled = false;
   analyzeButton.disabled = busy;
-  items = sortPersonalMemoryLibrary((await listPersonalMemories(session)).map(toPersonalMemoryLibraryItem));
-  const approved = items.filter((item) => item.draft.reviewStatus === "approved").length;
-  count.textContent = `${items.length} memories · ${approved} approved`;
-  const preferred = selectId ?? selectedId;
-  selectedId = items.find((item) => item.id === preferred)?.id ?? items[0]?.id ?? null;
-  renderList();
-  renderSelected();
+  count.textContent = "Loading memories…";
+  try {
+    const records = await listPersonalMemories(session);
+    if (!isLatestSessionResponse(requestId, refreshSequence, session.token, readSession()?.token)) return;
+    items = sortPersonalMemoryLibrary(records.map(toPersonalMemoryLibraryItem));
+    const approved = items.filter((item) => item.draft.reviewStatus === "approved").length;
+    count.textContent = `${items.length} memories · ${approved} approved`;
+    const preferred = selectId ?? selectedId;
+    const matching = filteredItems();
+    selectedId = matching.find((item) => item.id === preferred)?.id ?? matching[0]?.id ?? null;
+    renderList();
+    renderSelected();
+  } catch (error) {
+    if (!isLatestSessionResponse(requestId, refreshSequence, session.token, readSession()?.token)) return;
+    count.textContent = "Unavailable";
+    items = [];
+    selectedId = null;
+    workingDraft = null;
+    list.innerHTML = '<p class="workspace-empty" role="alert">Could not load your memories. Check your connection and try again.</p>';
+    review.innerHTML = "";
+    message.textContent = "Could not load memories. Sign in and try again.";
+  }
 }
 
 function filteredItems(): PersonalMemoryLibraryItem[] {
@@ -129,12 +170,15 @@ function filteredItems(): PersonalMemoryLibraryItem[] {
 
 function renderList(): void {
   const visible = filteredItems();
+  const activeFilters = Boolean(search.value.trim()) || filter.value !== "all";
+  clearFilters.hidden = !activeFilters;
+  filterSummary.textContent = `${visible.length} shown · ${items.length} saved`;
   list.innerHTML = visible.length ? visible.map((item) => `
     <button type="button" class="memory-list-item secondary ${item.id === selectedId ? "is-selected" : ""}" data-memory-id="${escapeHtml(item.id)}" aria-pressed="${item.id === selectedId}">
       <span class="memory-list-item__title">${escapeHtml(item.draft.title || "Untitled memory")}</span>
       <span class="memory-list-item__meta">${item.draft.reviewStatus === "approved" ? "Approved" : "Needs review"} · ${escapeHtml(item.draft.category)}</span>
     </button>
-  `).join("") : `<p class="workspace-empty">${items.length ? "No stories match this search or review status. Try another filter." : "No stories saved yet. Add a real memory above to start your library."}</p>`;
+  `).join("") : `<p class="workspace-empty" role="status">${items.length ? 'No stories match the current search or status. Choose Clear filters to see your library.' : 'No stories saved yet. Add a real memory above to start your library.'}</p>`;
   list.querySelectorAll<HTMLButtonElement>("[data-memory-id]").forEach((button) => {
     button.addEventListener("click", () => {
       if (busy || !canLeaveSelection()) return;
@@ -146,10 +190,10 @@ function renderList(): void {
 }
 
 function renderSelected(): void {
-  const item = items.find((candidate) => candidate.id === selectedId);
+  const item = filteredItems().find((candidate) => candidate.id === selectedId);
   if (!item) {
     workingDraft = null;
-    review.innerHTML = `<div class="workspace-empty">${items.length ? "Select a story to review its details." : "Your first story will appear here for review."}</div>`;
+    review.innerHTML = `<div class="workspace-empty">${items.length ? "Choose a visible story to review, or clear the filters." : "Your first story will appear here for review."}</div>`;
     return;
   }
   workingDraft = structuredClone(item.draft);
@@ -234,8 +278,29 @@ analyzeButton.addEventListener("click", () => {
   }).catch(showError);
 });
 
-search.addEventListener("input", renderList);
-filter.addEventListener("change", renderList);
+function applyMemoryFilters(): void {
+  const visible = filteredItems();
+  if (!visible.some((item) => item.id === selectedId)) {
+    if (hasUnsavedChanges()) {
+      editorNotice.textContent = "Unsaved edits are still open below. Save or discard them before choosing another story.";
+    } else {
+      selectedId = visible[0]?.id ?? null;
+      editorNotice.textContent = "";
+      renderSelected();
+    }
+  } else {
+    editorNotice.textContent = "";
+  }
+  renderList();
+}
+search.addEventListener("input", applyMemoryFilters);
+filter.addEventListener("change", applyMemoryFilters);
+clearFilters.addEventListener("click", () => {
+  search.value = "";
+  filter.value = "all";
+  applyMemoryFilters();
+  search.focus();
+});
 window.addEventListener("tnnd:auth-session-changed", () => {
   void refresh().catch(showError);
 });
