@@ -161,6 +161,9 @@ async function save(state: GlobalExistingRunnerState): Promise<GlobalExistingRun
       > (proposedAttention[0]?.lastInteractionAt ?? ""));
     const merged = {
       ...state,
+      // An older worker tick must not undo the popup's explicit upgrade.
+      autoOpenersEnabled: state.enabled && sameSession && state.mode === "watcher"
+        && raw?.autoOpenersEnabled === true ? true : state.autoOpenersEnabled,
       ...(rawIsNewer ? {
         activeConversationRef: raw!.activeConversationRef,
         activeConversationUntil: raw!.activeConversationUntil
@@ -589,8 +592,32 @@ export async function startExistingRunner(enablePreviouslyDisabled = false, mode
   try {
     const current = await load();
     if (current.enabled) {
-      if (current.mode !== mode || (mode === "watcher" && current.autoOpenersEnabled !== autoOpenersEnabled))
+      if (current.mode !== mode || (mode === "watcher" && current.autoOpenersEnabled && !autoOpenersEnabled))
         throw new Error("Stop the current runner or watcher before switching modes.");
+      // Separate popup confirmation is required for this transition.
+      // Preserve the watcher's established Matches baseline and reply queue.
+      if (mode === "watcher" && autoOpenersEnabled && !current.autoOpenersEnabled) {
+        const session = await getBackendSession();
+        const config = await getConfig();
+        if (!session || session.user.id !== current.userId)
+          throw new Error("TNND account changed; stop the watcher and reconnect.");
+        if (!config.automation.enabled)
+          throw new Error("Enable automatic replies in TNND Options first.");
+        if (current.tabId === null) throw new Error("Tinder tab is not assigned.");
+        const other = (await chrome.storage.local.get("tnnd.newMatchLinkObservation.v3"))["tnnd.newMatchLinkObservation.v3"] as
+          { enabled?: boolean } | undefined;
+        if (other?.enabled) throw new Error("Another match-sending mode is active. Stop it before enabling auto-watch.");
+        const tinderTabs = await chrome.tabs.query({ url: ["https://tinder.com/*", "https://www.tinder.com/*"] });
+        if (tinderTabs.length !== 1 || tinderTabs[0].id !== current.tabId)
+          throw new Error("Auto-watch needs exactly the one Tinder tab already managed by TNND.");
+        await waitForTinderContentBridge(current.tabId);
+        const fresh = await load();
+        if (!fresh.enabled || fresh.mode !== "watcher" || fresh.userId !== session.user.id
+          || fresh.startedAt !== current.startedAt || fresh.tabId !== current.tabId)
+          throw new Error("Watcher changed while enabling first messages. Start again.");
+        return save(activity({ ...fresh, autoOpenersEnabled: true }, "waiting",
+          "Automatic first messages enabled. Waiting for a safe idle Matches scan; one verified empty match per scan (at most every five minutes)."));
+      }
       return current;
     }
     if (mode === "watcher" && enablePreviouslyDisabled) throw new Error("Watcher cannot enable disabled chats in bulk.");
