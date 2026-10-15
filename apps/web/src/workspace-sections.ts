@@ -33,6 +33,7 @@ const groups: Record<string, WorkspaceView> = {
   "profile-settings": "settings",
   "profile-import-panel": "settings",
   "ai-provider-panel": "settings",
+  "smart-auto-swipe-panel": "settings",
   "auth-panel": "settings",
   "account-privacy-panel": "settings"
 };
