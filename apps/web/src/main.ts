@@ -23,6 +23,7 @@ async function loadOptionalPanels(): Promise<void> {
     () => import("./identity-builder-panel"),
     () => import("./personal-memory-panel"),
     () => import("./conversation-panel"),
+    () => import("./conversation-attention-panel"),
     () => import("./conversation-overrides-panel"),
     () => import("./conversation-quick-filters"),
     () => import("./conversation-action-indicator"),
@@ -77,7 +78,7 @@ app.innerHTML = `
       <span class="status">Private by design</span>
     </header>
 
-    <nav class="workspace-nav" aria-label="Workspace sections"><a href="#workspace-overview" aria-current="location">Overview</a><a href="#workspace-conversations-section">Conversations</a><a href="#workspace-identity-section">Identity</a><a href="#workspace-memories-section">Memories</a><a href="#workspace-actions-section">Action Center</a><a href="#workspace-analytics-section">Analytics</a><a href="#workspace-settings-section">Settings</a></nav>
+    <nav class="workspace-nav" aria-label="Workspace sections"><a href="#workspace-overview" aria-current="location">Overview</a><a href="#workspace-conversations-section">Conversations</a><a href="#workspace-identity-section">Identity</a><a href="#workspace-memories-section">Memories</a><a href="#workspace-actions-section">Action Center</a><a href="#workspace-attention-section">Attention</a><a href="#workspace-analytics-section">Analytics</a><a href="#workspace-settings-section">Settings</a></nav>
 
     <section class="metrics" aria-label="Conversation overview">
       ${cards.map((card) => `
