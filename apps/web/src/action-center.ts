@@ -11,6 +11,13 @@ const storageKey = "tnnd:web:human-actions";
 const maxLocalStorageBytes = 512 * 1024;
 const maxLocalHumanActions = 500;
 const manualAnswerDrafts = new Map<string, ManualAnswerDraft>();
+let renderedActionItems = new WeakMap<HTMLElement, HumanActionItem[]>();
+
+/** Discard session-specific editor drafts and cached rows after account changes. */
+export function resetActionCenterSession(): void {
+  manualAnswerDrafts.clear();
+  renderedActionItems = new WeakMap<HTMLElement, HumanActionItem[]>();
+}
 const severityFilters: Array<{ value: HumanActionSeverityFilter; label: string }> = [
   { value: "all", label: "All" },
   { value: "urgent", label: "Urgent" },
@@ -51,6 +58,8 @@ export async function loadHumanActions(): Promise<HumanActionItem[]> {
     localStorage.removeItem(storageKey);
     return remote.filter(isHumanActionItem);
   }
+  // An authenticated view may never silently use unscoped local records.
+  if (readSession()) throw new Error("human_actions_unavailable");
   return readHumanActions();
 }
 
@@ -149,9 +158,10 @@ function renderPersistedManualAnswer(item: HumanActionItem): string {
 }
 
 export function renderActionCenter(container: HTMLElement, items = readHumanActions()): void {
+  renderedActionItems.set(container, items);
   const pending = sortPendingHumanActions(items);
   if (pending.length === 0) {
-    container.innerHTML = `<div class="action-empty"><strong>No human action needed</strong><p>Items that need your confirmation or a manual step will appear here.</p></div>`;
+    container.innerHTML = `<div class="action-empty" role="status"><strong>No pending actions in the last verified check</strong><p>When TNND needs a decision or a manual step, it will appear here. This is not a guarantee that Tinder has no unread messages.</p></div>`;
     return;
   }
 
@@ -198,7 +208,7 @@ export function bindActionCenter(container: HTMLElement, onChange: (items: Human
     const filter = target.dataset.actionFilter;
     if (filter && severityFilters.some((option) => option.value === filter)) {
       container.dataset.actionSeverityFilter = filter;
-      renderActionCenter(container);
+      renderActionCenter(container, renderedActionItems.get(container) ?? []);
       return;
     }
 
