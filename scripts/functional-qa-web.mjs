@@ -259,9 +259,9 @@ async function main() {
       }
       return result;
     })()`);
-    assert.equal(nav.length, 7);
+    assert.equal(nav.length, 8);
     assert.ok(nav.every(x => x.active), "Some workspace navigation clicks did not activate their section: " + JSON.stringify(nav));
-    results.push({ name: "All seven navigation buttons change active section", passed: true });
+    results.push({ name: "All eight navigation buttons change active section", passed: true });
     console.log("PASS All seven navigation buttons change active section");
 
     await cdp.evaluate(`(() => {
