@@ -18,6 +18,7 @@ import { isConversationStatus, validateConversationSyncRequest } from "./convers
 import { conversationSyncErrorResponse } from "./conversation-sync-error-response.js";
 import { handleConversationThreadLookupRequest } from "./conversation-thread-lookup-controller.js";
 import { getPool } from "./db-client.js";
+import { getSmartSwipeSettings, putSmartSwipeSettings, validateSmartSwipeSettings } from "./smart-auto-swipe-settings.js";
 import { handleHumanActionManualAnswerRequest } from "./human-action-manual-answer-controller.js";
 import { createHumanAction, listHumanActions, updateHumanActionStatus, type HumanActionSeverity, type HumanActionStatus } from "./human-action-service.js";
 import { handleConversationMatchProfileRequest, handleMatchProfileCaptureRequest, handleMatchProfilePromoteRequest } from "./match-profile-controller.js";
@@ -345,6 +346,29 @@ const server = createServer(async (request, response) => {
       }
       const topics = await listUserTopicCoverage(session.user.id);
       sendJson(response, 200, { topics });
+      return;
+    }
+
+    // This endpoint only stores user preferences. It has no Tinder send/Like side effects.
+    if ((request.method === "GET" || request.method === "PUT") &&
+        url.pathname === "/api/v1/automation/smart-swipe") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      if (request.method === "GET") {
+        sendJson(response, 200, await getSmartSwipeSettings(session.user.id));
+        return;
+      }
+      const body = await readJsonBody(request);
+      const candidate = body.settings ?? body;
+      const validated = validateSmartSwipeSettings(candidate);
+      if (!validated.ok) {
+        sendJson(response, 400, { error: "invalid_smart_swipe_settings", details: validated.errors });
+        return;
+      }
+      sendJson(response, 200, await putSmartSwipeSettings(session.user.id, validated.settings));
       return;
     }
 
