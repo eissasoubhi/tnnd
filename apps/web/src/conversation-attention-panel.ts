@@ -253,5 +253,8 @@ window.addEventListener("tnnd:auth-session-changed", () => {
   render(); void refresh();
 });
 window.addEventListener("hashchange", () => { void refresh(); });
+window.addEventListener("tnnd:workspace-view-changed", (event) => {
+  if ((event as CustomEvent<{view?: string}>).detail?.view === "attention") void refresh();
+});
 window.setInterval(() => { void refresh(); }, 10_000);
 void refresh();
