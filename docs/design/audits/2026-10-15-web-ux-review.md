@@ -51,3 +51,8 @@ could be a new match. The revised copy differentiates a new match from an
 already-chatted match, gives safe read-only import instructions, and provides
 a Check synced history button. It reuses the existing read-only list/detail
 refresh flow without triggering generation, automation or Tinder sends.
+
+## Fifth pass — Personal Memories reliability and recovery
+- **P1 source-confirmed:** filter changes formerly updated only the list while leaving a stale selected memory editor, and async fetches could render after account switches. The selected editor now follows visible filtered stories except when the user has unsaved edits, in which case the editor is preserved with a clear notice. A visible Clear filters action restores the full list.
+- Requests use a generation + auth-session guard; switching accounts clears private form and review state before reloading. Signed-out and failed loads have explicit nonzero/nonfictional states.
+- Added model and integration tests. No memory content, profile details, or screenshot committed; real-account/browser QA remains pending.

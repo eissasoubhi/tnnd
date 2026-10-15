@@ -929,3 +929,14 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
   #app #profile-settings .preferences-save-bar { bottom: 6px; padding: 12px; }
   #app #profile-settings .preferences-save-bar #preferences-save { width: 100%; }
 }
+
+/* Memory workspace: visible filter reset and form-draft feedback, Neo Bento tokens. */
+#app #personal-memory-panel .memory-toolbar { align-items: end; flex-wrap: wrap; }
+#app #personal-memory-panel #memory-clear-filters { min-height: 44px; }
+#app #personal-memory-panel #memory-clear-filters[hidden] { display: none !important; }
+#app #personal-memory-panel #memory-filter-summary { font-size: 12px; margin: 0; }
+#app #personal-memory-panel #memory-editor-notice:not(:empty) {
+  border: 1px solid var(--nb-border); border-radius: var(--nb-radius-md);
+  background: var(--nb-lilac); color: var(--nb-text);
+  padding: 10px 14px; margin: 12px 0; line-height: 1.5;
+}
