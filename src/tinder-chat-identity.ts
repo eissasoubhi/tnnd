@@ -35,6 +35,14 @@ export function parseVisibleMatchHeading(value: unknown): { firstName?: string; 
   };
 }
 
+/** Reject generic UI headings before accepting a displayed match name. */
+export function parseVerifiedChatName(label: string): { firstName?: string; age?: number } {
+  const parsed = parseVisibleMatchHeading(label);
+  const value = parsed.firstName?.toLowerCase();
+  if (!value || /^(?:messages?|matches?|chat|conversation|profile|tinder|new match|send message|online|loading|messages sent)$/i.test(value)) return {};
+  return parsed;
+}
+
 function exactThreadAnchor(anchor: HTMLAnchorElement, conversationRef: string): boolean {
   try {
     const url = new URL(anchor.href, location.href);
@@ -79,25 +87,38 @@ export function readVisibleTinderMatchIdentity(conversationRef: string): Visible
 
   const anchor = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/app/messages/"]'))
     .find(candidate => visible(candidate) && exactThreadAnchor(candidate, conversationRef));
-  if (!anchor) return {};
-
-  const identityCandidates = [
+  const candidates = anchor ? [
     ...Array.from(anchor.querySelectorAll<HTMLElement>("h2,h3,h4,strong")).map(element => element.innerText),
     ...anchor.innerText.split(/\n/)
-  ];
-  const identity = identityCandidates.map(parseVisibleMatchHeading).find(candidate => candidate.firstName);
+  ] : [];
+  const rowIdentity = candidates.map(parseVisibleMatchHeading).find(candidate => candidate.firstName);
+  // The Tinder Messages list can virtualize its rows: the currently opened
+  // match name is often present in the verified chat header although its row
+  // has scrolled out of the sidebar. Never search unrelated page headings.
+  const chat = document.querySelector<HTMLElement>(".chat");
+  const verifiedOpenChat = chat && visible(chat)
+    && Array.from(chat.querySelectorAll<HTMLElement>(
+      'textarea[placeholder*="message" i],textarea[aria-label*="message" i],[contenteditable="true"][role="textbox"]'
+    )).some(visible);
+  const activeHeadings = verifiedOpenChat ? [
+    ...Array.from(chat!.querySelectorAll<HTMLElement>(
+      "header h1,header h2,header h3,.chatHeader h1,.chatHeader h2"
+    )).filter(visible),
+    ...Array.from(document.querySelectorAll<HTMLElement>(
+      "aside .chatProfile .profileContent h1"
+    )).filter(visible)
+  ] : [];
+  const headingIdentity = activeHeadings
+    .map(heading => parseVerifiedChatName(heading.innerText))
+    .find(identity => identity.firstName);
+  // If a visible sidebar row and live header disagree, do not cross-assign
+  // somebody else's name to the active conversation.
+  if (rowIdentity?.firstName && headingIdentity?.firstName
+      && rowIdentity.firstName !== headingIdentity.firstName) return {};
+  const identity = rowIdentity?.firstName ? rowIdentity : headingIdentity;
   if (!identity?.firstName) return {};
-
-  // Age is accepted from this row, or from a visible conversation heading that
-  // repeats exactly the SAME name (e.g. "Srim 30").
-  let age = identity.age;
-  if (!age) {
-    for (const heading of Array.from(document.querySelectorAll<HTMLElement>("h1,h2,h3"))) {
-      if (!visible(heading) || anchor.contains(heading)) continue;
-      const parsed = parseVisibleMatchHeading(heading.innerText);
-      if (parsed.firstName === identity.firstName && parsed.age) { age = parsed.age; break; }
-    }
-  }
-  const photoUrl = matchedPhoto(anchor);
+  const age = identity.age ?? (rowIdentity?.firstName === headingIdentity?.firstName
+    ? headingIdentity?.age : undefined);
+  const photoUrl = anchor ? matchedPhoto(anchor) : undefined;
   return { firstName: identity.firstName, ...(age ? { age } : {}), ...(photoUrl ? { photoUrl } : {}) };
 }
