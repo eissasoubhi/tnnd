@@ -78,7 +78,7 @@ export function buildAttentionRows(
   const byRef = new Map(state.observed.map(entry => [entry.ref, entry]));
   // Show only threads known to this authenticated Web user's own backend;
   // never expose another user's extension activity by raw Tinder ref.
-  return [...names].slice(0, 200).map(([ref, name]) => {
+  return [...names].map(([ref, name]) => {
     const entry = byRef.get(ref);
     if (!entry || !state.watcherActive) return { ref, name, score: null,
       stage: "not-observed" as const, waitSeconds: null, remainingSeconds: null, lastObservedAt: null };
@@ -92,5 +92,5 @@ export function buildAttentionRows(
       waitSeconds: Math.round(waitMs / 1000), remainingSeconds: active ? Math.ceil(remaining / 1000) : null,
       lastObservedAt: entry.lastInteractionAt };
   }).sort((a, b) => (b.score === null ? -1 : b.score) - (a.score === null ? -1 : a.score)
-    || a.name.localeCompare(b.name));
+    || a.name.localeCompare(b.name)).slice(0, 200);
 }
