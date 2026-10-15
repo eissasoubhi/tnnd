@@ -3,6 +3,7 @@ import { loginBackend, logoutBackend, validateBackendSession } from "./backend-s
 import { renderExtensionSetupProgress } from "./setup-extension-panel";
 import { getBackendSession, getChatSettings, getConfig, saveChatSettings } from "./storage";
 import { firstMessageDailyLimit } from "./tinder-first-message-daily-limit";
+import { conversationAttention, type ConversationActivity } from "./tinder-conversation-activity";
 import { syncConversationDelta } from "./conversation-sync";
 import { loadTinderConversationManagement } from "./tinder-backend-management";
 import { prepareReadOnlyImport, type VisibleTinderMessage } from "./tinder-manual-import";
@@ -689,6 +690,9 @@ interface GlobalRunnerState {
   lastMatchScanAt?: string | null;
   watchedMatches?: { baselineReady: boolean; existingRefs: string[]; newRefs: string[]; observer: { candidates: unknown[] }; observedAt: string | null } | null;
   watcherStatus?: "stopped" | "waiting" | "new-replies" | "following" | "processing" | "paused" | "disconnected";
+  activeConversationRef?: string | null;
+  activeConversationUntil?: string | null;
+  conversationActivities?: ConversationActivity[];
   tabId: number | null;
   dwellSeconds: number;
   tabMode: "reused" | "created" | null;
@@ -744,6 +748,30 @@ function displayRunnerState(state: GlobalRunnerState): void {
     ? statusLabel[displayStatus] ?? "Waiting" : state.enabled ? "Existing-chat runner active" : "Stopped · watcher is off")
     + (watcher ? " · Tinder tab required" : "");
   watcherStatus.setAttribute("data-status", displayStatus);
+  const attentionLine = document.getElementById("replyWatcherAttention");
+  if (attentionLine) {
+    const ref = state.activeConversationRef;
+    const entries = Array.isArray(state.conversationActivities) ? state.conversationActivities : [];
+    const entry = ref ? entries.find(item => item.ref === ref) : null;
+    if (!watcher || !ref || !entry) {
+      attentionLine.textContent = watcher
+        ? "Chat activity: not enough recent reply timing to estimate attention."
+        : "Adaptive chat attention starts when the watcher is running.";
+    } else {
+      const estimate = conversationAttention(entries, ref);
+      const stage: Record<string, string> = {
+        cold: "Cold", reconnecting: "Reconnecting", active: "Active", "very-active": "Very active"
+      };
+      const last = Date.parse(entry.lastInteractionAt);
+      const expiry = Date.parse(state.activeConversationUntil ?? "");
+      const remaining = Number.isFinite(last) && Number.isFinite(expiry)
+        ? Math.max(0, Math.min(expiry, last + estimate.waitMs) - Date.now()) : 0;
+      attentionLine.textContent = "Chat activity (estimated): " + (stage[estimate.stage] ?? "Unknown")
+        + " · " + estimate.score + "/100 · "
+        + (remaining ? Math.ceil(remaining / 1000) + "s focus remaining" : "ready to check other chats")
+        + ". Based on reply timing, not online status.";
+    }
+  }
   document.getElementById("replyWatcherPending")!.textContent =
     `${state.pendingReplies ?? 0} confirmed replies waiting in conversations`;
   document.getElementById("replyWatcherAutoStatus")!.textContent = watcher
@@ -759,6 +787,7 @@ function displayRunnerState(state: GlobalRunnerState): void {
       : `${matches.existingRefs.length} existing match tiles · ${matches.newRefs.length} newly confirmed matches · ${matches.observer.candidates.length} verifying. Detection only: first messages require separate explicit activation.`;
   const cadence = document.getElementById("globalExistingCadence") as HTMLSelectElement;
   if (document.activeElement !== cadence) cadence.value = String(state.dwellSeconds ?? 15);
+  cadence.disabled = watcher; // watcher attention is automatic; manual minimum is for sweep mode only
   const phase = document.getElementById("globalExistingPhase")!;
   phase.textContent = runnerPhaseLabels[state.phase] ?? state.phase;
   phase.dataset.phase = state.phase;
