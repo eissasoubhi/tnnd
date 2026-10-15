@@ -1,5 +1,5 @@
 import { TinderDomAdapter } from "./tinder-adapter";
-import { readVisibleTinderMatchIdentity } from "./tinder-chat-identity";
+import { readVisibleTinderMatchIdentity, type VisibleTinderMatchIdentity } from "./tinder-chat-identity";
 import { readVisibleTinderProfilePanel } from "./tinder-visible-profile-panel";
 import { detectVisibleTinderSidebarTab, visibleTinderThreadRefs } from "./tinder-visible-thread-links";
 import { firstMessageAttemptKey, firstMessageBlocker, firstMessageContext } from "./tinder-first-message";
@@ -323,6 +323,9 @@ async function observeVisibleIdentity(): Promise<void> {
   identitySyncBusy = true;
   lastIdentityAttemptAt = Date.now();
   try {
+    // Update the runner name immediately, independent of an API sync delay.
+    void sendRuntimeMessage({ type: "TNND_EXISTING_RUNNER_IDENTITY",
+      conversationRef: ref, firstName: identity.firstName, age: identity.age });
     const result = await sendRuntimeMessage<{ ok: boolean; synced?: boolean }>({
       type: "TNND_SYNC_VISIBLE_MATCH_IDENTITY", conversationRef: ref, identity,
       ...(profile ? { profile } : {})
@@ -751,12 +754,13 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
 let spaNavigationBusy = false;
 let spaNavigationSettlesAt = 0;
 async function navigateExistingSpa(ref: string, expectedRef: string | null): Promise<{
-  ok: boolean; error?: string; currentRef?: string
+  ok: boolean; error?: string; currentRef?: string; identity?: VisibleTinderMatchIdentity
 }> {
   if (spaNavigationBusy || busy) return { ok: false, error: "conversation_processing_in_progress" };
   if (!/^[a-zA-Z0-9_-]{3,512}$/.test(ref)) return { ok: false, error: "invalid_thread_ref" };
   if (currentConversationRef() !== expectedRef) return { ok: false, error: "unexpected_current_thread" };
-  if (currentConversationRef() === ref) return { ok: true, currentRef: ref };
+  if (currentConversationRef() === ref) return { ok: true, currentRef: ref,
+    identity: readVisibleTinderMatchIdentity(ref) };
   const anchor = selectVisibleTinderChatLink(document, ref, location.origin);
   if (!anchor) return { ok: false, error: "thread_not_in_visible_sidebar" };
   spaNavigationBusy = true;
@@ -770,7 +774,7 @@ async function navigateExistingSpa(ref: string, expectedRef: string | null): Pro
         // A premature scan during SPA settling would return without retrying.
         // Schedule once more after the new chat DOM has had time to render.
         window.setTimeout(scheduleScan, 1300);
-        return { ok: true, currentRef: ref };
+        return { ok: true, currentRef: ref, identity: readVisibleTinderMatchIdentity(ref) };
       }
       await new Promise(resolve => setTimeout(resolve, 200));
     }
