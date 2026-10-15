@@ -6,6 +6,7 @@ import { eligibleExistingThreadRefs } from "./tinder-global-existing-policy";
 import { reconcileExistingIndex, markThreadChecked, observeUnreadThreads, nextIndexedExistingThread, isExistingThreadIndex, type ExistingThreadIndex } from "./tinder-existing-thread-index";
 import { nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus, newlyVisibleUnread } from "./tinder-reply-watcher";
 import { followConversationAfterSignal, shouldKeepConversationInFocus, normalizeConversationActivities, type ConversationActivity } from "./tinder-conversation-activity";
+import { DEFAULT_ATTENTION_CAP_SECONDS, normalizeAttentionCapSeconds, validAttentionCapSeconds } from "./tinder-attention-cap";
 import { emptyWatchedMatches, isWatchedMatches, observeWatchedMatches, type WatchedMatches } from "./tinder-match-watcher";
 import { sendSingleWatchedMatch } from "./tinder-global-new-match-runner";
 import { nextWatcherMatchAction, nextMatchOpener, type WatcherMatchPhase } from "./tinder-watcher-match-cycle";
@@ -25,6 +26,12 @@ const API = "http://127.0.0.1:4000";
 const LOG_LIMIT = 16;
 const WORK_INDEX_KEY = "tnnd.existingThreadWorkIndex.v1";
 const WATCHER_ATTEMPTS_KEY = "tnnd.watcherOpenerAttempted.v1";
+const ATTENTION_CAP_PREFIX = "tnnd.attention.capSeconds.v1:";
+async function getAttentionCapSeconds(userId: string | null): Promise<number> {
+  if (!userId) return DEFAULT_ATTENTION_CAP_SECONDS;
+  const key = ATTENTION_CAP_PREFIX + userId;
+  return normalizeAttentionCapSeconds((await chrome.storage.local.get(key))[key]);
+}
 const PHASES = ["starting", "checking", "loading", "incoming", "waiting", "generating", "sending", "sent", "skipped", "error", "stopped"] as const;
 type RunnerPhase = typeof PHASES[number];
 
@@ -63,6 +70,7 @@ interface GlobalExistingRunnerState {
   activeConversationRef: string | null;
   activeConversationUntil: string | null;
   conversationActivities: ConversationActivity[];
+  attentionCapSeconds: number;
   cursorRef: string | null;
   startedAt: string | null;
   lastActionAt: string | null;
@@ -75,7 +83,7 @@ const initial = (): GlobalExistingRunnerState => ({
   matchPhase: "idle", matchPhaseStartedAt: null, lastMatchScanAt: null, lastIncomingAt: null, watchedMatches: null, visibleUnreadRefs: [], watcherStatus: "stopped", userId: null, tabId: null, tabMode: null, pausedOnStop: false,
   phase: "stopped", dwellSeconds: DEFAULT_CADENCE, phaseDetail: "Runner stopped.", currentLabel: null,
   eligibleCount: 0, visitedCount: 0, sentCount: 0, skippedCount: 0, errorCount: 0,
-  lastRef: null, activeConversationRef: null, activeConversationUntil: null, conversationActivities: [], cursorRef: null, startedAt: null, lastActionAt: null, lastVisitAt: null,
+  lastRef: null, activeConversationRef: null, activeConversationUntil: null, conversationActivities: [], attentionCapSeconds: DEFAULT_ATTENTION_CAP_SECONDS, cursorRef: null, startedAt: null, lastActionAt: null, lastVisitAt: null,
   lastError: null, activity: []
 });
 let busy = false;
@@ -123,6 +131,7 @@ async function load(): Promise<GlobalExistingRunnerState> {
     activeConversationRef: typeof value.activeConversationRef === "string" ? value.activeConversationRef : null,
     activeConversationUntil: typeof value.activeConversationUntil === "string" ? value.activeConversationUntil : null,
     conversationActivities: normalizeConversationActivities(value.conversationActivities),
+    attentionCapSeconds: await getAttentionCapSeconds(value.userId ?? null),
     pendingReplies: typeof value.pendingReplies === "number" && value.pendingReplies >= 0 ? value.pendingReplies : 0,
     autoOpenersEnabled: value.autoOpenersEnabled === true,
     matchPhase: ["idle", "verifying", "opener"].includes(String(value.matchPhase)) ? value.matchPhase! : "idle",
@@ -173,7 +182,7 @@ async function save(state: GlobalExistingRunnerState): Promise<GlobalExistingRun
       watchedMatches: state.enabled && state.mode === "watcher"
         ? latestMatchWatch : state.watchedMatches
     };
-    const next = { ...merged, watcherStatus: watcherDisplayStatus(merged) };
+    const next = { ...merged, attentionCapSeconds: await getAttentionCapSeconds(merged.userId), watcherStatus: watcherDisplayStatus(merged) };
     await chrome.storage.local.set({ [KEY]: next });
     return next;
   });
@@ -657,6 +666,7 @@ export async function startExistingRunner(enablePreviouslyDisabled = false, mode
     const activeRef = selectedRef && refs.includes(selectedRef) ? selectedRef : null;
     next = activity({ ...next, enabled: true, mode, autoOpenersEnabled: mode === "watcher" && autoOpenersEnabled,
       userId: session.user.id, tabId: tab.id, tabMode: tab.mode,
+      attentionCapSeconds: await getAttentionCapSeconds(session.user.id),
       ...(mode === "watcher" ? { watchedMatches: emptyWatchedMatches(session.user.id) } : {}),
       ...(activeRef ? { lastRef: activeRef, currentLabel: selection.labels.get(activeRef) ?? `Thread ${activeRef.slice(0, 8)}`,
         ...followConversationAfterSignal(next, activeRef, "opened") } : {}),
@@ -727,7 +737,7 @@ chrome.runtime.onStartup.addListener(() => {
 });
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (!message || typeof message !== "object") return false;
-  const input = message as { type?: unknown; phase?: unknown; detail?: unknown; ref?: unknown; refs?: unknown; conversationRef?: unknown; firstName?: unknown; enablePreviouslyDisabled?: unknown; cadenceSeconds?: unknown };
+  const input = message as { type?: unknown; phase?: unknown; detail?: unknown; ref?: unknown; refs?: unknown; conversationRef?: unknown; firstName?: unknown; enablePreviouslyDisabled?: unknown; cadenceSeconds?: unknown; userId?: unknown; capSeconds?: unknown };
   if (input.type === "TNND_EXISTING_RUNNER_TAB_PAUSED") {
     const statePromise = load();
     void statePromise.then(state => sendResponse({
@@ -831,7 +841,40 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       .catch(() => sendResponse({ ok: false }));
     return true;
   }
-  if (!["TNND_GLOBAL_EXISTING_STATE", "TNND_GLOBAL_EXISTING_PREFLIGHT", "TNND_GLOBAL_EXISTING_SET_CADENCE", "TNND_GLOBAL_EXISTING_START", "TNND_GLOBAL_WATCHER_START", "TNND_GLOBAL_WATCHER_AUTO_START", "TNND_GLOBAL_EXISTING_STOP"].includes(String(input.type))) return false;
+  if (!["TNND_GLOBAL_ATTENTION_READ", "TNND_GLOBAL_ATTENTION_SET_CAP", "TNND_GLOBAL_EXISTING_STATE", "TNND_GLOBAL_EXISTING_PREFLIGHT", "TNND_GLOBAL_EXISTING_SET_CADENCE", "TNND_GLOBAL_EXISTING_START", "TNND_GLOBAL_WATCHER_START", "TNND_GLOBAL_WATCHER_AUTO_START", "TNND_GLOBAL_EXISTING_STOP"].includes(String(input.type))) return false;
+  if (input.type === "TNND_GLOBAL_ATTENTION_READ" || input.type === "TNND_GLOBAL_ATTENTION_SET_CAP") {
+    // The extension is the only authority for both settings and observed scores.
+    // Reject extension pages, nested frames and unrelated websites. The local
+    // Web app must be signed into the SAME backend user as the extension.
+    const localWeb = webReadOnlySender(sender) && typeof sender.tab?.id === "number"
+      && sender.frameId === 0 && typeof input.userId === "string"
+      && input.userId.length > 0 && input.userId.length <= 128;
+    if (!localWeb) {
+      sendResponse({ ok: false, error: "attention_local_web_required" });
+      return false;
+    }
+    void (async () => {
+      const session = await getBackendSession();
+      if (!session || session.user.id !== input.userId)
+        return { ok: false, error: "attention_account_mismatch" };
+      if (input.type === "TNND_GLOBAL_ATTENTION_SET_CAP") {
+        if (!validAttentionCapSeconds(input.capSeconds))
+          return { ok: false, error: "attention_invalid_cap" };
+        const key = ATTENTION_CAP_PREFIX + session.user.id;
+        await chrome.storage.local.set({ [key]: input.capSeconds });
+      }
+      const state = await load();
+      const watcher = state.enabled && state.mode === "watcher" && state.userId === session.user.id;
+      return {
+        ok: true, capSeconds: await getAttentionCapSeconds(session.user.id),
+        watcherActive: watcher,
+        activeConversationRef: watcher ? state.activeConversationRef : null,
+        activeConversationUntil: watcher ? state.activeConversationUntil : null,
+        observed: watcher ? normalizeConversationActivities(state.conversationActivities) : []
+      };
+    })().then(sendResponse).catch(() => sendResponse({ ok: false, error: "attention_unavailable" }));
+    return true;
+  }
   if (input.type === "TNND_GLOBAL_EXISTING_STATE" && (popupSender(sender) || webReadOnlySender(sender))) {
     void Promise.all([load(), getCadenceSeconds()]).then(([state, dwellSeconds]) => sendResponse({ ok: true, state: { ...state, dwellSeconds } }))
       .catch(() => sendResponse({ ok: false, error: "state_unavailable" }));
