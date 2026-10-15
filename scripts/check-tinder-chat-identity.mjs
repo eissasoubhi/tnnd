@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseVisibleMatchHeading, safeTinderPhotoUrl } from "../src/tinder-chat-identity.ts";
+import { parseVisibleMatchHeading, parseVerifiedChatName, safeTinderPhotoUrl } from "../src/tinder-chat-identity.ts";
 import { buildReadOnlyProfileSource } from "../src/tinder-match-profile-capture.ts";
 
 test("visible Tinder header shows first name and age, never a thread id", () => {
@@ -26,4 +26,13 @@ test("a profile avatar must be a bounded Tinder HTTPS URL", () => {
     bio: undefined, job: undefined, education: undefined, location: undefined,
     interests: undefined, relationshipGoal: undefined
   });
+});
+
+test("live chat headings are accepted only as names, never generic Tinder UI labels", () => {
+  assert.deepEqual(parseVerifiedChatName("Zahera 26"), {firstName:"Zahera",age:26});
+  assert.deepEqual(parseVerifiedChatName("Nouhaila"), {firstName:"Nouhaila"});
+  assert.deepEqual(parseVerifiedChatName("Messages"),{});
+  assert.deepEqual(parseVerifiedChatName("Conversation"),{});
+  assert.deepEqual(parseVerifiedChatName("Profile"),{});
+  assert.deepEqual(parseVerifiedChatName(""),{});
 });
