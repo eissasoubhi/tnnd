@@ -49,7 +49,7 @@ export interface AutomationConfig {
   replyDelaySeconds?: number;
   replyDelayMinSeconds?: number;
   replyDelayMaxSeconds?: number;
-  /** Delay between consecutive bubbles in one Tinder match opener (separate from replies). */
+  /** Faster/slower time in seconds to type a 60-character opener bubble. Actual gap scales with NEXT bubble length; separate from incoming reply delays. */
   openerDelayMinSeconds?: number;
   openerDelayMaxSeconds?: number;
   multiPartRepliesEnabled?: boolean;

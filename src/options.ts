@@ -3,7 +3,7 @@ import { getApiKey, getBackendProfileCache, getBackendSession, getConfig, saveAp
 import { profileReadiness } from "./setup-progress";
 import { mountTextingStyleControls } from "./texting-options";
 import { MAX_FIRST_MESSAGE_DAILY_LIMIT, firstMessageDailyLimit } from "./tinder-first-message-daily-limit";
-import { openerDelayWindow } from "./tinder-opener-timing";
+import { openerTypingReferenceWindow } from "./tinder-opener-timing";
 import type { AppConfig, ContactPreference, EmojiLevel, MessageLength, Tone } from "./types";
 
 function el<T extends HTMLElement>(id: string): T {
@@ -37,10 +37,10 @@ function readConfig(): AppConfig {
   const replyDelayMaxSeconds = Math.max(rawMin, rawMax);
   const rawOpenerMin = Number(f.openerDelayMinSeconds.value);
   const rawOpenerMax = Number(f.openerDelayMaxSeconds.value);
-  if (![rawOpenerMin, rawOpenerMax].every(value => Number.isInteger(value) && value >= 1 && value <= 60)) {
-    throw new Error("Opening-message gap must be 1–60 whole seconds.");
+  if (![rawOpenerMin, rawOpenerMax].every(value => Number.isInteger(value) && value >= 8 && value <= 60)) {
+    throw new Error("Typing time for a 60-character opener must be 8–60 whole seconds.");
   }
-  const [openerDelayMinSeconds, openerDelayMaxSeconds] = openerDelayWindow({ openerDelayMinSeconds: rawOpenerMin, openerDelayMaxSeconds: rawOpenerMax });
+  const [openerDelayMinSeconds, openerDelayMaxSeconds] = openerTypingReferenceWindow({ openerDelayMinSeconds: rawOpenerMin, openerDelayMaxSeconds: rawOpenerMax });
   const rawFirstMessageLimit = Number(f.maxFirstMessagesPerDay.value);
   if (!Number.isInteger(rawFirstMessageLimit) || rawFirstMessageLimit < 1 || rawFirstMessageLimit > MAX_FIRST_MESSAGE_DAILY_LIMIT) {
     throw new Error(`First-message daily limit must be a whole number from 1 to ${MAX_FIRST_MESSAGE_DAILY_LIMIT}.`);
@@ -70,7 +70,7 @@ function applyConfig(c: AppConfig): void {
   f.autoEnabled.checked = c.automation.enabled;
   f.replyDelayMinSeconds.value = String(c.automation.replyDelayMinSeconds ?? (Number.isFinite(legacy) ? Math.max(0, legacy - 15) : 20));
   f.replyDelayMaxSeconds.value = String(c.automation.replyDelayMaxSeconds ?? (Number.isFinite(legacy) ? legacy + 15 : 60));
-  const [openerMin, openerMax] = openerDelayWindow(c.automation);
+  const [openerMin, openerMax] = openerTypingReferenceWindow(c.automation);
   f.openerDelayMinSeconds.value = String(openerMin);
   f.openerDelayMaxSeconds.value = String(openerMax);
   f.quietHoursEnabled.checked = c.automation.quietHoursEnabled; f.quietStart.value = c.automation.quietStart; f.quietEnd.value = c.automation.quietEnd; f.maxAutoRepliesPerDay.value = String(c.automation.maxAutoRepliesPerDay); f.maxFirstMessagesPerDay.value = String(firstMessageDailyLimit(c.automation.maxFirstMessagesPerDay)); updateRanges();

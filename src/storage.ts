@@ -3,7 +3,7 @@ import type { AppConfig, ChatSettings } from "./types";
 import { defaultSyncState, type SyncState } from "./sync-status";
 import { applyServerProfile } from "./server-effective-config";
 import { DEFAULT_FIRST_MESSAGE_DAILY_LIMIT, firstMessageDailyLimit } from "./tinder-first-message-daily-limit";
-import { DEFAULT_OPENER_MIN_SECONDS, DEFAULT_OPENER_MAX_SECONDS, openerDelayWindow } from "./tinder-opener-timing";
+import { DEFAULT_OPENER_MIN_SECONDS, DEFAULT_OPENER_MAX_SECONDS, openerTypingReferenceWindow } from "./tinder-opener-timing";
 
 const CONFIG_KEY = "tnnd.config";
 const API_KEY_KEY = "tnnd.geminiApiKey";
@@ -106,7 +106,7 @@ export async function getConfig(): Promise<AppConfig> {
   const savedAutomation = (saved?.automation ?? {}) as Partial<AppConfig["automation"]>;
   const legacyDelay = Number(savedAutomation.replyDelaySeconds);
   const hasWindow = Number.isFinite(savedAutomation.replyDelayMinSeconds) || Number.isFinite(savedAutomation.replyDelayMaxSeconds);
-  const [openerDelayMinSeconds, openerDelayMaxSeconds] = openerDelayWindow(savedAutomation);
+  const [openerDelayMinSeconds, openerDelayMaxSeconds] = openerTypingReferenceWindow(savedAutomation);
 
   const localConfig: AppConfig = {
     ...DEFAULT_CONFIG,

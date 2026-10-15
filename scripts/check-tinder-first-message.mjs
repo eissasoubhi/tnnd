@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { firstMessageAttemptKey, firstMessageBlocker, firstMessageContext } from "../src/tinder-first-message.ts";
 import { groundedOpenerFragments, sameOpenerThreadUninterrupted } from "../src/tinder-opener-fragments.ts";
-import { DEFAULT_OPENER_MIN_SECONDS, DEFAULT_OPENER_MAX_SECONDS, openerDelayWindow, openerDelaySeconds } from "../src/tinder-opener-timing.ts";
+import { DEFAULT_OPENER_MIN_SECONDS, DEFAULT_OPENER_MAX_SECONDS, openerDelayWindow, openerDelaySeconds, openerTypingReferenceWindow, openerTypingDelaySeconds } from "../src/tinder-opener-timing.ts";
 import { buildSystemInstruction, buildUserPrompt } from "../src/prompt.ts";
 const promptTestConfig = {
   tone: "warm", flirtLevel: 1, humorLevel: 20, emojiLevel: "low", messageLength: "short",
@@ -66,7 +66,7 @@ test("the first-message event is a user-triggered popup action, not a background
   assert.match(content, /await adapter\.send\(part\)/);
   assert.match(content, /const openerParts = groundedOpenerFragments\(opener\)/);
   assert.match(content, /sameOpenerThreadUninterrupted\(adapter\.readVisibleMessages\(\)/);
-  assert.match(content, /openerDelaySeconds\(config\.automation, entropy\[0\] \/ 0x100000000\)/);
+  assert.match(content, /openerTypingDelaySeconds\(part, config\.automation, entropy\[0\] \/ 0x100000000\)/);
   assert.match(content, /tnnd-opener-\$\{attemptedAt\}-\$\{index \+ 1\}/);
   assert.match(background, /TNND_GET_FIRST_MESSAGE_PERMISSION/);
   assert.match(background, /backend\.conversationStatus !== "active"/);
@@ -122,7 +122,7 @@ test("opener burst is one pre-send claim, then each bubble is synchronized and g
   assert.match(code, /await getChatAutomationEnabled\(threadKey\)/);
   assert.match(code, /await syncConversationDelta\(conversationRef, \[\{/);
   assert.match(code, /new Promise\(\(resolve\) => setTimeout\(resolve, gap \* 1000\)\)/);
-  assert.match(code, /openerDelaySeconds\(config.automation/);
+  assert.match(code, /openerTypingDelaySeconds\(part, config.automation/);
   assert.doesNotMatch(code, /const gap = randomCadenceSeconds\(config.automation\)/);
   assert.doesNotMatch(code, /freshState.dailyCount\s*\+=\s*1/);
 });
@@ -148,28 +148,47 @@ test("every opener begins with a short, approved greeting; no long first bubble"
   }
 });
 
-test("opening-bubble gap is 3–10s by default and separate from 20–60s reply delays", async () => {
-  assert.equal(DEFAULT_OPENER_MIN_SECONDS, 3);
-  assert.equal(DEFAULT_OPENER_MAX_SECONDS, 10);
-  assert.deepEqual(openerDelayWindow({}), [3, 10]);
-  assert.equal(openerDelaySeconds({}, 0), 3);
-  assert.equal(openerDelaySeconds({}, 1), 10);
-  assert.equal(openerDelaySeconds({}, 0.5), 6.5);
+test("opening bubble gap depends on the NEXT bubble length, not a fixed minimum", async () => {
+  assert.equal(DEFAULT_OPENER_MIN_SECONDS, 8);
+  assert.equal(DEFAULT_OPENER_MAX_SECONDS, 15);
+  assert.deepEqual(openerDelayWindow({}), [8, 15]);
+  assert.deepEqual(openerTypingReferenceWindow({}), [8, 15]);
+  assert.deepEqual(openerTypingReferenceWindow({ openerDelayMinSeconds: 3, openerDelayMaxSeconds: 10 }), [8, 10]);
+  assert.deepEqual(openerTypingReferenceWindow({ openerDelayMinSeconds: 20, openerDelayMaxSeconds: 10 }), [10, 20]);
   assert.deepEqual(openerDelayWindow({ openerDelayMinSeconds: 9, openerDelayMaxSeconds: 4 }), [4, 9]);
-  assert.deepEqual(openerDelayWindow({ openerDelayMinSeconds: -5, openerDelayMaxSeconds: 1000 }), [3, 10]);
-  assert.equal(openerDelaySeconds({ openerDelayMinSeconds: 4, openerDelayMaxSeconds: 6 }, 0.5), 5);
-  const read = async (path) => (await import("node:fs/promises")).readFile(new URL("../" + path, import.meta.url), "utf8");
-  const [types, config, opts, html, profile, content] = await Promise.all([
+  assert.deepEqual(openerDelayWindow({ openerDelayMinSeconds: -5, openerDelayMaxSeconds: 1000 }), [8, 15]);
+  // Multi-part replies retain their own legacy 3–10s timing and are not length-adjusted here.
+  assert.equal(openerDelaySeconds({ openerDelayMinSeconds: 3, openerDelayMaxSeconds: 10 }, 0), 3);
+  assert.equal(openerDelaySeconds({ openerDelayMinSeconds: 3, openerDelayMaxSeconds: 10 }, 1), 10);
+
+  const config = { openerDelayMinSeconds: 10, openerDelayMaxSeconds: 20 };
+  const short = openerTypingDelaySeconds("cv?", config, 0.5);
+  const twoWords = openerTypingDelaySeconds("ça va ?", config, 0.5);
+  const medium = openerTypingDelaySeconds("Ça va bien, et toi comment se passe ta journée ?", config, 0.5);
+  const long = openerTypingDelaySeconds("Et toi, tu fais quoi ce weekend ? Moi je pense aller marcher un peu, profiter du temps et prendre un café en terrasse.", config, 0.5);
+  assert.ok(short >= 1 && short < 2, "one short word must not inherit a 10s fixed minimum");
+  assert.ok(twoWords >= short && twoWords < 3);
+  assert.ok(medium > twoWords);
+  assert.ok(long > medium && long > 20, "long sentences may take longer than the 60-character reference max");
+  assert.equal(openerTypingDelaySeconds("Ça va ?", config, 0), openerTypingDelaySeconds("Ça va ?", config, -12));
+  assert.equal(openerTypingDelaySeconds("Ça va ?", config, 1), openerTypingDelaySeconds("Ça va ?", config, 12));
+  assert.ok(openerTypingDelaySeconds("مرحبا كيف الحال", config, 0.5) > 1);
+  assert.ok(openerTypingDelaySeconds("a".repeat(2000), config, 1) <= 150);
+
+  const read = async path => (await import("node:fs/promises")).readFile(new URL("../" + path, import.meta.url), "utf8");
+  const [types, storage, opts, html, profile, content] = await Promise.all([
     "src/types.ts","src/storage.ts","src/options.ts","public/options.html","src/profile-bundle.ts","src/content.ts"
   ].map(read));
   assert.match(types, /openerDelayMinSeconds\?: number/);
-  assert.match(config, /openerDelayMinSeconds: DEFAULT_OPENER_MIN_SECONDS/);
-  assert.match(config, /openerDelayWindow\(savedAutomation\)/);
-  assert.match(opts, /openerDelayMinSeconds: el<HTMLInputElement>/);
-  assert.match(opts, /openerDelayMaxSeconds: el<HTMLInputElement>/);
-  assert.match(html, /id="openerDelayMinSeconds"[^>]*value="3"/);
-  assert.match(html, /id="openerDelayMaxSeconds"[^>]*value="10"/);
-  assert.match(profile, /openerDelayWindow\(automation\)/);
-  assert.match(content, /const delaySeconds = randomCadenceSeconds\(config.automation\)/);
-  assert.match(content, /const gap = openerDelaySeconds\(config.automation/);
+  assert.match(storage, /openerDelayMinSeconds: DEFAULT_OPENER_MIN_SECONDS/);
+  assert.match(storage, /openerTypingReferenceWindow\(savedAutomation\)/);
+  assert.match(profile, /openerTypingReferenceWindow\(automation\)/);
+  assert.match(opts, /openerTypingReferenceWindow\(c\.automation\)/);
+  assert.match(html, /id="openerDelayMinSeconds"[^>]*min="8"[^>]*value="8"/);
+  assert.match(html, /id="openerDelayMaxSeconds"[^>]*min="8"[^>]*value="15"/);
+  assert.match(html, /seconds per ~60 characters/);
+  assert.match(content, /const delaySeconds = randomCadenceSeconds\(config\.automation\)/);
+  assert.match(content, /const gap = openerTypingDelaySeconds\(part, config\.automation/);
+  assert.match(content, /const gap=openerDelaySeconds\(\{/);
+  assert.match(content, /sameOpenerThreadUninterrupted\(adapter\.readVisibleMessages\(\), openerParts\[index - 1\]\)/);
 });

@@ -1,7 +1,7 @@
 import { DEFAULT_CONFIG } from "./storage";
 import type { AppConfig } from "./types";
 import { firstMessageDailyLimit } from "./tinder-first-message-daily-limit";
-import { openerDelayWindow } from "./tinder-opener-timing";
+import { openerTypingReferenceWindow } from "./tinder-opener-timing";
 
 export const PROFILE_SCHEMA_VERSION = 1;
 
@@ -26,7 +26,7 @@ export function normalizeImportedConfig(value: unknown): AppConfig {
   const languages = object(raw.languages) ?? {};
   const identity = object(raw.identity) ?? {};
   const automation = object(raw.automation) ?? {};
-  const [openerDelayMinSeconds, openerDelayMaxSeconds] = openerDelayWindow(automation);
+  const [openerDelayMinSeconds, openerDelayMaxSeconds] = openerTypingReferenceWindow(automation);
 
   return {
     ...DEFAULT_CONFIG,
