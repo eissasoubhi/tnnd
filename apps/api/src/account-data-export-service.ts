@@ -6,6 +6,7 @@ export interface AccountDataExport {
   account: unknown;
   profile: unknown;
   aiProvider: unknown;
+  smartAutoSwipeSettings: unknown;
   textingStyleSourceExamples: unknown;
   conversations: unknown[];
   messages: unknown[];
@@ -40,6 +41,7 @@ export async function buildAccountDataExport(
     account,
     profile,
     aiProvider,
+    smartAutoSwipeSettings,
     textingStyleSourceExamples,
     conversations,
     messages,
@@ -52,6 +54,7 @@ export async function buildAccountDataExport(
     query("SELECT id, email, created_at, updated_at FROM users WHERE id = $1 LIMIT 1", [id]),
     query("SELECT schema_version, profile_json, created_at, updated_at FROM user_profiles WHERE user_id = $1 LIMIT 1", [id]),
     query("SELECT provider, model, created_at, updated_at FROM ai_provider_settings WHERE user_id = $1 LIMIT 1", [id]),
+    query("SELECT settings_json, updated_at FROM user_smart_auto_swipe_settings WHERE user_id = $1 LIMIT 1", [id]),
     query("SELECT examples, created_at, updated_at FROM texting_style_source_examples WHERE user_id = $1 LIMIT 1", [id]),
     query("SELECT * FROM conversations WHERE user_id = $1 ORDER BY created_at ASC", [id]),
     query(
@@ -90,6 +93,7 @@ export async function buildAccountDataExport(
     account: account.rows[0],
     profile: profile.rows[0] ?? null,
     aiProvider: aiProvider.rows[0] ?? null,
+    smartAutoSwipeSettings: smartAutoSwipeSettings.rows[0] ?? null,
     textingStyleSourceExamples: textingStyleSourceExamples.rows[0] ?? null,
     conversations: conversations.rows,
     messages: messages.rows,
