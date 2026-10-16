@@ -532,6 +532,7 @@ const server = createServer(async (request, response) => {
           ...(conversation.userDisplayAge !== undefined ? { userDisplayAge: conversation.userDisplayAge } : {}),
           ...(matchIdentity(conversation.matchFirstName, conversation.matchAge).age ? { matchAge: matchIdentity(conversation.matchFirstName, conversation.matchAge).age } : {}),
           status: conversation.status,
+          handoffPlatform: conversation.status === "moved-off-tinder" ? conversation.handoffPlatform ?? null : null,
           currentTopic: conversation.currentTopic ?? null,
           lastMessageAt: conversation.lastMessageAt ?? conversation.updatedAt,
           lastMessageDirection: conversation.lastMessageDirection ?? null,
