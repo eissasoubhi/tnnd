@@ -19,7 +19,7 @@ export function isDirectAiIdentityQuestion(value: string): boolean {
   // exchange, even when phrased as a feeling instead of "tu es une IA".
   if (/(?:j ai|jai|j avais|j avoue|i have|i ve|i feel|i think)\s+(?:(?:vraiment|un peu)\s+)?(?:l impression|le sentiment|the feeling)\s+(?:de|que|like|that)\s+(?:parler|discuter|echanger|chatting|talking).{0,48}\b(?:ia|ai|bot|robot|chatgpt|gpt)\b/u.test(text)) return true;
   if (/(?:impression|sentiment)\s+(?:de|que)\s+(?:parler|discuter|j ecris|tu ecris|je parle).{0,44}\b(?:ia|ai|bot|robot|chatgpt|gpt)\b/u.test(text)) return true;
-  if (/^(?:on dirait|j ai l impression|j ai le sentiment|it feels like|feels like|sounds like|seems like).{0,70}\b(?:ia|ai|bot|robot|chatgpt|gpt)\b/u.test(text)) return true;
+  if (/^(?:on dirait|it feels like|feels like|sounds like|seems like)\s+(?:(?:que|that)\s+)?(?:(?:je|tu|on|you|we|i)\s+(?:parle|discute|ecris|reponds|talk|chat|write|sound|am)\b.{0,48}|(?:une?|an?)\s+)(?:\b(?:ia|ai|bot|robot|chatgpt|gpt)\b)/u.test(text)) return true;
   if (/^(?:tu|vous|t|you)\s+(?:reponds|repondez|ecris|ecrivez|parles|parlez|sound|talk|write|text)\s+(?:comme|like)\s+(?:une?\s+|un\s+|an?\s+)?(?:ia|ai|bot|robot|chatgpt|gpt)\b/u.test(text)) return true;
   // French/English direct, second-person accusations or questions.
   if (/^(?:tu|vous|t)\s+(?:es|etes|est|utilises|utilisez)\s+(?:une?\s+|un\s+)?(?:ia|ai|bot|robot|chatgpt|gpt)(?:\s|$)/u.test(text)) return true;
