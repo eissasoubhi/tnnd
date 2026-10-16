@@ -239,3 +239,51 @@ test("automatic extension prompt reacts to French hhh as a gentle laughter cue, 
   assert.match(sentPrompt, /respond to THAT hook/);
   assert.doesNotMatch(sentPrompt, /Prefer natural Latin-script Darija/);
 });
+
+
+test("direct Darija AI identity question blocks automatic generation before any provider call", async () => {
+  let settingsLoaded = false;
+  let modelCalled = false;
+  await assert.rejects(() => generateExtensionSuggestions(
+    "test-user",
+    {
+      purpose: "auto",
+      count: 1,
+      context: "Me: Je travaille comme dev\\nThem: Nta Rak iA",
+      config: {}
+    },
+    async () => {
+      settingsLoaded = true;
+      return { provider: "gemini", model: "gemini-test", apiKey: "secret" };
+    },
+    async () => {
+      modelCalled = true;
+      return new Response("");
+    },
+    async () => ({ memories: [] })
+  ), /human_ai_identity_review_required/);
+  assert.equal(settingsLoaded, false);
+  assert.equal(modelCalled, false);
+});
+
+test("AI identity question in an older message is not a new automatic-blocking event", async () => {
+  let called = false;
+  const result = await generateExtensionSuggestions(
+    "test-user",
+    {
+      purpose: "auto", count: 1,
+      context: "Them: nta ia\\nMe: Je t'explique ce que j'utilise\\nThem: Tu veux parler de quoi ?",
+      config: {}
+    },
+    async () => ({ provider: "gemini", model: "test", apiKey: "secret" }),
+    async () => {
+      called = true;
+      return new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ text: '["On peut parler de nos passions."]' }] } }]
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    },
+    async () => ({ memories: [] })
+  );
+  assert.equal(called, true);
+  assert.equal(result.suggestions.length, 1);
+});
