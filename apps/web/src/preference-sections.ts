@@ -25,6 +25,12 @@ export const preferenceSections = [
     ids: ["french-style", "darija-style", "english-style", "adapt-languages"]
   },
   {
+    title: "Contact & handoff",
+    description: "Your own Instagram/WhatsApp and where conversations should continue.",
+    expanded: false,
+    ids: ["profile-instagram", "profile-whatsapp", "profile-contact-preference"]
+  },
+  {
     title: "Multi-bubble replies",
     description: "Optional: split longer messages into two separate bubbles.",
     expanded: false,

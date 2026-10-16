@@ -20,6 +20,9 @@ export interface EditablePreferences {
   /** Passport / target city is NOT the user's current residence. */
   targetCities?: string;
   originCity?: string;
+  instagram?: string;
+  whatsapp?: string;
+  contactPreference?: "instagram-first" | "whatsapp-first" | "stay-on-tinder";
   residenceCity?: string;
   currentCity?: string;
   originNeighborhood?: string;
@@ -81,6 +84,10 @@ export function readEditablePreferences(profile: ImportedProfile): EditablePrefe
     datingGoalDetails: optionalStringValue(datingIntent.datingGoalDetails),
     targetCities: Array.isArray(datingIntent.targetCities) ? datingIntent.targetCities.filter((city): city is string => typeof city === "string").join(", ") : "",
     originCity: optionalStringValue(identity.originCity) || optionalStringValue(identity.origin),
+    instagram: optionalStringValue(identity.instagram),
+    whatsapp: optionalStringValue(identity.whatsapp),
+    contactPreference: ["instagram-first", "whatsapp-first", "stay-on-tinder"].includes(String(identity.contactPreference))
+      ? identity.contactPreference as EditablePreferences["contactPreference"] : "instagram-first",
     residenceCity: optionalStringValue(identity.residenceCity) || optionalStringValue(identity.city),
     currentCity: optionalStringValue(identity.currentCity),
     originNeighborhood: optionalStringValue(identity.originNeighborhood),
@@ -135,6 +142,9 @@ export function writeEditablePreferences(profile: ImportedProfile, preferences: 
     identity: {
       ...identity,
       originCity: preferences.originCity === undefined ? identity.originCity : preferences.originCity.trim().slice(0,120),
+      instagram: preferences.instagram === undefined ? identity.instagram : preferences.instagram.trim().slice(0,160),
+      whatsapp: preferences.whatsapp === undefined ? identity.whatsapp : preferences.whatsapp.trim().slice(0,160),
+      contactPreference: preferences.contactPreference === undefined ? identity.contactPreference : preferences.contactPreference,
       residenceCity: preferences.residenceCity === undefined ? identity.residenceCity : preferences.residenceCity.trim().slice(0,120),
       currentCity: preferences.currentCity === undefined ? identity.currentCity : preferences.currentCity.trim().slice(0,120),
       originNeighborhood: preferences.originNeighborhood === undefined ? identity.originNeighborhood : preferences.originNeighborhood.trim().slice(0,120),

@@ -143,7 +143,17 @@ app.innerHTML = `
             <input id="casual-expressions" maxlength="1600" placeholder="plan cul, one night stand">
             <p class="subtle">Custom expressions suggest an intention; they never auto-pause a match. Do not infer height or intentions from photographs.</p>
           </div><label>Disclosure<select id="disclosure-strategy">${options(disclosureStrategies)}</select></label>
-          <div class="dating-goal-editor"><h3>Long replies in multiple bubbles</h3><label><input id="multi-part-replies" type="checkbox"> Sometimes send long replies in 2 separate Tinder bubbles</label><p class="subtle">One generated reply; natural sentence boundary only. 3–10 seconds between bubbles; stop if the match replies or you intervene.</p><label>Minimum reply characters<input id="multi-part-min-characters" type="number" min="90" max="400" step="10" value="150"></label></div><label>Formality<select id="text-formality"><option value="very-casual">very-casual</option><option value="casual">casual</option><option value="neutral">neutral</option></select></label>
+          <div class="dating-goal-editor">
+            <h3>Contact details & off-app preferences</h3>
+            <p class="subtle">Your own verified contact details, used only when appropriate. TNND never invents or shares a handle from the match's name.</p>
+            <label>Instagram username or link<input id="profile-instagram" maxlength="160" autocomplete="off" placeholder="@yourusername"></label>
+            <label>WhatsApp number or contact link<input id="profile-whatsapp" maxlength="160" autocomplete="off" placeholder="+212…"></label>
+            <label>Preferred contact handoff<select id="profile-contact-preference">
+              <option value="instagram-first">Instagram first</option>
+              <option value="whatsapp-first">WhatsApp first</option>
+              <option value="stay-on-tinder">Stay on Tinder</option>
+            </select></label>
+          </div><div class="dating-goal-editor"><h3>Long replies in multiple bubbles</h3><label><input id="multi-part-replies" type="checkbox"> Sometimes send long replies in 2 separate Tinder bubbles</label><p class="subtle">One generated reply; natural sentence boundary only. 3–10 seconds between bubbles; stop if the match replies or you intervene.</p><label>Minimum reply characters<input id="multi-part-min-characters" type="number" min="90" max="400" step="10" value="150"></label></div><label>Formality<select id="text-formality"><option value="very-casual">very-casual</option><option value="casual">casual</option><option value="neutral">neutral</option></select></label>
           <label>Capitalization<select id="capitalization"><option value="relaxed">relaxed</option><option value="standard">standard</option><option value="lowercase-heavy">lowercase-heavy</option></select></label>
           <label>Emoji frequency<select id="emoji-frequency"><option value="none">none</option><option value="low">low</option><option value="medium">medium</option></select></label>
           <label>Abbreviations<select id="abbreviations"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
@@ -214,6 +224,9 @@ const preferencesSaveFeedback = document.querySelector<HTMLElement>("#preference
 const datingGoal = document.querySelector<HTMLSelectElement>("#dating-goal");
 const datingGoalDetails = document.querySelector<HTMLTextAreaElement>("#dating-goal-details");
 const targetCities = document.querySelector<HTMLInputElement>("#target-cities");
+const profileInstagram = document.querySelector<HTMLInputElement>("#profile-instagram");
+const profileWhatsapp = document.querySelector<HTMLInputElement>("#profile-whatsapp");
+const profileContactPreference = document.querySelector<HTMLSelectElement>("#profile-contact-preference");
 const originCity = document.querySelector<HTMLInputElement>("#origin-city");
 const residenceCity = document.querySelector<HTMLInputElement>("#residence-city");
 const currentCity = document.querySelector<HTMLInputElement>("#current-city");
@@ -336,7 +349,7 @@ async function refreshProfile(): Promise<void> {
 }
 
 function refreshPreferences(profile: ImportedProfile | null): void {
-  const controls = [datingGoal, datingGoalDetails, targetCities, originCity, residenceCity, currentCity, originNeighborhood, residenceNeighborhood, multiPartReplies, multiPartMinCharacters, pauseOnMarriage, maxMatchHeight, marriageExpressions, casualExpressions, disclosureStrategy, textFormality, capitalization, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, fragmentStyle, grammarStyle, directness, questionFrequency, teasingStyle, humorStyle, doubleTexting, frenchStyle, darijaStyle, englishStyle, matchProfileRetentionDays, ...Object.values(adaptiveCheckboxes), preferencesSave];
+  const controls = [datingGoal, datingGoalDetails, targetCities, profileInstagram, profileWhatsapp, profileContactPreference, originCity, residenceCity, currentCity, originNeighborhood, residenceNeighborhood, multiPartReplies, multiPartMinCharacters, pauseOnMarriage, maxMatchHeight, marriageExpressions, casualExpressions, disclosureStrategy, textFormality, capitalization, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, fragmentStyle, grammarStyle, directness, questionFrequency, teasingStyle, humorStyle, doubleTexting, frenchStyle, darijaStyle, englishStyle, matchProfileRetentionDays, ...Object.values(adaptiveCheckboxes), preferencesSave];
   controls.forEach((control) => { if (control) control.disabled = !profile; });
   if (!profile) {
     if (preferencesStatus) preferencesStatus.textContent = "Import a profile first";
@@ -347,6 +360,9 @@ function refreshPreferences(profile: ImportedProfile | null): void {
   if (datingGoal) datingGoal.value = preferences.datingGoal;
   if (datingGoalDetails) datingGoalDetails.value = preferences.datingGoalDetails ?? "";
   if (targetCities) targetCities.value = preferences.targetCities ?? "";
+  if (profileInstagram) profileInstagram.value = preferences.instagram ?? "";
+  if (profileWhatsapp) profileWhatsapp.value = preferences.whatsapp ?? "";
+  if (profileContactPreference) profileContactPreference.value = preferences.contactPreference ?? "instagram-first";
   if (originCity) originCity.value = preferences.originCity ?? "";
   if (residenceCity) residenceCity.value = preferences.residenceCity ?? "";
   if (currentCity) currentCity.value = preferences.currentCity ?? "";
@@ -478,6 +494,9 @@ preferencesSave?.addEventListener("click", async () => {
     datingGoal: datingGoal.value,
     datingGoalDetails: datingGoalDetails.value,
     targetCities: targetCities.value,
+    instagram: profileInstagram?.value,
+    whatsapp: profileWhatsapp?.value,
+    contactPreference: profileContactPreference?.value as "instagram-first" | "whatsapp-first" | "stay-on-tinder" | undefined,
     originCity: originCity?.value,
     residenceCity: residenceCity?.value,
     currentCity: currentCity?.value,

@@ -284,3 +284,29 @@ describe("separate location and multipart preferences",()=>{
   assert.equal(readEditablePreferences(saved).multiPartMinCharacters,110);
  });
 });
+
+describe("contacts managed on Web", () => {
+  it("round-trips Instagram, WhatsApp and handoff strategy without changing unknown identity fields", () => {
+    const initial = { ...profile(), identity: { firstName: "A", extra: "preserve" } };
+    const prefs = readEditablePreferences(initial);
+    const updated = writeEditablePreferences(initial, {
+      ...prefs, instagram: " @myaccount ", whatsapp: " +212600000000 ", contactPreference: "whatsapp-first"
+    });
+    const identity = updated.identity as Record<string, unknown>;
+    assert.equal(identity.instagram, "@myaccount");
+    assert.equal(identity.whatsapp, "+212600000000");
+    assert.equal(identity.contactPreference, "whatsapp-first");
+    assert.equal(identity.extra, "preserve");
+    assert.equal(readEditablePreferences(updated).contactPreference, "whatsapp-first");
+  });
+  it("does not erase existing contacts when legacy preferences omit them", () => {
+    const initial = { ...profile(), identity: { instagram: "@saved", whatsapp: "+33010101010", contactPreference: "stay-on-tinder" } };
+    const prefs = readEditablePreferences(initial);
+    delete prefs.instagram; delete prefs.whatsapp; delete prefs.contactPreference;
+    const updated = writeEditablePreferences(initial, prefs);
+    const identity = updated.identity as Record<string, unknown>;
+    assert.equal(identity.instagram, initial.identity.instagram);
+    assert.equal(identity.whatsapp, initial.identity.whatsapp);
+    assert.equal(identity.contactPreference, initial.identity.contactPreference);
+  });
+});
