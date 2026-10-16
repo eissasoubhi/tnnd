@@ -64,3 +64,21 @@ test("popup keeps automation prerequisites readable without hiding runner contro
   assert.match(css, /\.runner-status-panel \{/);
   assert.match(css, /\.tnnd-advanced-tools > summary \{/);
 });
+
+
+test("popup keeps essential stop controls reachable and legacy starts optional", () => {
+  const popup = read("public/popup.html");
+  assert.match(popup, /<summary>Alternative: full existing-chat sweep<\/summary>/);
+  assert.match(popup, /<summary>Alternative: future matches<\/summary>/);
+  assert.match(popup, /<summary>How monitoring works<\/summary>/);
+  assert.match(popup, /Watch replies \+ matches \(no first messages\)/);
+  for (const id of ["startReplyWatcher", "stopReplyWatcher", "startGlobalExisting", "stopGlobalExisting",
+    "startExistingMatchBatch", "startNewMatchObservation", "stopNewMatchObservation", "globalExistingCadence"]) {
+    assert.equal((popup.match(new RegExp('id="' + id + '"', "g")) ?? []).length, 1, id + " should remain wired once");
+  }
+  const legacy = popup.indexOf('<summary>Alternative: full existing-chat sweep</summary>');
+  const sweepStart = popup.indexOf('id="startGlobalExisting"');
+  const sweepStop = popup.indexOf('id="stopGlobalExisting"');
+  assert.ok(legacy < sweepStart && sweepStart < sweepStop, "Legacy start is disclosed first; Stop remains visible");
+  assert.doesNotMatch(popup, /\.quick-actions\{position:sticky/);
+});
