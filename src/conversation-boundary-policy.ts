@@ -18,12 +18,12 @@ export type ConversationBoundary = {
 const CONTINUE: ConversationBoundary = { kind: "continue", platform: null };
 
 function normalize(value: string): string {
-  return value.normalize("NFKC").replace(/\s+/gu, " ").trim().toLocaleLowerCase();
+  return value.normalize("NFKD").replace(/\p{M}/gu, "").replace(/\s+/gu, " ").trim().toLocaleLowerCase();
 }
 
 function socialPlatform(text: string): ConversationBoundary["platform"] {
-  if (/\b(?:instagram|insta|ig)\b/u.test(text)) return "instagram";
-  if (/\b(?:whatsapp|whats[ -]?app|wa)\b/u.test(text)) return "whatsapp";
+  if (/\b(?:instagram|insta|ig)\b/u.test(text) || /(?:انستغرام|انستجرام)/u.test(text)) return "instagram";
+  if (/\b(?:whatsapp|whats[ -]?app|wa)\b/u.test(text) || /واتساب/u.test(text)) return "whatsapp";
   if (/\b(?:snapchat|snap)\b/u.test(text)) return "snapchat";
   if (/\b(?:telegram)\b/u.test(text)) return "telegram";
   return null;
@@ -36,11 +36,13 @@ function handoffProposal(text: string): ConversationBoundary["platform"] {
   const move = /\b(?:on\s+(?:se\s+)?parle|on\s+passe|on\s+continue|on\s+discute|parlons|passe|passons|viens|viens\s+me\s+parler|ecris(?:-moi)?|écris(?:-moi)?|ajoute(?:-moi)?|contacte(?:-moi)?|discutons|retrouve(?:-moi)?|let'?s\s+(?:talk|chat|move)|talk\s+(?:on|there)|message\s+me|text\s+me|dm\s+me|add\s+me|switch\s+to|move\s+to|write\s+me)\b/u.test(text);
   const afterApp = /\b(?:instagram|insta|ig|whatsapp|whats[ -]?app|snapchat|snap|telegram)\b.{0,36}\b(?:on\s+se\s+parle|on\s+passe|parlons|écris(?:-moi)?|ecris(?:-moi)?|message\s+me|talk|chat|dm|là-bas|there)\b/u.test(text);
   const negatives = /\b(?:pas\s+(?:sur|de|envie)|ne\s+(?:veux|souhaite)\s+pas|don't|do\s+not|never|non\s+merci|refuse)\b/u.test(text);
-  return !negatives && (move || afterApp) ? platform : null;
+  const darijaMove = /(?:نهضرو|نهضر|نكمّلو|نكملو|صيفط ليا|كتب ليا)/u.test(text);
+  const darijaRefusal = /(?:ما بغيتش|مابغيتش|ماشي باغي|ماشي باغية)/u.test(text);
+  return !negatives && !darijaRefusal && (move || afterApp || darijaMove) ? platform : null;
 }
 
 function affirmative(text: string): boolean {
-  return /^(?:ok(?:ay)?|oui|yes|yep|yeah|d'accord|daccord|ça\s+marche|ca\s+marche|c'est\s+bon|cest\s+bon|vas-y|va\s+y|parfait|sounds\s+good|sure|deal|واخا|حاضر)[\s.!?👌👍🙂😊😘❤️❤]*$/u.test(text);
+  return /^(?:ok(?:ay)?|oui|yes|yep|yeah|d'accord|daccord|ça\s+marche|ca\s+marche|c'est\s+bon|cest\s+bon|vas-y|va\s+y|parfait|sounds\s+good|sure|deal|you\s+too|toi\s+aussi|likewise|واخا|حاضر)[\s.!?👌👍🙂😊😘❤️❤]*$/u.test(text);
 }
 
 function goodbye(text: string): boolean {
@@ -48,7 +50,7 @@ function goodbye(text: string): boolean {
 }
 
 function refusesContact(text: string): boolean {
-  return /^(?:s'il\s+te\s+pla[iî]t\s+)?(?:ne\s+m['’]?écris\s+plus|ne\s+me\s+contacte\s+plus|arrête\s+de\s+m['’]?écrire|arrete\s+de\s+m['’]?ecrire|don't\s+(?:text|message|contact)\s+me\s+again|stop\s+(?:texting|messaging|contacting)\s+me|leave\s+me\s+alone)[\s.!?]*$/u.test(text);
+  return /^(?:s'il\s+te\s+pla[iî]t\s+)?(?:ne\s+m['’]?ecris\s+plus|ne\s+me\s+contacte\s+plus|arrete\s+de\s+m['’]?ecrire|arrete\s+de\s+m['’]?ecrire|don't\s+(?:text|message|contact)\s+me\s+again|stop\s+(?:texting|messaging|contacting)\s+me|leave\s+me\s+alone)[\s.!?]*$/u.test(text);
 }
 
 /** Evidence is evaluated newest-first, in the order it was actually observed. */
@@ -75,7 +77,8 @@ export function classifyConversationBoundary(
     const precedingText = normalize(previous.text);
     const previousPlatform = handoffProposal(precedingText);
     const isSharedHandle = /^@?[\p{L}\p{N}][\p{L}\p{N}._-]{2,35}$/u.test(text)
-      && !/^(?:ok|oui|yes|non|hello|salut|bye)$/u.test(text);
+      && (text.startsWith("@") || /[\d._-]/u.test(text))
+      && !/^(?:non|jamais|never|no)$/u.test(text);
     if (previousPlatform && (affirmative(text) || isSharedHandle))
       return { kind: "off-tinder", platform: previousPlatform };
     if (goodbye(precedingText) && (goodbye(text) || affirmative(text)))
