@@ -1,4 +1,5 @@
 import { TinderDomAdapter } from "./tinder-adapter";
+import { observeSwipeDiscoveryControls } from "./tinder-swipe-discovery-evidence";
 import { readVisibleTinderMatchIdentity, type VisibleTinderMatchIdentity } from "./tinder-chat-identity";
 import { readVisibleTinderProfilePanel } from "./tinder-visible-profile-panel";
 import { detectVisibleTinderSidebarTab, visibleTinderThreadRefs } from "./tinder-visible-thread-links";
@@ -58,7 +59,7 @@ interface DiagnosticSnapshot {
     viewport: { width: number; height: number; devicePixelRatio: number };
     document: { width: number; height: number };
   };
-  selectors: ReturnType<TinderDomAdapter["diagnose"]>;
+  selectors: ReturnType<TinderDomAdapter["diagnose"]> & { swipeControls: ReturnType<typeof observeSwipeDiscoveryControls> };
   resources: Array<{
     name: string;
     initiatorType: string;
@@ -278,7 +279,7 @@ async function diagnosticSnapshot(): Promise<DiagnosticSnapshot> {
       viewport: { width: innerWidth, height: innerHeight, devicePixelRatio },
       document: { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight }
     },
-    selectors: adapter.diagnose(),
+    selectors: { ...adapter.diagnose(), swipeControls: observeSwipeDiscoveryControls(document, location.pathname, !readCurrentTinderUiState().boundedActionAllowed) },
     resources,
     config: {
       model: config.model,
