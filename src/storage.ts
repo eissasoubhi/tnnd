@@ -2,6 +2,7 @@ import { findLegacyChatSettingsKey } from "./tinder-chat-detection";
 import type { AppConfig, ChatSettings } from "./types";
 import { defaultSyncState, type SyncState } from "./sync-status";
 import { applyServerProfile } from "./server-effective-config";
+import { withBrowserRuntimeControls } from "./settings-ownership";
 import { DEFAULT_FIRST_MESSAGE_DAILY_LIMIT, firstMessageDailyLimit } from "./tinder-first-message-daily-limit";
 import { DEFAULT_OPENER_MIN_SECONDS, DEFAULT_OPENER_MAX_SECONDS, openerTypingReferenceWindow } from "./tinder-opener-timing";
 
@@ -149,7 +150,7 @@ export async function getConfig(options: { includeBackendProfile?: boolean } = {
   const session = result[BACKEND_SESSION_KEY] as BackendSession | undefined;
   return options.includeBackendProfile === false
     ? localConfig
-    : applyServerProfile(localConfig, cacheBelongsToSession(cache, session) ? cache!.profile : undefined);
+    : withBrowserRuntimeControls(localConfig, applyServerProfile(localConfig, cacheBelongsToSession(cache, session) ? cache!.profile : undefined));
 }
 
 export async function saveConfig(config: AppConfig): Promise<void> {
