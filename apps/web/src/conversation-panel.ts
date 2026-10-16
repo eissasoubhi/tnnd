@@ -409,11 +409,73 @@ export function prioritizeWaitingReplies(items: readonly ConversationListItem[])
     || a.id.localeCompare(b.id));
 }
 
+let messageMatches: string[] | null = null;
+let messageSearchSequence = 0;
+let messageSearchTimer: ReturnType<typeof setTimeout> | null = null;
+let messageSearchBusy = false;
+
+function advancedFiltersActive(): boolean {
+  if (!elements) return false;
+  return elements.sort.value !== "recent" || Boolean(elements.minAge.value || elements.maxAge.value
+    || elements.cities.selectedOptions.length || elements.goal.value
+    || elements.contact.value !== "all" || elements.length.value !== "all"
+    || elements.messageSearch.value.trim());
+}
 function filteredItems(): ConversationListItem[] {
-  return prioritizeWaitingReplies(filterConversationSummaries(cachedItems, {
-    status: (elements?.filter.value ?? "all") as ConversationStatus | "all",
-    query: elements?.search.value ?? ""
-  }));
+  if (!elements) return [];
+  const min = Number(elements.minAge.value), max = Number(elements.maxAge.value);
+  return filterConversationSummaries(cachedItems, {
+    status: (elements.filter.value ?? "all") as ConversationStatus | "all",
+    query: elements.search.value,
+    sort: elements.sort.value as ConversationSort,
+    ageMin: elements.minAge.value && min >= 18 && min <= 120 ? min : null,
+    ageMax: elements.maxAge.value && max >= 18 && max <= 120 ? max : null,
+    cities: Array.from(elements.cities.selectedOptions, option => option.value),
+    datingGoal: elements.goal.value,
+    matchContact: elements.contact.value as ContactFromMatch,
+    length: elements.length.value as ConversationLength,
+    messageSearchIds: elements.messageSearch.value.trim() ? (messageMatches ?? []) : null
+  });
+}
+function updateFacets(): void {
+  if (!elements) return;
+  const previousCities = new Set(Array.from(elements.cities.selectedOptions, x => x.value));
+  const previousGoal = elements.goal.value;
+  const cities = [...new Set(cachedItems.map(x => x.matchCity?.trim()).filter((x): x is string => Boolean(x)))].sort();
+  const goals = [...new Set(cachedItems.map(x => x.matchDatingGoal?.trim()).filter((x): x is string => Boolean(x)))].sort();
+  elements.cities.innerHTML = cities.map(city => '<option value="' + escapeHtml(city) + '"' + (previousCities.has(city) ? ' selected' : '') + '>' + escapeHtml(city) + '</option>').join("");
+  elements.goal.innerHTML = '<option value="">Any known goal</option>' + goals.map(goal => '<option value="' + escapeHtml(goal) + '"' + (goal === previousGoal ? ' selected' : '') + '>' + escapeHtml(goal) + '</option>').join("");
+}
+async function lookupMessageContent(): Promise<void> {
+  if (!elements) return;
+  const session = readSession();
+  const query = elements.messageSearch.value.trim();
+  const seq = ++messageSearchSequence;
+  messageMatches = null;
+  if (!session || query.length < 2) {
+    messageSearchBusy = false;
+    elements.filterNotice.textContent = query ? "Enter at least two characters to search saved messages." : "Only synced match profile fields and detected incoming contacts are filterable.";
+    applyConversationFilters();
+    return;
+  }
+  messageSearchBusy = true;
+  elements.filterNotice.textContent = "Searching synchronized message text…";
+  applyConversationFilters();
+  try {
+    const ids = await searchConversationContent(session, query);
+    if (seq !== messageSearchSequence || readSession()?.token !== session.token || elements.messageSearch.value.trim() !== query) return;
+    messageMatches = ids;
+    elements.filterNotice.textContent = "Search finished. Results include only saved conversations.";
+  } catch {
+    if (seq !== messageSearchSequence || readSession()?.token !== session.token) return;
+    messageMatches = [];
+    elements.filterNotice.textContent = "Message search unavailable. Check the API connection and retry.";
+  } finally {
+    if (seq === messageSearchSequence) {
+      messageSearchBusy = false;
+      applyConversationFilters();
+    }
+  }
 }
 
 function bindRows(items: ConversationListItem[]): void {
@@ -442,8 +504,8 @@ function bindRows(items: ConversationListItem[]): void {
 function renderCurrentList(): void {
   if (!elements) return;
   const items = filteredItems();
-  const filtered = hasConversationFilters(elements.search.value, elements.filter.value);
-  elements.list.innerHTML = renderList(items, cachedItems.length, filtered, selectedConversationId);
+  const filtered = hasConversationFilters(elements.search.value, elements.filter.value) || advancedFiltersActive();
+  elements.list.innerHTML = messageSearchBusy ? '<p class="subtle" role="status">Searching synced messages…</p>' : renderList(items, cachedItems.length, filtered, selectedConversationId);
   elements.clearFilters.hidden = !filtered;
   elements.summary.textContent = `${items.length} shown · ${cachedItems.length} total`;
   elements.stats.innerHTML = renderOperationalSummary(cachedItems);
@@ -613,6 +675,16 @@ async function refresh(): Promise<void> {
     ++detailRequestSequence;
     elements.search.value = "";
     elements.filter.value = "all";
+    elements.sort.value = "recent";
+    elements.minAge.value = "";
+    elements.maxAge.value = "";
+    elements.contact.value = "all";
+    elements.length.value = "all";
+    elements.messageSearch.value = "";
+    messageMatches = null;
+    messageSearchBusy = false;
+    ++messageSearchSequence;
+    if (messageSearchTimer) clearTimeout(messageSearchTimer);
     elements.clearFilters.hidden = true;
     elements.summary.textContent = "";
     elements.stats.innerHTML = "";
@@ -637,6 +709,7 @@ async function refresh(): Promise<void> {
     const items = await listConversations(session);
     if (!isCurrentConversationResponse(requestId, refreshRequestSequence, session.token, readSession()?.token)) return;
     cachedItems = items;
+    updateFacets();
     window.dispatchEvent(new CustomEvent("tnnd:conversation-updated"));
     elements.status.textContent = `${cachedItems.length} synced`;
     const visible = filteredItems();
@@ -675,10 +748,31 @@ function applyConversationFilters(): void {
 }
 elements?.filter.addEventListener("change", applyConversationFilters);
 elements?.search.addEventListener("input", applyConversationFilters);
+elements?.advanced.addEventListener("change", applyConversationFilters);
+elements?.messageSearch.addEventListener("input", () => {
+  if (messageSearchTimer) clearTimeout(messageSearchTimer);
+  messageSearchBusy = false;
+  messageMatches = null;
+  ++messageSearchSequence;
+  messageSearchTimer = setTimeout(() => { void lookupMessageContent(); }, 300);
+  applyConversationFilters();
+});
 elements?.clearFilters.addEventListener("click", () => {
   if (!elements) return;
   elements.filter.value = "all";
   elements.search.value = "";
+  elements.sort.value = "recent";
+  elements.minAge.value = "";
+  elements.maxAge.value = "";
+  Array.from(elements.cities.options).forEach(option => { option.selected = false; });
+  elements.goal.value = "";
+  elements.contact.value = "all";
+  elements.length.value = "all";
+  elements.messageSearch.value = "";
+  messageMatches = null;
+  messageSearchBusy = false;
+  ++messageSearchSequence;
+  if (messageSearchTimer) clearTimeout(messageSearchTimer);
   applyConversationFilters();
   elements.search.focus();
 });
