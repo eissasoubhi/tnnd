@@ -6,7 +6,7 @@ import { firstMessageAttemptKey, firstMessageBlocker, firstMessageContext } from
 import { groundedOpenerFragments, sameOpenerThreadUninterrupted } from "./tinder-opener-fragments";
 import { openerDelaySeconds, openerTypingDelaySeconds } from "./tinder-opener-timing";
 import { naturalReplyBubbles } from "./tinder-reply-bubbles";
-import { isDirectAiIdentityQuestion } from "./conversation-ai-identity-question";
+import { automaticReplyHold, hasUnexpectedScriptMix, replyNeedsHumanReview } from "./conversation-reply-safety";
 import { syncConversationDelta } from "./conversation-sync";
 import { observeTinderRuntime } from "./tinder-runtime-observation";
 import { readCurrentTinderUiState } from "./tinder-runtime-state";
@@ -494,15 +494,22 @@ async function scan(): Promise<void> {
 
     const state = await getState();
     if (!state) return;
-    if (isDirectAiIdentityQuestion(snapshot.latestIncomingText)) {
-      // A direct accusation/question about AI is for the account owner,
-      // not a model-generated denial or distracting reply. Claim the
-      // observed inbound bubble without consuming the daily send quota.
+    const visible = adapter.readVisibleMessages().map(message => ({
+      direction: message.direction === "them" ? "incoming" as const : "outgoing" as const,
+      text: message.text
+    }));
+    const hold = automaticReplyHold(visible);
+    if (hold) {
+      // A match's consecutive messages belong to one turn: the latest "hhh"
+      // must not hide an earlier question about AI. Nor should "ok ça marche"
+      // trigger a final unnecessary joke. Never consume the reply quota.
       if (!state.processed[snapshot.latestIncomingKey]) {
         state.processed[snapshot.latestIncomingKey] = Date.now();
         if (!await saveState(state)) return;
       }
-      reportExistingRunner("skipped", "Match asked if AI is involved · automatic reply stopped. Respond personally and truthfully in Tinder; review TNND Action Center.");
+      reportExistingRunner(hold === "ai-identity" ? "skipped" : "waiting", hold === "ai-identity"
+        ? "The match asked whether AI is involved · no automatic reply. Respond personally and truthfully, then review Action Center."
+        : "The match acknowledged the previous message · conversation left in peace.");
       return;
     }
     if (state.processed[snapshot.latestIncomingKey] ||
@@ -528,6 +535,14 @@ async function scan(): Promise<void> {
     const stillEnabled = await getChatAutomationEnabled(currentSnapshot.threadKey);
     if (stillEnabled !== true) return;
 
+    const recheckMessages = adapter.readVisibleMessages().map(message => ({
+      direction: message.direction === "them" ? "incoming" as const : "outgoing" as const,
+      text: message.text
+    }));
+    if (automaticReplyHold(recheckMessages)) {
+      reportExistingRunner("skipped", "Conversation now needs no automatic reply · pending generation cancelled.");
+      return;
+    }
     reportExistingRunner("generating", "Preparing an AI reply with Gemini…");
     const reply = await generateReply(currentSnapshot.context, currentSnapshot.threadKey);
     if (!reply || !hasLiveExtensionContext()) return;
@@ -543,6 +558,23 @@ async function scan(): Promise<void> {
     if (!finalSnapshot || finalSnapshot.latestIncomingKey !== currentSnapshot.latestIncomingKey
       || finalSnapshot.threadKey !== currentSnapshot.threadKey) {
       reportExistingRunner("skipped", "Visible conversation changed while generating · reply cancelled.");
+      return;
+    }
+    const finalMessages = adapter.readVisibleMessages().map(message => ({
+      direction: message.direction === "them" ? "incoming" as const : "outgoing" as const,
+      text: message.text
+    }));
+    const finalHold = automaticReplyHold(finalMessages);
+    if (finalHold || replyNeedsHumanReview(reply) || hasUnexpectedScriptMix(reply, finalMessages)) {
+      const processed = await getState();
+      if (!processed) return;
+      processed.processed[finalSnapshot.latestIncomingKey] = Date.now();
+      if (!await saveState(processed)) return;
+      reportExistingRunner("skipped", finalHold === "ai-identity" || replyNeedsHumanReview(reply)
+        ? "Possible AI disclosure or deceptive denial · reply blocked. Human review required."
+        : finalHold === "acknowledgement"
+          ? "Match closed this exchange · no follow-up sent."
+          : "Mixed Arabic/Latin-script reply held for manual review.");
       return;
     }
     const freshState = await getState();
