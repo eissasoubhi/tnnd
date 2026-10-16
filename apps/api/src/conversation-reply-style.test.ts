@@ -42,7 +42,7 @@ test("one natural laugh is allowed with no recent filler, while repeated fillers
 });
 
 test("a French message ending in hhh invites attention to its playful meaning, not a Darija switch", () => {
-  const context = "Me: Tu explores différents cafés ?\\nThem: Je teste plein d'endroits mais je reste fidèle à mon café préféré hhh";
+  const context = "Me: Tu explores différents cafés ?\nThem: Je teste plein d'endroits mais je reste fidèle à mon café préféré hhh";
   const cues = readReplyStyleCues(readLabeledReplyHistory(context));
   assert.equal(cues.recentLanguage, "fr");
   assert.equal(cues.latestIncomingLaughter, true);
@@ -56,7 +56,7 @@ test("a French message ending in hhh invites attention to its playful meaning, n
 
 test("the match's hhh is a tone cue, not a reason to force an outgoing laugh or flirt", () => {
   const cues = readReplyStyleCues(readLabeledReplyHistory(
-    "Me: haha oui\\nThem: Mon adresse préférée reste la même hhh"
+    "Me: haha oui\nThem: Mon adresse préférée reste la même hhh"
   ));
   assert.equal(cues.latestIncomingLaughter, true);
   assert.equal(cues.repeatedSenderLaughter, true);
@@ -66,9 +66,9 @@ test("the match's hhh is a tone cue, not a reason to force an outgoing laugh or 
 });
 
 test("an older match laugh does not carry over when the latest turn is serious or outgoing", () => {
-  const history = readLabeledReplyHistory("Them: trop drôle hhh\\nThem: j'ai eu une journée difficile");
+  const history = readLabeledReplyHistory("Them: trop drôle hhh\nThem: j'ai eu une journée difficile");
   assert.equal(readReplyStyleCues(history).latestIncomingLaughter, false);
   assert.doesNotMatch(replyStyleGuidance(readReplyStyleCues(history)), /The match's current message contains a laugh cue/);
-  const sentLast = readLabeledReplyHistory("Them: oui hhh\\nMe: d'accord");
+  const sentLast = readLabeledReplyHistory("Them: oui hhh\nMe: d'accord");
   assert.equal(readReplyStyleCues(sentLast).latestIncomingLaughter, false);
 });
