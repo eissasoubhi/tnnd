@@ -122,6 +122,7 @@ export async function generateConversationReply(
     conversationFlowGuidance(conversation.conversationFlow),
     temporalConversationGuidance(generationProfile.userProfile?.identity, supplementalContext.matchProfile?.fields.location, conversation.messages.at(-1)?.direction === "incoming" ? conversation.messages.at(-1)?.sentAt : null),
     engagementConversationGuidance(recentMessages),
+    conversationPragmaticsGuidance(recentMessages, normalizedMessage, adaptive.autoFields.includes("languages")),
     matchProfileTopicGuidance(
       supplementalContext.matchProfile?.fields, conversation.conversationFlow, recentMessages,
       { purpose: "manual", avoidedTopics: generationProfile.userProfile?.topicEngine?.avoidedTopics }
@@ -157,7 +158,7 @@ export async function generateConversationReply(
   return {
     conversationId,
     ...generated,
-    text: limitReplyLaughter(generated.text, styleCues),
+    text: removeCannedFameuxOpening(limitReplyLaughter(generated.text, styleCues)),
     ...(usedId ? { usedPersonalMemoryId: usedId } : {}),
     provenance: {
       overriddenFields: context.provenance.overriddenFields.map(String),
