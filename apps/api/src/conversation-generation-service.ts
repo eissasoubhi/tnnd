@@ -1,6 +1,7 @@
 import { withGenerationStage } from "./conversation-generation-stage.js";
 import { temporalConversationGuidance } from "../../../src/conversation-time-context.js";
 import { engagementConversationGuidance } from "../../../src/conversation-engagement-guidance.js";
+import { conversationPragmaticsGuidance, removeCannedFameuxOpening } from "../../../src/conversation-pragmatics.js";
 import { conversationFlowGuidance } from "./conversation-flow.js";
 import { resolveReplyTarget } from "./conversation-reply-target.js";
 import { loadAiProviderSettings } from "./ai-provider-settings-service.js";
