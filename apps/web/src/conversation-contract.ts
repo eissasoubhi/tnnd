@@ -32,6 +32,8 @@ export interface ConversationListItem {
   matchDatingGoal?: string | null;
   matchSharedInstagram?: boolean;
   matchSharedWhatsapp?: boolean;
+  userSharedInstagram?: boolean;
+  userSharedWhatsapp?: boolean;
   semanticStage?: ConversationStageTag | null;
   semanticTone?: ConversationToneTag | null;
   semanticSource?: "rule-based" | "unknown";
@@ -85,6 +87,8 @@ export function normalizeConversationListItem(value: unknown): ConversationListI
     matchDatingGoal: typeof input.matchDatingGoal === "string" ? input.matchDatingGoal.slice(0, 120) : null,
     matchSharedInstagram: input.matchSharedInstagram === true,
     matchSharedWhatsapp: input.matchSharedWhatsapp === true,
+    userSharedInstagram: input.userSharedInstagram === true,
+    userSharedWhatsapp: input.userSharedWhatsapp === true,
     semanticStage: typeof input.semanticStage === "string" && semanticStages.includes(input.semanticStage as ConversationStageTag) ? input.semanticStage as ConversationStageTag : null,
     semanticTone: typeof input.semanticTone === "string" && semanticTones.includes(input.semanticTone as ConversationToneTag) ? input.semanticTone as ConversationToneTag : null,
     semanticSource: input.semanticSource === "rule-based" ? "rule-based" : "unknown",
