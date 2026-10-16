@@ -2,6 +2,7 @@ import { readSession } from "./auth-client";
 import { mountConversationMatchProfile } from "./conversation-match-profile";
 import {
   clearTemporaryInstruction,
+  deleteConversation,
   getConversation,
   listConversations,
   searchConversationContent,
@@ -42,12 +43,13 @@ function matchAvatar(displayName: string, photoUrl?: string | null): string {
   return `<span class="conversation-person-avatar" aria-hidden="true">${photoUrl ? `<img src="${escapeHtml(photoUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : escapeHtml(initial)}</span>`;
 }
 
-function renderList(items: ConversationListItem[], total: number, filtered: boolean, selectedId?: string): string {
+function renderList(items: ConversationListItem[], total: number, filtered: boolean, selectedId?: string, checkedIds: ReadonlySet<string> = new Set()): string {
   if (!items.length) {
     const empty = conversationEmptyState(total, filtered);
     return `<div class="conversation-empty workspace-empty" role="status"><strong>${escapeHtml(empty.heading)}</strong><p>${escapeHtml(empty.guidance)}</p></div>`;
   }
   return items.map((item) => `
+    <div class="conversation-selectable-row"><input type="checkbox" class="conversation-select-checkbox" aria-label="Sélectionner ${escapeHtml(item.displayName)}" data-select-conversation="${escapeHtml(item.id)}" ${checkedIds.has(item.id) ? "checked" : ""}>
     <button type="button" class="conversation-row${item.id === selectedId ? " selected" : ""}" data-conversation-id="${escapeHtml(item.id)}" aria-pressed="${item.id === selectedId}">
       <span class="conversation-row-main">
         <span class="conversation-person-line">${matchAvatar(item.displayName, item.matchPhotoUrl)}<strong>${escapeHtml(matchLabel(item.displayName, item.matchAge))}</strong></span>
@@ -58,7 +60,7 @@ function renderList(items: ConversationListItem[], total: number, filtered: bool
         ${item.status === "active" && item.lastMessageDirection === "incoming" ? '<span class="pill">Reply waiting</span>' : ""}
         <small>${escapeHtml(formatDate(item.lastMessageAt))}</small>
       </span>
-    </button>
+    </button></div>
   `).join("");
 }
 
@@ -296,7 +298,7 @@ function installStyles(): void {
     .conversation-identity-editor{margin:0 0 12px;padding:10px 13px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:var(--nb-surface-soft,#edf4eb)}.conversation-identity-editor summary{cursor:pointer;font-size:12px;font-weight:750}.conversation-identity-editor>p{font-size:12px;line-height:1.5}.conversation-identity-controls{display:flex;align-items:flex-end;flex-wrap:wrap;gap:9px}.conversation-identity-controls label{display:grid;gap:5px;flex:1 1 130px;font-size:12px}.conversation-identity-controls label:nth-child(2){flex:0 1 115px}.conversation-identity-controls input{min-width:0;max-width:100%}.conversation-identity-controls button{max-width:100%;width:auto;white-space:normal}
     .conversation-person-line{display:flex;align-items:center;gap:9px;min-width:0}.conversation-person-line strong{min-width:0;overflow-wrap:anywhere} .conversation-person-avatar{display:inline-grid;flex:0 0 40px;place-items:center;width:40px;height:40px;background:var(--nb-mint,#d9efcc);color:var(--nb-primary,#264b40);border-radius:50%;font-weight:800;overflow:hidden}.conversation-person-avatar img{display:block;width:100%;height:100%;object-fit:cover}.conversation-detail-heading>.conversation-person-avatar{width:48px;height:48px;flex-basis:48px}.conversation-status-help{margin:0 0 12px;padding:10px 13px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:var(--nb-surface-soft,#edf4eb)}.conversation-status-help summary{cursor:pointer;font-size:12px;font-weight:750}.conversation-status-help p{font-size:12px;line-height:1.55}.conversation-status-help a{font-size:12px;font-weight:750;color:inherit;text-decoration:underline}
     .conversation-flow-panel{border:1px solid var(--border,#d4d4d8);border-radius:12px;padding:13px;margin:12px 0;background:var(--nb-surface-soft,#edf4eb)}.conversation-flow-panel .conversation-topic-heading{display:flex;justify-content:space-between}.conversation-flow-steps{display:grid;gap:8px;margin:12px 0;padding:0;list-style:none}.conversation-flow-step{display:flex;gap:9px;align-items:center;font-size:12px}.conversation-flow-step[data-flow-status="covered"]{opacity:.65}.conversation-flow-step[data-flow-status="next"]{font-weight:750}.conversation-flow-panel .conversation-topic-chips{display:flex;flex-wrap:wrap;gap:6px}
-    .conversation-list{display:grid;gap:8px;align-content:start;min-height:0;overflow-y:auto}
+    .conversation-list{display:grid;gap:8px;align-content:start;min-height:0;overflow-y:auto}.conversation-selectable-row{display:flex;align-items:center;gap:8px;min-width:0}.conversation-selectable-row>.conversation-row{flex:1;min-width:0}.conversation-select-checkbox{width:18px;height:18px;flex:none;cursor:pointer}.conversation-bulk-toolbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0}.conversation-bulk-toolbar label{display:flex;align-items:center;gap:7px;font-size:12px}.conversation-bulk-toolbar button{padding:7px 10px;border-radius:8px;border:1px solid #b44;background:transparent;color:inherit;cursor:pointer}.conversation-bulk-toolbar button:disabled{opacity:.45;cursor:default}
     .conversation-row{width:100%;display:flex;justify-content:space-between;gap:12px;text-align:left;padding:11px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:transparent;color:inherit;cursor:pointer}
     .conversation-row:hover{border-color:currentColor}.conversation-row.selected{outline:2px solid currentColor;outline-offset:1px}.conversation-row-main,.conversation-row-meta{display:grid;gap:4px}.conversation-row-meta{text-align:right;justify-items:end}.conversation-row small,.conversation-detail small,.conversation-message small{opacity:.65}
     .conversation-detail{min-height:0;min-width:0;height:100%;overflow-y:auto;border:1px solid var(--border,#d4d4d8);border-radius:12px;padding:12px}.conversation-detail-heading{display:flex;justify-content:space-between;gap:12px;margin-bottom:10px}.conversation-detail-heading>div{display:grid;gap:4px}
@@ -392,6 +394,8 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
     <div class="conversation-layout">
       <section class="conversation-column" aria-labelledby="conversation-list-heading">
         <header class="conversation-column-heading"><h3 id="conversation-list-heading">Chats</h3><span class="subtle">Synced matches</span></header>
+        <div class="conversation-bulk-toolbar"><label><input type="checkbox" id="conversation-select-visible"> Tout sélectionner (filtre actuel)</label><button type="button" id="conversation-delete-selected" disabled>Supprimer (0)</button></div>
+        <p id="conversation-delete-feedback" class="subtle" role="status" aria-live="polite"></p>
         <div id="conversation-list" class="conversation-list" role="region" aria-labelledby="conversation-list-heading" tabindex="0"></div>
       </section>
       <section class="conversation-column" aria-labelledby="conversation-detail-heading">
@@ -428,6 +432,8 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
 
 const elements = mount();
 let cachedItems: ConversationListItem[] = [];
+const selectedForDeletion = new Set<string>();
+let deletionInProgress = false;
 let selectedConversationId: string | undefined;
 let detailRequestSequence = 0;
 let refreshRequestSequence = 0;
@@ -515,6 +521,32 @@ async function lookupMessageContent(): Promise<void> {
   }
 }
 
+function syncBulkControls(visible: ConversationListItem[]): void {
+  if (!elements) return;
+  const panel = elements.list.closest(".conversation-panel") ?? elements.list.parentElement?.parentElement;
+  const all = panel?.querySelector<HTMLInputElement>("#conversation-select-visible");
+  const remove = panel?.querySelector<HTMLButtonElement>("#conversation-delete-selected");
+  if (all) {
+    all.checked = visible.length > 0 && visible.every(item => selectedForDeletion.has(item.id));
+    all.indeterminate = visible.some(item => selectedForDeletion.has(item.id)) && !all.checked;
+    all.disabled = deletionInProgress || messageSearchBusy || visible.length === 0;
+  }
+  if (remove) {
+    remove.disabled = deletionInProgress || messageSearchBusy || selectedForDeletion.size === 0;
+    remove.textContent = `Supprimer (${selectedForDeletion.size})`;
+  }
+  elements.list.querySelectorAll<HTMLInputElement>("[data-select-conversation]").forEach(input => {
+    input.disabled = deletionInProgress;
+    input.addEventListener("change", () => {
+      const id = input.dataset.selectConversation;
+      if (!id) return;
+      if (input.checked) selectedForDeletion.add(id);
+      else selectedForDeletion.delete(id);
+      syncBulkControls(visible);
+    });
+  });
+}
+
 function bindRows(items: ConversationListItem[]): void {
   if (!elements) return;
   elements.list.querySelectorAll<HTMLElement>("[data-conversation-id]").forEach((row) => {
@@ -542,11 +574,12 @@ function renderCurrentList(): void {
   if (!elements) return;
   const items = filteredItems();
   const filtered = hasConversationFilters(elements.search.value, elements.filter.value) || advancedFiltersActive();
-  elements.list.innerHTML = messageSearchBusy ? '<p class="subtle" role="status">Searching synced messages…</p>' : renderList(items, cachedItems.length, filtered, selectedConversationId);
+  elements.list.innerHTML = messageSearchBusy ? '<p class="subtle" role="status">Searching synced messages…</p>' : renderList(items, cachedItems.length, filtered, selectedConversationId, selectedForDeletion);
   elements.clearFilters.hidden = !filtered;
   elements.summary.textContent = `${items.length} shown · ${cachedItems.length} total`;
   elements.stats.innerHTML = renderOperationalSummary(cachedItems);
   bindRows(items);
+  syncBulkControls(items);
 }
 
 async function applyStatus(conversationId: string, status: ConversationStatus): Promise<void> {
@@ -708,6 +741,7 @@ async function refresh(): Promise<void> {
   if ((session?.token ?? null) !== displayedSessionToken) {
     displayedSessionToken = session?.token ?? null;
     cachedItems = [];
+    selectedForDeletion.clear();
     selectedConversationId = undefined;
     ++detailRequestSequence;
     elements.search.value = "";
@@ -748,6 +782,7 @@ async function refresh(): Promise<void> {
     const items = await listConversations(session);
     if (!isCurrentConversationResponse(requestId, refreshRequestSequence, session.token, readSession()?.token)) return;
     cachedItems = items;
+    for (const id of selectedForDeletion) if (!items.some(item => item.id === id)) selectedForDeletion.delete(id);
     updateFacets();
     window.dispatchEvent(new CustomEvent("tnnd:conversation-updated"));
     elements.status.textContent = `${cachedItems.length} synced`;
@@ -785,6 +820,51 @@ function applyConversationFilters(): void {
     void loadDetail(selectedConversationId);
   }
 }
+const bulkPanel = elements?.list.closest(".conversation-panel") ?? elements?.list.parentElement?.parentElement;
+bulkPanel?.querySelector<HTMLInputElement>("#conversation-select-visible")?.addEventListener("change", event => {
+  if (!elements || deletionInProgress || messageSearchBusy) return;
+  const checked = (event.currentTarget as HTMLInputElement).checked;
+  for (const item of filteredItems()) {
+    if (checked) selectedForDeletion.add(item.id);
+    else selectedForDeletion.delete(item.id);
+  }
+  renderCurrentList();
+});
+bulkPanel?.querySelector<HTMLButtonElement>("#conversation-delete-selected")?.addEventListener("click", () => {
+  void (async () => {
+    if (!elements || deletionInProgress || messageSearchBusy) return;
+    const session = readSession();
+    if (!session) return;
+    const ids = [...selectedForDeletion].filter(id => cachedItems.some(item => item.id === id));
+    if (!ids.length) return;
+    const messageCount = cachedItems.filter(item => ids.includes(item.id)).reduce((sum, item) => sum + (item.messageCount ?? 0), 0);
+    const confirmation = window.prompt(`Suppression définitive de ${ids.length} conversation(s) et environ ${messageCount} messages enregistrés dans TNND (pas Tinder). Tapez SUPPRIMER pour confirmer. Une nouvelle synchronisation Tinder peut réimporter ces chats.`);
+    if (confirmation !== "SUPPRIMER") return;
+    deletionInProgress = true;
+    const feedback = bulkPanel.querySelector<HTMLElement>("#conversation-delete-feedback");
+    syncBulkControls(filteredItems());
+    let deleted = 0;
+    try {
+      for (const id of ids) {
+        if (readSession()?.token !== session.token) break;
+        try {
+          await deleteConversation(session, id);
+          selectedForDeletion.delete(id);
+          cachedItems = cachedItems.filter(item => item.id !== id);
+          if (selectedConversationId === id) selectedConversationId = undefined;
+          deleted++;
+        } catch (error) {
+          if (feedback) feedback.textContent = `Suppression partielle : ${deleted}/${ids.length}. ${error instanceof Error ? error.message : "Erreur réseau"}`;
+          break;
+        }
+      }
+      if (feedback && deleted === ids.length) feedback.textContent = `${deleted} conversation(s) supprimée(s) de TNND. Tinder reste inchangé.`;
+    } finally {
+      deletionInProgress = false;
+      if (readSession()?.token === session.token) await refresh();
+    }
+  })();
+});
 elements?.filter.addEventListener("change", applyConversationFilters);
 elements?.search.addEventListener("input", applyConversationFilters);
 elements?.advanced.addEventListener("change", applyConversationFilters);
