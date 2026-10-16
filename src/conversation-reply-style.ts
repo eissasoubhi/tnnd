@@ -1,3 +1,5 @@
+import { isDirectAiIdentityQuestion } from "./conversation-ai-identity-question";
+
 /**
  * Conversation-local language and laughter cues. No persistence, no extra model
  * call, and never treats outgoing messages as evidence of the match's language.
@@ -11,6 +13,7 @@ export interface ReplyStyleCues {
   recentOutgoingLaughter: number;
   /** Laughter in the current match turn, not the sender's older "haha". */
   latestIncomingLaughter: boolean;
+  latestIncomingAiQuestion: boolean;
 }
 
 const LAUGH = /\b(?:ha(?:ha)+|hi(?:hi)+|h{3,}|mdr|ptdr|lol|jaja)\b/giu;
@@ -60,7 +63,8 @@ export function readReplyStyleCues(messages: readonly ReplyStyleMessage[], lates
     recentLanguage,
     recentOutgoingLaughter,
     repeatedSenderLaughter: recentOutgoingLaughter >= 1,
-    latestIncomingLaughter
+    latestIncomingLaughter,
+    latestIncomingAiQuestion: isDirectAiIdentityQuestion(currentIncoming)
   };
 }
 
@@ -84,6 +88,9 @@ export function replyStyleGuidance(cues: ReplyStyleCues, autoLanguage = true): s
     }
   } else {
     parts.push("Keep the user's fixed or manually overridden language choices rather than switching languages automatically.");
+  }
+  if (cues.latestIncomingAiQuestion) {
+    parts.push("This match directly asks whether AI is involved in the conversation. Do not deny or evade the question or change topics. For a manually reviewed draft, clearly acknowledge AI assistance as appropriate. Automatic generation is handled separately and must pause for the real account owner.");
   }
   if (cues.latestIncomingLaughter) {
     parts.push(
