@@ -25,6 +25,20 @@ export async function listConversations(session: AuthSession): Promise<Conversat
   return payload.conversations.map(normalizeConversationListItem);
 }
 
+/** Search synced private message bodies on the authenticated backend; IDs only. */
+export async function searchConversationContent(session: AuthSession, query: string): Promise<string[]> {
+  const response = await fetch(apiBase + "/api/v1/conversations/search-content", {
+    method: "POST",
+    headers: { authorization: "Bearer " + session.token, "content-type": "application/json" },
+    body: JSON.stringify({ query })
+  });
+  const payload = await parseJson<{ conversationIds?: unknown; error?: string }>(response);
+  if (!response.ok || !Array.isArray(payload?.conversationIds)) {
+    throw new ConversationApiError(payload?.error ?? "Unable to search conversation messages.", response.status);
+  }
+  return payload.conversationIds.filter((value): value is string => typeof value === "string");
+}
+
 export interface ConversationMessage {
   id: string;
   direction: "incoming" | "outgoing";
