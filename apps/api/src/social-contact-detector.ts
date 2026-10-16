@@ -1,6 +1,6 @@
-/** Deterministic social contact extraction; never infer a handle from a name.
- * Context may be across Tinder bubbles, as in "Ta Instagram ?" / "lolitta-ed".
- * Only inspect INCOMING messages, and never contact anyone automatically.
+/** Deterministic social-contact extraction; never infer a handle from a name.
+ * Context may be across Tinder bubbles. The caller validates sender direction.
+ * Never use detected contacts for automatic external messaging.
  */
 export type SocialPlatform = "instagram" | "snapchat" | "telegram" | "whatsapp" | "phone";
 export interface SocialContactFound { platform: SocialPlatform; value: string; }
@@ -27,6 +27,11 @@ export function detectSocialContact(
   if (!text) return null;
   const context = preceding.slice(-5);
   const explicit = ask(text);
+  if (explicit === "whatsapp" || explicit === "phone") {
+    const number = /(?:^|[^0-9])([+]?[0-9][0-9\s().-]{6,24})/.exec(text)?.[1]?.trim();
+    const cleaned = number?.replace(/[\s().-]/g, "") ?? "";
+    if (/^\+?[0-9]{7,15}$/.test(cleaned)) return { platform: explicit, value: cleaned };
+  }
   if (explicit) {
     const afterLabel = text.replace(/^.*?\b(?:instagram|insta|ig|snapchat|snap|telegram|tg|whatsapp|whats ?app)\b\s*(?:[:?=\-]|c.est|c'est|mon|my|@)?\s*/i, "");
     const token = /^@?([a-zA-Z0-9][a-zA-Z0-9._-]{2,29})(?:\s|$)/.exec(afterLabel);
