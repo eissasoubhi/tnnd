@@ -22,6 +22,11 @@ export interface ConversationListItem {
   lastMessageAt?: string | null;
   lastMessageDirection?: "incoming" | "outgoing" | null;
   pendingHumanActions: number;
+  messageCount?: number;
+  matchCity?: string | null;
+  matchDatingGoal?: string | null;
+  matchSharedInstagram?: boolean;
+  matchSharedWhatsapp?: boolean;
 }
 
 export interface ConversationControlSummary {
@@ -67,5 +72,10 @@ export function normalizeConversationListItem(value: unknown): ConversationListI
       typeof input.pendingHumanActions === "number" && input.pendingHumanActions >= 0
         ? Math.floor(input.pendingHumanActions)
         : 0,
+    messageCount: typeof input.messageCount === "number" && Number.isInteger(input.messageCount) && input.messageCount >= 0 ? input.messageCount : 0,
+    matchCity: typeof input.matchCity === "string" ? input.matchCity.slice(0, 200) : null,
+    matchDatingGoal: typeof input.matchDatingGoal === "string" ? input.matchDatingGoal.slice(0, 120) : null,
+    matchSharedInstagram: input.matchSharedInstagram === true,
+    matchSharedWhatsapp: input.matchSharedWhatsapp === true,
   };
 }
