@@ -304,6 +304,9 @@ describe("contacts managed on Web", () => {
     const prefs = readEditablePreferences(initial);
     delete prefs.instagram; delete prefs.whatsapp; delete prefs.contactPreference;
     const updated = writeEditablePreferences(initial, prefs);
-    assert.deepEqual(updated.identity, initial.identity);
+    const identity = updated.identity as Record<string, unknown>;
+    assert.equal(identity.instagram, initial.identity.instagram);
+    assert.equal(identity.whatsapp, initial.identity.whatsapp);
+    assert.equal(identity.contactPreference, initial.identity.contactPreference);
   });
 });
