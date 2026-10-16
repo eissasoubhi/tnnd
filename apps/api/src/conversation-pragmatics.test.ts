@@ -54,7 +54,8 @@ test("explicit Latin-script Darija request overrides automatic language weights"
 test("avoid the famous canned prefix without modifying the substantive reply", () => {
   assert.equal(clean("Ah le fameux resto..."), "Ah le resto...");
   assert.equal(clean("La fameuse histoire..."), "L\u0027histoire...");
-  assert.equal(clean("Tu sais, le fameux resto"), "Tu sais, le fameux resto");
+  assert.equal(clean("Tu sais, le fameux resto"), "Tu sais, le resto");
+  assert.equal(clean("Ces fameux spots, on verra"), "Ces spots, on verra");
   assert.equal(clean("Très bon choix, j'aime bien ce coin."), "Très bon choix, j'aime bien ce coin.");
 });
 
@@ -86,4 +87,21 @@ test("an older personal disclosure must not dominate after a new outgoing turn",
     ["incoming", "J'aime aussi la randonnée"]
   ));
   assert.doesNotMatch(advice, /acknowledge their experience with warmth/);
+});
+
+
+test("Nis: after 'Ghi raha' do not force a film question or Arabic script", () => {
+  const advice = guide(mixed(
+    ["outgoing", "chi programme l lila wla ghi repos ?"],
+    ["incoming", "Ghi raha"]
+  ));
+  assert.match(advice, /simply resting/);
+  assert.match(advice, /Latin-script Darija/);
+  assert.match(advice, /Never mix Arabic glyphs/);
+});
+
+test("Jana: respect her autonomy when she says going alone is fine", () => {
+  const advice = guide(pair("Oui bien sûr, je vais y aller avec d'autres personnes. Et même toute seule ça ne me dérange pas."));
+  assert.match(advice, /clearly enjoys going out independently/);
+  assert.match(advice, /do not insist that going as a couple is better/);
 });
