@@ -72,3 +72,17 @@ test("an older match laugh does not carry over when the latest turn is serious o
   const sentLast = readLabeledReplyHistory("Them: oui hhh\nMe: d'accord");
   assert.equal(readReplyStyleCues(sentLast).latestIncomingLaughter, false);
 });
+
+
+test("manual draft must address a direct Darija question about AI truthfully", () => {
+  const cues = readReplyStyleCues(readLabeledReplyHistory("Me: salut\nThem: Nta rak iA"));
+  assert.equal(cues.latestIncomingAiQuestion, true);
+  const guidance = replyStyleGuidance(cues);
+  assert.match(guidance, /Do not deny or evade the question/);
+  assert.match(guidance, /acknowledge AI assistance/);
+});
+
+test("unrelated AI discussion and the account owner's own message are not accusations", () => {
+  assert.equal(readReplyStyleCues(readLabeledReplyHistory("Them: tu travailles dans l'IA ?")).latestIncomingAiQuestion, false);
+  assert.equal(readReplyStyleCues(readLabeledReplyHistory("Them: nta ia\nMe: je travaille dans l'informatique")).latestIncomingAiQuestion, false);
+});
