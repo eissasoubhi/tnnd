@@ -331,6 +331,95 @@ label { color: var(--nb-text); }
 }
 
 
+/* Conversations: a balanced two-pane inbox with one scroll area per column.
+   The pane headers remain visible while the user browses long chats. */
+#app .conversation-layout {
+  grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+  align-items: stretch;
+  block-size: clamp(460px, 68vh, 780px);
+  min-height: 0;
+}
+#app .conversation-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--nb-border);
+  border-radius: var(--nb-radius-lg);
+  background: var(--nb-surface);
+}
+#app .conversation-column-heading {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--nb-border);
+  background: var(--nb-surface-soft);
+}
+#app .conversation-column-heading h3 {
+  margin: 0;
+  color: var(--nb-text);
+  font-size: 15px;
+  letter-spacing: -.02em;
+}
+#app .conversation-column-heading .subtle {
+  font-size: 12px;
+  text-align: right;
+}
+#app .conversation-list,
+#app .conversation-detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
+#app .conversation-list {
+  padding: 12px;
+  grid-auto-rows: max-content;
+}
+#app .conversation-detail {
+  border: 0;
+  border-radius: 0;
+  padding: 18px;
+}
+#app .conversation-detail .conversation-messages {
+  max-height: none;
+  overflow: visible;
+}
+#app .conversation-list:focus-visible,
+#app .conversation-detail:focus-visible {
+  outline: 3px solid var(--nb-focus);
+  outline-offset: -4px;
+}
+@media (max-width: 900px) {
+  #app .conversation-layout {
+    grid-template-columns: minmax(0, 1fr);
+    block-size: auto;
+  }
+  #app .conversation-column { overflow: visible; }
+  #app .conversation-list {
+    flex: 0 0 auto;
+    max-height: clamp(220px, 36vh, 320px);
+  }
+  #app .conversation-detail {
+    flex: 0 1 auto;
+    overflow: visible;
+    scrollbar-gutter: auto;
+  }
+}
+@media (max-width: 560px) {
+  #app .conversation-column-heading .subtle { display: none; }
+  #app .conversation-detail { padding: 14px; }
+}
+
+
 /* Analytics and privacy — Neo Bento rollout slice 03. */
 #analytics-panel .panel-heading { border-bottom: 2px solid var(--nb-lilac); }
 #analytics-panel #analytics-refresh-status { min-height: 20px; margin: 10px 0; }
