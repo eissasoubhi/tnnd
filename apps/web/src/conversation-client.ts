@@ -308,3 +308,15 @@ export async function saveConversationDisplayIdentity(
   const payload = await parseJson<{ error?: string }>(response);
   if (!response.ok) throw new ConversationApiError(payload?.error ?? "Unable to save chat name.", response.status);
 }
+
+/** Permanently delete one user-owned conversation from TNND (not from Tinder). */
+export async function deleteConversation(session: AuthSession, conversationId: string): Promise<void> {
+  const response = await fetch(`${apiBase}/api/v1/conversations/${encodeURIComponent(conversationId)}`, {
+    method: "DELETE",
+    headers: { authorization: `Bearer ${session.token}` }
+  });
+  if (!response.ok) {
+    const payload = await parseJson<{ error?: string }>(response);
+    throw new ConversationApiError(payload?.error ?? "Unable to delete conversation.", response.status);
+  }
+}
