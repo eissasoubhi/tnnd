@@ -64,5 +64,5 @@ export async function generateSuggestions(apiKey: string, config: AppConfig, con
   const suggestions = parseSuggestions(text, safeCount);
   if (purpose === "opener") return suggestions;
   const cues = readReplyStyleCues(readLabeledReplyHistory(context));
-  return suggestions.map(suggestion => limitReplyLaughter(suggestion, cues));
+  return suggestions.map(suggestion => removeCannedFameuxOpening(limitReplyLaughter(suggestion, cues)));
 }
