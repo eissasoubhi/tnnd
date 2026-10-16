@@ -8,8 +8,9 @@ import { firstMessageAttemptKey, firstMessageBlocker, firstMessageContext } from
 import { groundedOpenerFragments, sameOpenerThreadUninterrupted } from "./tinder-opener-fragments";
 import { openerDelaySeconds, openerTypingDelaySeconds } from "./tinder-opener-timing";
 import { naturalReplyBubbles } from "./tinder-reply-bubbles";
+import { classifyConversationBoundary, type ConversationBoundary } from "./conversation-boundary-policy";
 import { automaticReplyHold, hasUnexpectedScriptMix, replyNeedsHumanReview } from "./conversation-reply-safety";
-import { syncConversationDelta } from "./conversation-sync";
+import { syncConversationDelta, syncObservedConversationBoundary } from "./conversation-sync";
 import { observeTinderRuntime } from "./tinder-runtime-observation";
 import { readCurrentTinderUiState } from "./tinder-runtime-state";
 import { isInboxReadableTinderState } from "./tinder-state-machine";
@@ -429,6 +430,12 @@ function reportExistingRunner(phase: "incoming" | "waiting" | "generating" | "se
   void sendRuntimeMessage({ type: "TNND_EXISTING_RUNNER_EVENT", ref, phase, detail }).catch(() => undefined);
 }
 
+function boundaryDescription(boundary: ConversationBoundary): string {
+  if (boundary.kind === "off-tinder") return "Match proposed/confirmed continuing on " + (boundary.platform ?? "another app") + " · Tinder auto-replies stopped. No outside message sent.";
+  if (boundary.kind === "do-not-contact") return "Contact stop requested · Tinder auto-replies disabled.";
+  return "Mutual goodbyes · no additional Tinder reply. A new incoming message can reopen the conversation.";
+}
+
 async function autoReplyPausedAfterGlobalStop(conversationRef: string): Promise<boolean> {
   const response = await sendRuntimeMessage<{ ok: boolean; paused?: boolean }>({
     type: "TNND_EXISTING_RUNNER_TAB_PAUSED", ref: conversationRef
@@ -504,6 +511,27 @@ async function scan(): Promise<void> {
       direction: message.direction === "them" ? "incoming" as const : "outgoing" as const,
       text: message.text
     }));
+    const boundary = classifyConversationBoundary(visible);
+    if (boundary.kind !== "continue") {
+      // Record before completing the local one-shot. If the API is unreachable,
+      // still never generate/send; try to persist again during the next scan.
+      if (!state.processed[snapshot.latestIncomingKey]) {
+        try {
+          const persisted = await syncObservedConversationBoundary(conversationRef, visible);
+          if (persisted.boundary.kind !== boundary.kind) {
+            reportExistingRunner("skipped", "Server could not confirm the ending · no Tinder reply.");
+            return;
+          }
+          state.processed[snapshot.latestIncomingKey] = Date.now();
+          if (!await saveState(state)) return;
+        } catch {
+          reportExistingRunner("skipped", "Chat appears finished. Backend status could not sync; no Tinder reply. Will retry.");
+          return;
+        }
+      }
+      reportExistingRunner("skipped", boundaryDescription(boundary));
+      return;
+    }
     const hold = automaticReplyHold(visible);
     if (hold) {
       // A match's consecutive messages belong to one turn: the latest "hhh"
@@ -545,7 +573,7 @@ async function scan(): Promise<void> {
       direction: message.direction === "them" ? "incoming" as const : "outgoing" as const,
       text: message.text
     }));
-    if (automaticReplyHold(recheckMessages)) {
+    if (classifyConversationBoundary(recheckMessages).kind !== "continue" || automaticReplyHold(recheckMessages)) {
       reportExistingRunner("skipped", "Conversation now needs no automatic reply · pending generation cancelled.");
       return;
     }
@@ -571,12 +599,13 @@ async function scan(): Promise<void> {
       text: message.text
     }));
     const finalHold = automaticReplyHold(finalMessages);
-    if (finalHold || replyNeedsHumanReview(reply) || hasUnexpectedScriptMix(reply, finalMessages)) {
+    const finalBoundary = classifyConversationBoundary(finalMessages);
+    if (finalBoundary.kind !== "continue" || finalHold || replyNeedsHumanReview(reply) || hasUnexpectedScriptMix(reply, finalMessages)) {
       const processed = await getState();
       if (!processed) return;
       processed.processed[finalSnapshot.latestIncomingKey] = Date.now();
       if (!await saveState(processed)) return;
-      reportExistingRunner("skipped", finalHold === "ai-identity" || replyNeedsHumanReview(reply)
+      reportExistingRunner("skipped", finalBoundary.kind !== "continue" ? boundaryDescription(finalBoundary) : finalHold === "ai-identity" || replyNeedsHumanReview(reply)
         ? "Possible AI disclosure or deceptive denial · reply blocked. Human review required."
         : finalHold === "acknowledgement"
           ? "Match closed this exchange · no follow-up sent."
