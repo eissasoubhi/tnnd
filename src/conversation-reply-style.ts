@@ -1,4 +1,4 @@
-import { isDirectAiIdentityQuestion } from "./conversation-ai-identity-question";
+import { isDirectAiIdentityQuestion } from "./conversation-ai-identity-question.ts";
 
 /**
  * Conversation-local language and laughter cues. No persistence, no extra model
