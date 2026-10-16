@@ -71,7 +71,7 @@ test("popup keeps essential stop controls reachable and legacy starts optional",
   assert.match(popup, /<summary>Alternative: full existing-chat sweep<\/summary>/);
   assert.match(popup, /<summary>Alternative: future matches<\/summary>/);
   assert.match(popup, /<summary>How monitoring works<\/summary>/);
-  assert.match(popup, /Watch replies \+ matches \(no first messages\)/);
+  assert.match(popup, /Watch conversations \+ matches \(no first messages\)/);
   for (const id of ["startReplyWatcher", "stopReplyWatcher", "startGlobalExisting", "stopGlobalExisting",
     "startExistingMatchBatch", "startNewMatchObservation", "stopNewMatchObservation", "globalExistingCadence"]) {
     assert.equal((popup.match(new RegExp('id="' + id + '"', "g")) ?? []).length, 1, id + " should remain wired once");
