@@ -53,7 +53,7 @@ test("explicit Latin-script Darija request overrides automatic language weights"
 
 test("avoid the famous canned prefix without modifying the substantive reply", () => {
   assert.equal(clean("Ah le fameux resto..."), "Ah le resto...");
-  assert.equal(clean("La fameuse histoire..."), "La histoire...");
+  assert.equal(clean("La fameuse histoire..."), "L\u0027histoire...");
   assert.equal(clean("Tu sais, le fameux resto"), "Tu sais, le fameux resto");
   assert.equal(clean("Très bon choix, j'aime bien ce coin."), "Très bon choix, j'aime bien ce coin.");
 });
