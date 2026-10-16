@@ -25,7 +25,7 @@ export interface OutgoingContactBackfillReport {
   mayHaveMore: boolean;
 }
 export function validateContactBackfillOptions(options: OutgoingContactBackfillOptions): Required<OutgoingContactBackfillOptions> {
-  const userId = options.userId?.trim();
+  const userId = options.userId?.trim() ?? "";
   const afterConversation = options.afterConversation?.trim() || ZERO_UUID;
   const maxConversations = options.maxConversations ?? 25;
   if (!UUID.test(userId) || !UUID.test(afterConversation)
