@@ -219,7 +219,7 @@ test("automatic extension prompt reacts to French hhh as a gentle laughter cue, 
   const result = await generateExtensionSuggestions(
     "user-1",
     {
-      context: "Me: Tu as des bonnes adresses ?\\nThem: Je découvre plein de librairies mais je reviens toujours à ma préférée hhh",
+      context: "Me: Tu as des bonnes adresses ?\nThem: Je découvre plein de librairies mais je reviens toujours à ma préférée hhh",
       purpose: "auto",
       count: 1,
       config: { tone: "natural", languages: { fr: 90, darija: 10, en: 0 } }
