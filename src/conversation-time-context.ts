@@ -68,6 +68,8 @@ function daypart(hour: number): string {
   if (hour < 22) return "evening";
   return "night";
 }
+// Official fixed-day calendar references: service-public.gouv.fr/particuliers/vosdroits/F2405
+// and maroc.ma/fr/le-maroc/fetes-nationales-et-religieuses
 const fixedHolidays: Record<Country, Record<string, string>> = {
   FR: {
     "01-01": "Jour de l'An", "05-01": "Fête du Travail",
@@ -76,10 +78,11 @@ const fixedHolidays: Record<Country, Record<string, string>> = {
     "11-11": "Armistice", "12-25": "Noël"
   },
   MA: {
-    "01-11": "Manifeste de l'indépendance", "05-01": "Fête du Travail",
+    "01-01": "Nouvel An", "01-11": "Manifeste de l'indépendance",
+    "01-14": "Nouvel An amazigh", "05-01": "Fête du Travail",
     "07-30": "Fête du Trône", "08-14": "Récupération d'Oued Eddahab",
     "08-20": "Révolution du Roi et du Peuple", "08-21": "Fête de la Jeunesse",
-    "11-06": "Marche Verte", "11-18": "Fête de l'Indépendance"
+    "10-31": "Fête de l'Unité", "11-06": "Marche Verte", "11-18": "Fête de l'Indépendance"
   }
 };
 function clock(label: string, place: Place, now: Date): string {
