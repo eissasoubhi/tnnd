@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { temporalConversationGuidance } from "../../../src/conversation-time-context.js";
+import { frenchMovableHoliday, temporalConversationGuidance } from "../../../src/conversation-time-context.js";
 import { engagementConversationGuidance } from "../../../src/conversation-engagement-guidance.js";
 
 test("France and Casablanca reference clocks respect local IANA timezone and DST", () => {
@@ -49,4 +49,26 @@ test("explicit questions and boundaries suppress weak-engagement prompts", () =>
   assert.equal(engagementConversationGuidance([...base, { direction: "incoming", text: "Toi ?" }]), "");
   assert.equal(engagementConversationGuidance([...base, { direction: "incoming", text: "Non merci" }]), "");
   assert.equal(engagementConversationGuidance([...base, { direction: "outgoing", text: "hello" }]), "");
+});
+
+
+test("France movable public holidays match government 2026 and 2027 dates", () => {
+  assert.equal(frenchMovableHoliday("2026-04-06"), "Lundi de Pâques");
+  assert.equal(frenchMovableHoliday("2026-05-14"), "Ascension");
+  assert.equal(frenchMovableHoliday("2026-05-25"), "Lundi de Pentecôte");
+  assert.equal(frenchMovableHoliday("2027-03-29"), "Lundi de Pâques");
+  assert.equal(frenchMovableHoliday("2027-05-06"), "Ascension");
+  assert.equal(frenchMovableHoliday("2027-05-17"), "Lundi de Pentecôte");
+  assert.equal(frenchMovableHoliday("2026-04-07"), null);
+  assert.equal(frenchMovableHoliday("1899-04-03"), null);
+});
+
+test("France local day computes spring public holidays without applying them to Morocco", () => {
+  const instant = new Date("2026-05-13T22:30:00Z");
+  const text = temporalConversationGuidance({ currentCity: "Casablanca" }, "Paris", undefined, instant);
+  assert.match(text, /Europe\/Paris\): Thursday 2026-05-14 00:30/);
+  assert.match(text, /verified statutory holiday: Ascension/);
+  const maLine = text.split("\n").find(line => line.startsWith("Morocco (Casablanca reference)"));
+  assert.ok(maLine && !maLine.includes("Ascension"));
+  assert.match(text, /Islamic lunar festivals/);
 });
