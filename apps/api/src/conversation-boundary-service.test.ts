@@ -14,7 +14,7 @@ test("normal farewells do not disable a chat on their own", () => {
 test("a mutual end pauses the chat without disabling future incoming replies", () => {
   const input = validateObservedConversationBoundary({
     externalThreadId: "thread-2",
-    messages: [{ direction: "outgoing", text: "Bonne nuit !" }, { direction: "incoming", text: "Bye :)" }]
+    messages: [{ direction: "outgoing", text: "Bonne nuit !" }, { direction: "incoming", text: "Bye 🙂" }]
   });
   assert.deepEqual(desiredBoundaryTransition(classifyConversationBoundary(input.messages)), {
     status: "waiting-for-them", managementState: "ai-managed"
