@@ -705,8 +705,6 @@ async function refresh(): Promise<void> {
     elements.maxAge.value = "";
     elements.contact.value = "all";
     elements.length.value = "all";
-  elements.semanticStage.value = "all";
-  elements.semanticTone.value = "all";
     elements.semanticStage.value = "all";
     elements.semanticTone.value = "all";
     elements.messageSearch.value = "";
@@ -797,6 +795,8 @@ elements?.clearFilters.addEventListener("click", () => {
   elements.goal.value = "";
   elements.contact.value = "all";
   elements.length.value = "all";
+  elements.semanticStage.value = "all";
+  elements.semanticTone.value = "all";
   elements.messageSearch.value = "";
   messageMatches = null;
   messageSearchBusy = false;
