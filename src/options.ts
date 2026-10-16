@@ -1,4 +1,6 @@
 import { createProfileBundle, parseProfileBundle } from "./profile-bundle";
+import { syncBackendProfileCache } from "./backend-session";
+import { settingsToSaveLocally } from "./settings-ownership";
 import { getApiKey, getBackendProfileCache, getBackendSession, getConfig, saveApiKey, saveConfig } from "./storage";
 import { profileReadiness } from "./setup-progress";
 import { mountTextingStyleControls } from "./texting-options";
@@ -13,6 +15,13 @@ function el<T extends HTMLElement>(id: string): T {
 }
 
 const textingStyle = mountTextingStyleControls();
+// Reuse old field IDs and local fallback, but provide one shared editor: Web.
+const fallbackHost = el<HTMLElement>("localFallbackFields");
+for (const id of [
+  "fallbackProfileBundle", "fallbackContacts", "fallbackGemini",
+  "fallbackAdaptive", "fallbackConversationStyle", "fallbackTextingStyle",
+  "fallbackLanguageMix", "fallbackVocabulary"
+]) fallbackHost.append(el<HTMLElement>(id));
 
 const f = {
   form: el<HTMLFormElement>("settings-form"), apiKey: el<HTMLInputElement>("apiKey"), model: el<HTMLInputElement>("model"),
@@ -26,6 +35,8 @@ const f = {
 };
 
 let identityCache: AppConfig["identity"] | null = null;
+let localFallbackConfig: AppConfig | null = null;
+let backendConnected = false;
 
 const num = (control: HTMLInputElement | HTMLSelectElement, fallback = 0) => Number.isFinite(Number(control.value)) ? Number(control.value) : fallback;
 const updateRanges = () => { f.flirtValue.textContent = `${f.flirtLevel.value}/3`; f.humorValue.textContent = `${f.humorLevel.value}/100`; };
@@ -83,24 +94,56 @@ function setAiStatus(kind: "unconfigured" | "idle" | "checking" | "connected" | 
 }
 
 async function load(): Promise<void> {
-  const [c, apiKey, session, cache] = await Promise.all([getConfig(), getApiKey(), getBackendSession(), getBackendProfileCache()]);
+  const session = await getBackendSession();
+  let syncError = "";
+  if (session) {
+    try {
+      await syncBackendProfileCache(session);
+    } catch {
+      syncError = "Could not refresh your Web profile. Showing the last saved version, if available. Check the API and retry.";
+    }
+  }
+  const [c, local, apiKey, cache] = await Promise.all([
+    getConfig(), getConfig({ includeBackendProfile: false }), getApiKey(), getBackendProfileCache()
+  ]);
+  backendConnected = Boolean(session);
+  localFallbackConfig = local;
   f.apiKey.value = apiKey;
   applyConfig(c);
+  el<HTMLDetailsElement>("localFallbackPanel").hidden = backendConnected;
+  el<HTMLButtonElement>("refreshFromWeb").hidden = !backendConnected;
+  el<HTMLButtonElement>("saveExtensionSettings").textContent = backendConnected ? "Save extension controls" : "Save local settings";
+  f.testGemini.hidden = backendConnected;
+  const identityPanel = document.getElementById("serverIdentityStatus")?.closest("section");
+  if (identityPanel) identityPanel.hidden = backendConnected;
   const summary = document.getElementById("serverIdentityPreview");
   const status = document.getElementById("serverIdentityStatus");
   if (summary && status) {
     const approved = session && cache && profileReadiness(cache.profile).identityApproved;
-    summary.textContent = approved ? c.identity.aboutMe || "Identity approved in TNND." : session ? "Complete and approve your About Me on TNND Web, then reopen this page." : "Connect your TNND account in the extension, then manage your identity on TNND Web.";
+    summary.textContent = approved ? c.identity.aboutMe || "Identity approved in TNND." : session ? "Complete and approve About Me on TNND Web, then refresh." : "Connect your account to manage identity on TNND Web.";
     status.textContent = approved ? "Approved on TNND Web" : "Needs setup or sync";
   }
-  f.extensionVersion.textContent = `v${chrome.runtime.getManifest().version}`;
+  const webStatus = el<HTMLElement>("webSettingsStatus");
+  webStatus.textContent = session
+    ? syncError || (cache
+      ? "Connected · Web profile refreshed. Change shared preferences in TNND Web, not here."
+      : "Connected · no Web profile synced yet. Set up your profile on TNND Web and refresh.")
+    : "Disconnected · local fallback settings are available below. They are not synchronized with TNND Web.";
+  f.extensionVersion.textContent = "v" + chrome.runtime.getManifest().version;
   setAiStatus(apiKey ? "idle" : "unconfigured", apiKey ? c.model : "");
 }
 
 async function save(): Promise<void> {
-  await Promise.all([saveConfig(readConfig()), saveApiKey(f.apiKey.value)]);
-  f.status.textContent = "Saved.";
-  if (!f.apiKey.value.trim()) setAiStatus("unconfigured");
+  const draft = readConfig();
+  const existingLocal = localFallbackConfig ?? await getConfig({ includeBackendProfile: false });
+  const next = settingsToSaveLocally(existingLocal, draft, backendConnected);
+  await saveConfig(next);
+  if (!backendConnected) await saveApiKey(f.apiKey.value);
+  localFallbackConfig = next;
+  f.status.textContent = backendConnected
+    ? "Extension controls saved locally. Web-managed preferences were not changed."
+    : "Local fallback saved. Connect TNND to use your shared Web profile.";
+  if (!backendConnected && !f.apiKey.value.trim()) setAiStatus("unconfigured");
 }
 
 function downloadProfile(config: AppConfig): void {
@@ -118,17 +161,20 @@ f.flirtLevel.addEventListener("input", updateRanges); f.humorLevel.addEventListe
 f.form.addEventListener("submit", (event) => { event.preventDefault(); f.status.textContent = "Saving…"; void save().catch((error) => { f.status.textContent = error instanceof Error ? error.message : "Could not save settings."; }); });
 
 f.exportProfile.addEventListener("click", () => {
+  if (backendConnected) { f.status.textContent = "Export the shared profile from TNND Web."; return; }
   downloadProfile(readConfig());
   f.status.textContent = "Profile exported. Gemini API key was not included.";
 });
 
-f.importProfile.addEventListener("click", () => f.importProfileFile.click());
+f.importProfile.addEventListener("click", () => { if (!backendConnected) f.importProfileFile.click(); });
 f.importProfileFile.addEventListener("change", () => {
   void (async () => {
+    if (backendConnected) throw new Error("Import the shared profile in TNND Web.");
     const file = f.importProfileFile.files?.[0];
     if (!file) return;
     const bundle = parseProfileBundle(await file.text());
     await saveConfig(bundle.config);
+    localFallbackConfig = bundle.config;
     applyConfig(bundle.config);
     f.status.textContent = `Profile imported${bundle.extensionVersion ? ` from TNND ${bundle.extensionVersion}` : ""}. Gemini API key was left unchanged.`;
     f.importProfileFile.value = "";
@@ -136,6 +182,11 @@ f.importProfileFile.addEventListener("change", () => {
     f.status.textContent = error instanceof Error ? error.message : "Could not import profile.";
     f.importProfileFile.value = "";
   });
+});
+
+el<HTMLButtonElement>("refreshFromWeb").addEventListener("click", () => {
+  f.status.textContent = "Refreshing shared preferences (discarding unsaved extension edits)…";
+  void load().catch(() => { f.status.textContent = "Refresh failed. Check TNND API and reopen Settings."; });
 });
 
 f.apiKey.addEventListener("input", () => setAiStatus(f.apiKey.value.trim() ? "idle" : "unconfigured", f.apiKey.value.trim() ? f.model.value.trim() : ""));
