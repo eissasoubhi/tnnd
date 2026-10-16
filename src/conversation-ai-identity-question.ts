@@ -49,5 +49,5 @@ export function latestIncomingAsksAboutAiIdentity(messages: readonly AiIdentityM
 export function isMisleadingAiDenial(value: string): boolean {
   const text = value.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase()
     .replace(/[’'‘]/gu, " ").replace(/\s+/gu, " ").trim();
-  return /\b(?:je\s+(?:ne\s+)?suis\s+(?:pas\s+)?(?:bien\s+)?reel|je\s+(?:ne\s+)?suis\s+pas\s+(?:une?\s+|un\s+)?(?:ia|ai|robot|bot)|je\s+(?:n\s+utilise\s+pas|n\s+ai\s+pas\s+besoin\s+de)\s+(?:chatgpt|gpt|une?\s+ia)|i\s+am\s+(?:not\s+)?(?:a\s+)?real\s+(?:person|human)|i\s+am\s+not\s+(?:an?\s+)?(?:ai|bot|robot))\b/u.test(text);
+  return /\b(?:je\s+(?:ne\s+)?suis\s+(?:pas\s+)?(?:bien\s+)?reel|je\s+(?:ne\s+)?suis\s+pas\s+(?:une?\s+|un\s+)?(?:ia|ai|robot|bot)|je\s+(?:n\s+utilise\s+pas|n\s+ai\s+pas\s+besoin\s+de)\s+(?:chatgpt|gpt|une?\s+ia)|i\s+am\s+(?:not\s+)?(?:a\s+)?real\s+(?:person|human)|i\s+(?:am|m)\s+not\s+(?:an?\s+)?(?:ai|bot|robot))\b/u.test(text);
 }
