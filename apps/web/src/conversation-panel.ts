@@ -11,7 +11,7 @@ import {
   type ConversationDetail,
   type TemporaryInstructionScope
 } from "./conversation-client";
-import type { ConversationListItem, ConversationStatus } from "./conversation-contract";
+import type { ConversationListItem, ConversationStatus, ConversationStageTag, ConversationToneTag } from "./conversation-contract";
 import { filterConversationSummaries, type ConversationSort, type ConversationLength, type ContactFromMatch } from "./conversation-list-filter";
 import { conversationEmptyState, hasConversationFilters, isCurrentConversationResponse } from "./conversation-list-ui";
 import { replyTargetFromHistory, replyTargetHint } from "./conversation-reply-target";
@@ -309,7 +309,7 @@ function installStyles(): void {
   document.head.append(style);
 }
 
-function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement; filter: HTMLSelectElement; search: HTMLInputElement; clearFilters: HTMLButtonElement; summary: HTMLElement; stats: HTMLElement; advanced: HTMLDetailsElement; sort: HTMLSelectElement; minAge: HTMLInputElement; maxAge: HTMLInputElement; cities: HTMLSelectElement; goal: HTMLSelectElement; contact: HTMLSelectElement; length: HTMLSelectElement; messageSearch: HTMLInputElement; filterNotice: HTMLElement } | null {
+function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement; filter: HTMLSelectElement; search: HTMLInputElement; clearFilters: HTMLButtonElement; summary: HTMLElement; stats: HTMLElement; advanced: HTMLDetailsElement; sort: HTMLSelectElement; minAge: HTMLInputElement; maxAge: HTMLInputElement; cities: HTMLSelectElement; goal: HTMLSelectElement; contact: HTMLSelectElement; length: HTMLSelectElement; semanticStage: HTMLSelectElement; semanticTone: HTMLSelectElement; messageSearch: HTMLInputElement; filterNotice: HTMLElement } | null {
   const grid = document.querySelector<HTMLElement>(".grid");
   if (!grid) return null;
   installStyles();
@@ -349,9 +349,29 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
            <label>Match cities<select id="conversation-city-filter" multiple size="3" aria-describedby="conversation-city-help"></select><small id="conversation-city-help">Ctrl/Cmd to select several. Profile cities only.</small></label>
            <label>Match dating goal<select id="conversation-goal-filter"><option value="">Any known goal</option></select></label>
            <label>Match shared a contact<select id="conversation-contact-filter"><option value="all">Any</option><option value="any">Instagram or WhatsApp</option><option value="instagram">Instagram detected</option><option value="whatsapp">WhatsApp detected</option></select></label>
+           <label>Conversation stage (estimated from saved messages)
+             <select id="conversation-semantic-stage">
+               <option value="all">Any stage</option>
+               <option value="introductions">Introductions</option>
+               <option value="getting-to-know">Getting to know</option>
+               <option value="date-discussion">Discussing a date</option>
+               <option value="off-tinder">Moved off Tinder</option>
+               <option value="unknown">Unknown (no saved messages)</option>
+             </select>
+           </label>
+           <label>Conversation tone (estimated)
+             <select id="conversation-semantic-tone">
+               <option value="all">Any tone</option>
+               <option value="playful">Playful</option>
+               <option value="flirty">Flirty</option>
+               <option value="warm">Warm</option>
+               <option value="direct">Direct</option>
+               <option value="unknown">Unclear / no strong cue</option>
+             </select>
+           </label>
            <label>Message count<select id="conversation-length-filter"><option value="all">Any</option><option value="first-messages">Getting started (0–4)</option><option value="developing">Developing (5–19)</option><option value="long">Long (20+)</option></select></label>
            <label>Search within messages<input id="conversation-message-search" type="search" maxlength="100" autocomplete="off" placeholder="At least 2 characters"></label>
-           <small id="conversation-filter-notice" role="status" aria-live="polite">Only synchronized and verified match data are searchable. Contacts refer to those shared by the match.</small>
+           <small id="conversation-filter-notice" role="status" aria-live="polite">Profile and contact filters use saved data. Stage and tone are rule-based estimates from synchronized chat content, not verified feelings or relationship status.</small>
          </div>
        </details>
        <button id="conversation-clear-filters" class="conversation-clear-filters" type="button" hidden>Clear filters</button>
@@ -387,6 +407,8 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
     goal: panel.querySelector<HTMLSelectElement>("#conversation-goal-filter")!,
     contact: panel.querySelector<HTMLSelectElement>("#conversation-contact-filter")!,
     length: panel.querySelector<HTMLSelectElement>("#conversation-length-filter")!,
+    semanticStage: panel.querySelector<HTMLSelectElement>("#conversation-semantic-stage")!,
+    semanticTone: panel.querySelector<HTMLSelectElement>("#conversation-semantic-tone")!,
     messageSearch: panel.querySelector<HTMLInputElement>("#conversation-message-search")!,
     filterNotice: panel.querySelector<HTMLElement>("#conversation-filter-notice")!
   };
@@ -419,6 +441,7 @@ function advancedFiltersActive(): boolean {
   return elements.sort.value !== "recent" || Boolean(elements.minAge.value || elements.maxAge.value
     || elements.cities.selectedOptions.length || elements.goal.value
     || elements.contact.value !== "all" || elements.length.value !== "all"
+    || elements.semanticStage.value !== "all" || elements.semanticTone.value !== "all"
     || elements.messageSearch.value.trim());
 }
 function filteredItems(): ConversationListItem[] {
@@ -434,6 +457,8 @@ function filteredItems(): ConversationListItem[] {
     datingGoal: elements.goal.value,
     matchContact: elements.contact.value as ContactFromMatch,
     length: elements.length.value as ConversationLength,
+    semanticStage: elements.semanticStage.value as ConversationStageTag | "all" | "unknown",
+    semanticTone: elements.semanticTone.value as ConversationToneTag | "all" | "unknown",
     messageSearchIds: elements.messageSearch.value.trim() ? (messageMatches ?? []) : null
   });
 }
@@ -680,6 +705,10 @@ async function refresh(): Promise<void> {
     elements.maxAge.value = "";
     elements.contact.value = "all";
     elements.length.value = "all";
+  elements.semanticStage.value = "all";
+  elements.semanticTone.value = "all";
+    elements.semanticStage.value = "all";
+    elements.semanticTone.value = "all";
     elements.messageSearch.value = "";
     messageMatches = null;
     messageSearchBusy = false;
