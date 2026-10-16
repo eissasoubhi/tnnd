@@ -1,6 +1,7 @@
 import type { AppConfig, ChatSettings, GeneratePurpose } from "./types";
 import { temporalConversationGuidance } from "./conversation-time-context.ts";
 import { engagementConversationGuidance } from "./conversation-engagement-guidance.ts";
+import { conversationPragmaticsGuidance } from "./conversation-pragmatics.ts";
 import { readLabeledReplyHistory, readReplyStyleCues, replyStyleGuidance } from "./conversation-reply-style.ts";
 
 function csv(value: string): string[] {
