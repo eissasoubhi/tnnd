@@ -1,4 +1,4 @@
-import { latestIncomingAsksAboutAiIdentity, type AiIdentityMessage } from "./conversation-ai-identity-question.ts";
+import { latestIncomingAsksAboutAiIdentity, isMisleadingAiDenial, type AiIdentityMessage } from "./conversation-ai-identity-question.ts";
 
 export type AutomaticReplyHold = "ai-identity" | "acknowledgement" | null;
 
@@ -19,11 +19,7 @@ export function automaticReplyHold(messages: readonly AiIdentityMessage[]): Auto
 }
 
 /** Guard automatic sends after a model ignored a repeated AI-suspicion rule. */
-export function replyNeedsHumanReview(reply: string): boolean {
-  const text = reply.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase()
-    .replace(/[’'‘]/gu, " ").replace(/\s+/gu, " ").trim();
-  return /\b(?:je\s+suis\s+bien\s+reel|je\s+(?:ne\s+)?suis\s+pas\s+(?:une?\s+|un\s+)?(?:ia|ai|robot|bot)|i\s+am\s+not\s+(?:an?\s+)?(?:ai|robot|bot)|i\s+am\s+(?:a\s+)?real\s+(?:human|person)|pas\s+(?:de\s+)?chatgpt\s+(?:ici|non)|aucune?\s+ia\s+(?:ici|derriere))\b/u.test(text);
-}
+export const replyNeedsHumanReview = isMisleadingAiDenial;
 
 /**
  * When the match chats in Latin-script Darija, never auto-send an accidental
