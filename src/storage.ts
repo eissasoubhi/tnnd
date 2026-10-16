@@ -100,7 +100,7 @@ export async function lockStorageToTrustedContexts(): Promise<void> {
   }
 }
 
-export async function getConfig(): Promise<AppConfig> {
+export async function getConfig(options: { includeBackendProfile?: boolean } = {}): Promise<AppConfig> {
   const result = await chrome.storage.local.get([CONFIG_KEY, BACKEND_PROFILE_CACHE_KEY]);
   const saved = result[CONFIG_KEY] as LegacyConfig | undefined;
   const savedAutomation = (saved?.automation ?? {}) as Partial<AppConfig["automation"]>;
@@ -134,7 +134,7 @@ export async function getConfig(): Promise<AppConfig> {
   };
 
   const cache = result[BACKEND_PROFILE_CACHE_KEY] as BackendProfileCache | undefined;
-  return applyServerProfile(localConfig, cache?.profile);
+  return options.includeBackendProfile === false ? localConfig : applyServerProfile(localConfig, cache?.profile);
 }
 
 export async function saveConfig(config: AppConfig): Promise<void> {
