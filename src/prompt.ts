@@ -1,6 +1,7 @@
 import type { AppConfig, ChatSettings, GeneratePurpose } from "./types";
 import { temporalConversationGuidance } from "./conversation-time-context.ts";
 import { engagementConversationGuidance } from "./conversation-engagement-guidance.ts";
+import { conversationPragmaticsGuidance } from "./conversation-pragmatics.ts";
 import { readLabeledReplyHistory, readReplyStyleCues, replyStyleGuidance } from "./conversation-reply-style.ts";
 
 function csv(value: string): string[] {
@@ -107,6 +108,7 @@ export function buildUserPrompt(context: string, purpose: GeneratePurpose, autoL
     "Use the recent conversation flow, answer what was actually said, and avoid abruptly changing subject.",
     purpose !== "opener" ? replyStyleGuidance(styleCues, autoLanguage) : "",
     purpose !== "opener" ? engagementConversationGuidance(history) : "",
+    purpose !== "opener" ? conversationPragmaticsGuidance(history, "", autoLanguage) : "",
     purpose === "opener" ? "Only the match name/age explicitly listed in the current Tinder context are verified. No photo, bio, appearance, interests or feelings are known. A simple hello is better than inventing a profile reaction." : "Use only grounded conversation context; never infer unseen profile details.",
     "If context is incomplete, stay generic rather than inventing details.",
     "\n--- context ---",

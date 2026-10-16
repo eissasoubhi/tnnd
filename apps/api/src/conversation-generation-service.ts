@@ -1,6 +1,7 @@
 import { withGenerationStage } from "./conversation-generation-stage.js";
 import { temporalConversationGuidance } from "../../../src/conversation-time-context.js";
 import { engagementConversationGuidance } from "../../../src/conversation-engagement-guidance.js";
+import { conversationPragmaticsGuidance, removeCannedFameuxOpening } from "../../../src/conversation-pragmatics.js";
 import { conversationFlowGuidance } from "./conversation-flow.js";
 import { resolveReplyTarget } from "./conversation-reply-target.js";
 import { loadAiProviderSettings } from "./ai-provider-settings-service.js";
@@ -121,6 +122,7 @@ export async function generateConversationReply(
     conversationFlowGuidance(conversation.conversationFlow),
     temporalConversationGuidance(generationProfile.userProfile?.identity, supplementalContext.matchProfile?.fields.location, conversation.messages.at(-1)?.direction === "incoming" ? conversation.messages.at(-1)?.sentAt : null),
     engagementConversationGuidance(recentMessages),
+    conversationPragmaticsGuidance(recentMessages, normalizedMessage, adaptive.autoFields.includes("languages")),
     matchProfileTopicGuidance(
       supplementalContext.matchProfile?.fields, conversation.conversationFlow, recentMessages,
       { purpose: "manual", avoidedTopics: generationProfile.userProfile?.topicEngine?.avoidedTopics }
@@ -156,7 +158,7 @@ export async function generateConversationReply(
   return {
     conversationId,
     ...generated,
-    text: limitReplyLaughter(generated.text, styleCues),
+    text: removeCannedFameuxOpening(limitReplyLaughter(generated.text, styleCues)),
     ...(usedId ? { usedPersonalMemoryId: usedId } : {}),
     provenance: {
       overriddenFields: context.provenance.overriddenFields.map(String),

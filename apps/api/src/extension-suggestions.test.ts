@@ -287,3 +287,50 @@ test("AI identity question in an older message is not a new automatic-blocking e
   assert.equal(called, true);
   assert.equal(result.suggestions.length, 1);
 });
+
+
+test("the extension prompt prioritizes a sensitive disclosure over an hh laugh", async () => {
+  let prompt = "";
+  const result = await generateExtensionSuggestions(
+    "test-user",
+    {
+      purpose: "auto", count: 1,
+      context: "Me: Tu sors souvent ?\nThem: Depuis que mon amie s'est mariée je sors moins hh",
+      config: { tone: "playful" }
+    },
+    async () => ({ provider: "gemini", model: "test", apiKey: "test-key" }),
+    async (_input, init) => {
+      prompt = JSON.parse(String(init?.body)).contents[0].parts[0].text;
+      return new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ text: '["Ça change pas mal les habitudes, j’imagine."]' }] } }]
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    },
+    async () => ({ memories: [] })
+  );
+  assert.equal(result.suggestions.length, 1);
+  assert.match(prompt, /acknowledge their experience with warmth/);
+  assert.match(prompt, /not consent to a joke at their expense/);
+  assert.match(prompt, /Avoid canned opening formulas/);
+});
+
+test("a confirmed interview complaint tells the extension not to invent another question", async () => {
+  let prompt = "";
+  await generateExtensionSuggestions(
+    "test-user",
+    {
+      purpose: "auto", count: 1,
+      context: "Me: Tu travailles ?\nThem: oui\nMe: Tu habites où ?\nThem: Hsit rasi b interview",
+      config: {}
+    },
+    async () => ({ provider: "gemini", model: "test", apiKey: "test-key" }),
+    async (_input, init) => {
+      prompt = JSON.parse(String(init?.body)).contents[0].parts[0].text;
+      return new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ text: '["Ah oui, j’ai fait mon interrogatoire sans m’en rendre compte 😅"]' }] } }]
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    },
+    async () => ({ memories: [] })
+  );
+  assert.match(prompt, /stop asking questions for the next turn/);
+  assert.match(prompt, /disguised request/);
+});

@@ -1,6 +1,7 @@
 import { buildSystemInstruction, buildUserPrompt } from "./prompt";
 import type { AppConfig, ChatSettings, GeneratePurpose } from "./types";
 import { limitReplyLaughter, readLabeledReplyHistory, readReplyStyleCues } from "./conversation-reply-style.ts";
+import { removeCannedFameuxOpening } from "./conversation-pragmatics.ts";
 
 interface GeminiResponse {
   candidates?: Array<{ finishReason?: string; content?: { parts?: Array<{ text?: string }> } }>;
@@ -63,5 +64,5 @@ export async function generateSuggestions(apiKey: string, config: AppConfig, con
   const suggestions = parseSuggestions(text, safeCount);
   if (purpose === "opener") return suggestions;
   const cues = readReplyStyleCues(readLabeledReplyHistory(context));
-  return suggestions.map(suggestion => limitReplyLaughter(suggestion, cues));
+  return suggestions.map(suggestion => removeCannedFameuxOpening(limitReplyLaughter(suggestion, cues)));
 }
