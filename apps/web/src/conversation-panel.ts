@@ -4,6 +4,7 @@ import {
   clearTemporaryInstruction,
   getConversation,
   listConversations,
+  searchConversationContent,
   saveTemporaryInstruction,
   saveConversationDisplayIdentity,
   updateConversationStatus,
@@ -11,7 +12,7 @@ import {
   type TemporaryInstructionScope
 } from "./conversation-client";
 import type { ConversationListItem, ConversationStatus } from "./conversation-contract";
-import { filterConversationSummaries } from "./conversation-list-filter";
+import { filterConversationSummaries, type ConversationSort, type ConversationLength, type ContactFromMatch } from "./conversation-list-filter";
 import { conversationEmptyState, hasConversationFilters, isCurrentConversationResponse } from "./conversation-list-ui";
 import { replyTargetFromHistory, replyTargetHint } from "./conversation-reply-target";
 
@@ -283,6 +284,14 @@ function installStyles(): void {
   style.textContent = `
     .conversation-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:12px}.conversation-stat{display:grid;gap:2px;padding:9px 10px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:rgba(127,127,127,.05)}.conversation-stat strong{font-size:18px}.conversation-stat span{font-size:10px;opacity:.7}
     .conversation-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;flex-wrap:wrap}.conversation-filter{display:flex;align-items:center;gap:7px;font-size:12px}.conversation-filter select{width:auto;min-width:170px}.conversation-summary{font-size:11px;opacity:.7}.conversation-clear-filters{width:auto;min-height:44px;padding:8px 12px;border:1px solid var(--nb-border,#c8d8cd);color:var(--nb-primary,#264b40);background:var(--nb-surface,#fff);border-radius:10px}.conversation-empty{display:grid;gap:8px;padding:16px;border:1px dashed var(--nb-border,#c8d8cd);border-radius:12px;background:var(--nb-surface-soft,#edf4eb)}.conversation-empty p{margin:0;line-height:1.5}
+    .conversation-advanced{flex:1 1 100%;padding:0 12px;border:1px solid var(--nb-border,#c8d8cd);border-radius:12px;background:var(--nb-surface,#fff)}
+    .conversation-advanced>summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-size:13px;font-weight:750}
+    .conversation-advanced>summary:focus-visible{outline:3px solid var(--nb-focus,#7565de);outline-offset:2px}
+    .conversation-advanced-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;padding:10px 0 14px}
+    .conversation-advanced-grid label{display:grid;gap:5px;font-size:12px;min-width:0}
+    .conversation-advanced-grid input,.conversation-advanced-grid select{width:100%;min-width:0;min-height:44px}
+    .conversation-advanced-grid select[multiple]{min-height:92px}
+    .conversation-advanced-grid small{line-height:1.5}
     .conversation-layout{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(280px,1.1fr);gap:14px;margin-top:14px;min-width:0;align-items:stretch}
     .conversation-identity-editor{margin:0 0 12px;padding:10px 13px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:var(--nb-surface-soft,#edf4eb)}.conversation-identity-editor summary{cursor:pointer;font-size:12px;font-weight:750}.conversation-identity-editor>p{font-size:12px;line-height:1.5}.conversation-identity-controls{display:flex;align-items:flex-end;flex-wrap:wrap;gap:9px}.conversation-identity-controls label{display:grid;gap:5px;flex:1 1 130px;font-size:12px}.conversation-identity-controls label:nth-child(2){flex:0 1 115px}.conversation-identity-controls input{min-width:0;max-width:100%}.conversation-identity-controls button{max-width:100%;width:auto;white-space:normal}
     .conversation-person-line{display:flex;align-items:center;gap:9px;min-width:0}.conversation-person-line strong{min-width:0;overflow-wrap:anywhere} .conversation-person-avatar{display:inline-grid;flex:0 0 40px;place-items:center;width:40px;height:40px;background:var(--nb-mint,#d9efcc);color:var(--nb-primary,#264b40);border-radius:50%;font-weight:800;overflow:hidden}.conversation-person-avatar img{display:block;width:100%;height:100%;object-fit:cover}.conversation-detail-heading>.conversation-person-avatar{width:48px;height:48px;flex-basis:48px}.conversation-status-help{margin:0 0 12px;padding:10px 13px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:var(--nb-surface-soft,#edf4eb)}.conversation-status-help summary{cursor:pointer;font-size:12px;font-weight:750}.conversation-status-help p{font-size:12px;line-height:1.55}.conversation-status-help a{font-size:12px;font-weight:750;color:inherit;text-decoration:underline}
@@ -300,7 +309,7 @@ function installStyles(): void {
   document.head.append(style);
 }
 
-function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement; filter: HTMLSelectElement; search: HTMLInputElement; clearFilters: HTMLButtonElement; summary: HTMLElement; stats: HTMLElement } | null {
+function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement; filter: HTMLSelectElement; search: HTMLInputElement; clearFilters: HTMLButtonElement; summary: HTMLElement; stats: HTMLElement; advanced: HTMLDetailsElement; sort: HTMLSelectElement; minAge: HTMLInputElement; maxAge: HTMLInputElement; cities: HTMLSelectElement; goal: HTMLSelectElement; contact: HTMLSelectElement; length: HTMLSelectElement; messageSearch: HTMLInputElement; filterNotice: HTMLElement } | null {
   const grid = document.querySelector<HTMLElement>(".grid");
   if (!grid) return null;
   installStyles();
@@ -331,7 +340,21 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
           <option value="archived">Archived</option>
         </select>
       </label>
-      <button id="conversation-clear-filters" class="conversation-clear-filters" type="button" hidden>Clear filters</button>
+      <details id="conversation-advanced-filters" class="conversation-advanced">
+         <summary>Advanced filters</summary>
+         <div class="conversation-advanced-grid">
+           <label>Sort by<select id="conversation-sort"><option value="recent">Newest first</option><option value="oldest">Oldest first</option><option value="longest">Longest chats</option><option value="waiting">Needs reply first</option></select></label>
+           <label>Minimum age<input id="conversation-age-min" type="number" min="18" max="120" placeholder="18"></label>
+           <label>Maximum age<input id="conversation-age-max" type="number" min="18" max="120" placeholder="120"></label>
+           <label>Match cities<select id="conversation-city-filter" multiple size="3" aria-describedby="conversation-city-help"></select><small id="conversation-city-help">Ctrl/Cmd to select several. Profile cities only.</small></label>
+           <label>Match dating goal<select id="conversation-goal-filter"><option value="">Any known goal</option></select></label>
+           <label>Match shared a contact<select id="conversation-contact-filter"><option value="all">Any</option><option value="any">Instagram or WhatsApp</option><option value="instagram">Instagram detected</option><option value="whatsapp">WhatsApp detected</option></select></label>
+           <label>Message count<select id="conversation-length-filter"><option value="all">Any</option><option value="first-messages">Getting started (0–4)</option><option value="developing">Developing (5–19)</option><option value="long">Long (20+)</option></select></label>
+           <label>Search within messages<input id="conversation-message-search" type="search" maxlength="100" autocomplete="off" placeholder="At least 2 characters"></label>
+           <small id="conversation-filter-notice" role="status" aria-live="polite">Only synchronized and verified match data are searchable. Contacts refer to those shared by the match.</small>
+         </div>
+       </details>
+       <button id="conversation-clear-filters" class="conversation-clear-filters" type="button" hidden>Clear filters</button>
       <span id="conversation-filter-summary" class="conversation-summary" role="status" aria-live="polite"></span>
     </div>
     <div class="conversation-layout">
@@ -355,7 +378,17 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
     search: panel.querySelector<HTMLInputElement>("#conversation-search")!,
     clearFilters: panel.querySelector<HTMLButtonElement>("#conversation-clear-filters")!,
     summary: panel.querySelector<HTMLElement>("#conversation-filter-summary")!,
-    stats: panel.querySelector<HTMLElement>("#conversation-operational-summary")!
+    stats: panel.querySelector<HTMLElement>("#conversation-operational-summary")!,
+    advanced: panel.querySelector<HTMLDetailsElement>("#conversation-advanced-filters")!,
+    sort: panel.querySelector<HTMLSelectElement>("#conversation-sort")!,
+    minAge: panel.querySelector<HTMLInputElement>("#conversation-age-min")!,
+    maxAge: panel.querySelector<HTMLInputElement>("#conversation-age-max")!,
+    cities: panel.querySelector<HTMLSelectElement>("#conversation-city-filter")!,
+    goal: panel.querySelector<HTMLSelectElement>("#conversation-goal-filter")!,
+    contact: panel.querySelector<HTMLSelectElement>("#conversation-contact-filter")!,
+    length: panel.querySelector<HTMLSelectElement>("#conversation-length-filter")!,
+    messageSearch: panel.querySelector<HTMLInputElement>("#conversation-message-search")!,
+    filterNotice: panel.querySelector<HTMLElement>("#conversation-filter-notice")!
   };
 }
 
@@ -376,11 +409,73 @@ export function prioritizeWaitingReplies(items: readonly ConversationListItem[])
     || a.id.localeCompare(b.id));
 }
 
+let messageMatches: string[] | null = null;
+let messageSearchSequence = 0;
+let messageSearchTimer: ReturnType<typeof setTimeout> | null = null;
+let messageSearchBusy = false;
+
+function advancedFiltersActive(): boolean {
+  if (!elements) return false;
+  return elements.sort.value !== "recent" || Boolean(elements.minAge.value || elements.maxAge.value
+    || elements.cities.selectedOptions.length || elements.goal.value
+    || elements.contact.value !== "all" || elements.length.value !== "all"
+    || elements.messageSearch.value.trim());
+}
 function filteredItems(): ConversationListItem[] {
-  return prioritizeWaitingReplies(filterConversationSummaries(cachedItems, {
-    status: (elements?.filter.value ?? "all") as ConversationStatus | "all",
-    query: elements?.search.value ?? ""
-  }));
+  if (!elements) return [];
+  const min = Number(elements.minAge.value), max = Number(elements.maxAge.value);
+  return filterConversationSummaries(cachedItems, {
+    status: (elements.filter.value ?? "all") as ConversationStatus | "all",
+    query: elements.search.value,
+    sort: elements.sort.value as ConversationSort,
+    ageMin: elements.minAge.value && min >= 18 && min <= 120 ? min : null,
+    ageMax: elements.maxAge.value && max >= 18 && max <= 120 ? max : null,
+    cities: Array.from(elements.cities.selectedOptions, option => option.value),
+    datingGoal: elements.goal.value,
+    matchContact: elements.contact.value as ContactFromMatch,
+    length: elements.length.value as ConversationLength,
+    messageSearchIds: elements.messageSearch.value.trim() ? (messageMatches ?? []) : null
+  });
+}
+function updateFacets(): void {
+  if (!elements) return;
+  const previousCities = new Set(Array.from(elements.cities.selectedOptions, x => x.value));
+  const previousGoal = elements.goal.value;
+  const cities = [...new Set(cachedItems.map(x => x.matchCity?.trim()).filter((x): x is string => Boolean(x)))].sort();
+  const goals = [...new Set(cachedItems.map(x => x.matchDatingGoal?.trim()).filter((x): x is string => Boolean(x)))].sort();
+  elements.cities.innerHTML = cities.map(city => '<option value="' + escapeHtml(city) + '"' + (previousCities.has(city) ? ' selected' : '') + '>' + escapeHtml(city) + '</option>').join("");
+  elements.goal.innerHTML = '<option value="">Any known goal</option>' + goals.map(goal => '<option value="' + escapeHtml(goal) + '"' + (goal === previousGoal ? ' selected' : '') + '>' + escapeHtml(goal) + '</option>').join("");
+}
+async function lookupMessageContent(): Promise<void> {
+  if (!elements) return;
+  const session = readSession();
+  const query = elements.messageSearch.value.trim();
+  const seq = ++messageSearchSequence;
+  messageMatches = null;
+  if (!session || query.length < 2) {
+    messageSearchBusy = false;
+    elements.filterNotice.textContent = query ? "Enter at least two characters to search saved messages." : "Only synced match profile fields and detected incoming contacts are filterable.";
+    applyConversationFilters();
+    return;
+  }
+  messageSearchBusy = true;
+  elements.filterNotice.textContent = "Searching synchronized message text…";
+  applyConversationFilters();
+  try {
+    const ids = await searchConversationContent(session, query);
+    if (seq !== messageSearchSequence || readSession()?.token !== session.token || elements.messageSearch.value.trim() !== query) return;
+    messageMatches = ids;
+    elements.filterNotice.textContent = "Search finished. Results include only saved conversations.";
+  } catch {
+    if (seq !== messageSearchSequence || readSession()?.token !== session.token) return;
+    messageMatches = [];
+    elements.filterNotice.textContent = "Message search unavailable. Check the API connection and retry.";
+  } finally {
+    if (seq === messageSearchSequence) {
+      messageSearchBusy = false;
+      applyConversationFilters();
+    }
+  }
 }
 
 function bindRows(items: ConversationListItem[]): void {
@@ -409,8 +504,8 @@ function bindRows(items: ConversationListItem[]): void {
 function renderCurrentList(): void {
   if (!elements) return;
   const items = filteredItems();
-  const filtered = hasConversationFilters(elements.search.value, elements.filter.value);
-  elements.list.innerHTML = renderList(items, cachedItems.length, filtered, selectedConversationId);
+  const filtered = hasConversationFilters(elements.search.value, elements.filter.value) || advancedFiltersActive();
+  elements.list.innerHTML = messageSearchBusy ? '<p class="subtle" role="status">Searching synced messages…</p>' : renderList(items, cachedItems.length, filtered, selectedConversationId);
   elements.clearFilters.hidden = !filtered;
   elements.summary.textContent = `${items.length} shown · ${cachedItems.length} total`;
   elements.stats.innerHTML = renderOperationalSummary(cachedItems);
@@ -580,6 +675,16 @@ async function refresh(): Promise<void> {
     ++detailRequestSequence;
     elements.search.value = "";
     elements.filter.value = "all";
+    elements.sort.value = "recent";
+    elements.minAge.value = "";
+    elements.maxAge.value = "";
+    elements.contact.value = "all";
+    elements.length.value = "all";
+    elements.messageSearch.value = "";
+    messageMatches = null;
+    messageSearchBusy = false;
+    ++messageSearchSequence;
+    if (messageSearchTimer) clearTimeout(messageSearchTimer);
     elements.clearFilters.hidden = true;
     elements.summary.textContent = "";
     elements.stats.innerHTML = "";
@@ -604,6 +709,7 @@ async function refresh(): Promise<void> {
     const items = await listConversations(session);
     if (!isCurrentConversationResponse(requestId, refreshRequestSequence, session.token, readSession()?.token)) return;
     cachedItems = items;
+    updateFacets();
     window.dispatchEvent(new CustomEvent("tnnd:conversation-updated"));
     elements.status.textContent = `${cachedItems.length} synced`;
     const visible = filteredItems();
@@ -642,10 +748,31 @@ function applyConversationFilters(): void {
 }
 elements?.filter.addEventListener("change", applyConversationFilters);
 elements?.search.addEventListener("input", applyConversationFilters);
+elements?.advanced.addEventListener("change", applyConversationFilters);
+elements?.messageSearch.addEventListener("input", () => {
+  if (messageSearchTimer) clearTimeout(messageSearchTimer);
+  messageSearchBusy = false;
+  messageMatches = null;
+  ++messageSearchSequence;
+  messageSearchTimer = setTimeout(() => { void lookupMessageContent(); }, 300);
+  applyConversationFilters();
+});
 elements?.clearFilters.addEventListener("click", () => {
   if (!elements) return;
   elements.filter.value = "all";
   elements.search.value = "";
+  elements.sort.value = "recent";
+  elements.minAge.value = "";
+  elements.maxAge.value = "";
+  Array.from(elements.cities.options).forEach(option => { option.selected = false; });
+  elements.goal.value = "";
+  elements.contact.value = "all";
+  elements.length.value = "all";
+  elements.messageSearch.value = "";
+  messageMatches = null;
+  messageSearchBusy = false;
+  ++messageSearchSequence;
+  if (messageSearchTimer) clearTimeout(messageSearchTimer);
   applyConversationFilters();
   elements.search.focus();
 });

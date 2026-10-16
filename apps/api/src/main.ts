@@ -13,7 +13,7 @@ import { handleAnalyticsRequest } from "./analytics-controller.js";
 import { bulkUpdateConversationManagement, isConversationManagementState, listConversationManagement, updateConversationManagement, type ConversationManagementUpdate } from "./conversation-management-service.js";
 import { handleOutgoingConfirmationRequest } from "./conversation-outgoing-confirmation-controller.js";
 import { clearConversationOverrides, getConversationOverrides, replaceConversationOverrides } from "./conversation-overrides-service.js";
-import { clearConversationTemporaryInstruction, getConversation, listConversations, setConversationTemporaryInstruction, syncConversation, updateConversationStatus, updateConversationDisplayIdentity, type TemporaryInstructionScope } from "./conversation-service.js";
+import { clearConversationTemporaryInstruction, getConversation, listConversations, searchConversationMessageContent, setConversationTemporaryInstruction, syncConversation, updateConversationStatus, updateConversationDisplayIdentity, type TemporaryInstructionScope } from "./conversation-service.js";
 import { isConversationStatus, validateConversationSyncRequest } from "./conversation-sync-contract.js";
 import { conversationSyncErrorResponse } from "./conversation-sync-error-response.js";
 import { handleConversationThreadLookupRequest } from "./conversation-thread-lookup-controller.js";
@@ -477,6 +477,26 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/v1/conversations/search-content") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      try {
+        const body = await readJsonBody(request);
+        if (typeof body.query !== "string" || body.query.trim().length < 2 || body.query.trim().length > 100) {
+          sendJson(response, 400, { error: "invalid_conversation_search" });
+          return;
+        }
+        const ids = await searchConversationMessageContent(session.user.id, body.query);
+        sendJson(response, 200, { conversationIds: ids });
+      } catch {
+        sendJson(response, 400, { error: "invalid_conversation_search" });
+      }
+      return;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/v1/conversations") {
       const session = await authenticatedUser(request);
       if (!session) {
@@ -496,7 +516,12 @@ const server = createServer(async (request, response) => {
           currentTopic: conversation.currentTopic ?? null,
           lastMessageAt: conversation.lastMessageAt ?? conversation.updatedAt,
           lastMessageDirection: conversation.lastMessageDirection ?? null,
-          pendingHumanActions: conversation.pendingHumanActions ?? 0
+          pendingHumanActions: conversation.pendingHumanActions ?? 0,
+          messageCount: conversation.messageCount ?? 0,
+          matchCity: conversation.matchCity ?? null,
+          matchDatingGoal: conversation.matchDatingGoal ?? null,
+          matchSharedInstagram: conversation.matchSharedInstagram ?? false,
+          matchSharedWhatsapp: conversation.matchSharedWhatsapp ?? false
         }))
       });
       return;
