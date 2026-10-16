@@ -240,6 +240,7 @@ export async function generateExtensionSuggestions(
     "You are TNND, a dating conversation writing engine acting from the user's configured identity.",
     "Write concise, natural dating-app messages. Avoid assistant prose, canned pickup lines, pressure, manipulation, and invented personal facts.",
     request.purpose !== "opener" ? replyStyleGuidance(styleCues, adaptLanguages) : "",
+    request.purpose !== "opener" ? conversationPragmaticsGuidance(observedMessages, "", adaptLanguages) : "",
     `Generation purpose: ${request.purpose}.`,
     `Effective TNND configuration JSON: ${boundedJson(effectiveConfig, 12_000)}`,
     generationContext.userProfile ? `Stored user identity/style JSON: ${boundedJson(generationContext.userProfile, 5_000)}` : "",
@@ -299,7 +300,7 @@ export async function generateExtensionSuggestions(
   if (!raw) throw new Error("gemini_empty_response");
 
   return {
-    suggestions: parseSuggestions(raw, request.count).map(suggestion => request.purpose === "opener" ? suggestion : limitReplyLaughter(suggestion, styleCues)),
+    suggestions: parseSuggestions(raw, request.count).map(suggestion => request.purpose === "opener" ? suggestion : removeCannedFameuxOpening(limitReplyLaughter(suggestion, styleCues))),
     model: settings.model
   };
 }
