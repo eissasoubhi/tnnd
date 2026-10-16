@@ -12,6 +12,7 @@ import { conversationFlowGuidance, deriveConversationFlow } from "./conversation
 import { retrievePersonalMemories } from "./personal-memory-service.js";
 import { loadAiProviderSettings } from "./ai-provider-settings-service.js";
 import { resolveAdaptiveStyle } from "./conversation-style-adaptation.js";
+import { conversationPragmaticsGuidance, removeCannedFameuxOpening } from "../../../src/conversation-pragmatics.js";
 import { limitReplyLaughter, readLabeledReplyHistory, readReplyStyleCues, replyStyleGuidance } from "../../../src/conversation-reply-style.js";
 import type { ConversationOverrides } from "./conversation-overrides.js";
 
