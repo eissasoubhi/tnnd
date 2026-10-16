@@ -91,5 +91,14 @@ export function conversationPragmaticsGuidance(
  * Intentionally only removes the ornamental adjective, not the substantive text.
  */
 export function removeCannedFameuxOpening(reply: string): string {
-  return reply.replace(/^(\s*(?:(?:ah|oh)[,\s!]*)?(?:le|la|les)\s+)fameu(?:x|se|ses)\b/iu, "$1");
+  return reply.replace(
+    /^(\s*(?:(?:ah|oh)[,\s!]*)?)(le|la|les)\s+fameu(?:x|se|ses)\b(\s*)(?=\p{L})/iu,
+    (matched, lead: string, article: string, gap: string, index: number) => {
+      const next = reply.slice(index + matched.length);
+      if (/^[aeiouyhàâéèêëîïôùûü]/iu.test(next) && /^(?:le|la)$/iu.test(article)) {
+        return lead + (article[0] === article[0].toUpperCase() ? "L'" : "l'");
+      }
+      return lead + article + gap;
+    }
+  );
 }
