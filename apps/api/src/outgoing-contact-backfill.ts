@@ -1,3 +1,4 @@
+import type { QueryResult } from "pg";
 import { getPool } from "./db-client.js";
 import { outgoingContactEvidence, type ContactHistoryBubble } from "./outgoing-contact-evidence.js";
 import { ensureOutgoingContactRecord } from "./outgoing-contact-record-service.js";
@@ -5,6 +6,10 @@ import { ensureOutgoingContactRecord } from "./outgoing-contact-record-service.j
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
 const PAGE_SIZE = 200;
+interface BackfillMessageRow {
+  id: string; external_message_id: string; direction: "incoming" | "outgoing";
+  body: string; sent_at: Date;
+}
 
 export interface OutgoingContactBackfillOptions {
   userId: string;
@@ -69,10 +74,7 @@ export async function runOutgoingContactBackfill(
     let cursorTime: Date | null = null;
     let cursorId: string | null = null;
     for (;;) {
-      const messages = await pool.query<{
-        id: string; external_message_id: string; direction: "incoming" | "outgoing";
-        body: string; sent_at: Date
-      }>(
+      const messages: QueryResult<BackfillMessageRow> = await pool.query<BackfillMessageRow>(
         "SELECT id::text AS id, external_message_id, direction, body, sent_at "
         + "FROM conversation_messages WHERE conversation_id = $1 "
         + "AND ($2::timestamptz IS NULL OR (sent_at, id) > ($2::timestamptz, $3::uuid)) "
@@ -101,7 +103,7 @@ export async function runOutgoingContactBackfill(
         }
         recorded.add(evidence.sourceExternalMessageId);
       }
-      const last = messages.rows.at(-1)!;
+      const last: BackfillMessageRow = messages.rows.at(-1)!;
       cursorTime = last.sent_at;
       cursorId = last.id;
       if (messages.rows.length < PAGE_SIZE) break;
