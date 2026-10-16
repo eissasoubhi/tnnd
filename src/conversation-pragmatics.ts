@@ -36,7 +36,7 @@ function isVulnerableDisclosure(value: string): boolean {
 
 function requestsArabic(value: string): boolean {
   const text = normalize(value);
-  return /(?:^|\b)(?:dwi|hdar|thdar|tkellem|tekklem|parle|parlez|speak).{0,18}(?:b\s*(?:arbia|3arbia|3arbiya|l3arbia|darija)|arabe|arabic|darija)(?:\b|$)/u.test(text)
+  return /^(?:(?:stp|svp|please|3afak|tu peux|can you)\s+)?(?:dwi|hdar|thdar|tkellem|tekklem|parle|parlez|speak)\b.{0,18}(?:b\s*(?:arbia|3arbia|3arbiya|l3arbia|darija)|arabe|arabic|darija)(?:\b|$)/u.test(text)
     || /(?:هدر|تكلم|دوي).{0,18}(?:بالعربية|بالدارجة)/u.test(value);
 }
 
