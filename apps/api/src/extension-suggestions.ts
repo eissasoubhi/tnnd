@@ -5,6 +5,8 @@ import { getConversationMatchProfile } from "./match-profile-service.js";
 import { matchProfileTopicGuidance } from "./match-profile-topic-hooks.js";
 import { missingPersonalLocationDetail, personalLocationAnswerPolicy } from "./personal-location-policy.js";
 import { createHumanAction, listHumanActions } from "./human-action-service.js";
+import { ensureAiIdentityAction } from "./conversation-ai-identity-action.js";
+import { latestIncomingAsksAboutAiIdentity } from "../../../src/conversation-ai-identity-question.js";
 import { assessMatchIntent, matchScreeningPrompt, type MatchScreeningOptions } from "./match-intent-screening.js";
 import { conversationFlowGuidance, deriveConversationFlow } from "./conversation-flow.js";
 import { retrievePersonalMemories } from "./personal-memory-service.js";
@@ -146,6 +148,15 @@ export async function generateExtensionSuggestions(
   fetcher: Fetcher = fetch,
   loadContext: ContextLoader = loadExtensionGenerationContext
 ): Promise<ExtensionSuggestionResult> {
+  // Check BEFORE loading a model or generating any Tinder message. Only a
+  // verified last incoming turn can cause this human-only interruption.
+  if (request.purpose === "auto"
+    && latestIncomingAsksAboutAiIdentity(readLabeledReplyHistory(request.context))) {
+    const thread = request.threadKey
+      ? await findConversationByExternalThreadId(userId, request.threadKey) : null;
+    if (thread) await ensureAiIdentityAction(userId, thread.id);
+    throw new Error("human_ai_identity_review_required");
+  }
   const settings = await loadSettings(userId);
   if (!settings) throw new Error("ai_provider_not_configured");
   const generationContext = await loadContext(userId, request.context);

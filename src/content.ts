@@ -6,6 +6,7 @@ import { firstMessageAttemptKey, firstMessageBlocker, firstMessageContext } from
 import { groundedOpenerFragments, sameOpenerThreadUninterrupted } from "./tinder-opener-fragments";
 import { openerDelaySeconds, openerTypingDelaySeconds } from "./tinder-opener-timing";
 import { naturalReplyBubbles } from "./tinder-reply-bubbles";
+import { isDirectAiIdentityQuestion } from "./conversation-ai-identity-question";
 import { syncConversationDelta } from "./conversation-sync";
 import { observeTinderRuntime } from "./tinder-runtime-observation";
 import { readCurrentTinderUiState } from "./tinder-runtime-state";
@@ -493,6 +494,17 @@ async function scan(): Promise<void> {
 
     const state = await getState();
     if (!state) return;
+    if (isDirectAiIdentityQuestion(snapshot.latestIncomingText)) {
+      // A direct accusation/question about AI is for the account owner,
+      // not a model-generated denial or distracting reply. Claim the
+      // observed inbound bubble without consuming the daily send quota.
+      if (!state.processed[snapshot.latestIncomingKey]) {
+        state.processed[snapshot.latestIncomingKey] = Date.now();
+        if (!await saveState(state)) return;
+      }
+      reportExistingRunner("skipped", "Match asked if AI is involved · automatic reply stopped. Respond personally and truthfully in Tinder; review TNND Action Center.");
+      return;
+    }
     if (state.processed[snapshot.latestIncomingKey] ||
         (snapshot.legacyIncomingKey && state.processed[snapshot.legacyIncomingKey])) {
       reportExistingRunner("waiting", "The last incoming message was already handled · waiting for another.");

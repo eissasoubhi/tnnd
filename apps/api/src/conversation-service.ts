@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { recordSharedSocialContacts } from "./social-contact-service.js";
+import { recordAiIdentityQuestionOnSync } from "./conversation-ai-identity-action.js";
 import { listConversationFacts } from "./conversation-fact-service.js";
 import { deriveConversationFlow, type ConversationFlowState } from "./conversation-flow.js";
 import { analyzeAndRecordConversationFacts } from "./conversation-fact-orchestration-service.js";
@@ -155,6 +156,13 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
   }
   if (!result) throw new Error("conversation_sync_failed");
   if (result.acceptedMessageIds.length > 0) {
+    // A direct question about AI must become an explicit human-review pause,
+    // not a routine model-generated Tinder answer.
+    try {
+      await recordAiIdentityQuestionOnSync(userId, result.conversationId, result.acceptedMessageIds);
+    } catch {
+      console.warn("TNND could not create the AI-identity human action.");
+    }
     void analyzeAndRecordConversationTopics(userId, result.conversationId).catch(() => undefined);
     void summarizeConversationIfNeeded(userId, result.conversationId).catch(() => undefined);
     void analyzeAndRecordConversationFacts(userId, result.conversationId).catch(() => undefined);
