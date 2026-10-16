@@ -12,6 +12,11 @@ export const CONVERSATION_STATUSES = [
 
 export type ConversationStatus = (typeof CONVERSATION_STATUSES)[number];
 
+export type ConversationStageTag = "introductions" | "getting-to-know" | "date-discussion" | "off-tinder";
+export type ConversationToneTag = "playful" | "flirty" | "warm" | "direct";
+export const semanticStages = ["introductions", "getting-to-know", "date-discussion", "off-tinder"] as const;
+export const semanticTones = ["playful", "flirty", "warm", "direct"] as const;
+
 export interface ConversationListItem {
   id: string;
   displayName: string;
@@ -27,6 +32,9 @@ export interface ConversationListItem {
   matchDatingGoal?: string | null;
   matchSharedInstagram?: boolean;
   matchSharedWhatsapp?: boolean;
+  semanticStage?: ConversationStageTag | null;
+  semanticTone?: ConversationToneTag | null;
+  semanticSource?: "rule-based" | "unknown";
 }
 
 export interface ConversationControlSummary {
@@ -77,5 +85,8 @@ export function normalizeConversationListItem(value: unknown): ConversationListI
     matchDatingGoal: typeof input.matchDatingGoal === "string" ? input.matchDatingGoal.slice(0, 120) : null,
     matchSharedInstagram: input.matchSharedInstagram === true,
     matchSharedWhatsapp: input.matchSharedWhatsapp === true,
+    semanticStage: typeof input.semanticStage === "string" && semanticStages.includes(input.semanticStage as ConversationStageTag) ? input.semanticStage as ConversationStageTag : null,
+    semanticTone: typeof input.semanticTone === "string" && semanticTones.includes(input.semanticTone as ConversationToneTag) ? input.semanticTone as ConversationToneTag : null,
+    semanticSource: input.semanticSource === "rule-based" ? "rule-based" : "unknown",
   };
 }
