@@ -1,7 +1,8 @@
-import { randomUUID } from "node:crypto";
 import { getPool } from "./db-client.js";
 import { createHumanAction } from "./human-action-service.js";
 import { detectSocialContact } from "./social-contact-detector.js";
+import { outgoingContactEvidence } from "./outgoing-contact-evidence.js";
+import { ensureOutgoingContactRecord } from "./outgoing-contact-record-service.js";
 import type { ConversationMessageDelta } from "./conversation-sync-contract.js";
 
 export async function recordSharedSocialContacts(
@@ -26,6 +27,14 @@ export async function recordSharedSocialContacts(
       .map(m=>({direction:m.direction,text:m.body.slice(0,500)}));
     const detected = detectSocialContact(current.body, previous);
     if (!detected) continue;
+    if (current.direction === "outgoing" && !outgoingContactEvidence(
+      { direction: "outgoing", text: current.body, externalMessageId: current.external_message_id },
+      messages.rows[i - 1] ? {
+        direction: messages.rows[i - 1]!.direction,
+        text: messages.rows[i - 1]!.body,
+        externalMessageId: messages.rows[i - 1]!.external_message_id
+      } : undefined
+    )) continue;
     const existing = await getPool().query(
       "SELECT id FROM human_actions WHERE user_id=$1 AND conversation_ref=$2"
       +" AND context_json->>'sourceExternalMessageId'=$3 LIMIT 1",
@@ -33,23 +42,10 @@ export async function recordSharedSocialContacts(
     );
     if (existing.rowCount) continue;
     if (current.direction === "outgoing") {
-      // A completed, metadata-only record supports the user's "I shared my
-      // contact" filter. Never create an Action Center reminder for their own
-      // sent handle, and never duplicate private contact data in context JSON.
-      await getPool().query(
-        "INSERT INTO human_actions (id, user_id, conversation_ref, conversation_label, title, detail, severity, status, context_json, resolved_at)"
-        + " VALUES ($1,$2,$3,'',$4,$5,'info','completed',$6::jsonb,now())",
-        [
-          randomUUID(), userId, conversationId, "You shared a contact",
-          "Contact platform recorded without storing the contact value again.",
-          JSON.stringify({
-            kind: "user-social-contact-shared",
-            platform: detected.platform,
-            sourceExternalMessageId: current.external_message_id,
-            direction: "outgoing"
-          })
-        ]
-      );
+      await ensureOutgoingContactRecord(userId, conversationId, {
+        platform: detected.platform as "instagram" | "whatsapp",
+        sourceExternalMessageId: current.external_message_id
+      });
       continue;
     }
     await createHumanAction(userId,{
