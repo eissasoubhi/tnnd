@@ -6,6 +6,7 @@ import { firstMessageAttemptKey, firstMessageBlocker, firstMessageContext } from
 import { groundedOpenerFragments, sameOpenerThreadUninterrupted } from "./tinder-opener-fragments";
 import { openerDelaySeconds, openerTypingDelaySeconds } from "./tinder-opener-timing";
 import { naturalReplyBubbles } from "./tinder-reply-bubbles";
+import { classifyConversationBoundary } from "./conversation-boundary-policy";
 import { syncConversationDelta } from "./conversation-sync";
 import { observeTinderRuntime } from "./tinder-runtime-observation";
 import { readCurrentTinderUiState } from "./tinder-runtime-state";
@@ -422,6 +423,21 @@ function reportExistingRunner(phase: "incoming" | "waiting" | "generating" | "se
   void sendRuntimeMessage({ type: "TNND_EXISTING_RUNNER_EVENT", ref, phase, detail }).catch(() => undefined);
 }
 
+function currentConversationBoundary() {
+  // Only directions identified by the existing Tinder adapter. Never guess
+  // who said a bubble, and never inspect an unrelated chat route.
+  return classifyConversationBoundary(adapter.readVisibleMessages().map(message => ({
+    direction: message.direction === "them" ? "incoming" as const : "outgoing" as const,
+    text: message.text
+  })));
+}
+
+function describeConversationBoundary(kind: ReturnType<typeof currentConversationBoundary>): string {
+  if (kind.kind === "off-tinder") return `Conversation moved to ${kind.platform ?? "another app"} · Tinder replies stopped; no outside message was sent.`;
+  if (kind.kind === "do-not-contact") return "Match asked not to be contacted · Tinder replies stopped.";
+  return "Goodbyes exchanged · closing this chat for now. Wait for a new message or resume manually later.";
+}
+
 async function autoReplyPausedAfterGlobalStop(conversationRef: string): Promise<boolean> {
   const response = await sendRuntimeMessage<{ ok: boolean; paused?: boolean }>({
     type: "TNND_EXISTING_RUNNER_TAB_PAUSED", ref: conversationRef
@@ -493,6 +509,15 @@ async function scan(): Promise<void> {
 
     const state = await getState();
     if (!state) return;
+    const boundary = currentConversationBoundary();
+    if (boundary.kind !== "continue") {
+      // Persist the incoming bubble as handled. An old "bye" must never
+      // wake up later as an automatic reply after worker/browser restart.
+      state.processed[snapshot.latestIncomingKey] = Date.now();
+      if (!await saveState(state)) return;
+      reportExistingRunner("skipped", describeConversationBoundary(boundary));
+      return;
+    }
     if (state.processed[snapshot.latestIncomingKey] ||
         (snapshot.legacyIncomingKey && state.processed[snapshot.legacyIncomingKey])) {
       reportExistingRunner("waiting", "The last incoming message was already handled · waiting for another.");
@@ -512,6 +537,10 @@ async function scan(): Promise<void> {
 
     const currentSnapshot = adapter.read();
     if (!currentSnapshot || currentSnapshot.latestIncomingKey !== snapshot.latestIncomingKey || currentSnapshot.threadKey !== snapshot.threadKey) return;
+    if (currentConversationBoundary().kind !== "continue") {
+      reportExistingRunner("skipped", "Chat ended while waiting · reply cancelled.");
+      return;
+    }
     if (currentConversationRef() !== conversationRef || !await backendAllowsAutomaticReply(conversationRef)) return;
     const stillEnabled = await getChatAutomationEnabled(currentSnapshot.threadKey);
     if (stillEnabled !== true) return;
@@ -531,6 +560,10 @@ async function scan(): Promise<void> {
     if (!finalSnapshot || finalSnapshot.latestIncomingKey !== currentSnapshot.latestIncomingKey
       || finalSnapshot.threadKey !== currentSnapshot.threadKey) {
       reportExistingRunner("skipped", "Visible conversation changed while generating · reply cancelled.");
+      return;
+    }
+    if (currentConversationBoundary().kind !== "continue") {
+      reportExistingRunner("skipped", "Conversation ended while generating · no Tinder message sent.");
       return;
     }
     const freshState = await getState();
