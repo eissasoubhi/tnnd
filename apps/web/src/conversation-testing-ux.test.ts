@@ -64,8 +64,10 @@ test("conversation detail prioritizes draft and messages before collapsible adva
   assert.match(draft, /detail\.insertBefore\(section, messages\)/);
 });
 
-test("reply-waiting chats precede already replied and paused chats in TNND Web",()=>{
- assert.match(panel,/prioritizeWaitingReplies\(filterConversationSummaries/);
+test("conversations default to newest first and provide optional reply urgency sort",()=>{
+ assert.match(panel,/option value="recent">Newest first/);
+ assert.match(panel,/option value="waiting">Needs reply first/);
+ assert.match(panel,/sort: elements.sort.value as ConversationSort/);
  assert.match(panel,/lastMessageDirection === "incoming"/);
  assert.match(panel,/Reply waiting/);
 });
