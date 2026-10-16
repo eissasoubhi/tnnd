@@ -3,6 +3,7 @@ import type { AppConfig, ChatSettings } from "./types";
 import { defaultSyncState, type SyncState } from "./sync-status";
 import { applyServerProfile } from "./server-effective-config";
 import { withBrowserRuntimeControls } from "./settings-ownership";
+import { cacheBelongsToSession } from "./profile-cache-scope";
 import { DEFAULT_FIRST_MESSAGE_DAILY_LIMIT, firstMessageDailyLimit } from "./tinder-first-message-daily-limit";
 import { DEFAULT_OPENER_MIN_SECONDS, DEFAULT_OPENER_MAX_SECONDS, openerTypingReferenceWindow } from "./tinder-opener-timing";
 
@@ -100,17 +101,6 @@ export async function lockStorageToTrustedContexts(): Promise<void> {
   } catch (error) {
     console.warn("TNND could not restrict storage access level", error);
   }
-}
-
-/** Never reuse stale/legacy Web profile cache across sign-outs or accounts. */
-export function cacheBelongsToSession(
-  cache: BackendProfileCache | null | undefined,
-  session: BackendSession | null | undefined,
-  now = Date.now()
-): boolean {
-  return Boolean(cache?.userId && cache.userId === session?.user?.id
-    && session?.token && session.expiresAt
-    && Number.isFinite(Date.parse(session.expiresAt)) && Date.parse(session.expiresAt) > now);
 }
 
 export async function getConfig(options: { includeBackendProfile?: boolean } = {}): Promise<AppConfig> {
