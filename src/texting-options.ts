@@ -19,6 +19,7 @@ export interface TextingStyleControls {
 
 export function mountTextingStyleControls(): TextingStyleControls {
   const section = document.createElement("section");
+  section.id = "fallbackTextingStyle";
   section.innerHTML = `
     <h2>Texting identity</h2>
     <div class="grid three">

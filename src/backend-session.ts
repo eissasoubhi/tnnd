@@ -38,6 +38,7 @@ export async function syncBackendProfileCache(session: BackendSession): Promise<
     throw new BackendApiError(payload?.error ?? "Unable to sync TNND profile.", response.status);
   }
   await saveBackendProfileCache({
+    userId: session.user.id,
     profile: payload.profile,
     updatedAt: payload.updatedAt,
     syncedAt: new Date().toISOString()

@@ -2,6 +2,8 @@ import { findLegacyChatSettingsKey } from "./tinder-chat-detection";
 import type { AppConfig, ChatSettings } from "./types";
 import { defaultSyncState, type SyncState } from "./sync-status";
 import { applyServerProfile } from "./server-effective-config";
+import { withBrowserRuntimeControls } from "./settings-ownership";
+import { cacheBelongsToSession } from "./profile-cache-scope";
 import { DEFAULT_FIRST_MESSAGE_DAILY_LIMIT, firstMessageDailyLimit } from "./tinder-first-message-daily-limit";
 import { DEFAULT_OPENER_MIN_SECONDS, DEFAULT_OPENER_MAX_SECONDS, openerTypingReferenceWindow } from "./tinder-opener-timing";
 
@@ -19,6 +21,7 @@ export interface BackendSession {
 }
 
 export interface BackendProfileCache {
+  userId?: string;
   profile: Record<string, unknown>;
   updatedAt: string;
   syncedAt: string;
@@ -100,8 +103,8 @@ export async function lockStorageToTrustedContexts(): Promise<void> {
   }
 }
 
-export async function getConfig(): Promise<AppConfig> {
-  const result = await chrome.storage.local.get([CONFIG_KEY, BACKEND_PROFILE_CACHE_KEY]);
+export async function getConfig(options: { includeBackendProfile?: boolean } = {}): Promise<AppConfig> {
+  const result = await chrome.storage.local.get([CONFIG_KEY, BACKEND_PROFILE_CACHE_KEY, BACKEND_SESSION_KEY]);
   const saved = result[CONFIG_KEY] as LegacyConfig | undefined;
   const savedAutomation = (saved?.automation ?? {}) as Partial<AppConfig["automation"]>;
   const legacyDelay = Number(savedAutomation.replyDelaySeconds);
@@ -134,7 +137,10 @@ export async function getConfig(): Promise<AppConfig> {
   };
 
   const cache = result[BACKEND_PROFILE_CACHE_KEY] as BackendProfileCache | undefined;
-  return applyServerProfile(localConfig, cache?.profile);
+  const session = result[BACKEND_SESSION_KEY] as BackendSession | undefined;
+  return options.includeBackendProfile === false
+    ? localConfig
+    : withBrowserRuntimeControls(localConfig, applyServerProfile(localConfig, cacheBelongsToSession(cache, session) ? cache!.profile : undefined));
 }
 
 export async function saveConfig(config: AppConfig): Promise<void> {
@@ -199,9 +205,10 @@ export async function clearBackendSession(): Promise<void> {
 }
 
 export async function getBackendProfileCache(): Promise<BackendProfileCache | null> {
-  const result = await chrome.storage.local.get(BACKEND_PROFILE_CACHE_KEY);
+  const result = await chrome.storage.local.get([BACKEND_PROFILE_CACHE_KEY, BACKEND_SESSION_KEY]);
   const value = result[BACKEND_PROFILE_CACHE_KEY] as BackendProfileCache | undefined;
-  return value?.profile && value.updatedAt && value.syncedAt ? value : null;
+  const session = result[BACKEND_SESSION_KEY] as BackendSession | undefined;
+  return value?.profile && value.updatedAt && value.syncedAt && cacheBelongsToSession(value, session) ? value : null;
 }
 
 export async function saveBackendProfileCache(cache: BackendProfileCache): Promise<void> {
