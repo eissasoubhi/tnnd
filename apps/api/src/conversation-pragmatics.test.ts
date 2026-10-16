@@ -67,3 +67,23 @@ test("no sensitive inference from ordinary humor or older incoming messages", ()
   assert.doesNotMatch(advice, /explicitly feels interviewed/);
   assert.doesNotMatch(guide(pair("j'adore les rooftops")), /feels judged or disbelieved/);
 });
+
+
+test("two consecutive incoming bubbles are read as one turn for empathy", () => {
+  const advice = guide(mixed(
+    ["outgoing", "Tu sors en ville souvent ?"],
+    ["incoming", "Depuis que mon amie s'est mariée, je sors beaucoup moins hh"],
+    ["incoming", "Sinon les deux endroits que j'aime sont des petits cafés"]
+  ));
+  assert.match(advice, /acknowledge their experience with warmth/);
+  assert.match(advice, /not consent to a joke at their expense/);
+});
+
+test("an older personal disclosure must not dominate after a new outgoing turn", () => {
+  const advice = guide(mixed(
+    ["incoming", "Depuis que mon amie s'est mariée, je sors moins"],
+    ["outgoing", "Je comprends, c'est un changement"],
+    ["incoming", "J'aime aussi la randonnée"]
+  ));
+  assert.doesNotMatch(advice, /acknowledge their experience with warmth/);
+});
