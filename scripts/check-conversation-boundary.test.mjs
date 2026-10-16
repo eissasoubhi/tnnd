@@ -6,7 +6,7 @@ const exchange = (...messages) => messages.map(([direction, text]) => ({ directi
 
 test("mutual farewell ends for now without another goodbye", () => {
   assert.equal(classify(exchange(["outgoing", "Bonne soirée !"], ["incoming", "Bye 🙂"])).kind, "rest");
-  assert.equal(classify(exchange(["outgoing", "Good night"], ["incoming", "You too"])).kind, "continue");
+  assert.equal(classify(exchange(["outgoing", "Good night"], ["incoming", "You too"])).kind, "rest");
   assert.equal(classify(exchange(["outgoing", "Good night"], ["incoming", "ok"])).kind, "rest");
   assert.equal(classify(exchange(["outgoing", "تصبح على خير"], ["incoming", "بسلامة"])).kind, "rest");
 });
@@ -25,6 +25,7 @@ test("explicitly agreed app handoff stops Tinder replies", () => {
 test("contact discovery and generic assent never establish a handoff", () => {
   assert.equal(classify(exchange(["outgoing", "Tu as Instagram ?"], ["incoming", "@lola_03"])).kind, "continue");
   assert.equal(classify(exchange(["outgoing", "Coucou"], ["incoming", "ok"])).kind, "continue");
+  assert.equal(classify(exchange(["outgoing", "On passe sur Insta ?"], ["incoming", "jamais"])).kind, "continue");
   assert.equal(classify(exchange(["outgoing", "On passe sur Insta ?"], ["incoming", "Non je préfère ici"])).kind, "continue");
 });
 
