@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { recordSharedSocialContacts } from "./social-contact-service.js";
+import { statusAfterPassiveSync } from "./conversation-sync-status-policy.js";
 import { recordAiIdentityQuestionOnSync } from "./conversation-ai-identity-action.js";
 import { listConversationFacts } from "./conversation-fact-service.js";
 import { deriveConversationFlow, type ConversationFlowState } from "./conversation-flow.js";
@@ -81,7 +82,7 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
       [userId, input.externalThreadId]
     );
     let conversationId = existing.rows[0]?.id;
-    const status: ConversationStatus = input.status ?? existing.rows[0]?.status ?? "active";
+    const status: ConversationStatus = statusAfterPassiveSync(input.status, existing.rows[0]?.status);
     if (!conversationId) {
       conversationId = randomUUID();
       await client.query(
@@ -89,10 +90,10 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
          VALUES ($1, $2, $3, $4)`,
         [conversationId, userId, input.externalThreadId, status]
       );
-    } else if (input.status && input.status !== existing.rows[0]?.status) {
+    } else if (input.status && status !== existing.rows[0]?.status) {
       await client.query(
         "UPDATE conversations SET status = $1, updated_at = now() WHERE id = $2 AND user_id = $3",
-        [input.status, conversationId, userId]
+        [status, conversationId, userId]
       );
     }
 
