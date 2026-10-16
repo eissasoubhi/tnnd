@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { recordSharedSocialContacts } from "./social-contact-service.js";
+import { inferConversationSemanticTags, type SemanticMessage, type ConversationStageTag, type ConversationToneTag } from "./conversation-semantic-tags.js";
 import { statusAfterPassiveSync } from "./conversation-sync-status-policy.js";
 import { recordAiIdentityQuestionOnSync } from "./conversation-ai-identity-action.js";
 import { listConversationFacts } from "./conversation-fact-service.js";
@@ -47,6 +48,9 @@ export interface ConversationSummary {
   matchDatingGoal?: string;
   matchSharedInstagram?: boolean;
   matchSharedWhatsapp?: boolean;
+  semanticStage?: ConversationStageTag;
+  semanticTone?: ConversationToneTag;
+  semanticSource?: "rule-based" | "unknown";
   updatedAt: string;
 }
 
@@ -191,6 +195,7 @@ export async function listConversations(userId: string): Promise<ConversationSum
     match_dating_goal: string | null;
     match_shared_instagram: boolean;
     match_shared_whatsapp: boolean;
+    semantic_messages: SemanticMessage[] | null;
     pending_human_actions: string | number;
     updated_at: Date;
   }>(
@@ -200,6 +205,10 @@ export async function listConversations(userId: string): Promise<ConversationSum
             (SELECT mp.normalized_profile->'fields'->>'age' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_age,
             (SELECT mp.normalized_profile->'fields'->>'photoUrl' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_photo_url,
             MAX(m.sent_at) AS last_message_at, COUNT(m.id)::int AS message_count,
+             (SELECT COALESCE(jsonb_agg(jsonb_build_object('direction', sm.direction, 'text', left(sm.body, 4000)) ORDER BY sm.sent_at, sm.id), '[]'::jsonb)
+                FROM (SELECT direction, body, sent_at, id FROM conversation_messages
+                      WHERE conversation_id = c.id ORDER BY sent_at DESC, id DESC LIMIT 30) sm
+             ) AS semantic_messages,
              (SELECT mp.normalized_profile->'fields'->>'location' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_city,
              (SELECT mp.normalized_profile->'fields'->>'relationshipGoal' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_dating_goal,
              EXISTS (SELECT 1 FROM human_actions ha WHERE ha.user_id = c.user_id AND ha.conversation_ref = c.id::text AND ha.context_json->>'kind' = 'social-contact-shared' AND ha.context_json->>'platform' = 'instagram') AS match_shared_instagram,
@@ -220,7 +229,9 @@ export async function listConversations(userId: string): Promise<ConversationSum
      ORDER BY COALESCE(MAX(m.sent_at), c.updated_at) DESC`,
     [userId]
   );
-  return result.rows.map((row) => ({
+  return result.rows.map((row) => {
+    const tags = inferConversationSemanticTags(Array.isArray(row.semantic_messages) ? row.semantic_messages : [], row.status);
+    return ({
     id: row.id,
     externalThreadId: row.external_thread_id,
     status: row.status,
@@ -238,8 +249,12 @@ export async function listConversations(userId: string): Promise<ConversationSum
     ...(row.match_dating_goal ? { matchDatingGoal: row.match_dating_goal } : {}),
     matchSharedInstagram: row.match_shared_instagram,
     matchSharedWhatsapp: row.match_shared_whatsapp,
+    ...(tags.stage ? { semanticStage: tags.stage } : {}),
+    ...(tags.tone ? { semanticTone: tags.tone } : {}),
+    semanticSource: tags.source,
     updatedAt: row.updated_at.toISOString()
-  }));
+  });
+  });
 }
 
 /** Authenticated search results return only conversation IDs, never private message text. */

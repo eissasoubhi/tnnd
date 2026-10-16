@@ -540,7 +540,10 @@ const server = createServer(async (request, response) => {
           matchCity: conversation.matchCity ?? null,
           matchDatingGoal: conversation.matchDatingGoal ?? null,
           matchSharedInstagram: conversation.matchSharedInstagram ?? false,
-          matchSharedWhatsapp: conversation.matchSharedWhatsapp ?? false
+          matchSharedWhatsapp: conversation.matchSharedWhatsapp ?? false,
+          semanticStage: conversation.semanticStage ?? null,
+          semanticTone: conversation.semanticTone ?? null,
+          semanticSource: conversation.semanticSource ?? "unknown"
         }))
       });
       return;
