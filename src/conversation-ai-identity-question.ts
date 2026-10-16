@@ -21,6 +21,7 @@ export function isDirectAiIdentityQuestion(value: string): boolean {
   if (/(?:impression|sentiment)\s+(?:de|que)\s+(?:parler|discuter|j ecris|tu ecris|je parle).{0,44}\b(?:ia|ai|bot|robot|chatgpt|gpt)\b/u.test(text)) return true;
   if (/^(?:on dirait|it feels like|feels like|sounds like|seems like)\s+(?:(?:que|that)\s+)?(?:(?:je|tu|on|you|we|i)\s+(?:parle|discute|ecris|reponds|talk|chat|write|sound|am)\b.{0,48}|(?:une?|an?)\s+)(?:\b(?:ia|ai|bot|robot|chatgpt|gpt)\b)/u.test(text)) return true;
   if (/^(?:tu|vous|t|you)\s+(?:reponds|repondez|ecris|ecrivez|parles|parlez|sound|talk|write|text)\s+(?:comme|like)\s+(?:une?\s+|un\s+|an?\s+)?(?:ia|ai|bot|robot|chatgpt|gpt)\b/u.test(text)) return true;
+  if (/^(?:it feels like|feels like|sounds like|seems like)\s+(?:i(?:\s+m)?|you|we)\s+(?:am\s+)?(?:talking|chatting|speaking|writing).{0,48}\b(?:ai|bot|robot|chatgpt|gpt)\b/u.test(text)) return true;
   // French/English direct, second-person accusations or questions.
   if (/^(?:tu|vous|t)\s+(?:es|etes|est|utilises|utilisez)\s+(?:une?\s+|un\s+)?(?:ia|ai|bot|robot|chatgpt|gpt)(?:\s|$)/u.test(text)) return true;
   if (/^(?:c\s+est|ce\s+sont)\s+(?:une?\s+|un\s+)?(?:ia|ai|bot|robot|chatgpt|gpt)\s+(?:qui\s+(?:repond|ecrit|parle)|qui\s+te\s+fait\s+repondre)(?:\s|$)/u.test(text)) return true;
