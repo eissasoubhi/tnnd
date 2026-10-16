@@ -249,7 +249,7 @@ test("direct Darija AI identity question blocks automatic generation before any 
     {
       purpose: "auto",
       count: 1,
-      context: "Me: Je travaille comme dev\\nThem: Nta Rak iA",
+      context: "Me: Je travaille comme dev\nThem: Nta Rak iA",
       config: {}
     },
     async () => {
@@ -272,7 +272,7 @@ test("AI identity question in an older message is not a new automatic-blocking e
     "test-user",
     {
       purpose: "auto", count: 1,
-      context: "Them: nta ia\\nMe: Je t'explique ce que j'utilise\\nThem: Tu veux parler de quoi ?",
+      context: "Them: nta ia\nMe: Je t'explique ce que j'utilise\nThem: Tu veux parler de quoi ?",
       config: {}
     },
     async () => ({ provider: "gemini", model: "test", apiKey: "secret" }),
