@@ -65,6 +65,32 @@ export function inferConversationStatus(messages: ConversationMessageDelta[]): C
   return latest.direction === "incoming" ? "waiting-for-user" : "waiting-for-them";
 }
 
+/** Record a naturally finished chat without relying on ambiguous status changes
+ * from a normal message sync. The API reclassifies evidence and protects
+ * manually paused and unmanaged conversations.
+ */
+export async function syncObservedConversationBoundary(
+  externalThreadId: string,
+  messages: readonly { direction: "incoming" | "outgoing"; text: string }[]
+): Promise<{ applied: boolean; boundary: { kind: string; platform: string | null } }> {
+  const session = await getBackendSession();
+  if (!session) throw new Error("TNND account is not connected.");
+  const response = await fetch(API_BASE + "/api/v1/conversations/observed-boundary", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: "Bearer " + session.token },
+    body: JSON.stringify({ externalThreadId, messages: messages.slice(-12) })
+  });
+  const result = await response.json().catch(() => null) as
+    { applied?: boolean; boundary?: { kind?: string; platform?: string | null }; error?: string } | null;
+  if (!response.ok || !result?.boundary) {
+    throw new Error(result?.error ?? "Could not persist the conversation ending.");
+  }
+  return {
+    applied: result.applied === true,
+    boundary: { kind: result.boundary.kind ?? "continue", platform: result.boundary.platform ?? null }
+  };
+}
+
 export async function getConversationRef(externalThreadId: string): Promise<{ conversationId: string; cursor: string } | null> {
   const refs = await loadThreadRefs();
   return refs[externalThreadId] ?? null;

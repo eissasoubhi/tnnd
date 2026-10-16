@@ -13,6 +13,7 @@ import { handleAnalyticsRequest } from "./analytics-controller.js";
 import { bulkUpdateConversationManagement, isConversationManagementState, listConversationManagement, updateConversationManagement, type ConversationManagementUpdate } from "./conversation-management-service.js";
 import { handleOutgoingConfirmationRequest } from "./conversation-outgoing-confirmation-controller.js";
 import { clearConversationOverrides, getConversationOverrides, replaceConversationOverrides } from "./conversation-overrides-service.js";
+import { recordObservedConversationBoundary, validateObservedConversationBoundary } from "./conversation-boundary-service.js";
 import { clearConversationTemporaryInstruction, getConversation, listConversations, searchConversationMessageContent, setConversationTemporaryInstruction, syncConversation, updateConversationStatus, updateConversationDisplayIdentity, type TemporaryInstructionScope } from "./conversation-service.js";
 import { isConversationStatus, validateConversationSyncRequest } from "./conversation-sync-contract.js";
 import { conversationSyncErrorResponse } from "./conversation-sync-error-response.js";
@@ -477,6 +478,24 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/v1/conversations/observed-boundary") {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      let input;
+      try {
+        input = validateObservedConversationBoundary(await readJsonBody(request));
+      } catch {
+        sendJson(response, 400, { error: "invalid_conversation_boundary" });
+        return;
+      }
+      const result = await recordObservedConversationBoundary(session.user.id, input);
+      sendJson(response, 200, result);
+      return;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/v1/conversations/search-content") {
       const session = await authenticatedUser(request);
       if (!session) {
@@ -521,7 +540,12 @@ const server = createServer(async (request, response) => {
           matchCity: conversation.matchCity ?? null,
           matchDatingGoal: conversation.matchDatingGoal ?? null,
           matchSharedInstagram: conversation.matchSharedInstagram ?? false,
-          matchSharedWhatsapp: conversation.matchSharedWhatsapp ?? false
+          matchSharedWhatsapp: conversation.matchSharedWhatsapp ?? false,
+          userSharedInstagram: conversation.userSharedInstagram ?? false,
+          userSharedWhatsapp: conversation.userSharedWhatsapp ?? false,
+          semanticStage: conversation.semanticStage ?? null,
+          semanticTone: conversation.semanticTone ?? null,
+          semanticSource: conversation.semanticSource ?? "unknown"
         }))
       });
       return;

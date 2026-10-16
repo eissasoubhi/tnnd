@@ -18,3 +18,14 @@ test("switching accounts invalidates old async list and detail results", () => {
   assert.match(source, /Conversation details are unavailable until the list loads successfully/);
   assert.doesNotMatch(source, /"0 shown · 0 total"/);
 });
+
+
+test("semantic stage and tone are optional, labeled as estimates and clear with other filters", () => {
+  assert.match(source, /id="conversation-semantic-stage"/);
+  assert.match(source, /id="conversation-semantic-tone"/);
+  assert.match(source, /estimated from saved messages/);
+  assert.match(source, /semanticStage: elements.semanticStage.value/);
+  assert.match(source, /semanticTone: elements.semanticTone.value/);
+  assert.match(source, /elements.semanticStage.value = "all"/);
+  assert.match(source, /elements.semanticTone.value = "all"/);
+});

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { getPool } from "./db-client.js";
 import { createHumanAction } from "./human-action-service.js";
 import { detectSocialContact } from "./social-contact-detector.js";
@@ -8,7 +9,7 @@ export async function recordSharedSocialContacts(
   received: readonly ConversationMessageDelta[],
   acceptedIds: readonly string[]
 ): Promise<void> {
-  if (!received.some(m => m.direction === "incoming" && acceptedIds.includes(m.externalMessageId))) return;
+  if (!received.some(m => acceptedIds.includes(m.externalMessageId))) return;
   // The context may span Tinder bubbles or separate sync batches.
   const messages = await getPool().query<{
     external_message_id: string; direction: "incoming"|"outgoing"; body: string
@@ -20,7 +21,7 @@ export async function recordSharedSocialContacts(
   const accepted = new Set(acceptedIds);
   for (let i=0;i<messages.rows.length;i++) {
     const current = messages.rows[i]!;
-    if (current.direction !== "incoming" || !accepted.has(current.external_message_id)) continue;
+    if (!accepted.has(current.external_message_id)) continue;
     const previous = messages.rows.slice(Math.max(0,i-5),i)
       .map(m=>({direction:m.direction,text:m.body.slice(0,500)}));
     const detected = detectSocialContact(current.body, previous);
@@ -31,6 +32,26 @@ export async function recordSharedSocialContacts(
       [userId,conversationId,current.external_message_id]
     );
     if (existing.rowCount) continue;
+    if (current.direction === "outgoing") {
+      // A completed, metadata-only record supports the user's "I shared my
+      // contact" filter. Never create an Action Center reminder for their own
+      // sent handle, and never duplicate private contact data in context JSON.
+      await getPool().query(
+        "INSERT INTO human_actions (id, user_id, conversation_ref, conversation_label, title, detail, severity, status, context_json, resolved_at)"
+        + " VALUES ($1,$2,$3,'',$4,$5,'info','completed',$6::jsonb,now())",
+        [
+          randomUUID(), userId, conversationId, "You shared a contact",
+          "Contact platform recorded without storing the contact value again.",
+          JSON.stringify({
+            kind: "user-social-contact-shared",
+            platform: detected.platform,
+            sourceExternalMessageId: current.external_message_id,
+            direction: "outgoing"
+          })
+        ]
+      );
+      continue;
+    }
     await createHumanAction(userId,{
       conversationRef:conversationId,
       title: detected.platform === "instagram" ? "Instagram shared by match" : "Contact shared by match",

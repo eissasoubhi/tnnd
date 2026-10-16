@@ -58,3 +58,30 @@ test("message content search uses backend-confirmed IDs only", () => {
   assert.deepEqual(filterConversationSummaries(conversations, { status: "all", query: "", messageSearchIds: ["3", "1"] }).map(x => x.id), ["1", "3"]);
   assert.deepEqual(filterConversationSummaries(conversations, { status: "all", query: "", messageSearchIds: [] }), []);
 });
+
+
+test("semantic stage/tone filters combine with existing status and do not guess unknowns", () => {
+  const items: ConversationListItem[] = [
+    { ...conversations[0]!, id: "intro", semanticStage: "introductions", semanticTone: null, semanticSource: "rule-based" },
+    { ...conversations[1]!, id: "dating", semanticStage: "date-discussion", semanticTone: "flirty", semanticSource: "rule-based" },
+    { ...conversations[2]!, id: "unknown", semanticStage: null, semanticTone: null, semanticSource: "unknown" }
+  ];
+  assert.deepEqual(filterConversationSummaries(items, { status: "all", query: "", semanticStage: "date-discussion", semanticTone: "flirty" }).map(x=>x.id), ["dating"]);
+  assert.deepEqual(filterConversationSummaries(items, { status: "all", query: "", semanticStage: "unknown" }).map(x=>x.id), ["unknown"]);
+  assert.deepEqual(filterConversationSummaries(items, { status: "all", query: "", semanticTone: "unknown" }).map(x=>x.id), ["intro","unknown"]);
+  assert.deepEqual(filterConversationSummaries(items, { status: "active", query: "", semanticStage: "date-discussion" }), []);
+});
+
+
+test("filters separately by match-shared and user-shared contacts", () => {
+  const items: ConversationListItem[] = [
+    { ...conversations[0]!, id: "match", matchSharedInstagram: true, userSharedInstagram: false },
+    { ...conversations[1]!, id: "user", userSharedWhatsapp: true },
+    { ...conversations[2]!, id: "both", matchSharedWhatsapp: true, userSharedInstagram: true },
+    { ...conversations[3]!, id: "none" }
+  ];
+  assert.deepEqual(filterConversationSummaries(items,{status:"all",query:"",matchContact:"user-any"}).map(x=>x.id), ["user","both"]);
+  assert.deepEqual(filterConversationSummaries(items,{status:"all",query:"",matchContact:"any"}).map(x=>x.id), ["match","both"]);
+  assert.deepEqual(filterConversationSummaries(items,{status:"all",query:"",matchContact:"user-instagram"}).map(x=>x.id), ["both"]);
+  assert.deepEqual(filterConversationSummaries(items,{status:"all",query:"",matchContact:"instagram"}).map(x=>x.id), ["match"]);
+});
