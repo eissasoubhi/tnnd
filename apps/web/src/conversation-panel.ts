@@ -12,7 +12,7 @@ import {
   type TemporaryInstructionScope
 } from "./conversation-client";
 import type { ConversationListItem, ConversationStatus, ConversationStageTag, ConversationToneTag } from "./conversation-contract";
-import { filterConversationSummaries, type ConversationSort, type ConversationLength, type ContactFromMatch } from "./conversation-list-filter";
+import { filterConversationSummaries, type ConversationSort, type ConversationLength, type ContactFilter } from "./conversation-list-filter";
 import { conversationEmptyState, hasConversationFilters, isCurrentConversationResponse } from "./conversation-list-ui";
 import { replyTargetFromHistory, replyTargetHint } from "./conversation-reply-target";
 
@@ -348,7 +348,19 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
            <label>Maximum age<input id="conversation-age-max" type="number" min="18" max="120" placeholder="120"></label>
            <label>Match cities<select id="conversation-city-filter" multiple size="3" aria-describedby="conversation-city-help"></select><small id="conversation-city-help">Ctrl/Cmd to select several. Profile cities only.</small></label>
            <label>Match dating goal<select id="conversation-goal-filter"><option value="">Any known goal</option></select></label>
-           <label>Match shared a contact<select id="conversation-contact-filter"><option value="all">Any</option><option value="any">Instagram or WhatsApp</option><option value="instagram">Instagram detected</option><option value="whatsapp">WhatsApp detected</option></select></label>
+           <label>Contact exchange<select id="conversation-contact-filter">
+             <option value="all">Any exchange</option>
+             <optgroup label="Contact shared by match">
+               <option value="any">Match shared Instagram or WhatsApp</option>
+               <option value="instagram">Match shared Instagram</option>
+               <option value="whatsapp">Match shared WhatsApp</option>
+             </optgroup>
+             <optgroup label="Contact shared by you">
+               <option value="user-any">You shared Instagram or WhatsApp</option>
+               <option value="user-instagram">You shared Instagram</option>
+               <option value="user-whatsapp">You shared WhatsApp</option>
+             </optgroup>
+           </select></label>
            <label>Conversation stage (estimated from saved messages)
              <select id="conversation-semantic-stage">
                <option value="all">Any stage</option>
@@ -371,7 +383,7 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
            </label>
            <label>Message count<select id="conversation-length-filter"><option value="all">Any</option><option value="first-messages">Getting started (0–4)</option><option value="developing">Developing (5–19)</option><option value="long">Long (20+)</option></select></label>
            <label>Search within messages<input id="conversation-message-search" type="search" maxlength="100" autocomplete="off" placeholder="At least 2 characters"></label>
-           <small id="conversation-filter-notice" role="status" aria-live="polite">Profile and contact filters use saved data. Stage and tone are rule-based estimates from synchronized chat content, not verified feelings or relationship status.</small>
+           <small id="conversation-filter-notice" role="status" aria-live="polite">Contact exchange filters distinguish the sender using saved message evidence. Unknown/unimported exchanges do not match. Stage and tone are rule-based estimates, not verified feelings.</small>
          </div>
        </details>
        <button id="conversation-clear-filters" class="conversation-clear-filters" type="button" hidden>Clear filters</button>
@@ -455,7 +467,7 @@ function filteredItems(): ConversationListItem[] {
     ageMax: elements.maxAge.value && max >= 18 && max <= 120 ? max : null,
     cities: Array.from(elements.cities.selectedOptions, option => option.value),
     datingGoal: elements.goal.value,
-    matchContact: elements.contact.value as ContactFromMatch,
+    matchContact: elements.contact.value as ContactFilter,
     length: elements.length.value as ConversationLength,
     semanticStage: elements.semanticStage.value as ConversationStageTag | "all" | "unknown",
     semanticTone: elements.semanticTone.value as ConversationToneTag | "all" | "unknown",
