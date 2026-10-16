@@ -1,4 +1,6 @@
 import { withGenerationStage } from "./conversation-generation-stage.js";
+import { temporalConversationGuidance } from "../../../src/conversation-time-context.js";
+import { engagementConversationGuidance } from "../../../src/conversation-engagement-guidance.js";
 import { conversationFlowGuidance } from "./conversation-flow.js";
 import { resolveReplyTarget } from "./conversation-reply-target.js";
 import { loadAiProviderSettings } from "./ai-provider-settings-service.js";
@@ -117,6 +119,8 @@ export async function generateConversationReply(
   const effectiveContext = { ...context, settings: adaptive.settings, instructions: [...context.instructions,
     replyStyleGuidance(styleCues, adaptive.autoFields.includes("languages")),
     conversationFlowGuidance(conversation.conversationFlow),
+    temporalConversationGuidance(generationProfile.userProfile?.identity, supplementalContext.matchProfile?.fields.location, conversation.messages.at(-1)?.direction === "incoming" ? conversation.messages.at(-1)?.sentAt : null),
+    engagementConversationGuidance(recentMessages),
     matchProfileTopicGuidance(
       supplementalContext.matchProfile?.fields, conversation.conversationFlow, recentMessages,
       { purpose: "manual", avoidedTopics: generationProfile.userProfile?.topicEngine?.avoidedTopics }
