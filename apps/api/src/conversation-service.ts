@@ -48,6 +48,8 @@ export interface ConversationSummary {
   matchDatingGoal?: string;
   matchSharedInstagram?: boolean;
   matchSharedWhatsapp?: boolean;
+  userSharedInstagram?: boolean;
+  userSharedWhatsapp?: boolean;
   semanticStage?: ConversationStageTag;
   semanticTone?: ConversationToneTag;
   semanticSource?: "rule-based" | "unknown";
@@ -195,6 +197,8 @@ export async function listConversations(userId: string): Promise<ConversationSum
     match_dating_goal: string | null;
     match_shared_instagram: boolean;
     match_shared_whatsapp: boolean;
+    user_shared_instagram: boolean;
+    user_shared_whatsapp: boolean;
     semantic_messages: SemanticMessage[] | null;
     pending_human_actions: string | number;
     updated_at: Date;
@@ -213,6 +217,8 @@ export async function listConversations(userId: string): Promise<ConversationSum
              (SELECT mp.normalized_profile->'fields'->>'relationshipGoal' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_dating_goal,
              EXISTS (SELECT 1 FROM human_actions ha WHERE ha.user_id = c.user_id AND ha.conversation_ref = c.id::text AND ha.context_json->>'kind' = 'social-contact-shared' AND ha.context_json->>'platform' = 'instagram') AS match_shared_instagram,
              EXISTS (SELECT 1 FROM human_actions ha WHERE ha.user_id = c.user_id AND ha.conversation_ref = c.id::text AND ha.context_json->>'kind' = 'social-contact-shared' AND ha.context_json->>'platform' = 'whatsapp') AS match_shared_whatsapp,
+             EXISTS (SELECT 1 FROM human_actions ha WHERE ha.user_id = c.user_id AND ha.conversation_ref = c.id::text AND ha.context_json->>'kind' = 'user-social-contact-shared' AND ha.context_json->>'platform' = 'instagram') AS user_shared_instagram,
+             EXISTS (SELECT 1 FROM human_actions ha WHERE ha.user_id = c.user_id AND ha.conversation_ref = c.id::text AND ha.context_json->>'kind' = 'user-social-contact-shared' AND ha.context_json->>'platform' = 'whatsapp') AS user_shared_whatsapp,
             (SELECT lm.direction FROM conversation_messages lm WHERE lm.conversation_id = c.id
               ORDER BY lm.sent_at DESC, lm.id DESC LIMIT 1) AS last_message_direction,
             (
@@ -249,6 +255,8 @@ export async function listConversations(userId: string): Promise<ConversationSum
     ...(row.match_dating_goal ? { matchDatingGoal: row.match_dating_goal } : {}),
     matchSharedInstagram: row.match_shared_instagram,
     matchSharedWhatsapp: row.match_shared_whatsapp,
+    userSharedInstagram: row.user_shared_instagram,
+    userSharedWhatsapp: row.user_shared_whatsapp,
     ...(tags.stage ? { semanticStage: tags.stage } : {}),
     ...(tags.tone ? { semanticTone: tags.tone } : {}),
     semanticSource: tags.source,

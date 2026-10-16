@@ -541,6 +541,8 @@ const server = createServer(async (request, response) => {
           matchDatingGoal: conversation.matchDatingGoal ?? null,
           matchSharedInstagram: conversation.matchSharedInstagram ?? false,
           matchSharedWhatsapp: conversation.matchSharedWhatsapp ?? false,
+          userSharedInstagram: conversation.userSharedInstagram ?? false,
+          userSharedWhatsapp: conversation.userSharedWhatsapp ?? false,
           semanticStage: conversation.semanticStage ?? null,
           semanticTone: conversation.semanticTone ?? null,
           semanticSource: conversation.semanticSource ?? "unknown"
