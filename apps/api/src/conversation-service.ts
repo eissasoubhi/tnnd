@@ -40,6 +40,11 @@ export interface ConversationSummary {
   lastMessageAt?: string;
   lastMessageDirection?: "incoming" | "outgoing";
   pendingHumanActions?: number;
+  messageCount?: number;
+  matchCity?: string;
+  matchDatingGoal?: string;
+  matchSharedInstagram?: boolean;
+  matchSharedWhatsapp?: boolean;
   updatedAt: string;
 }
 
@@ -172,6 +177,11 @@ export async function listConversations(userId: string): Promise<ConversationSum
     display_age: number | null;
     last_message_at: Date | null;
     last_message_direction: "incoming" | "outgoing" | null;
+    message_count: number;
+    match_city: string | null;
+    match_dating_goal: string | null;
+    match_shared_instagram: boolean;
+    match_shared_whatsapp: boolean;
     pending_human_actions: string | number;
     updated_at: Date;
   }>(
@@ -180,7 +190,11 @@ export async function listConversations(userId: string): Promise<ConversationSum
             (SELECT mp.normalized_profile->'fields'->>'firstName' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_first_name,
             (SELECT mp.normalized_profile->'fields'->>'age' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_age,
             (SELECT mp.normalized_profile->'fields'->>'photoUrl' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_photo_url,
-            MAX(m.sent_at) AS last_message_at,
+            MAX(m.sent_at) AS last_message_at, COUNT(m.id)::int AS message_count,
+             (SELECT mp.normalized_profile->'fields'->>'location' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_city,
+             (SELECT mp.normalized_profile->'fields'->>'relationshipGoal' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_dating_goal,
+             EXISTS (SELECT 1 FROM human_actions ha WHERE ha.user_id = c.user_id AND ha.conversation_ref = c.id::text AND ha.context_json->>'kind' = 'social-contact-shared' AND ha.context_json->>'platform' = 'instagram') AS match_shared_instagram,
+             EXISTS (SELECT 1 FROM human_actions ha WHERE ha.user_id = c.user_id AND ha.conversation_ref = c.id::text AND ha.context_json->>'kind' = 'social-contact-shared' AND ha.context_json->>'platform' = 'whatsapp') AS match_shared_whatsapp,
             (SELECT lm.direction FROM conversation_messages lm WHERE lm.conversation_id = c.id
               ORDER BY lm.sent_at DESC, lm.id DESC LIMIT 1) AS last_message_direction,
             (
@@ -210,8 +224,28 @@ export async function listConversations(userId: string): Promise<ConversationSum
     ...(row.last_message_at ? { lastMessageAt: row.last_message_at.toISOString() } : {}),
     ...(row.last_message_direction ? { lastMessageDirection: row.last_message_direction } : {}),
     pendingHumanActions: Number(row.pending_human_actions) || 0,
+    messageCount: Number(row.message_count) || 0,
+    ...(row.match_city ? { matchCity: row.match_city } : {}),
+    ...(row.match_dating_goal ? { matchDatingGoal: row.match_dating_goal } : {}),
+    matchSharedInstagram: row.match_shared_instagram,
+    matchSharedWhatsapp: row.match_shared_whatsapp,
     updatedAt: row.updated_at.toISOString()
   }));
+}
+
+/** Authenticated search results return only conversation IDs, never private message text. */
+export async function searchConversationMessageContent(userId: string, query: string): Promise<string[]> {
+  const needle = query.trim();
+  if (needle.length < 2 || needle.length > 100) throw new Error("invalid_conversation_search");
+  const result = await getPool().query<{ id: string }>(
+    `SELECT DISTINCT c.id::text AS id
+       FROM conversations c
+       JOIN conversation_messages m ON m.conversation_id = c.id
+      WHERE c.user_id = $1 AND position(lower($2) in lower(m.body)) > 0
+      LIMIT 2000`,
+    [userId, needle]
+  );
+  return result.rows.map(row => row.id);
 }
 
 export async function getConversation(userId: string, conversationId: string): Promise<ConversationDetailRecord | null> {
