@@ -283,14 +283,14 @@ function installStyles(): void {
   style.textContent = `
     .conversation-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:12px}.conversation-stat{display:grid;gap:2px;padding:9px 10px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:rgba(127,127,127,.05)}.conversation-stat strong{font-size:18px}.conversation-stat span{font-size:10px;opacity:.7}
     .conversation-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;flex-wrap:wrap}.conversation-filter{display:flex;align-items:center;gap:7px;font-size:12px}.conversation-filter select{width:auto;min-width:170px}.conversation-summary{font-size:11px;opacity:.7}.conversation-clear-filters{width:auto;min-height:44px;padding:8px 12px;border:1px solid var(--nb-border,#c8d8cd);color:var(--nb-primary,#264b40);background:var(--nb-surface,#fff);border-radius:10px}.conversation-empty{display:grid;gap:8px;padding:16px;border:1px dashed var(--nb-border,#c8d8cd);border-radius:12px;background:var(--nb-surface-soft,#edf4eb)}.conversation-empty p{margin:0;line-height:1.5}
-    .conversation-layout{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(280px,1.1fr);gap:14px;margin-top:14px}
+    .conversation-layout{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(280px,1.1fr);gap:14px;margin-top:14px;min-width:0;align-items:stretch}
     .conversation-identity-editor{margin:0 0 12px;padding:10px 13px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:var(--nb-surface-soft,#edf4eb)}.conversation-identity-editor summary{cursor:pointer;font-size:12px;font-weight:750}.conversation-identity-editor>p{font-size:12px;line-height:1.5}.conversation-identity-controls{display:flex;align-items:flex-end;flex-wrap:wrap;gap:9px}.conversation-identity-controls label{display:grid;gap:5px;flex:1 1 130px;font-size:12px}.conversation-identity-controls label:nth-child(2){flex:0 1 115px}.conversation-identity-controls input{min-width:0;max-width:100%}.conversation-identity-controls button{max-width:100%;width:auto;white-space:normal}
     .conversation-person-line{display:flex;align-items:center;gap:9px;min-width:0}.conversation-person-line strong{min-width:0;overflow-wrap:anywhere} .conversation-person-avatar{display:inline-grid;flex:0 0 40px;place-items:center;width:40px;height:40px;background:var(--nb-mint,#d9efcc);color:var(--nb-primary,#264b40);border-radius:50%;font-weight:800;overflow:hidden}.conversation-person-avatar img{display:block;width:100%;height:100%;object-fit:cover}.conversation-detail-heading>.conversation-person-avatar{width:48px;height:48px;flex-basis:48px}.conversation-status-help{margin:0 0 12px;padding:10px 13px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:var(--nb-surface-soft,#edf4eb)}.conversation-status-help summary{cursor:pointer;font-size:12px;font-weight:750}.conversation-status-help p{font-size:12px;line-height:1.55}.conversation-status-help a{font-size:12px;font-weight:750;color:inherit;text-decoration:underline}
     .conversation-flow-panel{border:1px solid var(--border,#d4d4d8);border-radius:12px;padding:13px;margin:12px 0;background:var(--nb-surface-soft,#edf4eb)}.conversation-flow-panel .conversation-topic-heading{display:flex;justify-content:space-between}.conversation-flow-steps{display:grid;gap:8px;margin:12px 0;padding:0;list-style:none}.conversation-flow-step{display:flex;gap:9px;align-items:center;font-size:12px}.conversation-flow-step[data-flow-status="covered"]{opacity:.65}.conversation-flow-step[data-flow-status="next"]{font-weight:750}.conversation-flow-panel .conversation-topic-chips{display:flex;flex-wrap:wrap;gap:6px}
-    .conversation-list{display:grid;gap:8px;align-content:start;max-height:430px;overflow:auto}
+    .conversation-list{display:grid;gap:8px;align-content:start;min-height:0;overflow-y:auto}
     .conversation-row{width:100%;display:flex;justify-content:space-between;gap:12px;text-align:left;padding:11px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:transparent;color:inherit;cursor:pointer}
     .conversation-row:hover{border-color:currentColor}.conversation-row.selected{outline:2px solid currentColor;outline-offset:1px}.conversation-row-main,.conversation-row-meta{display:grid;gap:4px}.conversation-row-meta{text-align:right;justify-items:end}.conversation-row small,.conversation-detail small,.conversation-message small{opacity:.65}
-    .conversation-detail{min-height:180px;border:1px solid var(--border,#d4d4d8);border-radius:12px;padding:12px}.conversation-detail-heading{display:flex;justify-content:space-between;gap:12px;margin-bottom:10px}.conversation-detail-heading>div{display:grid;gap:4px}
+    .conversation-detail{min-height:0;border:1px solid var(--border,#d4d4d8);border-radius:12px;padding:12px}.conversation-detail-heading{display:flex;justify-content:space-between;gap:12px;margin-bottom:10px}.conversation-detail-heading>div{display:grid;gap:4px}
     .conversation-status-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.conversation-status-action{width:auto;padding:7px 10px;border:1px solid var(--border,#d4d4d8);border-radius:8px;background:transparent;color:inherit;cursor:pointer}.conversation-status-action:hover{border-color:currentColor}.conversation-status-action.danger{border-style:dashed}.conversation-status-action:disabled{opacity:.55;cursor:wait}
     .conversation-topic-panel{display:grid;gap:9px;padding:11px;margin-bottom:12px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:rgba(127,127,127,.04)}.conversation-topic-heading{display:flex;align-items:start;justify-content:space-between;gap:10px}.conversation-topic-heading>div,.conversation-topic-primary{display:grid;gap:3px}.conversation-topic-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}.conversation-topic-chip{display:inline-flex;padding:4px 7px;border:1px solid var(--border,#d4d4d8);border-radius:999px;font-size:11px}.conversation-topic-recent{margin:0}
     .temporary-instruction-panel{display:grid;gap:9px;padding:11px;margin-bottom:12px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:rgba(127,127,127,.04)}.temporary-instruction-heading{display:flex;align-items:start;justify-content:space-between;gap:10px}.temporary-instruction-heading>div{display:grid;gap:3px}.temporary-instruction-panel textarea{width:100%;min-height:74px;resize:vertical}.temporary-instruction-controls{display:grid;grid-template-columns:1fr 110px;gap:8px}.temporary-instruction-controls label{display:grid;gap:4px;font-size:11px}.temporary-instruction-controls select,.temporary-instruction-controls input{width:100%}.temporary-instruction-actions{display:flex;gap:8px}.temporary-instruction-actions button{width:auto;padding:7px 10px;border:1px solid var(--border,#d4d4d8);border-radius:8px;background:transparent;color:inherit;cursor:pointer}.temporary-instruction-actions .danger{border-style:dashed}.temporary-instruction-actions button:disabled{opacity:.55;cursor:wait}
@@ -312,7 +312,7 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
       <div><p class="eyebrow">Conversations</p><h2>Conversation control center</h2></div>
       <span class="pill" id="conversation-panel-status">Sign in required</span>
     </div>
-    <p class="subtle">Synced Tinder conversations from the backend. Select one to inspect its current status, topic and message history.</p>
+    <p class="subtle">Choose a synced chat to review its status, messages and suggested replies.</p>
     <div class="conversation-toolbar" role="search" aria-label="Find conversations">
       <label class="conversation-search-label" for="conversation-search">Search
         <input id="conversation-search" type="search" autocomplete="off" placeholder="Name or topic…" aria-label="Search conversations by name or topic" />
@@ -335,8 +335,14 @@ function mount(): { list: HTMLElement; detail: HTMLElement; status: HTMLElement;
       <span id="conversation-filter-summary" class="conversation-summary" role="status" aria-live="polite"></span>
     </div>
     <div class="conversation-layout">
-      <div id="conversation-list" class="conversation-list" aria-label="Conversations"></div>
-      <div id="conversation-detail" class="conversation-detail"><p class="subtle">Select a conversation.</p></div>
+      <section class="conversation-column" aria-labelledby="conversation-list-heading">
+        <header class="conversation-column-heading"><h3 id="conversation-list-heading">Chats</h3><span class="subtle">Synced matches</span></header>
+        <div id="conversation-list" class="conversation-list" role="region" aria-labelledby="conversation-list-heading" tabindex="0"></div>
+      </section>
+      <section class="conversation-column" aria-labelledby="conversation-detail-heading">
+        <header class="conversation-column-heading"><h3 id="conversation-detail-heading">Chat details</h3><span class="subtle">Selected conversation</span></header>
+        <div id="conversation-detail" class="conversation-detail" role="region" aria-labelledby="conversation-detail-heading" tabindex="0"><p class="subtle">Select a conversation.</p></div>
+      </section>
     </div>
     <div id="conversation-operational-summary" class="conversation-stats" aria-label="Conversation status counts"></div>
   `;
@@ -383,8 +389,14 @@ function bindRows(items: ConversationListItem[]): void {
     row.addEventListener("click", () => {
       const id = row.dataset.conversationId;
       if (!id) return;
+      const changedChat = selectedConversationId !== id;
       selectedConversationId = id;
       renderCurrentList();
+      if (changedChat) elements?.detail.scrollTo({ top: 0 });
+      // Re-rendering the list replaces the activated button; restore keyboard focus.
+      Array.from(elements?.list.querySelectorAll<HTMLButtonElement>("[data-conversation-id]") ?? [])
+        .find((button) => button.dataset.conversationId === id)
+        ?.focus({ preventScroll: true });
       void loadDetail(id);
     });
   });
@@ -624,6 +636,7 @@ function applyConversationFilters(): void {
     ++detailRequestSequence;
     elements.detail.innerHTML = '<p class="workspace-empty">No conversation selected. Change the search or status filter to see more.</p>';
   } else if (previous !== selectedConversationId) {
+    elements.detail.scrollTo({ top: 0 });
     void loadDetail(selectedConversationId);
   }
 }
