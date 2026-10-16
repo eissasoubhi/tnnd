@@ -45,9 +45,10 @@ export function detectSocialContact(
   if (!platform) return null;
   // The contact can be alone in the next bubble, not necessarily preceded
   // by "@" or by a platform name in that same bubble.
-  if (platform === "phone") {
-    const number = /^\+?[0-9][0-9 \-().]{6,20}$/.test(text) ? text.replace(/[ \-().]/g, "") : null;
-    return number ? { platform, value: number } : null;
+  if (platform === "phone" || platform === "whatsapp") {
+    const number = /^\+?[0-9][0-9 \-().]{6,24}$/.test(text) ? text.replace(/[ \-().]/g, "") : null;
+    if (number && /^\+?[0-9]{7,15}$/.test(number)) return { platform, value: number };
+    if (platform === "phone") return null;
   }
   const candidate = handle(text);
   return candidate ? { platform, value: candidate } : null;
