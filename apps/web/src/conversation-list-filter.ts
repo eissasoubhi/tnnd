@@ -2,7 +2,7 @@ import type { ConversationListItem, ConversationStatus, ConversationStageTag, Co
 
 export type ConversationSort = "recent" | "oldest" | "longest" | "waiting";
 export type ConversationLength = "all" | "first-messages" | "developing" | "long";
-export type ContactFromMatch = "all" | "instagram" | "whatsapp" | "any";
+export type ContactFilter = "all" | "instagram" | "whatsapp" | "any" | "user-instagram" | "user-whatsapp" | "user-any";
 
 export interface ConversationSearchCriteria {
   status: ConversationStatus | "all";
@@ -12,7 +12,7 @@ export interface ConversationSearchCriteria {
   ageMax?: number | null;
   cities?: readonly string[];
   datingGoal?: string;
-  matchContact?: ContactFromMatch;
+  matchContact?: ContactFilter;
   length?: ConversationLength;
   semanticStage?: ConversationStageTag | "all" | "unknown";
   semanticTone?: ConversationToneTag | "all" | "unknown";
@@ -47,6 +47,9 @@ export function filterConversationSummaries(
     if (criteria.matchContact === "instagram" && !item.matchSharedInstagram) return false;
     if (criteria.matchContact === "whatsapp" && !item.matchSharedWhatsapp) return false;
     if (criteria.matchContact === "any" && !item.matchSharedInstagram && !item.matchSharedWhatsapp) return false;
+    if (criteria.matchContact === "user-instagram" && !item.userSharedInstagram) return false;
+    if (criteria.matchContact === "user-whatsapp" && !item.userSharedWhatsapp) return false;
+    if (criteria.matchContact === "user-any" && !item.userSharedInstagram && !item.userSharedWhatsapp) return false;
     if (criteria.length === "first-messages" && count(item) > 4) return false;
     if (criteria.length === "developing" && (count(item) < 5 || count(item) > 19)) return false;
     if (criteria.length === "long" && count(item) < 20) return false;
