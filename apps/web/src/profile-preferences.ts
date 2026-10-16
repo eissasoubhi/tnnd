@@ -166,18 +166,18 @@ export function writeEditablePreferences(profile: ImportedProfile, preferences: 
     conversationDefaults: {
       ...globalDefaults,
       ...(preferences.globalTone !== undefined ? { tone: ["playful","flirty","direct","warm","chill","witty"].includes(preferences.globalTone) ? preferences.globalTone : "playful" } : {}),
-      ...(preferences.flirtLevel !== undefined ? { flirtLevel: Math.min(3,Math.max(0,Math.round(preferences.flirtLevel))) } : {}),
-      ...(preferences.humorLevel !== undefined ? { humorLevel: Math.min(100,Math.max(0,Math.round(preferences.humorLevel))) } : {}),
-      ...(preferences.replyCount !== undefined ? { replyCount: Math.min(5,Math.max(1,Math.round(preferences.replyCount))) } : {}),
+      ...(Number.isFinite(preferences.flirtLevel) ? { flirtLevel: Math.min(3,Math.max(0,Math.round(preferences.flirtLevel))) } : {}),
+      ...(Number.isFinite(preferences.humorLevel) ? { humorLevel: Math.min(100,Math.max(0,Math.round(preferences.humorLevel))) } : {}),
+      ...(Number.isFinite(preferences.replyCount) ? { replyCount: Math.min(5,Math.max(1,Math.round(preferences.replyCount))) } : {}),
       ...(preferences.preferredWords !== undefined ? { preferredWords: preferences.preferredWords.trim().slice(0,1600) } : {}),
       ...(preferences.avoidedWords !== undefined ? { avoidedWords: preferences.avoidedWords.trim().slice(0,1600) } : {}),
       ...(preferences.extraInstructions !== undefined ? { extraInstructions: preferences.extraInstructions.trim().slice(0,2000) } : {})
     },
     languages: {
       ...languages,
-      ...(preferences.languageFr !== undefined ? { fr: Math.min(100,Math.max(0,Math.round(preferences.languageFr))) } : {}),
-      ...(preferences.languageDarija !== undefined ? { darija: Math.min(100,Math.max(0,Math.round(preferences.languageDarija))) } : {}),
-      ...(preferences.languageEn !== undefined ? { en: Math.min(100,Math.max(0,Math.round(preferences.languageEn))) } : {})
+      ...(Number.isFinite(preferences.languageFr) ? { fr: Math.min(100,Math.max(0,Math.round(preferences.languageFr))) } : {}),
+      ...(Number.isFinite(preferences.languageDarija) ? { darija: Math.min(100,Math.max(0,Math.round(preferences.languageDarija))) } : {}),
+      ...(Number.isFinite(preferences.languageEn) ? { en: Math.min(100,Math.max(0,Math.round(preferences.languageEn))) } : {})
     },
     identity: {
       ...identity,
