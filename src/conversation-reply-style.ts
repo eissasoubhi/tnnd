@@ -9,6 +9,8 @@ export interface ReplyStyleCues {
   recentLanguage: ObservedLanguage;
   repeatedSenderLaughter: boolean;
   recentOutgoingLaughter: number;
+  /** Laughter in the current match turn, not the sender's older "haha". */
+  latestIncomingLaughter: boolean;
 }
 
 const LAUGH = /\b(?:ha(?:ha)+|hi(?:hi)+|h{3,}|mdr|ptdr|lol|jaja)\b/giu;
@@ -45,12 +47,20 @@ export function readReplyStyleCues(messages: readonly ReplyStyleMessage[], lates
     const evidence = recent.filter(l => l !== "unknown");
     if (evidence.length >= 2 && evidence.at(-1) === evidence.at(-2)) recentLanguage = evidence.at(-1)!;
   }
+  // A "hhh" at the end of an otherwise French turn means a small laugh,
+  // not a switch to Darija or permission to make the reply flirtier.
+  // Only the current incoming turn establishes a current laugh cue.
+  const currentIncoming = latestIncoming.trim()
+    || (messages.at(-1)?.direction === "incoming" ? messages.at(-1)!.text : "");
+  const latestIncomingLaughter = count(currentIncoming, LAUGH) > 0
+    || /[😂🤣😆]/u.test(currentIncoming);
   const outgoing = messages.filter(m => m.direction === "outgoing").slice(-3);
   const recentOutgoingLaughter = outgoing.filter(m => count(m.text, LAUGH) > 0).length;
   return {
     recentLanguage,
     recentOutgoingLaughter,
-    repeatedSenderLaughter: recentOutgoingLaughter >= 1
+    repeatedSenderLaughter: recentOutgoingLaughter >= 1,
+    latestIncomingLaughter
   };
 }
 
@@ -74,6 +84,11 @@ export function replyStyleGuidance(cues: ReplyStyleCues, autoLanguage = true): s
     }
   } else {
     parts.push("Keep the user's fixed or manually overridden language choices rather than switching languages automatically.");
+  }
+  if (cues.latestIncomingLaughter) {
+    parts.push(
+      "The match's current message contains a laugh cue: 'hhh' is a small 'haha' in casual texting, just like 'mdr' or 'lol'. Read the tone as light if the actual words support it; it is NOT an invitation to copy the laugh or automatically flirt. If there is a playful contrast, witty wording, teasing remark or metaphor, respond to THAT hook with one short, natural observation or gentle tease before optionally asking a relevant follow-up. Do not flatten a playful remark into an interview-style factual question. Never tease about a sensitive matter or invent mutual attraction."
+    );
   }
   if (cues.repeatedSenderLaughter) {
     parts.push("The sender already used a laugh filler in recent outgoing messages. Do NOT put any laugh token in this reply. Vary openings instead of repeating the same 'haha' pattern.");

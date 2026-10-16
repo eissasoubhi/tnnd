@@ -212,3 +212,30 @@ test("thread references are bounded and cannot be arbitrary objects", () => {
     context: "Them: Bonjour", purpose: "auto", count: 1, config: {}, threadKey: "x".repeat(513)
   }), /invalid_extension_generation_thread/);
 });
+
+
+test("automatic extension prompt reacts to French hhh as a gentle laughter cue, not a dialect instruction", async () => {
+  let sentPrompt = "";
+  const result = await generateExtensionSuggestions(
+    "user-1",
+    {
+      context: "Me: Tu as des bonnes adresses ?\nThem: Je découvre plein de librairies mais je reviens toujours à ma préférée hhh",
+      purpose: "auto",
+      count: 1,
+      config: { tone: "natural", languages: { fr: 90, darija: 10, en: 0 } }
+    },
+    async () => ({ provider: "gemini", model: "gemini-test", apiKey: "server-secret" }),
+    async (_input, init) => {
+      const payload = JSON.parse(String(init?.body));
+      sentPrompt = payload.contents[0].parts[0].text;
+      return new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ text: '["Ah, une vraie fidèle de cette librairie alors 😄"]' }] } }]
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    },
+    async () => ({ memories: [] })
+  );
+  assert.equal(result.suggestions.length, 1);
+  assert.match(sentPrompt, /'hhh' is a small 'haha'/);
+  assert.match(sentPrompt, /respond to THAT hook/);
+  assert.doesNotMatch(sentPrompt, /Prefer natural Latin-script Darija/);
+});
