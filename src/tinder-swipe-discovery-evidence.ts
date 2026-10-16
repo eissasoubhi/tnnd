@@ -80,7 +80,7 @@ export function observeSwipeDiscoveryControls(
   const controls = Array.from(doc.querySelectorAll<HTMLButtonElement>("button.gamepad-button"))
     .slice(0, 32)
     .map(button => ({
-      classes: [...button.classList],
+      classes: Array.from(button.classList),
       visible: visibleButton(button),
       disabled: button.disabled || button.getAttribute("aria-disabled") === "true"
     }));
