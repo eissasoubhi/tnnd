@@ -334,3 +334,48 @@ test("a confirmed interview complaint tells the extension not to invent another 
   assert.match(prompt, /stop asking questions for the next turn/);
   assert.match(prompt, /disguised request/);
 });
+
+
+test("AI suspicion followed by two short incoming bubbles never reaches the provider", async () => {
+  let called = false;
+  await assert.rejects(() => generateExtensionSuggestions(
+    "test-user", {
+      purpose: "auto", count: 1, config: {},
+      context: "Me: À deux ça peut être sympa\nThem: Mais là j'ai l'impression de parler à une IA\nThem: Jnsp pq\nThem: Hhh"
+    },
+    async () => { called = true; return { provider:"gemini",model:"test",apiKey:"test" }; },
+    async () => { called = true; return new Response(""); },
+    async () => ({memories:[]})
+  ), /human_ai_identity_review_required/);
+  assert.equal(called, false);
+});
+
+test("acknowledgement ends a turn without another Gemini request", async () => {
+  let called = false;
+  await assert.rejects(() => generateExtensionSuggestions(
+    "test-user", {
+      purpose: "auto", count: 1, config: {},
+      context: "Me: Oui on est d'accord\nThem: Hhh mdr\nThem: Ok ça marche"
+    },
+    async () => { called = true; return { provider:"gemini",model:"test",apiKey:"test" }; },
+    async () => { called = true; return new Response(""); },
+    async () => ({memories:[]})
+  ), /conversation_acknowledged_no_reply/);
+  assert.equal(called, false);
+});
+
+test("Gemini outputs denying AI or mixing scripts are blocked in automatic mode", async () => {
+  for (const [context, draft] of [
+    ["Me: Tu vas bien ?\nThem: Oui", "je suis bien réel t'inquiète"],
+    ["Me: chi programme lila?\nThem: Ghi raha", "ah أحسن حاجة، شي فيلم زوين ولا والو؟"]
+  ]) {
+    await assert.rejects(() => generateExtensionSuggestions(
+      "test-user", { purpose:"auto", count:1, context, config:{} },
+      async () => ({provider:"gemini",model:"test",apiKey:"test"}),
+      async () => new Response(JSON.stringify({
+        candidates: [{content:{parts:[{text: JSON.stringify([draft])}]}}]
+      }), {status:200,headers:{"content-type":"application/json"}}),
+      async () => ({memories:[]})
+    ), /automatic_reply_needs_human_review/);
+  }
+});

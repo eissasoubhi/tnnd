@@ -310,3 +310,29 @@ describe("contacts managed on Web", () => {
     assert.equal(identity.contactPreference, initial.identity.contactPreference);
   });
 });
+
+describe("Web-owned global conversation baseline", () => {
+  it("persists style, language weights and vocabulary without overwriting unknown defaults", () => {
+    const source = { ...profile(), conversationDefaults: { model: "keep-this", tone: "warm" }, languages: { script: "keep" } };
+    const saved = writeEditablePreferences(source, {
+      ...readEditablePreferences(source),
+      globalTone: "witty", flirtLevel: 3, humorLevel: 72, replyCount: 2,
+      languageFr: 20, languageDarija: 65, languageEn: 15,
+      preferredWords: " bslama ", avoidedWords: " haha ", extraInstructions: " One question max "
+    });
+    assert.deepEqual((saved.conversationDefaults as Record<string, unknown>).model, "keep-this");
+    assert.equal((saved.languages as Record<string, unknown>).script, "keep");
+    assert.equal(readEditablePreferences(saved).globalTone, "witty");
+    assert.deepEqual([readEditablePreferences(saved).languageFr, readEditablePreferences(saved).languageDarija, readEditablePreferences(saved).languageEn],[20,65,15]);
+    assert.equal(readEditablePreferences(saved).extraInstructions, "One question max");
+  });
+  it("preserves previous global settings when older clients do not send the new controls", () => {
+    const source = { ...profile(), conversationDefaults: { tone: "chill", avoidedWords: "too much" }, languages: { fr: 37 } };
+    const old = readEditablePreferences(source);
+    for (const key of ["globalTone","flirtLevel","humorLevel","replyCount","languageFr","languageDarija","languageEn","preferredWords","avoidedWords","extraInstructions"] as const) delete old[key];
+    const saved = writeEditablePreferences(source, old);
+    assert.equal((saved.conversationDefaults as Record<string, unknown>).tone, "chill");
+    assert.equal((saved.conversationDefaults as Record<string, unknown>).avoidedWords, "too much");
+    assert.equal((saved.languages as Record<string, unknown>).fr, 37);
+  });
+});

@@ -6,7 +6,7 @@ import { matchProfileTopicGuidance } from "./match-profile-topic-hooks.js";
 import { missingPersonalLocationDetail, personalLocationAnswerPolicy } from "./personal-location-policy.js";
 import { createHumanAction, listHumanActions } from "./human-action-service.js";
 import { ensureAiIdentityAction } from "./conversation-ai-identity-action.js";
-import { latestIncomingAsksAboutAiIdentity } from "../../../src/conversation-ai-identity-question.js";
+import { automaticReplyHold, hasUnexpectedScriptMix, replyNeedsHumanReview } from "../../../src/conversation-reply-safety.js";
 import { assessMatchIntent, matchScreeningPrompt, type MatchScreeningOptions } from "./match-intent-screening.js";
 import { conversationFlowGuidance, deriveConversationFlow } from "./conversation-flow.js";
 import { retrievePersonalMemories } from "./personal-memory-service.js";
@@ -149,14 +149,19 @@ export async function generateExtensionSuggestions(
   fetcher: Fetcher = fetch,
   loadContext: ContextLoader = loadExtensionGenerationContext
 ): Promise<ExtensionSuggestionResult> {
-  // Check BEFORE loading a model or generating any Tinder message. Only a
-  // verified last incoming turn can cause this human-only interruption.
-  if (request.purpose === "auto"
-    && latestIncomingAsksAboutAiIdentity(readLabeledReplyHistory(request.context))) {
-    const thread = request.threadKey
-      ? await findConversationByExternalThreadId(userId, request.threadKey) : null;
-    if (thread) await ensureAiIdentityAction(userId, thread.id);
-    throw new Error("human_ai_identity_review_required");
+  // Gate on the whole current incoming turn BEFORE any Gemini call. A trailing
+  // "Hhh" cannot erase a preceding AI question; an "OK ça marche" should
+  // never provoke an extra automated last word.
+  const currentHistory = readLabeledReplyHistory(request.context);
+  if (request.purpose === "auto") {
+    const hold = automaticReplyHold(currentHistory);
+    if (hold === "ai-identity") {
+      const thread = request.threadKey
+        ? await findConversationByExternalThreadId(userId, request.threadKey) : null;
+      if (thread) await ensureAiIdentityAction(userId, thread.id);
+      throw new Error("human_ai_identity_review_required");
+    }
+    if (hold === "acknowledgement") throw new Error("conversation_acknowledged_no_reply");
   }
   const settings = await loadSettings(userId);
   if (!settings) throw new Error("ai_provider_not_configured");
@@ -167,7 +172,7 @@ export async function generateExtensionSuggestions(
   const topicPreferences = generationContext.userProfile?.topicEngine as { avoidedTopics?: string[] } | undefined;
   // Only incoming lines determine the match's language; outgoing turns are
   // retained separately so the generator stops echoing the sender's "haha".
-  const observedMessages = readLabeledReplyHistory(request.context);
+  const observedMessages = currentHistory;
   const history = observedMessages.filter(message => message.direction === "incoming");
   const manual = request.chat ?? {};
   const adaptive = resolveAdaptiveStyle(
@@ -300,7 +305,13 @@ export async function generateExtensionSuggestions(
   if (!raw) throw new Error("gemini_empty_response");
 
   return {
-    suggestions: parseSuggestions(raw, request.count).map(suggestion => request.purpose === "opener" ? suggestion : removeCannedFameuxOpening(limitReplyLaughter(suggestion, styleCues))),
+    suggestions: parseSuggestions(raw, request.count).map(suggestion => {
+      const cleaned = request.purpose === "opener" ? suggestion : removeCannedFameuxOpening(limitReplyLaughter(suggestion, styleCues));
+      if (request.purpose === "auto" && (replyNeedsHumanReview(cleaned) || hasUnexpectedScriptMix(cleaned, observedMessages))) {
+        throw new Error("automatic_reply_needs_human_review");
+      }
+      return cleaned;
+    }),
     model: settings.model
   };
 }

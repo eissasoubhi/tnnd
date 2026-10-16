@@ -153,6 +153,20 @@ app.innerHTML = `
               <option value="whatsapp-first">WhatsApp first</option>
               <option value="stay-on-tinder">Stay on Tinder</option>
             </select></label>
+          </div><div class="dating-goal-editor">
+            <h3>Conversation baseline · shared with extension</h3>
+            <p class="subtle">One place to edit tone, language weights and vocabulary. The extension reads this profile after refresh; per-chat instructions still take priority.</p>
+            <label>Global tone<select id="global-tone"><option value="playful">Playful</option><option value="flirty">Flirty</option><option value="direct">Direct</option><option value="warm">Warm</option><option value="chill">Chill</option><option value="witty">Witty</option></select></label>
+            <label>Flirt level (0–3)<input id="global-flirt" type="number" min="0" max="3" step="1"></label>
+            <label>Humor (0–100)<input id="global-humor" type="number" min="0" max="100" step="1"></label>
+            <label>Preview suggestion count<input id="global-preview-count" type="number" min="1" max="5" step="1"></label>
+            <label>French weight<input id="global-lang-fr" type="number" min="0" max="100" step="1"></label>
+            <label>Darija weight<input id="global-lang-darija" type="number" min="0" max="100" step="1"></label>
+            <label>English weight<input id="global-lang-en" type="number" min="0" max="100" step="1"></label>
+            <p class="subtle">Language weights are flexible guidance, not strict quotas. The other person's language and manually locked per-chat settings take priority.</p>
+            <label>Expressions to prefer<textarea id="global-preferred-words" maxlength="1600" rows="2"></textarea></label>
+            <label>Expressions to avoid<textarea id="global-avoided-words" maxlength="1600" rows="2"></textarea></label>
+            <label>Global writing instructions<textarea id="global-extra-instructions" maxlength="2000" rows="3"></textarea></label>
           </div><div class="dating-goal-editor"><h3>Long replies in multiple bubbles</h3><label><input id="multi-part-replies" type="checkbox"> Sometimes send long replies in 2 separate Tinder bubbles</label><p class="subtle">One generated reply; natural sentence boundary only. 3–10 seconds between bubbles; stop if the match replies or you intervene.</p><label>Minimum reply characters<input id="multi-part-min-characters" type="number" min="90" max="400" step="10" value="150"></label></div><label>Formality<select id="text-formality"><option value="very-casual">very-casual</option><option value="casual">casual</option><option value="neutral">neutral</option></select></label>
           <label>Capitalization<select id="capitalization"><option value="relaxed">relaxed</option><option value="standard">standard</option><option value="lowercase-heavy">lowercase-heavy</option></select></label>
           <label>Emoji frequency<select id="emoji-frequency"><option value="none">none</option><option value="low">low</option><option value="medium">medium</option></select></label>
@@ -224,6 +238,16 @@ const preferencesSaveFeedback = document.querySelector<HTMLElement>("#preference
 const datingGoal = document.querySelector<HTMLSelectElement>("#dating-goal");
 const datingGoalDetails = document.querySelector<HTMLTextAreaElement>("#dating-goal-details");
 const targetCities = document.querySelector<HTMLInputElement>("#target-cities");
+const globalTone = document.querySelector<HTMLSelectElement>("#global-tone");
+const globalFlirt = document.querySelector<HTMLInputElement>("#global-flirt");
+const globalHumor = document.querySelector<HTMLInputElement>("#global-humor");
+const globalPreviewCount = document.querySelector<HTMLInputElement>("#global-preview-count");
+const globalLangFr = document.querySelector<HTMLInputElement>("#global-lang-fr");
+const globalLangDarija = document.querySelector<HTMLInputElement>("#global-lang-darija");
+const globalLangEn = document.querySelector<HTMLInputElement>("#global-lang-en");
+const globalPreferredWords = document.querySelector<HTMLTextAreaElement>("#global-preferred-words");
+const globalAvoidedWords = document.querySelector<HTMLTextAreaElement>("#global-avoided-words");
+const globalExtraInstructions = document.querySelector<HTMLTextAreaElement>("#global-extra-instructions");
 const profileInstagram = document.querySelector<HTMLInputElement>("#profile-instagram");
 const profileWhatsapp = document.querySelector<HTMLInputElement>("#profile-whatsapp");
 const profileContactPreference = document.querySelector<HTMLSelectElement>("#profile-contact-preference");
@@ -349,7 +373,7 @@ async function refreshProfile(): Promise<void> {
 }
 
 function refreshPreferences(profile: ImportedProfile | null): void {
-  const controls = [datingGoal, datingGoalDetails, targetCities, profileInstagram, profileWhatsapp, profileContactPreference, originCity, residenceCity, currentCity, originNeighborhood, residenceNeighborhood, multiPartReplies, multiPartMinCharacters, pauseOnMarriage, maxMatchHeight, marriageExpressions, casualExpressions, disclosureStrategy, textFormality, capitalization, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, fragmentStyle, grammarStyle, directness, questionFrequency, teasingStyle, humorStyle, doubleTexting, frenchStyle, darijaStyle, englishStyle, matchProfileRetentionDays, ...Object.values(adaptiveCheckboxes), preferencesSave];
+  const controls = [datingGoal, datingGoalDetails, targetCities, globalTone, globalFlirt, globalHumor, globalPreviewCount, globalLangFr, globalLangDarija, globalLangEn, globalPreferredWords, globalAvoidedWords, globalExtraInstructions, profileInstagram, profileWhatsapp, profileContactPreference, originCity, residenceCity, currentCity, originNeighborhood, residenceNeighborhood, multiPartReplies, multiPartMinCharacters, pauseOnMarriage, maxMatchHeight, marriageExpressions, casualExpressions, disclosureStrategy, textFormality, capitalization, emojiFrequency, abbreviations, messageLength, punctuationDensity, slangLevel, fragmentStyle, grammarStyle, directness, questionFrequency, teasingStyle, humorStyle, doubleTexting, frenchStyle, darijaStyle, englishStyle, matchProfileRetentionDays, ...Object.values(adaptiveCheckboxes), preferencesSave];
   controls.forEach((control) => { if (control) control.disabled = !profile; });
   if (!profile) {
     if (preferencesStatus) preferencesStatus.textContent = "Import a profile first";
@@ -360,6 +384,16 @@ function refreshPreferences(profile: ImportedProfile | null): void {
   if (datingGoal) datingGoal.value = preferences.datingGoal;
   if (datingGoalDetails) datingGoalDetails.value = preferences.datingGoalDetails ?? "";
   if (targetCities) targetCities.value = preferences.targetCities ?? "";
+  if (globalTone) globalTone.value = preferences.globalTone ?? "playful";
+  if (globalFlirt) globalFlirt.value = String(preferences.flirtLevel ?? 2);
+  if (globalHumor) globalHumor.value = String(preferences.humorLevel ?? 65);
+  if (globalPreviewCount) globalPreviewCount.value = String(preferences.replyCount ?? 3);
+  if (globalLangFr) globalLangFr.value = String(preferences.languageFr ?? 45);
+  if (globalLangDarija) globalLangDarija.value = String(preferences.languageDarija ?? 40);
+  if (globalLangEn) globalLangEn.value = String(preferences.languageEn ?? 15);
+  if (globalPreferredWords) globalPreferredWords.value = preferences.preferredWords ?? "";
+  if (globalAvoidedWords) globalAvoidedWords.value = preferences.avoidedWords ?? "";
+  if (globalExtraInstructions) globalExtraInstructions.value = preferences.extraInstructions ?? "";
   if (profileInstagram) profileInstagram.value = preferences.instagram ?? "";
   if (profileWhatsapp) profileWhatsapp.value = preferences.whatsapp ?? "";
   if (profileContactPreference) profileContactPreference.value = preferences.contactPreference ?? "instagram-first";
@@ -494,6 +528,16 @@ preferencesSave?.addEventListener("click", async () => {
     datingGoal: datingGoal.value,
     datingGoalDetails: datingGoalDetails.value,
     targetCities: targetCities.value,
+    globalTone: globalTone?.value,
+    flirtLevel: globalFlirt?.valueAsNumber,
+    humorLevel: globalHumor?.valueAsNumber,
+    replyCount: globalPreviewCount?.valueAsNumber,
+    languageFr: globalLangFr?.valueAsNumber,
+    languageDarija: globalLangDarija?.valueAsNumber,
+    languageEn: globalLangEn?.valueAsNumber,
+    preferredWords: globalPreferredWords?.value,
+    avoidedWords: globalAvoidedWords?.value,
+    extraInstructions: globalExtraInstructions?.value,
     instagram: profileInstagram?.value,
     whatsapp: profileWhatsapp?.value,
     contactPreference: profileContactPreference?.value as "instagram-first" | "whatsapp-first" | "stay-on-tinder" | undefined,
