@@ -40,10 +40,22 @@ function requestsArabic(value: string): boolean {
     || /(?:هدر|تكلم|دوي).{0,18}(?:بالعربية|بالدارجة)/u.test(value);
 }
 
-function lastIncoming(messages: readonly PragmaticMessage[], override: string): string {
-  if (override.trim()) return override.trim();
+function currentIncomingTurn(messages: readonly PragmaticMessage[], override: string): string {
+  const explicit = override.trim();
   const last = messages.at(-1);
-  return last?.direction === "incoming" ? last.text.trim() : "";
+  if (!last || last.direction !== "incoming" || (explicit && last.text.trim() !== explicit)) {
+    // A fresh manual preview must never inherit an older inbound turn.
+    return explicit;
+  }
+  // Consecutive incoming bubbles are one conversational turn. The final bubble
+  // may mention a restaurant even when the first shares a vulnerable change.
+  const run: string[] = [];
+  for (let i = messages.length - 1; i >= 0 && run.length < 4; i--) {
+    const message = messages[i];
+    if (message.direction !== "incoming") break;
+    if (message.text.trim()) run.unshift(message.text.trim());
+  }
+  return run.join(" ") || explicit;
 }
 
 /**
@@ -56,7 +68,7 @@ export function conversationPragmaticsGuidance(
   latestIncoming = "",
   autoLanguage = true
 ): string {
-  const current = lastIncoming(messages, latestIncoming);
+  const current = currentIncomingTurn(messages, latestIncoming);
   const outgoing = messages.filter(message => message.direction === "outgoing").slice(-6);
   const recentOutgoingQuestions = outgoing.slice(-4).filter(message => /[?؟]/u.test(message.text)).length;
   const recentCliche = outgoing.some(message => /\b(?:le fameux|la fameuse|les fameux|les fameuses)\b/iu.test(message.text));
