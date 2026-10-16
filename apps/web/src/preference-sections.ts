@@ -19,6 +19,12 @@ export const preferenceSections = [
     ids: ["message-length", "directness", "teasing-style", "humor-style", "double-texting"]
   },
   {
+    title: "Shared conversation baseline",
+    description: "Global tone, language weights, vocabulary and instructions, edited here and read by the extension.",
+    expanded: false,
+    ids: ["global-tone", "global-flirt", "global-humor", "global-preview-count", "global-lang-fr", "global-lang-darija", "global-lang-en", "global-preferred-words", "global-avoided-words", "global-extra-instructions"]
+  },
+  {
     title: "Languages & culture",
     description: "Natural French, Moroccan Darija and English conversation styles.",
     expanded: false,

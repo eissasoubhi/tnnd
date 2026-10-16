@@ -89,6 +89,19 @@ export function conversationPragmaticsGuidance(
   } else if (isVulnerableDisclosure(current)) {
     parts.push("The match shared a personal change that may feel isolating (friends, marriage, going out less). First acknowledge their experience with warmth. They did not give an excuse: do not frame it as a cliché, disappearing friends, a made-up explanation, or something to be corrected. Even if 'hh' accompanies it, treat it as softening the disclosure, not consent to a joke at their expense. Ask a gentle follow-up only if natural; a short empathetic statement alone is fine.");
   }
+  if (/^(?:ghi|ghir|ghir raha|ghi raha|ghir ra7a|ghi ra7a|juste repos|repos)$/iu.test(normalize(current))) {
+    parts.push("The match says they are simply resting. Acknowledge it briefly or let the exchange breathe. Do not reflexively ask if they will watch a film, what their plans are, or fire another bedtime question.");
+  }
+  if (/(?:toute seule|tout seul|seule? ca ne me derange pas|solo ca ne me derange pas|alone (?:is|does not|doesn't) (?:fine|bother))/iu.test(normalize(current))) {
+    parts.push("The match clearly enjoys going out independently. Respect their autonomy: do not insist that going as a couple is better, imply they need company or reframe it as a romantic invitation. Keep the tone light without pressuring.");
+  }
+  const latestLatinDarija = messages.at(-1)?.direction === "incoming"
+    ? messages.at(-1)!.text
+    : latestIncoming;
+  if (autoLanguage && latestLatinDarija && !/\p{Script=Arabic}/u.test(latestLatinDarija)
+      && /\b(?:ghi|raha|lila|wla|wach|kifach|chno|labas|hamdo(?:u)?lilah|baki|nta|nti|wakha|daba|trankil|3lach|ghadi)\b/iu.test(latestLatinDarija)) {
+    parts.push("The match is currently texting Moroccan Darija in Latin characters. Write the response in Latin-script Darija as they do. Never mix Arabic glyphs into a Latin-script reply unless the match has been writing that way. Keep it short, conversational, and don't force another question.");
+  }
   if (requestsArabic(current)) {
     if (autoLanguage) {
       parts.push("The match explicitly asked to speak Arabic ('Dwi b arbia'). This takes priority over language percentages: switch to natural Moroccan Darija in their script (Latin here), with short everyday phrases; do not produce a contrived French/Latin/Arabic salad or announce 'now I speak Darija'. Avoid forced transliteration and elaborate poetic wording.");
@@ -103,14 +116,16 @@ export function conversationPragmaticsGuidance(
  * Intentionally only removes the ornamental adjective, not the substantive text.
  */
 export function removeCannedFameuxOpening(reply: string): string {
+  // Drop a formulaic adjective even in the middle: "ces fameux spots" is as
+  // robotic as "le fameux spot". Preserve determiners and French elision.
   return reply.replace(
-    /^(\s*(?:(?:ah|oh)[,\s!]*)?)(le|la|les)\s+fameu(?:x|se|ses)\b(\s*)(?=\p{L})/iu,
-    (matched, lead: string, article: string, gap: string, index: number) => {
+    /\b(le|la|les|ce|cet|cette|ces)\s+fameu(?:x|se|ses)\b\s*(?=\p{L})/giu,
+    (matched, article: string, index: number) => {
       const next = reply.slice(index + matched.length);
-      if (/^[aeiouyhàâéèêëîïôùûü]/iu.test(next) && /^(?:le|la)$/iu.test(article)) {
-        return lead + (article[0] === article[0].toUpperCase() ? "L'" : "l'");
+      if (/^(?:le|la)$/iu.test(article) && /^[aeiouyhàâéèêëîïôùûü]/iu.test(next)) {
+        return article[0] === article[0].toUpperCase() ? "L'" : "l'";
       }
-      return lead + article + gap;
+      return article + " ";
     }
   );
 }
