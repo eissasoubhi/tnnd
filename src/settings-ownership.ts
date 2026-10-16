@@ -22,3 +22,27 @@ export function settingsToSaveLocally(
     automation: { ...savedFallback.automation, ...draft.automation }
   };
 }
+
+
+/** Browser-owned sender controls are never silently overwritten by imported
+ * profile defaults. Only the extension's explicit local controls may enable
+ * auto-replies; other Web-owned effective settings remain intact.
+ */
+export function withBrowserRuntimeControls(local: AppConfig, fromWeb: AppConfig): AppConfig {
+  return {
+    ...fromWeb,
+    automation: {
+      ...fromWeb.automation,
+      enabled: local.automation.enabled,
+      replyDelayMinSeconds: local.automation.replyDelayMinSeconds,
+      replyDelayMaxSeconds: local.automation.replyDelayMaxSeconds,
+      openerDelayMinSeconds: local.automation.openerDelayMinSeconds,
+      openerDelayMaxSeconds: local.automation.openerDelayMaxSeconds,
+      maxFirstMessagesPerDay: local.automation.maxFirstMessagesPerDay,
+      maxAutoRepliesPerDay: local.automation.maxAutoRepliesPerDay,
+      quietHoursEnabled: local.automation.quietHoursEnabled,
+      quietStart: local.automation.quietStart,
+      quietEnd: local.automation.quietEnd
+    }
+  };
+}
