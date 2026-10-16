@@ -1,5 +1,6 @@
 import { TinderDomAdapter } from "./tinder-adapter";
 import { observeSwipeDiscoveryControls } from "./tinder-swipe-discovery-evidence";
+import { redactDiagnosticInlineStyle } from "./tinder-diagnostic-inline-style-redaction";
 import { readVisibleTinderMatchIdentity, type VisibleTinderMatchIdentity } from "./tinder-chat-identity";
 import { readVisibleTinderProfilePanel } from "./tinder-visible-profile-panel";
 import { detectVisibleTinderSidebarTab, visibleTinderThreadRefs } from "./tinder-visible-thread-links";
@@ -229,6 +230,10 @@ function sanitizeDom(): { html: string; truncated: boolean } {
       const name = attr.name.toLowerCase();
       if (/token|auth|session|cookie|secret|password|credential/.test(name)) {
         element.removeAttribute(attr.name);
+        continue;
+      }
+      if (name === "style") {
+        element.setAttribute(attr.name, redactDiagnosticInlineStyle(attr.value));
         continue;
       }
       if (["href", "src", "action", "poster"].includes(name)) {
