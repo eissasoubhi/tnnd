@@ -6,15 +6,21 @@ import { classifySwipeCardTransition, type TinderSwipeActionResult } from "./tin
  * The private marker is used only inside a single in-memory attempt.
  */
 function activeCardMarker(doc: Document): string | null {
-  const photos = Array.from(doc.querySelectorAll<HTMLElement>(
-    ".recsCardboard__cards .recCard__img [style*='url(']"
+  // The sidebar's .recCard__img is a MATCH AVATAR, not a Discovery card.
+  // Steps 07/08 show exactly one active gamepad card (aria-hidden=false,
+  // not inert) inside Tinder's Discovery card stack.
+  const active = Array.from(doc.querySelectorAll<HTMLElement>(
+    '.recsCardboard__cards > [data-keyboard-gamepad][aria-hidden="false"]:not([inert])'
   )).filter(el => {
     const rect = el.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0 &&
-      getComputedStyle(el).visibility === "visible";
+    return rect.width > 0 && rect.height > 0;
   });
-  if (photos.length !== 1) return null;
-  const marker = photos[0].getAttribute("style");
+  if (active.length !== 1) return null;
+  // The first slide stays fixed when the user switches photographs on the
+  // same profile. Its image changes when the *profile card* changes.
+  const firstSlide = active[0].querySelector<HTMLElement>('.keen-slider__slide');
+  const image = firstSlide?.querySelector<HTMLElement>('[style*="url("]');
+  const marker = image?.getAttribute("style") ?? null;
   return marker && marker.includes("url(") ? marker : null;
 }
 function singleLiveLike(doc: Document): HTMLButtonElement | null {
