@@ -52,3 +52,13 @@ Quand une fiche Tinder est effectivement affichée et liée au fil ouvert, TNND 
 ### Valeurs par défaut
 
 Pour tout compte sans paramètres enregistrés, les deux synchronisations **en lecture seule** sont maintenant **activées par défaut** : les chats ouverts sont importés, et les conversations de la liste Messages chargées sont collectées automatiquement. Ces paramètres se changent dans **Settings → Tinder conversation import**. Les paramètres déjà enregistrés par l'utilisateur restent prioritaires. **Aucune autorisation d'écrire ou envoyer un message à un match n'est accordée.** Le navigateur, l'extension et l'API TNND doivent être actifs.
+
+## Défilement physique pour remonter au début d'un chat
+
+L'import par lot TNND tente désormais de **défiler vers le haut le conteneur vérifié de messages Tinder**. Chaque étape se limite à environ une demi-hauteur de fenêtre et laisse Tinder charger son propre contenu. L'extension compare les messages de deux étapes successives et n'ajoute que les messages anciens qui **se recoupent avec les précédents**. Les portions sans chevauchement vérifiable ne sont jamais assemblées au hasard. Jusqu'à 80 étapes et 1 000 messages fusionnés par conversation sont prises en charge ; le chat est ensuite restauré vers les messages récents si la navigation est toujours valide.
+
+Le compteur **chats scrolled to top** signifie uniquement que l'interface a atteint le haut du conteneur défilant et s'est stabilisée ; il **ne prouve pas** que Tinder ait fourni le premier message envoyé historiquement (chargements différés, suppressions, contenu absent). Tant que l'origine exacte n'est pas prouvée, l'historique reste indiqué comme **partiel/non vérifié** dans TNND.
+
+La lecture est strictement restreinte à la conversation Tinder ouverte avec son compositeur vérifié, un `ol[aria-label="Messages"]` reconnu et un ancêtre vertical défilant. Un brouillon non envoyé, une navigation manuelle ou un autre runner actif arrête le parcours. **Aucune API interne Tinder n'est appelée ; aucun message n'est envoyé.** Les discussions qui n'ont plus de lien visible dans la barre latérale ne sont pas accessibles à ce mécanisme.
+
+Limite importante pour les archives antérieures déjà importées : Tinder n'expose pas actuellement d'identifiants ni d'horodatages individuels vérifiés pour tous les anciens messages dans les sélecteurs validés. Les correspondances sont dédupliquées avec les clés de messages observés et des clés locales de backfill. Les répétitions identiques entre plusieurs sessions peuvent nécessiter un rapprochement ultérieur ; ne pas présenter les dates de capture comme les dates d'envoi.
