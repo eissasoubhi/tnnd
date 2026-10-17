@@ -102,9 +102,9 @@ function normalizeFields(value: unknown): MatchProfileVisibleFields {
     firstName: normalizeText(input.firstName),
     age: normalizeAge(input.age),
     photoUrl: normalizeTinderPhotoUrl(input.photoUrl),
-    photoUrls: Array.isArray(input.photoUrls)
-      ? [...new Set(input.photoUrls.map(normalizeTinderPhotoUrl).filter((url): url is string => Boolean(url)))].slice(0,12)
-      : undefined,
+    ...(Array.isArray(input.photoUrls) && input.photoUrls.length
+      ? {photoUrls:[...new Set(input.photoUrls.map(normalizeTinderPhotoUrl).filter((url): url is string => Boolean(url)))].slice(0,12)}
+      : {}),
     bio: normalizeText(input.bio),
     job: normalizeText(input.job),
     education: normalizeText(input.education),
