@@ -39,7 +39,7 @@ export function shouldImportThread(
   if (settings.scope === "all") return { eligible: true, reason: "allowed" };
   if (settings.requireMessages && !observed.messageCount) return { eligible: false, reason: "no_messages" };
   if (settings.ageMin !== null || settings.ageMax !== null) {
-    if (!Number.isInteger(observed.age)) return { eligible:false, reason:"missing_age" };
+    if (typeof observed.age !== "number" || !Number.isInteger(observed.age)) return { eligible:false, reason:"missing_age" };
     const age = observed.age!;
     if ((settings.ageMin !== null && age < settings.ageMin) || (settings.ageMax !== null && age > settings.ageMax))
       return {eligible:false,reason:"age_outside_range"};
