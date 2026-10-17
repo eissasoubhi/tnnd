@@ -18,7 +18,7 @@ interface SettingsResponse {
   settings: Settings;
   updatedAt: string | null;
   liveExecutionAvailable: false;
-  unavailableReason: "platform_authorization_required";
+  unavailableReason: "runtime_not_implemented";
 }
 const endpoint = (
   (import.meta.env.VITE_TNND_API_BASE_URL as string | undefined)?.replace(/\/$/, "")
@@ -189,8 +189,8 @@ async function refresh(): Promise<void> {
     if (requestId !== requestSerial || readSession()?.user.id !== session.user.id) return;
     loadedForUser = session.user.id;
     fill(result.settings);
-    status.textContent = result.settings.enabled ? "Configured · unavailable" : "Disabled";
-    notice.textContent = "Tinder auto-Likes are unavailable without platform authorization. " +
+    status.textContent = result.settings.enabled ? "Configured · runtime pending" : "Disabled";
+    notice.textContent = "Smart Auto Swipe settings are saved. The extension is connected for readiness checks, but live Likes are not implemented yet. " +
       "These saved settings cannot initiate Tinder actions.";
   } catch (error) {
     if (requestId !== requestSerial) return;
