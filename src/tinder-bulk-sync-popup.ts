@@ -45,7 +45,7 @@ if (manualImportCard && !document.getElementById("tnnd-bulk-readonly-sync")) {
       account_or_automation_changed: "Account or automation setting changed; import safely stopped.",
       tnnd_account_disconnected: "TNND account disconnected."
     };
-    if (status) status.textContent = `${data.active ? "Import running" : data.collecting ? "Collecting loaded chats while you scroll" : "Import stopped"} · ${data.completed}/${data.selected} completed · ${data.failed} skipped · ${data.partial} whose complete history has not been verified · ${data.pending} remaining. ${data.stopReason ? (safetyReason[data.stopReason] ?? "Import safely stopped. Check Tinder and TNND, then retry.") : ""} These are loaded chats, not a confirmed complete Tinder inbox.`;
+    if (status) status.textContent = `${data.active ? "Import running" : data.collecting ? "Collecting loaded chats while you scroll" : "Import stopped"} · ${data.completed}/${data.selected} completed · ${data.failed} skipped · ${data.reachedScrollTop ?? 0} chats scrolled to top · ${data.partial} whose complete history has not been verified · ${data.pending} remaining. ${data.stopReason ? (safetyReason[data.stopReason] ?? "Import safely stopped. Check Tinder and TNND, then retry.") : ""} These are loaded chats, not a confirmed complete Tinder inbox.`;
     if (start) start.disabled = pending || data.active || data.selected === 0 || data.pending === 0;
     if (stop) stop.disabled = pending || !data.active;
     if (retry) retry.disabled = pending || data.active || data.failed === 0;
