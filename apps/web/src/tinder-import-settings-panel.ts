@@ -18,7 +18,7 @@ panel.innerHTML = `
       <h3>Automatic synchronization</h3>
       <label><input type="checkbox" id="import-auto-opened"> Auto-sync new messages in conversations I open on Tinder</label>
       <label><input type="checkbox" id="import-auto-collect"> Automatically collect conversation links while browsing Tinder Messages</label>
-      <p class="subtle">Both options are OFF by default. Auto-sync only reads chats rendered in your Tinder tab; it does not open old chats or guarantee full historical coverage.</p>
+      <p class="subtle">Both read-only options are ON by default. Auto-sync imports observed chats when other Tinder runners are idle; it does not guarantee full historical coverage or guarantee full historical coverage.</p>
     </div>
     <div class="dating-goal-editor"><h3>Which conversations to import?</h3>
       <label for="import-scope">Import scope</label>
