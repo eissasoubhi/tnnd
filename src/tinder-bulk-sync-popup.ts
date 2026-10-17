@@ -1,9 +1,10 @@
+export {};
 /** Compact extension control: the user chooses exactly when to import.
  * This does NOT enable AI management or send Tinder messages.
  */
 const anchor = document.getElementById("manualSyncStatus");
-const parent = anchor?.closest(".card");
-if (parent && !document.getElementById("tnnd-bulk-readonly-sync")) {
+const manualImportCard = anchor?.closest(".card");
+if (manualImportCard && !document.getElementById("tnnd-bulk-readonly-sync")) {
   const panel = document.createElement("section");
   panel.className = "card";
   panel.id = "tnnd-bulk-readonly-sync";
@@ -21,7 +22,7 @@ if (parent && !document.getElementById("tnnd-bulk-readonly-sync")) {
     <p class="warning">Before import: stop all automatic runners, turn OFF global auto-replies, keep exactly one Tinder tab and do not type in the composer.</p>
     <p id="bulkSyncFeedback" role="status" aria-live="polite">Checking previously collected conversations…</p>
   `;
-  parent.insertAdjacentElement("afterend", panel);
+  manualImportCard.insertAdjacentElement("afterend", panel);
   const status = panel.querySelector<HTMLElement>("#bulkSyncFeedback");
   const collect = panel.querySelector<HTMLButtonElement>("#bulkSyncCollect");
   const start = panel.querySelector<HTMLButtonElement>("#bulkSyncStart");
