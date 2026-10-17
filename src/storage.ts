@@ -190,7 +190,7 @@ export async function getBackendSession(): Promise<BackendSession | null> {
   const value = result[BACKEND_SESSION_KEY] as BackendSession | undefined;
   if (!value?.token || !value?.expiresAt || !value.user?.id || !value.user?.email) return null;
   if (Date.parse(value.expiresAt) <= Date.now()) {
-    await chrome.storage.local.remove(BACKEND_SESSION_KEY);
+    await clearBackendSession();
     return null;
   }
   return value;
