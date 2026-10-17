@@ -64,7 +64,7 @@ async function inspectSmartSwipeStatus(): Promise<Record<string, unknown>> {
   const mandatoryStop = Boolean(sameUserExisting && ["sending", "generating", "incoming", "loading"].includes(existing?.phase ?? ""));
   const availability = {
     activeConversationInProgress: activeConversation,
-    activeChatsAvailable: sameUserExisting && (existing?.pendingReplies ?? 0) > 0,
+    activeChatsAvailable: sameUserExisting && ((existing?.pendingReplies ?? 0) > 0 || activeConversation),
     newMatchesAvailable: sameUserMatches && newMatch.pendingRefs.length > 0,
     mandatoryStop
   };
