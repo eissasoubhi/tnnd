@@ -1,4 +1,4 @@
-import { planSmartRightSwipe, selectTinderActivity, type SmartAutoSwipeConfig, type SmartSwipeDailyProgress, type ManagedTinderActivity, type SwipePlanStatus } from "./tinder-smart-auto-swipe-policy";
+import { planSmartRightSwipe, selectTinderActivity, type SmartAutoSwipeConfig, type SmartSwipeDailyProgress, type ManagedTinderActivity, type SwipePlanStatus } from "./tinder-smart-auto-swipe-policy.ts";
 import type { SwipeDiscoveryEvidence } from "./tinder-swipe-discovery-evidence";
 
 export type SwipeRuntimeDecision = {
