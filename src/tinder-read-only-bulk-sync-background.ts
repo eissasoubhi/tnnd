@@ -42,6 +42,8 @@ async function preflight(userId: string): Promise<chrome.tabs.Tab> {
   if ((await getConfig()).automation.enabled || await otherRunnersActive()) throw new Error("disable_all_auto_chat_before_read_only_import");
   const tab = await tinderTab();
   await assertTinderContentBridge(tab.id!);
+  const sidebar = await chrome.tabs.sendMessage(tab.id!, { type: "TNND_BULK_SYNC_VISIBLE_MESSAGE_REFS" }) as { ok?: boolean };
+  if (!sidebar?.ok) throw new Error("open_tinder_messages_before_import");
   return tab;
 }
 async function collect(): Promise<BulkSyncProgress> {
@@ -81,9 +83,9 @@ async function stop(reason?: string): Promise<BulkSyncProgress | null> {
   if (reason) { /* Reason is a fixed error code, never a chat transcript. */ }
   return load();
 }
-async function upload(ref: string, messages: VisibleTinderMessage[]): Promise<{ partial: boolean }> {
+async function upload(ref: string, messages: VisibleTinderMessage[], expectedUserId: string): Promise<{ partial: boolean }> {
   const session = await getBackendSession();
-  if (!session) throw new Error("tnnd_sign_in_required");
+  if (!session || session.user.id !== expectedUserId) throw new Error("tnnd_account_changed");
   const lookup = await fetch(API + "/api/v1/conversations/by-external-thread?externalThreadId=" + encodeURIComponent(ref), {
     headers: { authorization: "Bearer " + session.token }
   });
@@ -162,7 +164,7 @@ async function tick(): Promise<void> {
           await stop(); return;
         }
         const observed = snapshot?.ok ? snapshot.messages! : [];
-        const imported = await upload(ref, observed);
+        const imported = await upload(ref, observed, state.userId);
         state = { ...live, done: [...live.done, ref],
           partial: imported.partial ? [...live.partial, ref] : live.partial };
         await save(state);
