@@ -131,7 +131,8 @@ async function upload(
     const response = await fetch(API + "/api/v1/conversations/sync", {
       method:"POST",headers:{authorization:"Bearer "+session.token,"content-type":"application/json"},
       body:JSON.stringify({
-        externalThreadId:ref, ...(index === 0 && !existing ? {status:"paused"} : {}),
+        externalThreadId:ref, readOnlyImport:true,
+        ...(index === 0 && !existing ? {status:"paused"} : {}),
         messages:batch.messages, ...(batch.nextCursor ? {nextCursor:batch.nextCursor}: {})
       })
     });
