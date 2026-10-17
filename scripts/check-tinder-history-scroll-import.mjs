@@ -9,7 +9,8 @@ test("older virtualized messages merge only through verified overlap, in order",
   const merged=mergeOlderHistory(tail,page);
   assert.deepEqual(merged?.messages.map(x=>x.text),["bubble-3","bubble-4","bubble-5","bubble-6","bubble-7"]);
   assert.equal(merged?.added,2);
-  assert.deepEqual(mergeOlderHistory(merged!.messages,merged!.messages)?.messages,merged?.messages);
+  assert.ok(merged);
+  assert.deepEqual(mergeOlderHistory(merged.messages,merged.messages)?.messages,merged.messages);
 });
 test("missing overlap is untrusted, not a reason to guess message order",()=>{
   assert.equal(mergeOlderHistory([item(1),item(2)],[item(3),item(4)]),null);
