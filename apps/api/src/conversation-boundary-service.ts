@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { getPool } from "./db-client.js";
 import { classifyConversationBoundary, type ConversationBoundaryMessage, type ConversationBoundary } from "../../../src/conversation-boundary-policy.js";
 
@@ -81,6 +82,30 @@ export function handoffProvenance(
   return { platform: boundary.platform, sourceExternalMessageId: source.external_message_id };
 }
 
+/** An off-app proposal requires a person to handle the exchange.
+ * Store only verified platform/message provenance, never the contact or transcript.
+ */
+export function handoffReviewAction(
+  handoff: ReturnType<typeof handoffProvenance>
+): { title: string; detail: string; severity: "action-required"; context: {
+  kind: "off-tinder-handoff"; platform: "instagram" | "whatsapp" | "snapchat" | "telegram";
+  sourceExternalMessageId: string
+} } | null {
+  if (!handoff) return null;
+  const name = { instagram: "Instagram", whatsapp: "WhatsApp", snapchat: "Snapchat", telegram: "Telegram" }[handoff.platform];
+  return {
+    title: name + " handoff needs your reply",
+    detail: "The match proposed or accepted moving to " + name
+      + ". Automatic Tinder messages have stopped. Review the chat and decide how to exchange contact details personally. No message was sent outside Tinder.",
+    severity: "action-required",
+    context: {
+      kind: "off-tinder-handoff",
+      platform: handoff.platform,
+      sourceExternalMessageId: handoff.sourceExternalMessageId
+    }
+  };
+}
+
 export async function recordObservedConversationBoundary(
   userId: string, input: ObservedConversationBoundary
 ): Promise<{ boundary: ConversationBoundary; applied: boolean; status: string | null }> {
@@ -131,6 +156,18 @@ export async function recordObservedConversationBoundary(
         handoff?.platform ?? null,
         handoff?.sourceExternalMessageId ?? null]
     );
+    // Commit the review action atomically with the handoff status. A duplicate
+    // observation cannot create another pending action: only the first eligible
+    // state transition inserts it, while the conversation row remains locked.
+    const action = update.rowCount ? handoffReviewAction(handoff) : null;
+    if (action) {
+      await client.query(
+        `INSERT INTO human_actions (
+           id, user_id, conversation_ref, conversation_label, title, detail, severity, context_json
+         ) VALUES ($1, $2, $3, '', $4, $5, $6, $7::jsonb)`,
+        [randomUUID(), userId, row.id, action.title, action.detail, action.severity, JSON.stringify(action.context)]
+      );
+    }
     await client.query("COMMIT"); committed = true;
     return { boundary, applied: Boolean(update.rowCount), status: update.rows[0]?.status ?? row.status };
   } catch (error) {
