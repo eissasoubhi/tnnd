@@ -84,7 +84,7 @@ export function buildReadOnlyProfileSource(
       firstName: boundedText(input.firstName),
       age: boundedAge(input.age),
       photoUrl: safeTinderPhotoUrl(input.photoUrl),
-      photoUrls: [...new Set((input.photoUrls ?? []).map(safeTinderPhotoUrl).filter((url): url is string => Boolean(url)))].slice(0,12),
+      ...(input.photoUrls?.length ? {photoUrls:[...new Set(input.photoUrls.map(safeTinderPhotoUrl).filter((url): url is string => Boolean(url)))].slice(0,12)} : {}),
       bio: boundedText(input.bio),
       job: boundedText(input.job),
       education: boundedText(input.education),
