@@ -1,4 +1,5 @@
 import { getBackendSession, getChatSettings, getConfig, saveChatSettings } from "./storage";
+import { observeSmartSwipeConversationFocus, smartSwipeChatBudgetDecision } from "./tinder-smart-swipe-chat-focus-runtime";
 import { waitForTinderContentBridge, isMissingTinderReceiver, describeTinderBridgeError } from "./tinder-tab-connection";
 import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import { partitionExistingChatPermissions } from "./tinder-existing-chat-settings-policy";
@@ -526,6 +527,20 @@ async function tick(): Promise<void> {
         await scanMatchesCycle({ ...await load(), pendingReplies });
       return;
     }
+    // Safe boundary: a daily per-chat focus limit never interrupts an ongoing Send.
+    const budget = await smartSwipeChatBudgetDecision(session.user.id, nextRef);
+    if (budget === "unavailable") {
+      await save(activity(await load(), "waiting",
+        "Cannot verify today's Smart Swipe chat time limit. Waiting; no chat switch or Send."));
+      return;
+    }
+    if (budget === "exhausted") {
+      await saveWorkIndex(markThreadChecked(queued, nextRef));
+      await save(activity(await load(), "skipped",
+        "Daily focused-time budget reached for this conversation. Keep its messages queued for tomorrow.",
+        nextRef));
+      return;
+    }
     const current = await load();
     const tabId = await assertRunnerTab(current);
     if (!(await load()).enabled) return;
@@ -829,6 +844,8 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     void load().then(state => {
       if (sender.id === chrome.runtime.id && sender.tab?.id === state.tabId && state.enabled
         && typeof input.ref === "string" && input.ref === state.lastRef && tinderRefFromUrl(sender.url) === state.lastRef) {
+        if (state.userId) void observeSmartSwipeConversationFocus(state.userId, input.ref, state)
+          .catch(() => undefined);
         void tick();
       }
       sendResponse({ ok: true });
