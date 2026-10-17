@@ -115,3 +115,24 @@ export async function resolveSmartSwipeAttempt(
     throw error;
   } finally { client.release(); }
 }
+
+export async function readSmartSwipeAttemptSummary(userId: string): Promise<{
+  dayKey: string; attemptsToday: number; uiObservedToday: number; unresolvedAttempts: number
+}> {
+  const settings = (await getSmartSwipeSettings(userId)).settings;
+  const dayKey = accountDayKey(Date.now(), settings.timeZone);
+  const result = await getPool().query<{ attempts_today: string; ui_today: string; unresolved: string }>(
+    `SELECT count(*) FILTER (WHERE day_key = $2)::text AS attempts_today,
+       count(*) FILTER (WHERE day_key = $2 AND status = 'ui_observed')::text AS ui_today,
+       count(*) FILTER (WHERE status IN ('reserved','uncertain'))::text AS unresolved
+     FROM user_smart_swipe_attempts WHERE user_id = $1`,
+    [userId, dayKey]
+  );
+  const row = result.rows[0];
+  return {
+    dayKey,
+    attemptsToday: Number(row?.attempts_today ?? "0"),
+    uiObservedToday: Number(row?.ui_today ?? "0"),
+    unresolvedAttempts: Number(row?.unresolved ?? "0")
+  };
+}
