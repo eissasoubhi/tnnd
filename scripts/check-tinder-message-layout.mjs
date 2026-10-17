@@ -80,7 +80,7 @@ test("an empty verified transcript never falls back to page-wide Messages sideba
   const source = await readFile(new URL("../src/tinder-adapter.ts", import.meta.url), "utf8");
   const candidateFn = source.slice(source.indexOf("function candidateMessages("), source.indexOf("function simpleHash("));
   assert.match(candidateFn, /if \(transcript\) \{/);
-  assert.match(candidateFn, /return verified\.slice\(-Math\.max;/);
+  assert.ok(candidateFn.includes("return verified.slice(-Math.max(1,Math.min(maxItems,1000)))"));
   assert.match(candidateFn, /for \(const selector of MESSAGE_SELECTORS\)/);
   assert.ok(candidateFn.indexOf("return verified.slice(-Math.max(1,Math.min(maxItems,1000)))") < candidateFn.indexOf("for (const selector of MESSAGE_SELECTORS)"));
   assert.match(candidateFn, /visible\(element\) && !element\.contains\(composer\)/);
