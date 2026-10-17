@@ -1,0 +1,60 @@
+name: Local conversation quality audit
+
+# Opt-in. Only default-branch/manual executions, never pull requests.
+# The GitHub runner must be private, dedicated and able to reach local Postgres.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 7 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tnnd-local-quality-audit
+  cancel-in-progress: false
+
+jobs:
+  aggregate-report:
+    if: ${{ vars.TNND_LOCAL_AUDIT_ENABLED == 'true' }}
+    runs-on: [self-hosted, linux, x64, tnnd-audit-local]
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.TNND_AUDIT_DATABASE_URL }}
+      TNND_AUDIT_USER_ID: ${{ secrets.TNND_AUDIT_USER_ID }}
+      TNND_LOCAL_AUDIT_REPORT_DIR: ${{ vars.TNND_LOCAL_AUDIT_REPORT_DIR }}
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Read-only audit saved on local runner, never uploaded
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          if [[ -z "${DATABASE_URL:-}" || -z "${TNND_AUDIT_USER_ID:-}" ]]; then
+            echo "::error::Configure read-only database URL and account UUID as repository secrets."
+            exit 1
+          fi
+          if [[ -z "${TNND_LOCAL_AUDIT_REPORT_DIR:-}" || "${TNND_LOCAL_AUDIT_REPORT_DIR}" != /* ]]; then
+            echo "::error::TNND_LOCAL_AUDIT_REPORT_DIR must be an absolute, mounted, persistent local path."
+            exit 1
+          fi
+          mkdir -p "${TNND_LOCAL_AUDIT_REPORT_DIR}"
+          report_tmp="$(mktemp "${TNND_LOCAL_AUDIT_REPORT_DIR}/.pending.XXXXXX")"
+          trap 'rm -f "$report_tmp"' EXIT
+          npm run --silent audit:quality -- --user-id="$TNND_AUDIT_USER_ID" > "$report_tmp"
+          report_file="${TNND_LOCAL_AUDIT_REPORT_DIR}/quality-$(date -u +'%Y%m%dT%H%M%SZ').json"
+          if [[ -e "$report_file" ]]; then
+            echo "::error::A local audit report already exists for this timestamp."
+            exit 1
+          fi
+          mv "$report_tmp" "$report_file"
+          echo "Quality audit completed and saved only on the local runner."
