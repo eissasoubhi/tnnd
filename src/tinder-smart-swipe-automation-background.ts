@@ -22,7 +22,7 @@ const STORAGE_HEARTBEAT = "tnnd.smartSwipeHeartbeat.v1:";
 const STORAGE_DEVICE = "tnnd.smartSwipeDevice.v1:";
 const STORAGE_STATUS = "tnnd.smartSwipeLastResult.v1:";
 let busy = false;
-let workerSeenProgress = false;
+const recoveredAccountProgress = new Set<string>();
 
 interface ServerSettings extends SmartAutoSwipeConfig { timeZone: string }
 interface ArmState { armed: boolean; userId: string; tabId: number; }
@@ -98,13 +98,13 @@ async function progressForUser(
   const result = readSmartSwipeProgress(raw, now, settings.timeZone);
   if (!result.ok) { await saveStatus(userId, result.reason); return null; }
   let progress: ScheduledSwipeProgress = result.progress;
-  if (!workerSeenProgress && progress.session?.runningSinceMs !== null && progress.session) {
+  if (!recoveredAccountProgress.has(userId) && progress.session?.runningSinceMs !== null && progress.session) {
     const heartbeat = (await chrome.storage.local.get(STORAGE_HEARTBEAT + userId))
       [STORAGE_HEARTBEAT + userId] as number | undefined;
     progress = recoverPausedSwipeSession(progress, heartbeat ?? Number.NaN, now);
     await chrome.storage.local.set({ [key]: progress });
   } else if (result.needsSave) await chrome.storage.local.set({ [key]: progress });
-  workerSeenProgress = true;
+  recoveredAccountProgress.add(userId);
   return { progress, key };
 }
 async function tick(tabId: number): Promise<void> {
@@ -129,6 +129,11 @@ async function tick(tabId: number): Promise<void> {
       newMatchRunnerEnabled: newMatchEnabled, userTakeover: false
     });
     if (drive !== "allowed") {
+      if (drive === "disabled" || drive === "account_mismatch") {
+        await chrome.storage.local.set({
+          [STORAGE_ARM + userId]: { armed: false, userId, tabId: -1 }
+        });
+      }
       await saveStatus(userId, drive);
       const prev = await progressForUser(userId, config, Date.now());
       if (prev?.progress.session) await chrome.storage.local.set({
@@ -241,13 +246,21 @@ async function tick(tabId: number): Promise<void> {
 }
 
 async function setArmed(arm: boolean): Promise<Record<string, unknown>> {
+  // Stop is always available, including when signed out or disconnected.
+  if (!arm) {
+    const all = await chrome.storage.local.get(null);
+    const disabled: Record<string, ArmState> = {};
+    for (const key of Object.keys(all)) {
+      if (key.startsWith(STORAGE_ARM)) {
+        disabled[key] = { armed: false, userId: key.slice(STORAGE_ARM.length), tabId: -1 };
+      }
+    }
+    if (Object.keys(disabled).length) await chrome.storage.local.set(disabled);
+    return { ok: true, armed: false };
+  }
   const session = await getBackendSession();
   if (!session) return { ok: false, reason: "tnnd_sign_in_required" };
   const key = STORAGE_ARM + session.user.id;
-  if (!arm) {
-    await chrome.storage.local.set({ [key]: { armed: false, userId: session.user.id, tabId: -1 } });
-    return { ok: true, armed: false };
-  }
   const settings = await getSettings(session.token);
   if (!settings.enabled) return { ok: false, reason: "enable_smart_swipe_in_web_settings" };
   const tabs = await chrome.tabs.query({ url: ["https://tinder.com/*", "https://www.tinder.com/*"] });
