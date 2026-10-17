@@ -936,6 +936,31 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   return true;
 });
 
+/** Read-only bulk import cannot navigate away from a human's unsent draft,
+ * from an in-flight send, or from a thread changed manually in Tinder. */
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (!message || typeof message !== "object") return false;
+  const input = message as { type?: unknown; ref?: unknown; expectedRef?: unknown };
+  if (input.type !== "TNND_BULK_SYNC_READONLY_NAVIGATE") return false;
+  if (sender.id !== chrome.runtime.id || !hasLiveExtensionContext()
+    || typeof input.ref !== "string"
+    || (input.expectedRef !== null && typeof input.expectedRef !== "string")) {
+    sendResponse({ ok: false, error: "untrusted_bulk_sync_navigation" });
+    return false;
+  }
+  const composer = document.querySelector<HTMLElement>(
+    'textarea[placeholder*="message" i],textarea[aria-label*="message" i],[contenteditable="true"][role="textbox"]'
+  );
+  const text = composer instanceof HTMLTextAreaElement ? composer.value : composer?.innerText ?? "";
+  if (text.trim()) {
+    sendResponse({ ok: false, error: "unsent_message_draft_present" });
+    return false;
+  }
+  void navigateExistingSpa(input.ref, input.expectedRef).then(sendResponse)
+    .catch(() => sendResponse({ ok: false, error: "bulk_navigation_failed" }));
+  return true;
+});
+
 /** Bounded SPA sidebar navigation: never reload Tinder, switch Chrome
  * tabs, or leave the open chat while its composer/send is in progress. */
 async function navigateWatcherSidebar(
