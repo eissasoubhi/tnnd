@@ -11,7 +11,7 @@ export interface TinderImportSettings {
   includePhotos: boolean;
 }
 export const DEFAULT_TINDER_IMPORT_SETTINGS: TinderImportSettings = {
-  autoSyncOpened: false, autoCollectLoaded: false, scope: "all",
+  autoSyncOpened: true, autoCollectLoaded: true, scope: "all",
   ageMin: null, ageMax: null, requireMessages: false,
   includeMessages: true, includeProfile: true, includePhotos: true
 };
