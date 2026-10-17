@@ -36,7 +36,16 @@ if (manualImportCard && !document.getElementById("tnnd-bulk-readonly-sync")) {
   interface Answer { ok?: boolean; error?: string; state?: Counts }
   let pending = false;
   const display = (data: Counts) => {
-    if (status) status.textContent = `${data.active ? "Import running" : data.collecting ? "Collecting loaded chats while you scroll" : "Import stopped"} · ${data.completed}/${data.selected} completed · ${data.failed} skipped · ${data.partial} with only the last 40 visible messages · ${data.pending} remaining. These are loaded chats, not a confirmed complete Tinder inbox.`;
+    const safetyReason: Record<string, string> = {
+      manual_tinder_navigation_detected: "Tinder navigation changed; stop typing and restart the import.",
+      automatic_runner_must_be_disabled: "Turn off auto-replies and stop all chat runners.",
+      account_or_tab_changed: "Account or Tinder tab changed. Check both before restarting.",
+      human_draft_or_chat_busy: "An unsent draft or an in-progress reply prevents navigation.",
+      tinder_or_api_unavailable: "Tinder or TNND API became unavailable.",
+      account_or_automation_changed: "Account or automation setting changed; import safely stopped.",
+      tnnd_account_disconnected: "TNND account disconnected."
+    };
+    if (status) status.textContent = `${data.active ? "Import running" : data.collecting ? "Collecting loaded chats while you scroll" : "Import stopped"} · ${data.completed}/${data.selected} completed · ${data.failed} skipped · ${data.partial} with only the last 40 visible messages · ${data.pending} remaining. ${data.stopReason ? (safetyReason[data.stopReason] ?? "Import safely stopped. Check Tinder and TNND, then retry.") : ""} These are loaded chats, not a confirmed complete Tinder inbox.`;
     if (start) start.disabled = pending || data.active || data.selected === 0 || data.pending === 0;
     if (stop) stop.disabled = pending || !data.active;
     if (retry) retry.disabled = pending || data.active || data.failed === 0;
