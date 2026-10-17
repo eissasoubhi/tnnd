@@ -1084,7 +1084,7 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
       type: "TNND_SMART_SWIPE_RUNTIME_STATUS"
     }) as {
       ok?: boolean; reason?: string; status?: string; enabled?: boolean;
-      nextActivity?: string | null; executionAvailable?: boolean;
+      nextActivity?: string | null; executionAvailable?: boolean; armed?: boolean;
       controls?: { status?: string; likeControls?: number };
       progress?: { startedSessions?: number; rightSwipesConfirmed?: number; rightSwipesReserved?: number };
     };
@@ -1102,7 +1102,7 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
       " · Priority: " + (result.nextActivity ?? "none") +
       " · Likes confirmed: " + count +
       " · Unresolved: " + reserved +
-      " · Tinder actions: not active.";
+      " · Tinder actions: " + (result.armed ? "armed (unverified on live Tinder)" : "not active") + ".";
   } catch {
     summary.textContent = "Could not read runtime state. Check extension and TNND API.";
   } finally {
@@ -1113,6 +1113,31 @@ document.getElementById("refreshSmartSwipeRuntime")?.addEventListener("click", (
   void refreshSmartSwipeRuntime();
 });
 void refreshSmartSwipeRuntime();
+for (const [id, armed] of [
+  ["startSmartSwipeRuntime", true],
+  ["stopSmartSwipeRuntime", false]
+] as const) {
+  document.getElementById(id)?.addEventListener("click", () => {
+    const summary = document.getElementById("smartSwipeRuntimeSummary");
+    const start = document.getElementById("startSmartSwipeRuntime") as HTMLButtonElement;
+    const stop = document.getElementById("stopSmartSwipeRuntime") as HTMLButtonElement;
+    start.disabled = true;
+    stop.disabled = true;
+    if (summary) summary.textContent = armed ? "Checking Tinder before start…" : "Stopping before the next attempt…";
+    void chrome.runtime.sendMessage({
+      type: "TNND_SMART_SWIPE_SET_ARMED", armed
+    }).then((result: { ok?: boolean; reason?: string }) => {
+      if (!result?.ok && summary) summary.textContent = "Cannot update swiping: " +
+        (result?.reason ?? "unavailable");
+      else void refreshSmartSwipeRuntime();
+    }).catch(() => {
+      if (summary) summary.textContent = "Could not contact the TNND extension worker.";
+    }).finally(() => {
+      start.disabled = false;
+      stop.disabled = false;
+    });
+  });
+}
 
 void renderNewMatchObservation();
 void refreshGlobalExisting();
