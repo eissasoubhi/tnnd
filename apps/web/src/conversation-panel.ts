@@ -62,7 +62,7 @@ function renderList(items: ConversationListItem[], total: number, filtered: bool
   `).join("");
 }
 
-function renderStatusActions(detail: ConversationDetail): string {
+function renderStatusActions(detail: ConversationDetail, advancedOnly = false): string {
   const actions: Array<{ label: string; status: ConversationStatus; danger?: boolean }> = [];
   if (detail.status === "paused" || detail.status === "disabled") {
     actions.push({ label: "Resume", status: "active" });
@@ -70,7 +70,7 @@ function renderStatusActions(detail: ConversationDetail): string {
     actions.push({ label: "Pause", status: "paused" });
   }
   if (detail.status !== "disabled") actions.push({ label: "Disable", status: "disabled", danger: true });
-  return actions.map((action) => `
+  return actions.filter((_, i) => advancedOnly ? i > 0 : i === 0).map((action) => `
     <button type="button" class="conversation-status-action${action.danger ? " danger" : ""}" data-conversation-status-action="${action.status}">${action.label}</button>
   `).join("");
 }
@@ -230,7 +230,21 @@ function renderDetail(detail: ConversationDetail): string {
         ? "Verified chat handoff mentioned " + escapeHtml(detail.handoffPlatform) + "."
         : "Handoff platform was not recorded."} TNND has not sent a message outside Tinder.</p>`
       : ""}
-    <details class="conversation-identity-editor">
+    <div class="conversation-primary-actions" aria-label="Conversation actions">
+      ${renderStatusActions(detail)}
+      <button type="button" class="secondary" data-open-chat-options aria-haspopup="dialog" aria-controls="conversation-options-drawer">More options${detail.temporaryInstruction ? ' · 1 active instruction' : ''}</button>
+    </div>
+    <dialog id="conversation-options-drawer" class="conversation-options-drawer" aria-labelledby="chat-options-heading">
+      <header class="conversation-options-heading">
+        <div><p class="eyebrow">Conversation settings</p><h3 id="chat-options-heading">${escapeHtml(matchLabel(detail.displayName, detail.matchAge))}</h3></div>
+        <button type="button" class="secondary" data-close-chat-options aria-label="Close conversation settings">Close</button>
+      </header>
+      <div class="conversation-options-scroll">
+        <details class="conversation-secondary-section"><summary>Match profile and photos</summary>
+          <section id="conversation-match-profile" aria-label="Captured Tinder MatchProfile"></section>
+        </details>
+        <details class="conversation-secondary-section"><summary>Manage identity</summary>
+          <details class="conversation-identity-editor">
       <summary>${detail.displayName.startsWith("Conversation ") ? "Tinder identity not yet detected" : "Advanced · Override chat identity"} <span class="subtle">(optional)</span></summary>
       <p class="subtle">The extension automatically reads the name, age and avatar from the matching visible Tinder conversation when available. Open this chat on Tinder with the extension running, then refresh TNND Web. Manual override below is an optional fallback and does not change Tinder.</p>
       <div class="conversation-identity-controls">
@@ -240,25 +254,31 @@ function renderDetail(detail: ConversationDetail): string {
       </div>
       <p data-conversation-identity-status class="subtle" role="status"></p>
     </details>
-    <details class="conversation-status-help"><summary>What do Synced, Unmanaged and Paused mean?</summary><p><strong>Synced</strong>: history is saved in TNND, not necessarily live. <strong>Unmanaged</strong>: AI has not been authorized to control the Tinder chat. <strong>Paused</strong>: server-side automation is stopped. Draft previews remain manual and do not send anything.</p><p>To allow AI to manage this chat, choose <strong>AI managed</strong> in Conversation management, confirm it, then Resume this chat. Separately enable automation for this chat and globally in the extension. Test generated drafts before allowing sends.</p><a href="#conversation-management-panel">Open conversation management →</a></details>
-    <div class="conversation-status-actions" aria-label="Conversation controls">
-      ${renderStatusActions(detail)}
-    </div>
-    <section id="conversation-match-profile" aria-label="Captured Tinder MatchProfile"></section>
+
+        </details>
+        <details class="conversation-secondary-section"><summary>AI management and safety</summary>
+              <details class="conversation-status-help"><summary>What do Synced, Unmanaged and Paused mean?</summary><p><strong>Synced</strong>: history is saved in TNND, not necessarily live. <strong>Unmanaged</strong>: AI has not been authorized to control the Tinder chat. <strong>Paused</strong>: server-side automation is stopped. Draft previews remain manual and do not send anything.</p><p>To allow AI to manage this chat, choose <strong>AI managed</strong> in Conversation management, confirm it, then Resume this chat. Separately enable automation for this chat and globally in the extension. Test generated drafts before allowing sends.</p><a href="#conversation-management-panel">Open conversation management →</a></details>
+
+          <div class="conversation-status-actions" aria-label="Advanced conversation controls">
+            ${renderStatusActions(detail,true)}
+          </div>
+          <p class="subtle">Syncing messages never authorizes automatic replies.</p>
+        </details>
+        <details class="conversation-secondary-section"${detail.temporaryInstruction ? ' open' : ''}>
+          <summary>Temporary instruction${detail.temporaryInstruction ? ' · Active' : ''}</summary>
+          ${renderTemporaryInstruction(detail)}
+        </details>
+        <details class="conversation-secondary-section"><summary>Topics, progress and screening</summary>
+          ${renderTopicState(detail)}
+          ${renderConversationFlow(detail)}
+          ${renderMatchScreening(detail)}
+        </details>
+      </div>
+    </dialog>
     <section class="conversation-messages" aria-label="Saved conversation history">
       <div class="conversation-history-toolbar"><h3 class="conversation-message-heading">Historique des échanges</h3><span class="conversation-history-count">${detail.messages.length} messages synchronisés</span></div>
       ${messages}
     </section>
-    <details class="conversation-secondary-section"${detail.temporaryInstruction ? " open" : ""}>
-      <summary>Temporary instruction${detail.temporaryInstruction ? " · Active" : ""} <span class="subtle">(advanced)</span></summary>
-      ${renderTemporaryInstruction(detail)}
-    </details>
-    <details class="conversation-secondary-section">
-      <summary>Conversation topics and progress <span class="subtle">(advanced)</span></summary>
-      ${renderTopicState(detail)}
-      ${renderConversationFlow(detail)}
-      ${renderMatchScreening(detail)}
-    </details>
   `;
 }
 
@@ -309,6 +329,16 @@ function installStyles(): void {
     .conversation-topic-panel{display:grid;gap:9px;padding:11px;margin-bottom:12px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:rgba(127,127,127,.04)}.conversation-topic-heading{display:flex;align-items:start;justify-content:space-between;gap:10px}.conversation-topic-heading>div,.conversation-topic-primary{display:grid;gap:3px}.conversation-topic-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}.conversation-topic-chip{display:inline-flex;padding:4px 7px;border:1px solid var(--border,#d4d4d8);border-radius:999px;font-size:11px}.conversation-topic-recent{margin:0}
     .temporary-instruction-panel{display:grid;gap:9px;padding:11px;margin-bottom:12px;border:1px solid var(--border,#d4d4d8);border-radius:10px;background:rgba(127,127,127,.04)}.temporary-instruction-heading{display:flex;align-items:start;justify-content:space-between;gap:10px}.temporary-instruction-heading>div{display:grid;gap:3px}.temporary-instruction-panel textarea{width:100%;min-height:74px;resize:vertical}.temporary-instruction-controls{display:grid;grid-template-columns:1fr 110px;gap:8px}.temporary-instruction-controls label{display:grid;gap:4px;font-size:11px}.temporary-instruction-controls select,.temporary-instruction-controls input{width:100%}.temporary-instruction-actions{display:flex;gap:8px}.temporary-instruction-actions button{width:auto;padding:7px 10px;border:1px solid var(--border,#d4d4d8);border-radius:8px;background:transparent;color:inherit;cursor:pointer}.temporary-instruction-actions .danger{border-style:dashed}.temporary-instruction-actions button:disabled{opacity:.55;cursor:wait}
     .conversation-messages{display:grid;gap:10px;align-content:start;min-height:320px;max-height:clamp(360px,58vh,700px);overflow-y:auto;padding:14px;border:1px solid var(--nb-border,#c8d8cd);border-radius:16px;background:var(--nb-surface-soft,#edf4eb)}.conversation-history-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:-14px;padding:10px 0;background:var(--nb-surface-soft,#edf4eb);z-index:1}.conversation-history-count{font-size:11px;opacity:.7}.conversation-history-empty{display:grid;gap:10px;padding:18px;border:1px dashed var(--nb-border,#c8d8cd);border-radius:12px;background:var(--nb-surface-soft,#edf4eb)}.conversation-history-empty strong{font-size:14px}.conversation-history-empty p{font-size:13px;line-height:1.6;margin:0}.conversation-history-empty button{width:fit-content;min-height:44px;padding:9px 14px;border-radius:10px;background:var(--nb-primary,#264b40);color:var(--nb-on-primary,#fff);border:0}.conversation-history-empty button:focus-visible{outline:3px solid var(--nb-focus,#7565de);outline-offset:3px}.conversation-message-heading{margin:0 0 4px;font-size:14px;line-height:1.4}.conversation-secondary-section{margin-top:12px;border:1px solid var(--nb-border,#c8d8cd);border-radius:12px;padding:0 10px;background:var(--nb-surface,#fff)}.conversation-secondary-section>summary{min-height:44px;cursor:pointer;font-size:13px;font-weight:750;padding:12px 4px;line-height:1.4}.conversation-secondary-section>summary:focus-visible{outline:3px solid var(--nb-focus,#7565de);outline-offset:2px}.conversation-secondary-section[open]{padding-bottom:10px}.conversation-secondary-section .conversation-topic-panel,.conversation-secondary-section .conversation-flow-panel,.conversation-secondary-section .temporary-instruction-panel{margin:8px 0}.conversation-message{width:fit-content;max-width:min(86%,560px);min-width:0;padding:11px 14px;border-radius:16px 16px 16px 5px;background:var(--nb-surface,#fff);border:1px solid var(--nb-border,#c8d8cd);box-shadow:0 1px 3px rgba(0,0,0,.04);overflow-wrap:anywhere}.conversation-message.outgoing{border-radius:16px 16px 5px 16px;background:rgba(71,117,100,.13)}.conversation-message.outgoing{justify-self:end}.conversation-message.incoming{justify-self:start}.conversation-message span{font-size:10px;font-weight:700;opacity:.7}.conversation-message p{margin:3px 0 4px;white-space:pre-wrap}
+    .conversation-primary-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px}
+.conversation-primary-actions .conversation-status-action{background:var(--nb-primary,#264b40);color:var(--nb-on-primary,#fff);border-color:transparent;font-weight:700}
+.conversation-options-drawer{position:fixed;inset:0 0 0 auto;margin:0;max-height:none;height:100dvh;max-width:min(100%,460px);width:min(100%,460px);padding:0;overflow:hidden;border:1px solid var(--nb-border,#c8d8cd);border-radius:18px 0 0 18px;background:var(--nb-surface,#fff);color:var(--nb-text,#172621);box-shadow:-16px 0 50px rgba(0,0,0,.18)}
+.conversation-options-drawer::backdrop{background:rgba(12,24,20,.45)}
+.conversation-options-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:20px;border-bottom:1px solid var(--nb-border,#c8d8cd)}
+.conversation-options-heading h3{margin:0;font-size:18px}.conversation-options-heading .eyebrow{margin:0 0 4px}
+.conversation-options-scroll{overflow-y:auto;height:calc(100dvh - 88px);padding:14px 18px 28px}
+.conversation-options-scroll .conversation-secondary-section{margin-top:10px}
+@media(max-width:600px){.conversation-options-drawer{width:100%;border-radius:0}}
+
     @media(max-width:760px){.conversation-layout{grid-template-columns:1fr;height:auto;min-height:0}.conversation-list{max-height:290px}.conversation-detail{height:auto;max-height:none;overflow:visible}.conversation-messages{max-height:65vh}.conversation-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.temporary-instruction-controls{grid-template-columns:1fr}}
   `;
   document.head.append(style);
@@ -690,8 +720,28 @@ async function loadDetail(conversationId: string): Promise<void> {
     // Keep the live reply target on its owning detail node, never in storage.
     elements.detail.dataset.replyTarget = replyTargetFromHistory(detail.messages) ?? "";
     elements.detail.dataset.replyTargetHint = replyTargetHint(detail.messages);
-    const profileHost = elements.detail.querySelector<HTMLElement>("#conversation-match-profile");
-    if (profileHost) mountConversationMatchProfile(profileHost, session, conversationId);
+    const drawer = elements.detail.querySelector<HTMLDialogElement>("#conversation-options-drawer");
+    const open = elements.detail.querySelector<HTMLButtonElement>("[data-open-chat-options]");
+    const close = elements.detail.querySelector<HTMLButtonElement>("[data-close-chat-options]");
+    open?.addEventListener("click", () => {
+      if (!drawer || drawer.open) return;
+      drawer.showModal();
+      close?.focus();
+      drawer.querySelectorAll<HTMLDetailsElement>("details").forEach(section => {
+        section.addEventListener("toggle", () => {
+          const profileHost = section.querySelector<HTMLElement>("#conversation-match-profile");
+          if (section.open && profileHost && !profileHost.dataset.mounted) {
+            profileHost.dataset.mounted = "true";
+            mountConversationMatchProfile(profileHost, session, conversationId);
+          }
+        });
+      }, { once: true });
+    });
+    close?.addEventListener("click", () => drawer?.close());
+    drawer?.addEventListener("close", () => open?.focus());
+    drawer?.addEventListener("click", event => {
+      if (event.target === drawer) drawer.close();
+    });
     bindDisplayIdentityActions(conversationId);
     bindStatusActions(conversationId);
     bindTemporaryInstructionActions(conversationId);

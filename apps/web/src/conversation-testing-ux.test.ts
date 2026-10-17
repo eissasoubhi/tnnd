@@ -51,19 +51,23 @@ test("conversation identity and temporary-instruction labels are clear and acces
   assert.doesNotMatch(panel, /Live structured conversation context/);
 });
 
-test("conversation detail prioritizes draft and messages before collapsible advanced context", () => {
-  const detail = panel.slice(panel.indexOf("function renderDetail("), panel.indexOf("function countStatus("));
-  const historyAt = detail.indexOf('class="conversation-messages"');
-  const temporaryAt = detail.indexOf("renderTemporaryInstruction(detail)");
-  const topicAt = detail.indexOf("renderTopicState(detail)");
-  assert.ok(historyAt > 0 && temporaryAt > historyAt && topicAt > temporaryAt);
-  assert.match(detail, /<summary>Conversation topics and progress/);
-  assert.match(detail, /<summary>Temporary instruction/);
-  assert.match(detail, /detail\.temporaryInstruction \? " open" : ""/);
-  assert.match(detail, /aria-label="Saved conversation history"/);
-  assert.match(draft, /detail\.insertBefore\(section, messages\)/);
+test("chat detail emphasizes the primary action and history, with advanced tools in a right-hand modal", () => {
+  const detail = panel.slice(panel.indexOf("function renderDetail("),panel.indexOf("function countStatus("));
+  assert.match(detail,/class="conversation-primary-actions"/);
+  assert.match(detail,/renderStatusActions\(detail\)/);
+  assert.match(detail,/data-open-chat-options aria-haspopup="dialog"/);
+  assert.match(detail,/<dialog id="conversation-options-drawer"/);
+  assert.match(detail,/renderStatusActions\(detail,true\)/);
+  assert.match(detail,/Match profile and photos/);
+  assert.match(detail,/renderTemporaryInstruction\(detail\)/);
+  assert.match(detail,/renderTopicState\(detail\)/);
+  assert.match(detail,/aria-label="Saved conversation history"/);
+  assert.match(panel,/drawer\.showModal\(\)/);
+  assert.match(panel,/drawer\?\.close\(\)/);
+  assert.match(panel,/drawer\?\.addEventListener\("close"/);
+  assert.match(panel,/section\.open && profileHost/);
+  assert.match(draft,/detail\.insertBefore\(section, messages\)/);
 });
-
 test("conversations default to newest first and provide optional reply urgency sort",()=>{
  assert.match(panel,/option value="recent">Newest first/);
  assert.match(panel,/option value="waiting">Needs reply first/);
