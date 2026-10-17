@@ -2,6 +2,7 @@ import { getBackendSession } from "./storage";
 import { readNewMatchState } from "./tinder-new-match-background";
 import { validateSmartAutoSwipeConfig, type SmartAutoSwipeConfig } from "./tinder-smart-auto-swipe-policy";
 import { planSwipeRuntime } from "./tinder-swipe-runtime-gates";
+import { scheduleSmartSwipeSession } from "./tinder-smart-swipe-daily-scheduler";
 import { readSmartSwipeProgress } from "./tinder-smart-swipe-progress-store";
 import type { SwipeDiscoveryEvidence } from "./tinder-swipe-discovery-evidence";
 
@@ -35,6 +36,18 @@ async function inspectSmartSwipeStatus(): Promise<Record<string, unknown>> {
   const armedState = (await chrome.storage.local.get("tnnd.smartSwipeLiveArm.v1:" + session.user.id))
     ["tnnd.smartSwipeLiveArm.v1:" + session.user.id] as { armed?: boolean } | undefined;
   const armed = armedState?.armed === true;
+  const resultState = (await chrome.storage.local.get("tnnd.smartSwipeLastResult.v1:" + session.user.id))
+    ["tnnd.smartSwipeLastResult.v1:" + session.user.id] as string | undefined;
+  let serverAttempts: {
+    attemptsToday: number; uiObservedToday: number; unresolvedAttempts: number
+  } | null = null;
+  try {
+    const ledgerResponse = await fetch(API + "/api/v1/automation/smart-swipe/attempts/summary", {
+      headers: { authorization: "Bearer " + session.token }, cache: "no-store"
+    });
+    if (ledgerResponse.ok) serverAttempts = await ledgerResponse.json() as typeof serverAttempts;
+  } catch { /* Unknown is not zero. */ }
+
   const now = Date.now();
   const progressKey = PROGRESS_PREFIX + session.user.id;
   const stored = (await chrome.storage.local.get(progressKey))[progressKey];
@@ -75,6 +88,21 @@ async function inspectSmartSwipeStatus(): Promise<Record<string, unknown>> {
   return {
     ok: true, enabled: true, armed, executionAvailable: false,
     status: decision.swipeStatus, nextActivity: decision.activity,
+    lastResult: resultState ?? null,
+    remainingSessions: Math.max(0, settings.sessionsPerDay - result.progress.startedSessions),
+    attemptsToday: serverAttempts?.attemptsToday ?? null,
+    uiObservedToday: serverAttempts?.uiObservedToday ?? null,
+    unresolvedOnServer: serverAttempts?.unresolvedAttempts ?? null,
+    remainingAttempts: serverAttempts
+      ? Math.max(0, settings.maxRightSwipesPerDay - serverAttempts.attemptsToday) : null,
+    session: result.progress.session ? {
+      active: result.progress.session.runningSinceMs !== null,
+      remainingMs: Math.max(0, result.progress.session.durationMs -
+        (result.progress.session.activeElapsedMs +
+         (result.progress.session.runningSinceMs === null ? 0 :
+          Math.max(0, now - result.progress.session.runningSinceMs))))
+    } : null,
+    schedule: scheduleSmartSwipeSession(settings, result.progress, now, settings.timeZone).reason,
     controls: {
       route: observed.evidence.route, status: observed.evidence.status,
       likeControls: observed.evidence.likeControls,
