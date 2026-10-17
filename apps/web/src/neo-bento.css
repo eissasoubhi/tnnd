@@ -1157,3 +1157,25 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
   object-fit: cover;
   background: var(--surface-muted, #ededed);
 }
+
+
+/* Keep nested Tinder import criteria within the Settings card on narrow screens. */
+#app #tinder-import-settings-panel,
+#app #tinder-import-settings-panel :is(form, .preferences-grid, .dating-goal-editor, label, .preferences-save-bar) {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+#app #tinder-import-settings-panel .preferences-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+}
+#app #tinder-import-settings-panel :is(input:not([type="checkbox"]), select) {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+#app #tinder-import-settings-panel label { overflow-wrap: anywhere; }
+@media (max-width: 650px) {
+  #app #tinder-import-settings-panel .preferences-grid { grid-template-columns: minmax(0,1fr); }
+}
