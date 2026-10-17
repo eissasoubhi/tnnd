@@ -25,7 +25,7 @@ export function validateTinderImportSettings(input: unknown): TinderImportSettin
   }
   if (x.scope !== "all" && x.scope !== "filtered") throw new Error("invalid_import_scope");
   for (const key of ["ageMin","ageMax"]) {
-    if (x[key] !== null && (!Number.isInteger(x[key]) || (x[key] as number) < 18 || (x[key] as number) > 120))
+    if (x[key] !== null && (typeof x[key] !== "number" || !Number.isInteger(x[key]) || (x[key] as number) < 18 || (x[key] as number) > 120))
       throw new Error("invalid_import_age_" + key);
   }
   if (x.ageMin !== null && x.ageMax !== null && (x.ageMin as number) > (x.ageMax as number))
