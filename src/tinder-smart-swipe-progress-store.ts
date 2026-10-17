@@ -1,7 +1,7 @@
 import {
   emptySmartSwipeDay, rolloverSmartSwipeDay, tinderAccountDayKey,
   type SmartSwipeDailyProgress
-} from "./tinder-smart-auto-swipe-policy";
+} from "./tinder-smart-auto-swipe-policy.ts";
 
 const integer = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
