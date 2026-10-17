@@ -32,7 +32,7 @@ if (manualImportCard && !document.getElementById("tnnd-bulk-readonly-sync")) {
   const start = panel.querySelector<HTMLButtonElement>("#bulkSyncStart");
   const stop = panel.querySelector<HTMLButtonElement>("#bulkSyncStop");
   const retry = panel.querySelector<HTMLButtonElement>("#bulkSyncRetry");
-  interface Counts { active: boolean; collecting?: boolean; stopReason?: string | null; selected: number; completed: number; failed: number; partial: number; pending: number }
+  interface Counts { active: boolean; collecting?: boolean; stopReason?: string | null; reachedScrollTop?: number; selected: number; completed: number; failed: number; partial: number; pending: number }
   interface Answer { ok?: boolean; error?: string; state?: Counts }
   let pending = false;
   const display = (data: Counts) => {
