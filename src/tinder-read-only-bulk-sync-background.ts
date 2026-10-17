@@ -265,6 +265,9 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     const merged = safeBulkRefs([...original,...observed],500);
     if (!merged.length) return {ok:false};
     if (merged.length !== original.length) {
+      // Keep the observed queue for the signed-in account. An auto import
+      // can start later, when the user is no longer typing/sending and all
+      // other Tinder automation runners are stopped.
       const next: BulkSyncProgress = state ?? {
         active:false,collecting:false,stopReason:null,
         userId:session.user.id,tabId:sender.tab!.id!,refs:[],done:[],failed:{},partial:[],
@@ -273,6 +276,9 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       };
       await save({...next,refs:merged});
     }
+    // Run a cheap alarm-driven import scheduler; the alarm always rechecks
+    // the canonical settings and all existing safety gates.
+    void chrome.alarms.create("tnnd.readOnlyBulkSync.auto", {periodInMinutes:1});
     return {ok:true,added:merged.length-original.length};
   })().then(sendResponse).catch(()=>sendResponse({ok:false}));
   return true;
@@ -321,8 +327,40 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   return true;
 });
 
+/** Background-only read-only import for chats that the user never opened.
+ * Only observed Tinder Messages links may be visited. This is deliberately
+ * lower priority than all existing Tinder sending/AI runners.
+ */
+async function autoTick(): Promise<void> {
+  if (processing) return;
+  const session = await getBackendSession();
+  if (!session) return;
+  const prefs = await settingsFor(session.user.id).catch(()=>null);
+  if (!prefs?.autoSyncOpened || !prefs.autoCollectLoaded) return;
+  const state = await load();
+  if (!state || state.active || state.userId !== session.user.id || !nextBulkSyncRef(state)) return;
+  if ((await getConfig()).automation.enabled || await otherRunnersActive()) return;
+  const tabs = await chrome.tabs.query({url:["https://tinder.com/*","https://www.tinder.com/*"]});
+  if (tabs.length !== 1 || tabs[0]?.id !== state.tabId) return;
+  // The Messages list must remain rendered so guarded SPA clicks only visit
+  // known sidebar anchors. Never type/send or visit inferred route ids.
+  const available = await chrome.tabs.sendMessage(state.tabId,{
+    type:"TNND_BULK_SYNC_VISIBLE_MESSAGE_REFS"
+  }).catch(()=>null) as {ok?:boolean} | null;
+  if (!available?.ok) return;
+  const next: BulkSyncProgress = {
+    ...state, active:true,collecting:false,stopReason:null,
+    initialRef:pathRef(tabs[0].url),lastRef:null,
+    startedAt:new Date().toISOString()
+  };
+  await save(next);
+  await chrome.alarms.create(ALARM,{periodInMinutes:1});
+  void tick();
+}
+
 chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === ALARM) void tick();
+  if (alarm.name === "tnnd.readOnlyBulkSync.auto") void autoTick().catch(()=>undefined);
 });
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (!message || typeof message !== "object") return false;
