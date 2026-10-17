@@ -44,3 +44,23 @@ export function visibleTinderThreadRefs(root: ParentNode = document): string[] {
   }
   return Array.from(seen);
 }
+
+/** Snapshot only Tinder Messages sidebar anchors currently loaded and visible.
+ * This does not claim to include lazy-loaded or off-screen conversation rows.
+ * No Tinder network requests, scrolling, or actions are performed.
+ */
+export function visibleTinderMessageThreadRefs(root: ParentNode = document): string[] {
+  if (detectVisibleTinderSidebarTab(root) !== "messages") return [];
+  const refs = new Set<string>();
+  for (const anchor of Array.from(root.querySelectorAll<HTMLAnchorElement>(MESSAGE_SELECTOR))) {
+    if (!visible(anchor)) continue;
+    try {
+      const url = new URL(anchor.href, location.href);
+      if (url.origin !== location.origin || !url.pathname.startsWith("/app/messages/")) continue;
+      const ref = decodeURIComponent(url.pathname.slice("/app/messages/".length)).replace(/\/+$/, "").trim();
+      if (/^[a-zA-Z0-9_-]{3,512}$/.test(ref)) refs.add(ref);
+    } catch { /* ignore broken or unrelated anchors */ }
+    if (refs.size >= 500) break;
+  }
+  return [...refs];
+}
