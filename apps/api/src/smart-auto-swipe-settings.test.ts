@@ -7,6 +7,7 @@ import {
 test("smart swipe defaults are automatic-only scheduling, disabled until user consent", () => {
   const defaults = defaultSmartSwipeSettings();
   assert.equal(defaults.enabled, false);
+  // Saved preferences do not imply an operational Like executor.
   assert.equal(defaults.maxActiveChatSecondsPerConversationPerDay, null);
   assert.deepEqual(defaults.priority, ["swipe", "new-match", "active-chat"]);
   assert.deepEqual(validateSmartSwipeSettings(defaults), { ok: true, settings: defaults });

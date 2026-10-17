@@ -78,11 +78,11 @@ export interface SmartSwipeSettingsResponse {
   settings: SmartSwipeSettings;
   updatedAt: string | null;
   liveExecutionAvailable: false;
-  unavailableReason: "platform_authorization_required";
+  unavailableReason: "runtime_not_implemented";
 }
 const nonOperational = {
   liveExecutionAvailable: false,
-  unavailableReason: "platform_authorization_required"
+  unavailableReason: "runtime_not_implemented"
 } as const;
 
 export async function getSmartSwipeSettings(userId: string): Promise<SmartSwipeSettingsResponse> {
