@@ -26,3 +26,15 @@ test("automated import only from current tab and Web-approved settings, never Ti
   assert.match(content,/TNND_IMPORT_OPENED_THREAD_OBSERVED/);
   assert.doesNotMatch(worker,/TNND_START_FIRST_MESSAGE|TNND_AUTO_START_NEW_MATCH/);
 });
+
+test("unopened observed Tinder conversations are scheduled for read-only import without AI send",()=>{
+  const worker=readFileSync(new URL("../src/tinder-read-only-bulk-sync-background.ts",import.meta.url),"utf8");
+  assert.match(worker,/async function autoTick\(\)/);
+  assert.match(worker,/prefs\?\.autoSyncOpened/);
+  assert.match(worker,/prefs\.autoCollectLoaded/);
+  assert.match(worker,/nextBulkSyncRef\(state\)/);
+  assert.match(worker,/getConfig\(\)\)\.automation\.enabled/);
+  assert.match(worker,/otherRunnersActive\(\)/);
+  assert.match(worker,/TNND_BULK_SYNC_VISIBLE_MESSAGE_REFS/);
+  assert.doesNotMatch(worker,/TNND_START_FIRST_MESSAGE|TNND_AUTO_START_NEW_MATCH/);
+});

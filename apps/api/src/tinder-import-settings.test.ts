@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DEFAULT_TINDER_IMPORT_SETTINGS, validateTinderImportSettings, shouldImportThread } from "../../../src/tinder-import-settings.js";
 
-test("Tinder imports and automatic sync are disabled by default without AI-send rights",()=>{
-  assert.equal(DEFAULT_TINDER_IMPORT_SETTINGS.autoSyncOpened,false);
-  assert.equal(DEFAULT_TINDER_IMPORT_SETTINGS.autoCollectLoaded,false);
+test("Tinder imports and automatic read-only sync is enabled by default without AI-send rights",()=>{
+  assert.equal(DEFAULT_TINDER_IMPORT_SETTINGS.autoSyncOpened,true);
+  assert.equal(DEFAULT_TINDER_IMPORT_SETTINGS.autoCollectLoaded,true);
   assert.equal(DEFAULT_TINDER_IMPORT_SETTINGS.scope,"all");
   assert.equal(DEFAULT_TINDER_IMPORT_SETTINGS.includeMessages,true);
 });
