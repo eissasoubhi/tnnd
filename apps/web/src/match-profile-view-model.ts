@@ -2,6 +2,7 @@ import { safeTinderPhotoUrl } from "../../../src/tinder-chat-identity";
 export type MatchProfileVisibleFields = {
   photoUrl?: string;
   photoUrls?: string[];
+  visibleSections?: Array<{label:string;value:string}>;
   firstName?: string;
   age?: number;
   bio?: string;
@@ -57,6 +58,7 @@ function formatDate(value: string): string {
 function entries(fields: MatchProfileVisibleFields): Array<{ label: string; value: string }> {
   const values: Array<[string, string | number | string[] | undefined]> = [
     ["First name", fields.firstName],
+    ["Other visible profile sections", fields.visibleSections?.map(x=>x.label + ": " + x.value)],
     ["Age", fields.age],
     ["Bio", fields.bio],
     ["Job", fields.job],

@@ -77,6 +77,11 @@ export function readVisibleTinderProfilePanel(
   const interests = interestsCard
     ? Array.from(interestsCard.querySelectorAll("ul > li")).map(li => text(li, 100)).filter(Boolean).slice(0, 20)
     : [];
+  const visibleSections = cards.slice(0,24).flatMap(card=>{
+    const label = text(card.querySelector("h2"),80);
+    const value = sectionBody(card,500);
+    return label && value ? [{label,value}] : [];
+  });
   const prompts: NonNullable<TinderProfileCaptureInput["prompts"]> = [];
   for (const card of cards) {
     const label = text(card.querySelector("h2"), 80);
@@ -103,6 +108,7 @@ export function readVisibleTinderProfilePanel(
     photoUrl: identity.photoUrl,
     ...(photoUrls.length ? {photoUrls} : {}),
     relationshipGoal, bio, heightCm,
+    ...(visibleSections.length ? {visibleSections} : {}),
     ...(interests.length ? { interests } : {}),
     ...(prompts.length ? { prompts } : {})
   };

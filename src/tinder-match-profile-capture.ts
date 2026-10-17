@@ -6,6 +6,7 @@ export type TinderProfileCaptureInput = {
   age?: number | null;
   photoUrl?: string | null;
   photoUrls?: string[] | null;
+  visibleSections?: Array<{label:string;value:string}> | null;
   bio?: string | null;
   job?: string | null;
   education?: string | null;
@@ -27,6 +28,7 @@ export type TinderVisibleProfileSource = {
     age?: number;
     photoUrl?: string;
     photoUrls?: string[];
+    visibleSections?: Array<{label:string;value:string}>;
     bio?: string;
     job?: string;
     education?: string;
@@ -69,6 +71,9 @@ export function buildReadOnlyProfileSource(
     question: boundedText(value.question)?.slice(0, 120) ?? "",
     answer: boundedText(value.answer)?.slice(0, 120) ?? ""
   })).filter(value => value.section && value.question && value.answer);
+  const visibleSections = (input.visibleSections ?? []).slice(0,24)
+    .map(item=>({label:boundedText(item.label)?.slice(0,80) ?? "",value:boundedText(item.value) ?? ""}))
+    .filter(item=>item.label && item.value);
   const interests = (input.interests ?? [])
     .map((item) => boundedText(item))
     .filter((item): item is string => Boolean(item))
@@ -84,6 +89,7 @@ export function buildReadOnlyProfileSource(
       firstName: boundedText(input.firstName),
       age: boundedAge(input.age),
       photoUrl: safeTinderPhotoUrl(input.photoUrl),
+      ...(visibleSections.length ? {visibleSections} : {}),
       ...(input.photoUrls?.length ? {photoUrls:[...new Set(input.photoUrls.map(safeTinderPhotoUrl).filter((url): url is string => Boolean(url)))].slice(0,12)} : {}),
       bio: boundedText(input.bio),
       job: boundedText(input.job),
@@ -103,6 +109,7 @@ export function hasMeaningfulVisibleProfileFields(source: TinderVisibleProfileSo
     fields.firstName
     || fields.photoUrl
     || fields.photoUrls?.length
+    || fields.visibleSections?.length
     || fields.age
     || fields.bio
     || fields.job
@@ -126,6 +133,7 @@ export function buildProfileCaptureDedupeKey(source: TinderVisibleProfileSource)
       age: fields.age ?? null,
       photoUrl: fields.photoUrl ?? null,
       photoUrls: fields.photoUrls ?? [],
+      visibleSections: fields.visibleSections ?? [],
       bio: fields.bio ?? null,
       job: fields.job ?? null,
       education: fields.education ?? null,

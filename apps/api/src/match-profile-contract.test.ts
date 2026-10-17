@@ -94,3 +94,23 @@ test("retains verified height, goal and bounded lifestyle prompts", () => {
   ]);
   assert.equal(normalizeMatchProfile(parsed).fields.heightCm, 169);
 });
+
+test("retains observed extra profile sections and only verified photo URLs",()=>{
+  const parsed = parseMatchProfileSourceCapture({
+    ...source, visibleFields: {
+      ...source.visibleFields,
+      photoUrls:["https://images-ssl.gotinder.com/a.jpg","https://evil.example/c.jpg"],
+      visibleSections:[
+        {label:"Essentials",value:"Lives in Paris"},
+        {label:"School",value:"University"},
+        {label:"",value:"invalid"}
+      ]
+    }
+  });
+  assert.deepEqual(parsed.visibleFields.photoUrls,["https://images-ssl.gotinder.com/a.jpg"]);
+  assert.deepEqual(parsed.visibleFields.visibleSections,[
+    {label:"Essentials",value:"Lives in Paris"},
+    {label:"School",value:"University"}
+  ]);
+  assert.deepEqual(normalizeMatchProfile(parsed,{conversationRef:"conv-synthetic"}).fields.visibleSections,parsed.visibleFields.visibleSections);
+});

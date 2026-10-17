@@ -3,6 +3,7 @@ export type MatchProfileVisibleFields = {
   age?: number;
   photoUrl?: string;
   photoUrls?: string[];
+  visibleSections?: Array<{label:string;value:string}>;
   bio?: string;
   job?: string;
   education?: string;
@@ -94,12 +95,20 @@ function normalizeFields(value: unknown): MatchProfileVisibleFields {
     const answer = normalizeText(value.answer)?.slice(0, 120);
     return section && question && answer ? [{ section, question, answer }] : [];
   }) : [];
+  const visibleSections = Array.isArray(input.visibleSections) ? input.visibleSections.slice(0,24)
+    .flatMap(item=>{
+      if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+      const row = item as Record<string,unknown>;
+      const label=normalizeText(row.label)?.slice(0,80), value=normalizeText(row.value);
+      return label && value ? [{label,value}] : [];
+    }) : [];
   const interests = Array.isArray(input.interests)
     ? input.interests.map(normalizeText).filter((item): item is string => Boolean(item)).slice(0, LIST_LIMIT)
     : [];
 
   return {
     firstName: normalizeText(input.firstName),
+    ...(visibleSections.length ? {visibleSections} : {}),
     age: normalizeAge(input.age),
     photoUrl: normalizeTinderPhotoUrl(input.photoUrl),
     ...(Array.isArray(input.photoUrls) && input.photoUrls.length
