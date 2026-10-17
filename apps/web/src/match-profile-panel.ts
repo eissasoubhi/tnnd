@@ -58,6 +58,23 @@ function renderRecord(root: HTMLElement, record: MatchProfileRecord, onReload: (
   const normalized = document.createElement("section");
   normalized.append(text("h4", "Normalized profile"));
   normalized.append(model.fields.length ? fieldList(model.fields) : text("p", "No normalized fields available yet."));
+  if (model.photoUrls?.length) {
+    const gallery = document.createElement("section");
+    gallery.className = "match-profile-photo-gallery";
+    gallery.append(text("h4","Photos visible on Tinder"));
+    const images = document.createElement("div");
+    images.className = "match-profile-photo-list";
+    for (const url of model.photoUrls) {
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = "Visible Tinder profile photo";
+      img.loading = "lazy";
+      img.referrerPolicy = "no-referrer";
+      images.append(img);
+    }
+    gallery.append(images,text("p","These are Tinder photo links, not archived photo files. Links may expire.","subtle"));
+    normalized.append(gallery);
+  }
   const source = document.createElement("details");
   source.append(text("summary", model.sourceLabel));
   source.append(model.sourceFields.length ? fieldList(model.sourceFields) : text("p", "No visible source fields available."));
