@@ -32,6 +32,7 @@ async function loadOptionalPanels(): Promise<void> {
     () => import("./conversation-management-badges"),
     () => import("./texting-style-learning-panel"),
     () => import("./analytics-panel"),
+    () => import("./quality-audit-panel"),
     () => import("./account-privacy-panel"),
     () => import("./setup-guidance-panel")
   ]) {
