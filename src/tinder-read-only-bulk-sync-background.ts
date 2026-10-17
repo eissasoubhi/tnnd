@@ -10,6 +10,7 @@ const KEY = "tnnd.readOnlyBulkSync.v1";
 const ALARM = "tnnd.readOnlyBulkSync.tick";
 const API = "http://127.0.0.1:4000";
 let processing = false;
+const autoOpenedInFlight = new Set<string>();
 const popupOnly = (sender: chrome.runtime.MessageSender): boolean =>
   sender.id === chrome.runtime.id && sender.url === `chrome-extension://${chrome.runtime.id}/popup.html`;
 
@@ -254,12 +255,67 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   void (async () => {
     const state = await load();
     const session = await getBackendSession();
-    if (!state?.collecting || state.active || !session || state.userId !== session.user.id
-      || sender.tab?.id !== state.tabId) return {ok:false};
-    const observed = safeBulkRefs(input.refs, 500);
-    const merged = safeBulkRefs([...state.refs,...observed],500);
-    if (merged.length !== state.refs.length) await save({...state,refs:merged});
-    return {ok:true,added:merged.length-state.refs.length};
+    if (!session || (state?.active) || (state?.userId && state.userId !== session.user.id)
+      || (state?.tabId && sender.tab?.id !== state.tabId)) return {ok:false};
+    const prefs = await settingsFor(session.user.id);
+    if (!state?.collecting && !prefs.autoCollectLoaded) return {ok:false};
+    const observed = safeBulkRefs(input.refs,500);
+    const original = state?.refs ?? [];
+    const merged = safeBulkRefs([...original,...observed],500);
+    if (!merged.length) return {ok:false};
+    if (merged.length !== original.length) {
+      const next: BulkSyncProgress = state ?? {
+        active:false,collecting:false,stopReason:null,
+        userId:session.user.id,tabId:sender.tab!.id!,refs:[],done:[],failed:{},partial:[],
+        initialRef:pathRef(sender.url),lastRef:null,
+        startedAt:new Date().toISOString(),updatedAt:new Date().toISOString()
+      };
+      await save({...next,refs:merged});
+    }
+    return {ok:true,added:merged.length-original.length};
+  })().then(sendResponse).catch(()=>sendResponse({ok:false}));
+  return true;
+});
+
+/** Automatic *passive* sync of an already opened Tinder conversation.
+ * This never navigates or sends. Disabled by default in the account's Web
+ * import preferences, independent from all Tinder AI-send permissions.
+ */
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (!message || typeof message !== "object" ||
+      (message as {type?: unknown}).type !== "TNND_IMPORT_OPENED_THREAD_OBSERVED") return false;
+  const ref = (message as {ref?: unknown}).ref;
+  if (sender.id !== chrome.runtime.id || !sender.tab?.id ||
+      !/^https:\/\/(?:www\.)?tinder\.com\//.test(sender.url ?? "") ||
+      typeof ref !== "string" || !/^[a-zA-Z0-9_-]{3,512}$/.test(ref) ||
+      pathRef(sender.url) !== ref) { sendResponse({ok:false});return false; }
+  void (async () => {
+    const session = await getBackendSession();
+    if (!session) return {ok:false};
+    const key = session.user.id + ":" + sender.tab!.id + ":" + ref;
+    if (autoOpenedInFlight.has(key)) return {ok:false};
+    const prefs = await settingsFor(session.user.id);
+    if (!prefs.autoSyncOpened) return {ok:false};
+    const tab = await chrome.tabs.get(sender.tab!.id!);
+    if (pathRef(tab.url) !== ref) return {ok:false};
+    autoOpenedInFlight.add(key);
+    try {
+      const snapshot = await chrome.tabs.sendMessage(tab.id!,{type:"TNND_GET_VISIBLE_THREAD_MESSAGES"}) as
+        {ok?:boolean;conversationRef?:string;threadKey?:string;messages?:VisibleTinderMessage[];error?:string};
+      const isEmpty = snapshot?.error === "no_recognized_messages";
+      if (!isEmpty && !(snapshot?.ok && snapshot.conversationRef === ref &&
+          snapshot.threadKey === ref && Array.isArray(snapshot.messages))) return {ok:false};
+      const observed = snapshot?.ok ? snapshot.messages! : [];
+      const profile = await readProfile(tab.id!,ref);
+      const eligible = shouldImportThread(prefs,{age:profile?.visibleFields.age ?? null,
+        messageCount:observed.length});
+      if (!eligible.eligible) return {ok:false,reason:eligible.reason};
+      if ((await getBackendSession())?.user.id !== session.user.id ||
+          pathRef((await chrome.tabs.get(tab.id!)).url) !== ref ||
+          !(await settingsFor(session.user.id)).autoSyncOpened) return {ok:false};
+      await upload(ref,observed,session.user.id,prefs,profile);
+      return {ok:true};
+    } finally {autoOpenedInFlight.delete(key);}
   })().then(sendResponse).catch(()=>sendResponse({ok:false}));
   return true;
 });
