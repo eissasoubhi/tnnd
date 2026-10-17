@@ -32,6 +32,9 @@ async function inspectSmartSwipeStatus(): Promise<Record<string, unknown>> {
       typeof settings.timeZone !== "string") return safeMessage("invalid_server_settings");
   try { new Intl.DateTimeFormat("en-US", { timeZone: settings.timeZone }); }
   catch { return safeMessage("invalid_account_timezone"); }
+  const armedState = (await chrome.storage.local.get("tnnd.smartSwipeLiveArm.v1:" + session.user.id))
+    ["tnnd.smartSwipeLiveArm.v1:" + session.user.id] as { armed?: boolean } | undefined;
+  const armed = armedState?.armed === true;
   const now = Date.now();
   const progressKey = PROGRESS_PREFIX + session.user.id;
   const stored = (await chrome.storage.local.get(progressKey))[progressKey];
@@ -39,7 +42,7 @@ async function inspectSmartSwipeStatus(): Promise<Record<string, unknown>> {
   if (!result.ok) return safeMessage(result.reason);
   if (result.needsSave) await chrome.storage.local.set({ [progressKey]: result.progress });
   if (!settings.enabled) return {
-    ok: true, enabled: false, executionAvailable: false,
+    ok: true, enabled: false, armed: false, executionAvailable: false,
     status: "disabled", nextActivity: null,
     progress: { startedSessions: result.progress.startedSessions,
       rightSwipesConfirmed: result.progress.rightSwipesConfirmed,
@@ -70,7 +73,7 @@ async function inspectSmartSwipeStatus(): Promise<Record<string, unknown>> {
   };
   const decision = planSwipeRuntime(settings, result.progress, observed.evidence, now, settings.timeZone, availability);
   return {
-    ok: true, enabled: true, executionAvailable: false,
+    ok: true, enabled: true, armed, executionAvailable: false,
     status: decision.swipeStatus, nextActivity: decision.activity,
     controls: {
       route: observed.evidence.route, status: observed.evidence.status,
