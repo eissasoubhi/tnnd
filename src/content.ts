@@ -995,6 +995,56 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   return true;
 });
 
+/** One physical, bounded scroll of the *verified chat transcript* to load
+ * older history via Tinder's own UI. No private Tinder API, no guessing
+ * scroll containers, no keystrokes or send operations.
+ */
+function verifiedChatHistoryScroller(ref:string): HTMLElement | null {
+  if (currentConversationRef() !== ref) return null;
+  const chat = document.querySelector<HTMLElement>(".chat");
+  const composer = chat?.querySelector<HTMLElement>(
+    'textarea[placeholder*="message" i],textarea[aria-label*="message" i],[contenteditable="true"][role="textbox"]'
+  );
+  const list = chat?.querySelector<HTMLElement>('ol[aria-label="Messages" i]');
+  if (!list || list.getClientRects().length === 0 || !composer || composer.getClientRects().length === 0) return null;
+  let node: HTMLElement | null = list;
+  for(let i=0;node && chat!.contains(node) && i<12;node=node.parentElement,i++){
+    const overflow=getComputedStyle(node).overflowY;
+    if(node.clientHeight>100 && node.scrollHeight>node.clientHeight+12
+      && (overflow==="auto" || overflow==="scroll")) return node;
+  }
+  return null;
+}
+chrome.runtime.onMessage.addListener((message:unknown,sender,sendResponse)=>{
+  if(!message || typeof message!=="object")return false;
+  const input=message as {type?:unknown;ref?:unknown};
+  if(input.type!=="TNND_IMPORT_SCROLL_OLDER_PAGE" && input.type!=="TNND_IMPORT_RESTORE_LATEST")return false;
+  const ref=input.ref;
+  if(sender.id!==chrome.runtime.id || !hasLiveExtensionContext() || typeof ref!=="string"
+    || !/^[a-zA-Z0-9_-]{3,512}$/.test(ref) || busy || spaNavigationBusy
+    || currentConversationRef()!==ref) {
+    sendResponse({ok:false,error:"history_scroll_context_changed"});return false;
+  }
+  const composer=document.querySelector<HTMLElement>(
+    'textarea[placeholder*="message" i],textarea[aria-label*="message" i],[contenteditable="true"][role="textbox"]'
+  );
+  const draft=composer instanceof HTMLTextAreaElement ? composer.value : composer?.innerText ?? "";
+  if(draft.trim()){
+    sendResponse({ok:false,error:"unsent_message_draft_present"});return false;
+  }
+  const scroller=verifiedChatHistoryScroller(ref);
+  if(!scroller){sendResponse({ok:false,error:"verified_scroll_container_missing"});return false;}
+  const before=scroller.scrollTop;
+  scroller.scrollTop = input.type==="TNND_IMPORT_RESTORE_LATEST"
+    ? scroller.scrollHeight : Math.max(0,before-Math.max(180,Math.floor(scroller.clientHeight*.55)));
+  void new Promise(resolve=>setTimeout(resolve,450)).then(()=>{
+    if(currentConversationRef()!==ref){sendResponse({ok:false,error:"history_scroll_context_changed"});return;}
+    sendResponse({ok:true,moved:Math.abs(before-scroller.scrollTop)>1,
+      atTop:scroller.scrollTop<=2});
+  });
+  return true;
+});
+
 /** Bounded SPA sidebar navigation: never reload Tinder, switch Chrome
  * tabs, or leave the open chat while its composer/send is in progress. */
 async function navigateWatcherSidebar(
