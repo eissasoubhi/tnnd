@@ -86,7 +86,54 @@ function renderState(root: HTMLElement, message: string, state: "loading" | "emp
   if (onReload && state !== "loading") root.append(refreshButton(onReload));
 }
 
+/** Use the authenticated local binary archive, never expose auth tokens in image URLs. */
+async function showArchivedProfilePhotos(
+  root:HTMLElement, record:MatchProfileRecord, options:MatchProfilePanelOptions
+): Promise<string[]> {
+  const prefix=options.apiBase.replace(/\/$/,"") + "/api/v1/match-profiles/" + encodeURIComponent(record.id) + "/photos";
+  const headers={authorization:"Bearer "+options.token};
+  const listing=await fetch(prefix,{headers,cache:"no-store"});
+  if(!listing.ok)return [];
+  const data=await listing.json() as {photos?:Array<{id:string;mediaType:string}>};
+  if(!Array.isArray(data.photos) || !data.photos.length)return [];
+  const urls:string[]=[];
+  const list=document.createElement("div");
+  list.className="match-profile-photo-list";
+  try {
+    for(const photo of data.photos.slice(0,12)) {
+      if(!/^[0-9a-f-]{36}$/i.test(photo.id))continue;
+      const response=await fetch(prefix+"/"+photo.id,{headers,cache:"no-store"});
+      if(!response.ok)continue;
+      const blob=await response.blob();
+      if(!["image/jpeg","image/png","image/webp","image/gif"].includes(blob.type))continue;
+      const local=URL.createObjectURL(blob);
+      urls.push(local);
+      const img=document.createElement("img");
+      img.src=local;img.loading="lazy";img.alt="Saved Tinder profile photo";
+      img.referrerPolicy="no-referrer";
+      list.append(img);
+    }
+    if(!root.isConnected || !urls.length) {
+      urls.forEach(URL.revokeObjectURL);return [];
+    }
+    const gallery=root.querySelector<HTMLElement>(".match-profile-photo-gallery");
+    if(gallery){
+      gallery.replaceChildren(text("h4",urls.length+" photos saved privately in TNND"),list);
+    }else{
+      const section=document.createElement("section");
+      section.className="match-profile-photo-gallery";
+      section.append(text("h4",urls.length+" photos saved privately in TNND"),list);
+      root.append(section);
+    }
+    return urls;
+  } catch {
+    urls.forEach(URL.revokeObjectURL);
+    return [];
+  }
+}
+
 export function createMatchProfilePanel(options: MatchProfilePanelOptions): MatchProfilePanel {
+  let archivedBlobUrls: string[] = [];
   const root = document.createElement("section");
   root.className = "match-profile-panel";
   root.setAttribute("aria-live", "polite");
@@ -97,7 +144,13 @@ export function createMatchProfilePanel(options: MatchProfilePanelOptions): Matc
       renderState(root, "Loading MatchProfile…", "loading");
       try {
         const record = await getConversationMatchProfile(options.apiBase, options.token, options.conversationId);
-        if (record) { renderRecord(root, record, panel.load); return; }
+        if (record) {
+          archivedBlobUrls.forEach(URL.revokeObjectURL);
+          archivedBlobUrls=[];
+          renderRecord(root,record,panel.load);
+          archivedBlobUrls=await showArchivedProfilePhotos(root,record,options);
+          return;
+        }
         const temporary = options.temporaryProfile;
         if (temporary && temporary.normalizedProfile.retention.mode === "temporary" && !temporary.conversationId) {
           if (!canPromoteTemporaryMatchProfile(temporary)) {
