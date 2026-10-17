@@ -45,7 +45,9 @@ async function inspectSmartSwipeStatus(): Promise<Record<string, unknown>> {
     const ledgerResponse = await fetch(API + "/api/v1/automation/smart-swipe/attempts/summary", {
       headers: { authorization: "Bearer " + session.token }, cache: "no-store"
     });
-    if (ledgerResponse.ok) serverAttempts = await ledgerResponse.json() as typeof serverAttempts;
+    if (ledgerResponse.ok) serverAttempts = await ledgerResponse.json() as {
+      attemptsToday: number; uiObservedToday: number; unresolvedAttempts: number
+    };
   } catch { /* Unknown is not zero. */ }
 
   const now = Date.now();
