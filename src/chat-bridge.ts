@@ -1,7 +1,7 @@
 import { TinderDomAdapter } from "./tinder-adapter";
 import { TINDER_BRIDGE_PROTOCOL } from "./tinder-tab-connection";
 import { readVisibleTinderMatchIdentity } from "./tinder-chat-identity";
-import { detectVisibleTinderSidebarTab, visibleTinderThreadRefs } from "./tinder-visible-thread-links";
+import { detectVisibleTinderSidebarTab, visibleTinderThreadRefs, visibleTinderMessageThreadRefs } from "./tinder-visible-thread-links";
 import { detectTinderChat } from "./tinder-chat-detection";
 import { buildNormalizedMessageKeys } from "./tinder-message-key";
 import { classifyTinderPath } from "./tinder-state-machine";
@@ -16,6 +16,19 @@ const tinderJobKinds = new Set<TinderJobKind>(["scan-inbox", "process-thread", "
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
   if (!message || typeof message !== "object") return false;
   const input = message as { type?: string; job?: unknown; jobId?: unknown; conversationRef?: unknown };
+
+  if (input.type === "TNND_BULK_SYNC_VISIBLE_MESSAGE_REFS") {
+    // Read-only inventory. Never infer a complete Tinder inbox from a
+    // lazy-loaded Messages sidebar.
+    const refs = visibleTinderMessageThreadRefs();
+    sendResponse({
+      ok: detectVisibleTinderSidebarTab() === "messages",
+      sidebar: detectVisibleTinderSidebarTab(),
+      refs,
+      error: detectVisibleTinderSidebarTab() === "messages" ? undefined : "Open Tinder Messages and load the conversation list first."
+    });
+    return false;
+  }
 
   if (input.type === "TNND_GET_VISIBLE_THREAD_LINKS") {
     // A visible Matches tab can coexist with an opened Tinder conversation
