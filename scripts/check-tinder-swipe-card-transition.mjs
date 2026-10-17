@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";
+import { classifySwipeCardTransition } from "../src/tinder-swipe-card-transition-policy.ts";
+const different = classifySwipeCardTransition("card1","card2",true,true,false);
+assert.deepEqual(different,{status:"ui_observed",reason:"new_card_visually_observed",serverConfirmed:false});
+assert.equal(classifySwipeCardTransition("card1","card1",true,true,false).status,"uncertain");
+assert.equal(classifySwipeCardTransition("card1","card2",false,true,false).status,"uncertain");
+assert.equal(classifySwipeCardTransition("card1","card2",true,true,true).status,"uncertain");
+assert.equal(classifySwipeCardTransition("card1",null,true,true,false).status,"uncertain");
+assert.equal(classifySwipeCardTransition("card1","card2",true,false,false).status,"uncertain");
+console.log("Tinder UI card change classifications passed; no Like server receipt is claimed.");
