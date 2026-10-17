@@ -35,6 +35,7 @@ import { handleProductionAiHttp } from "./production-ai-http-handler.js";
 import { routeAuthenticatedPersonalMemoryRequest } from "./personal-memory-authenticated-route.js";
 import { handleTextingStyleAnalysisRequest } from "./texting-style-analysis-controller.js";
 import { readTinderImportSettings, saveTinderImportSettings } from "./tinder-import-settings-service.js";
+import { archiveSavedMatchProfilePhotos, listArchivedMatchPhotos, getArchivedMatchPhoto } from "./tinder-photo-archive-service.js";
 import { safeApiErrorLog } from "./safe-error-log.js";
 import { isAllowedRequestTransport } from "./transport-security.js";
 import { CORS_ALLOW_METHODS, resolveCorsOrigin } from "./cors.js";
@@ -490,6 +491,32 @@ const server = createServer(async (request, response) => {
       }
       const result = await handleTextingStyleAnalysisRequest(await readJsonBody(request));
       sendJson(response, result.status, result.body);
+      return;
+    }
+
+    const archiveRoute = /^\/api\/v1\/match-profiles\/([0-9a-f-]{36})\/archive-photos$/i.exec(url.pathname);
+    const photoRoute = /^\/api\/v1\/match-profiles\/([0-9a-f-]{36})\/photos(?:\/([0-9a-f-]{36}))?$/i.exec(url.pathname);
+    if ((archiveRoute && request.method === "POST") || (photoRoute && request.method === "GET")) {
+      const session = await authenticatedUser(request);
+      if (!session) { sendJson(response,401,{error:"invalid_or_expired_session"});return; }
+      if (archiveRoute) {
+        const report = await archiveSavedMatchProfilePhotos(session.user.id, archiveRoute[1]);
+        sendJson(response,report ? 200 : 404,report ?? {error:"match_profile_not_found"});
+        return;
+      }
+      if (photoRoute?.[2]) {
+        const photo=await getArchivedMatchPhoto(session.user.id,photoRoute[1],photoRoute[2]);
+        if (!photo) {sendJson(response,404,{error:"archived_photo_not_found"});return;}
+        response.writeHead(200,{
+          "content-type":photo.mediaType, "content-length":photo.bytes.byteLength,
+          "cache-control":"private, no-store", "x-content-type-options":"nosniff",
+          "referrer-policy":"no-referrer", "content-security-policy":"default-src 'none'; sandbox"
+        });
+        response.end(photo.bytes);
+        return;
+      }
+      const photos=await listArchivedMatchPhotos(session.user.id,photoRoute![1]);
+      sendJson(response,photos ? 200 : 404,photos ? {photos}:{error:"match_profile_not_found"});
       return;
     }
 
