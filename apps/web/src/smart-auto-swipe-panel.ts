@@ -219,7 +219,7 @@ form.addEventListener("submit", async (event) => {
       throw new Error(result.details?.join(", ") || result.error || "Unable to save.");
     if (readSession()?.user.id !== session.user.id) return;
     fill(result.settings);
-    status.textContent = result.settings.enabled ? "Configured · unavailable" : "Disabled";
+    status.textContent = result.settings.enabled ? "Configured · runtime pending" : "Disabled";
     feedback.textContent = "Preferences saved to TNND. No Tinder action was started.";
   } catch (error) {
     feedback.textContent = error instanceof Error ? error.message : "Unable to save. Try again.";
