@@ -32,7 +32,7 @@ test("source contract guarantees no send and preserves existing statuses", () =>
   assert.match(background, /disable_all_auto_chat_before_read_only_import/);
   assert.match(background, /TNND_BULK_SYNC_READONLY_NAVIGATE/);
   assert.match(background, /TNND_GET_VISIBLE_THREAD_MESSAGES/);
-  assert.match(background, /status: existing \? undefined : "paused"/);
+  assert.match(background, /index === 0 && !existing/);
   assert.match(background, /conversation_import_failed/);
   assert.doesNotMatch(background, /TNND_START_FIRST_MESSAGE|TNND_AUTO_START_NEW_MATCH|TNND_CLAIM_FIRST_MESSAGE/);
   assert.match(content, /unsent_message_draft_present/);
