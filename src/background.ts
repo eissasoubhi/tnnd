@@ -5,6 +5,7 @@ import "./tinder-unread-observation-background";
 import "./tinder-new-match-background";
 import "./tinder-global-new-match-runner";
 import "./tinder-smart-swipe-runtime-background";
+import "./tinder-smart-swipe-automation-background";
 import { newMatchSendPermission } from "./tinder-new-match-background";
 import { currentAuthorizedTinderThread } from "./tinder-sender-route-guard";
 import "./tinder-global-existing-runner";
