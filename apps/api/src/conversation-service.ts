@@ -53,6 +53,7 @@ export interface ConversationSummary {
   semanticStage?: ConversationStageTag;
   semanticTone?: ConversationToneTag;
   semanticSource?: "rule-based" | "unknown";
+  handoffPlatform?: "instagram" | "whatsapp" | "snapchat" | "telegram" | null;
   updatedAt: string;
 }
 
@@ -200,11 +201,12 @@ export async function listConversations(userId: string): Promise<ConversationSum
     user_shared_instagram: boolean;
     user_shared_whatsapp: boolean;
     semantic_messages: SemanticMessage[] | null;
+    handoff_platform: ConversationSummary["handoffPlatform"];
     pending_human_actions: string | number;
     updated_at: Date;
   }>(
     `SELECT c.id, c.external_thread_id, c.status, c.current_topic, c.updated_at,
-             c.display_label, c.display_age,
+             c.handoff_platform, c.display_label, c.display_age,
             (SELECT mp.normalized_profile->'fields'->>'firstName' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_first_name,
             (SELECT mp.normalized_profile->'fields'->>'age' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_age,
             (SELECT mp.normalized_profile->'fields'->>'photoUrl' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_photo_url,
@@ -260,6 +262,7 @@ export async function listConversations(userId: string): Promise<ConversationSum
     ...(tags.stage ? { semanticStage: tags.stage } : {}),
     ...(tags.tone ? { semanticTone: tags.tone } : {}),
     semanticSource: tags.source,
+    handoffPlatform: row.handoff_platform ?? null,
     updatedAt: row.updated_at.toISOString()
   });
   });
@@ -295,10 +298,11 @@ export async function getConversation(userId: string, conversationId: string): P
     temporary_instruction_scope: TemporaryInstructionScope | null;
     temporary_instruction_remaining: number | null;
     pending_human_actions: string | number;
+    handoff_platform: ConversationSummary["handoffPlatform"];
     updated_at: Date;
   }>(
     `SELECT c.id, c.external_thread_id, c.status, c.current_topic,
-             c.display_label, c.display_age,
+             c.handoff_platform, c.display_label, c.display_age,
             (SELECT mp.normalized_profile->'fields'->>'firstName' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_first_name,
             (SELECT mp.normalized_profile->'fields'->>'age' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_age,
             (SELECT mp.normalized_profile->'fields'->>'photoUrl' FROM match_profiles mp WHERE mp.user_id = c.user_id AND mp.conversation_id = c.id LIMIT 1) AS match_photo_url,
@@ -357,6 +361,7 @@ export async function getConversation(userId: string, conversationId: string): P
     id: conversation.id,
     externalThreadId: conversation.external_thread_id,
     status: conversation.status,
+    handoffPlatform: conversation.handoff_platform ?? null,
     ...(conversation.display_label || conversation.match_first_name ? { matchFirstName: (conversation.display_label || conversation.match_first_name)! } : {}),
     ...(conversation.display_label !== null ? { userDisplayLabel: conversation.display_label } : {}),
     ...(conversation.display_age || conversation.match_age ? { matchAge: Number(conversation.display_age || conversation.match_age) } : {}),
