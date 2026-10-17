@@ -5,6 +5,7 @@ import { getBackendSession, getChatSettings, getConfig, saveChatSettings } from 
 import { firstMessageDailyLimit } from "./tinder-first-message-daily-limit";
 import { conversationAttention, type ConversationActivity } from "./tinder-conversation-activity";
 import { cappedAttentionWaitMs } from "./tinder-attention-cap";
+import "./tinder-bulk-sync-popup";
 import { syncConversationDelta } from "./conversation-sync";
 import { loadTinderConversationManagement } from "./tinder-backend-management";
 import { prepareReadOnlyImport, type VisibleTinderMessage } from "./tinder-manual-import";
