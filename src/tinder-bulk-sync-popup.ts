@@ -32,7 +32,7 @@ if (manualImportCard && !document.getElementById("tnnd-bulk-readonly-sync")) {
   const start = panel.querySelector<HTMLButtonElement>("#bulkSyncStart");
   const stop = panel.querySelector<HTMLButtonElement>("#bulkSyncStop");
   const retry = panel.querySelector<HTMLButtonElement>("#bulkSyncRetry");
-  interface Counts { active: boolean; collecting?: boolean; stopReason?: string | null; selected: number; completed: number; failed: number; partial: number; pending: number }
+  interface Counts { active: boolean; collecting?: boolean; stopReason?: string | null; reachedScrollTop?: number; selected: number; completed: number; failed: number; partial: number; pending: number }
   interface Answer { ok?: boolean; error?: string; state?: Counts }
   let pending = false;
   const display = (data: Counts) => {
@@ -45,7 +45,7 @@ if (manualImportCard && !document.getElementById("tnnd-bulk-readonly-sync")) {
       account_or_automation_changed: "Account or automation setting changed; import safely stopped.",
       tnnd_account_disconnected: "TNND account disconnected."
     };
-    if (status) status.textContent = `${data.active ? "Import running" : data.collecting ? "Collecting loaded chats while you scroll" : "Import stopped"} · ${data.completed}/${data.selected} completed · ${data.failed} skipped · ${data.partial} whose complete history has not been verified · ${data.pending} remaining. ${data.stopReason ? (safetyReason[data.stopReason] ?? "Import safely stopped. Check Tinder and TNND, then retry.") : ""} These are loaded chats, not a confirmed complete Tinder inbox.`;
+    if (status) status.textContent = `${data.active ? "Import running" : data.collecting ? "Collecting loaded chats while you scroll" : "Import stopped"} · ${data.completed}/${data.selected} completed · ${data.failed} skipped · ${data.reachedScrollTop ?? 0} chats scrolled to top · ${data.partial} whose complete history has not been verified · ${data.pending} remaining. ${data.stopReason ? (safetyReason[data.stopReason] ?? "Import safely stopped. Check Tinder and TNND, then retry.") : ""} These are loaded chats, not a confirmed complete Tinder inbox.`;
     if (start) start.disabled = pending || data.active || data.selected === 0 || data.pending === 0;
     if (stop) stop.disabled = pending || !data.active;
     if (retry) retry.disabled = pending || data.active || data.failed === 0;

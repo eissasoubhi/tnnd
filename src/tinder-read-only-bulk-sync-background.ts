@@ -1,6 +1,7 @@
 import { getBackendSession, getConfig } from "./storage";
 import { assertTinderContentBridge } from "./tinder-tab-connection";
 import { prepareReadOnlyImportBatches, type VisibleTinderMessage } from "./tinder-manual-import";
+import { mergeOlderHistory, olderBackfillKey } from "./tinder-history-page-merge";
 import { uploadVisibleMatchProfileCapture } from "./tinder-match-profile-backend";
 import { DEFAULT_TINDER_IMPORT_SETTINGS, validateTinderImportSettings, shouldImportThread, type TinderImportSettings } from "./tinder-import-settings";
 import type { TinderVisibleProfileSource } from "./tinder-match-profile-capture";
@@ -70,6 +71,7 @@ async function collect(): Promise<BulkSyncProgress> {
     refs: merged, done: same ? previous.done.filter(ref=>merged.includes(ref)) : [],
     failed: same ? Object.fromEntries(Object.entries(previous.failed).filter(([ref])=>merged.includes(ref))) : {},
     partial: same ? previous.partial.filter(ref=>merged.includes(ref)) : [],
+    reachedScrollTop:same ? (previous.reachedScrollTop ?? []).filter(ref=>merged.includes(ref)) : [],
     initialRef: pathRef(tab.url), lastRef: null,
     startedAt: same ? previous.startedAt : new Date().toISOString(),
     updatedAt: new Date().toISOString()
@@ -79,8 +81,9 @@ async function collect(): Promise<BulkSyncProgress> {
 }
 function counts(state: BulkSyncProgress | null) {
   return state ? { active: state.active, collecting: state.collecting === true,
-      stopReason: state.stopReason ?? null, ...bulkSyncCounts(state), updatedAt: state.updatedAt }
-    : { active: false, collecting: false, stopReason: null, selected: 0, completed: 0, failed: 0, partial: 0, pending: 0, updatedAt: null };
+      stopReason: state.stopReason ?? null, reachedScrollTop:(state.reachedScrollTop ?? []).length,
+      ...bulkSyncCounts(state), updatedAt: state.updatedAt }
+    : { active: false, collecting: false, stopReason: null, reachedScrollTop:0, selected: 0, completed: 0, failed: 0, partial: 0, pending: 0, updatedAt: null };
 }
 async function stop(reason?: string): Promise<BulkSyncProgress | null> {
   const state = await load();
@@ -171,6 +174,42 @@ async function upload(
   return {partial:true};
 }
 
+type HistorySnapshot = {ok?:boolean;threadKey?:string;conversationRef?:string;threadKeyHash?:string;messages?:VisibleTinderMessage[];error?:string};
+async function readBackToFirstRenderedPage(
+  tabId:number, ref:string, initial:HistorySnapshot
+): Promise<{messages:VisibleTinderMessage[];reachedTop:boolean;additional:number}> {
+  const first=initial.messages ?? [];
+  if(!first.length)return {messages:[],reachedTop:false,additional:0};
+  let all=[...first],reachedTop=false,stableTop=0;
+  const threadHash=initial.threadKeyHash;
+  // Only page through a verified chat scroller; a mismatch is an explicit
+  // partial result. Do not use undocumented Tinder APIs or arbitrary wheel.
+  for(let page=0;page<80 && all.length<1000;page++){
+    const moved=await chrome.tabs.sendMessage(tabId,{type:"TNND_IMPORT_SCROLL_OLDER_PAGE",ref})
+      .catch(()=>null) as {ok?:boolean;atTop?:boolean;moved?:boolean}|null;
+    if(!moved?.ok)break;
+    const snapshot=await chrome.tabs.sendMessage(tabId,{type:"TNND_GET_VISIBLE_THREAD_MESSAGES"})
+      .catch(()=>null) as HistorySnapshot|null;
+    if(!snapshot?.ok || snapshot.threadKey!==ref || snapshot.conversationRef!==ref ||
+       snapshot.threadKeyHash!==threadHash || !Array.isArray(snapshot.messages)) break;
+    const merged=mergeOlderHistory(all,snapshot.messages);
+    if(!merged || merged.messages.length>1000)break;
+    all=merged.messages;
+    stableTop=moved.atTop && merged.added===0 ? stableTop+1 : 0;
+    if(stableTop>=2){reachedTop=true;break;}
+    if(!moved.moved && !moved.atTop)break;
+  }
+  // Restore the view once collection is finished. Failure just means the
+  // user navigated or the message list is no longer safe to manipulate.
+  await chrome.tabs.sendMessage(tabId,{type:"TNND_IMPORT_RESTORE_LATEST",ref})
+    .catch(()=>undefined);
+  const additional=all.length-first.length;
+  const messages=all.map((message,index)=> index<additional
+    ? {...message,key:olderBackfillKey(ref,index-additional,message)}
+    : {...message,key:first[index-additional].key});
+  return {messages,reachedTop,additional};
+}
+
 async function tick(): Promise<void> {
   if (processing) return;
   processing = true;
@@ -223,19 +262,23 @@ async function tick(): Promise<void> {
           await stop("account_or_automation_changed"); return;
         }
         const observed = snapshot?.ok ? snapshot.messages! : [];
+        const history = snapshot?.ok
+          ? await readBackToFirstRenderedPage(state.tabId,ref,snapshot)
+          : {messages:observed,reachedTop:false,additional:0};
         const prefs = await settingsFor(state.userId);
         const profile = (prefs.includeProfile || prefs.includePhotos || prefs.scope === "filtered")
           ? await readProfile(state.tabId,ref) : null;
         const eligibility = shouldImportThread(prefs,{
-          age:profile?.visibleFields.age ?? null,messageCount:observed.length
+          age:profile?.visibleFields.age ?? null,messageCount:history.messages.length
         });
         if (!eligibility.eligible) {
           await save({...live,failed:{...live.failed,[ref]:"filtered_"+eligibility.reason}});
           continue;
         }
-        const imported = await upload(ref, observed, state.userId,prefs,profile);
+        const imported = await upload(ref, history.messages, state.userId,prefs,profile);
         state = { ...live, done: [...live.done, ref],
-          partial: imported.partial ? [...live.partial, ref] : live.partial };
+          partial: imported.partial ? [...live.partial, ref] : live.partial,
+          reachedScrollTop:history.reachedTop ? [...new Set([...(live.reachedScrollTop ?? []),ref])] : (live.reachedScrollTop ?? []) };
         await save(state);
       } catch {
         const latest = await load();

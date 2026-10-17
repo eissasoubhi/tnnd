@@ -11,6 +11,7 @@ export interface BulkSyncProgress {
   done: string[];
   failed: Record<string, string>;
   partial: string[];
+  reachedScrollTop?: string[];
   initialRef: string | null;
   lastRef: string | null;
   startedAt: string;

@@ -235,7 +235,7 @@ function messageText(element: HTMLElement): string {
   return textOf(element);
 }
 
-function candidateMessages(composer: HTMLElement): HTMLElement[] {
+function candidateMessages(composer: HTMLElement, maxItems = 40): HTMLElement[] {
   // A visible, recognized Tinder transcript is authoritative even when EMPTY.
   // Falling back to document-wide "message" labels in that case can mistake
   // the Messages sidebar for a chat bubble and block legitimate empty matches.
@@ -245,7 +245,7 @@ function candidateMessages(composer: HTMLElement): HTMLElement[] {
   if (transcript) {
     const verified = Array.from(transcript.querySelectorAll<HTMLElement>('[role="article"]'))
       .filter(element => visible(element) && !element.contains(composer) && Boolean(messageText(element)));
-    return verified.slice(-40);
+    return verified.slice(-Math.max(1,Math.min(maxItems,1000)));
   }
 
   // On current Tinder, an empty match has no ol[aria-label="Messages"]
@@ -449,11 +449,11 @@ export class TinderDomAdapter {
    * was incoming. This is read-only, uses existing observed selectors and
    * refuses unknown message directions.
    */
-  readVisibleMessages(): TinderVisibleMessage[] {
+  readVisibleMessages(maxItems = 40): TinderVisibleMessage[] {
     if (classifyTinderPath(location.pathname).state !== "conversation") return [];
     const composer = findComposer();
     if (!composer) return [];
-    return candidateMessages(composer)
+    return candidateMessages(composer,maxItems)
       .map((element) => ({ text: messageText(element), direction: directionOf(element) }))
       .filter((message): message is TinderVisibleMessage =>
         (message.direction === "me" || message.direction === "them") && Boolean(message.text)
