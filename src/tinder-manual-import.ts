@@ -50,3 +50,35 @@ export function prepareReadOnlyImport(
     requestedStatus: existingConversation ? null : "paused"
   };
 }
+
+/** Preserve every *rendered* message by sending ordered, API-sized batches.
+ * This cannot prove Tinder loaded the beginning of the actual chat history.
+ * Never truncate silently to the final 40 observed messages.
+ */
+export function prepareReadOnlyImportBatches(
+  observed: readonly VisibleTinderMessage[],
+  existingConversation: boolean,
+  importedAt: string
+): ReadOnlyImportPayload[] {
+  if (observed.length > 1000) throw new Error("too_many_visible_messages_for_bounded_import");
+  if (!observed.length) return [];
+  if (!Number.isFinite(Date.parse(importedAt))) throw new Error("invalid_import_timestamp");
+  const keys = new Set<string>();
+  for (const m of observed) {
+    if (m.direction !== "me" && m.direction !== "them"
+      || !m.key?.trim() || m.key.length > 256 || !m.text?.trim() || m.text.length > 4000
+      || keys.has(m.key)) throw new Error("invalid_visible_message");
+    keys.add(m.key);
+  }
+  const batches: ReadOnlyImportPayload[] = [];
+  for (let index = 0; index < observed.length; index += 40) {
+    // Globally monotonic observed ordering across batches; never fabricate
+    // a Tinder sent timestamp from these capture times.
+    batches.push(prepareReadOnlyImport(
+      observed.slice(index,index+40),
+      existingConversation || index > 0,
+      new Date(Date.parse(importedAt)+index).toISOString()
+    ));
+  }
+  return batches;
+}
