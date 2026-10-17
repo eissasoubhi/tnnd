@@ -54,7 +54,7 @@ function renderList(items: ConversationListItem[], total: number, filtered: bool
         <small>${escapeHtml(item.currentTopic ?? "No topic yet")}</small>
       </span>
       <span class="conversation-row-meta">
-        <span class="pill">${escapeHtml(item.status)}</span>
+        <span class="pill">${escapeHtml(item.status === "moved-off-tinder" && item.handoffPlatform ? `Moved to ${item.handoffPlatform}` : item.status)}</span>
         ${item.status === "active" && item.lastMessageDirection === "incoming" ? '<span class="pill">Reply waiting</span>' : ""}
         <small>${escapeHtml(formatDate(item.lastMessageAt))}</small>
       </span>
@@ -223,8 +223,13 @@ function renderDetail(detail: ConversationDetail): string {
         <strong>${escapeHtml(matchLabel(detail.displayName, detail.matchAge))}</strong>
         <small>${escapeHtml(detail.currentTopic ?? "No current topic")}</small>
       </div>
-      <span class="pill">${escapeHtml(detail.status)}</span>
+      <span class="pill">${escapeHtml(detail.status === "moved-off-tinder" && detail.handoffPlatform ? "Moved to " + detail.handoffPlatform : detail.status)}</span>
     </div>
+    ${detail.status === "moved-off-tinder"
+      ? `<p class="subtle" role="status">Tinder automatic replies stopped. ${detail.handoffPlatform
+        ? "Verified chat handoff mentioned " + escapeHtml(detail.handoffPlatform) + "."
+        : "Handoff platform was not recorded."} TNND has not sent a message outside Tinder.</p>`
+      : ""}
     <details class="conversation-identity-editor">
       <summary>${detail.displayName.startsWith("Conversation ") ? "Tinder identity not yet detected" : "Advanced · Override chat identity"} <span class="subtle">(optional)</span></summary>
       <p class="subtle">The extension automatically reads the name, age and avatar from the matching visible Tinder conversation when available. Open this chat on Tinder with the extension running, then refresh TNND Web. Manual override below is an optional fallback and does not change Tinder.</p>
