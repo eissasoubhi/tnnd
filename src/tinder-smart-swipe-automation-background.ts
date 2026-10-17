@@ -289,7 +289,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
   }
   if (type === "TNND_SMART_SWIPE_SET_ARMED") {
     if (sender.id !== chrome.runtime.id ||
-        sender.url !== `chrome-extension://\${chrome.runtime.id}/popup.html`) {
+        sender.url !== `chrome-extension://${chrome.runtime.id}/popup.html`) {
       respond({ ok: false, reason: "popup_only" }); return false;
     }
     const armed = (message as { armed?: unknown }).armed;
