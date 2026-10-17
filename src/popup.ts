@@ -1085,6 +1085,10 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
     }) as {
       ok?: boolean; reason?: string; status?: string; enabled?: boolean;
       nextActivity?: string | null; executionAvailable?: boolean; armed?: boolean;
+      remainingSessions?: number; attemptsToday?: number | null;
+      remainingAttempts?: number | null; uiObservedToday?: number | null;
+      unresolvedOnServer?: number | null; lastResult?: string | null;
+      schedule?: string; session?: { active: boolean; remainingMs: number } | null;
       controls?: { status?: string; likeControls?: number };
       progress?: { startedSessions?: number; rightSwipesConfirmed?: number; rightSwipesReserved?: number };
     };
@@ -1096,13 +1100,25 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
       summary.textContent = "Smart Auto Swipe disabled in TNND Web.";
       return;
     }
-    const count = result.progress?.rightSwipesConfirmed ?? 0;
-    const reserved = result.progress?.rightSwipesReserved ?? 0;
-    summary.textContent = "State: " + (result.status ?? "unknown") +
-      " · Priority: " + (result.nextActivity ?? "none") +
-      " · Likes confirmed: " + count +
-      " · Unresolved: " + reserved +
-      " · Tinder actions: " + (result.armed ? "armed (unverified on live Tinder)" : "not active") + ".";
+    const known = (value: number | null | undefined) =>
+      typeof value === "number" ? String(value) : "unknown";
+    const remaining = result.session
+      ? Math.ceil(result.session.remainingMs / 1000) + " sec" : "not in session";
+    summary.textContent = [
+      "Automation: " + (result.armed ? "started" : "stopped"),
+      "Status: " + (result.lastResult ?? result.schedule ?? result.status ?? "unknown"),
+      "Sessions left: " + known(result.remainingSessions),
+      "Like attempts left: " + known(result.remainingAttempts),
+      "Card transitions observed: " + known(result.uiObservedToday),
+      "Unresolved: " + known(result.unresolvedOnServer),
+      "Session remaining: " + remaining,
+      "Priority: " + (result.nextActivity ?? "none"),
+      "Server acceptance: not independently verified"
+    ].join(" · ");
+    const start = document.getElementById("startSmartSwipeRuntime") as HTMLButtonElement | null;
+    if (start) start.disabled = result.armed === true;
+    // Keep Stop enabled even when the backend becomes unreachable.
+
   } catch {
     summary.textContent = "Could not read runtime state. Check extension and TNND API.";
   } finally {
