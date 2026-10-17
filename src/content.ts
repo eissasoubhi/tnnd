@@ -1,5 +1,6 @@
 import { TinderDomAdapter } from "./tinder-adapter";
 import { observeSwipeDiscoveryControls } from "./tinder-swipe-discovery-evidence";
+import { executeReservedTinderRightLike } from "./tinder-swipe-live-action";
 import { redactDiagnosticInlineStyle } from "./tinder-diagnostic-inline-style-redaction";
 import { readVisibleTinderMatchIdentity, type VisibleTinderMatchIdentity } from "./tinder-chat-identity";
 import { readVisibleTinderProfilePanel } from "./tinder-visible-profile-panel";
@@ -1027,9 +1028,14 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   return false;
 });
 
+let lastSwipePulseAt = 0;
 let lastUnreadFingerprint = "";
 window.setInterval(() => {
   if (!hasLiveExtensionContext() || spaNavigationBusy || busy) return;
+  if (location.pathname === "/app/recs" && Date.now() - lastSwipePulseAt >= 2300) {
+    lastSwipePulseAt = Date.now();
+    void sendRuntimeMessage({ type: "TNND_SMART_SWIPE_AUTOMATION_TICK" }).catch(() => undefined);
+  }
   const ref = currentConversationRef();
   const unreadRefs = discoverUnreadThreadCandidates().map(item => item.conversationRef);
   const fingerprint = JSON.stringify([...unreadRefs].sort());
@@ -1056,6 +1062,24 @@ function scheduleScan(): void {
     void scan();
   }, 900);
 }
+
+// Executed only after the background worker claims a durable account/device
+// attempt. Content reports only outcome codes, never private Tinder card data.
+chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
+  if (!message || typeof message !== "object" ||
+      (message as { type?: unknown }).type !== "TNND_SMART_SWIPE_EXECUTE_RESERVED") return false;
+  const attemptId = (message as { attemptId?: unknown }).attemptId;
+  if (sender.id !== chrome.runtime.id || !hasLiveExtensionContext() ||
+      typeof attemptId !== "string" ||
+      !/^[0-9a-f-]{36}$/i.test(attemptId)) {
+    respond({ ok: false, error: "invalid_reserved_attempt" });
+    return false;
+  }
+  void executeReservedTinderRightLike()
+    .then(outcome => respond({ ok: true, outcome }))
+    .catch(() => respond({ ok: false, error: "swipe_action_failed" }));
+  return true;
+});
 
 // Read-only, privacy-safe Discovery control snapshot. Never clicks Tinder.
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
