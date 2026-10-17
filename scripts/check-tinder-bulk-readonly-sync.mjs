@@ -47,7 +47,7 @@ test("passive inbox collection is opt-in, account-scoped and never reads message
   assert.match(popup, /TNND_BULK_SYNC_COLLECT_STOP/);
   assert.match(content, /visibleTinderMessageThreadRefs\(\)/);
   assert.match(content, /TNND_BULK_SYNC_OBSERVE_REFS/);
-  assert.match(background, /!state\?\.collecting \|\| state\.active/);
+  assert.match(background, /!state?.collecting && !prefs.autoCollectLoaded/);
   assert.match(background, /state\.userId !== session\.user\.id/);
   assert.match(background, /sender\.tab\?\.id !== state\.tabId/);
   assert.match(background, /safeBulkRefs\(input\.refs, 500\)/);
