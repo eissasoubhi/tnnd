@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { classifyConversationBoundary } from "../../../src/conversation-boundary-policy.js";
-import { desiredBoundaryTransition, validateObservedConversationBoundary, verifiedConversationBoundary } from "./conversation-boundary-service.js";
+import { desiredBoundaryTransition, handoffProvenance, validateObservedConversationBoundary, verifiedConversationBoundary } from "./conversation-boundary-service.js";
 
 test("normal farewells do not disable a chat on their own", () => {
   const input = validateObservedConversationBoundary({
@@ -81,4 +81,16 @@ test("direct no-contact and off-app requests require matching latest persisted e
   const move = [{ direction: "incoming" as const, text: "Écris-moi sur Instagram plutôt" }];
   assert.equal(verifiedConversationBoundary(move, move).kind, "off-tinder");
   assert.equal(verifiedConversationBoundary(move, stop).kind, "continue");
+});
+
+
+test("persisted platform provenance requires verified incoming source ID, never outgoing guesses", () => {
+  const boundary = { kind: "off-tinder" as const, platform: "instagram" as const };
+  assert.deepEqual(handoffProvenance(boundary, { direction: "incoming", external_message_id: "synced-inbound-id" }), {
+    platform: "instagram", sourceExternalMessageId: "synced-inbound-id"
+  });
+  assert.equal(handoffProvenance(boundary, { direction: "outgoing", external_message_id: "synced-outbound-id" }), null);
+  assert.equal(handoffProvenance(boundary, { direction: "incoming", external_message_id: "" }), null);
+  assert.equal(handoffProvenance({ kind: "continue", platform: null }, { direction: "incoming", external_message_id: "id" }), null);
+  assert.equal(handoffProvenance({ kind: "rest", platform: null }, { direction: "incoming", external_message_id: "id" }), null);
 });

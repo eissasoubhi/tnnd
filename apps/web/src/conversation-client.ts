@@ -1,5 +1,5 @@
 import type { AuthSession } from "./auth-client";
-import { isConversationStatus, normalizeConversationListItem, safeMatchPhotoUrl, type ConversationListItem, type ConversationStatus } from "./conversation-contract";
+import { isConversationStatus, knownHandoffPlatform, normalizeConversationListItem, safeMatchPhotoUrl, type ConversationListItem, type ConversationStatus } from "./conversation-contract";
 
 const apiBase = (import.meta.env.VITE_TNND_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "http://127.0.0.1:4000";
 
@@ -87,6 +87,7 @@ export interface ConversationDetail {
   matchAge?: number | null;
   matchPhotoUrl?: string | null;
   status: ConversationStatus;
+  handoffPlatform?: "instagram" | "whatsapp" | "snapchat" | "telegram" | null;
   currentTopic: string | null;
   topicState: ConversationTopicState;
   conversationFlow?: ConversationFlowState;
@@ -214,6 +215,7 @@ function normalizeConversationDetail(value: unknown): ConversationDetail {
     matchAge: typeof input.matchAge === "number" && Number.isInteger(input.matchAge) && input.matchAge >= 18 && input.matchAge <= 120 ? input.matchAge : null,
     matchPhotoUrl: safeMatchPhotoUrl(input.matchPhotoUrl),
     status: input.status,
+    handoffPlatform: input.status === "moved-off-tinder" ? knownHandoffPlatform(input.handoffPlatform) : null,
     currentTopic: typeof input.currentTopic === "string" ? input.currentTopic : null,
     topicState: normalizeTopicState(input.topicState),
     conversationFlow: normalizeConversationFlow(input.conversationFlow),

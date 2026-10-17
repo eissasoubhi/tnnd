@@ -71,6 +71,16 @@ export function verifiedConversationBoundary(
   return boundary;
 }
 
+/** Never persist a platform without a stored, verified incoming source. */
+export function handoffProvenance(
+  boundary: ConversationBoundary,
+  source: { direction: "incoming" | "outgoing"; external_message_id: string } | undefined
+): { platform: "instagram" | "whatsapp" | "snapchat" | "telegram"; sourceExternalMessageId: string } | null {
+  if (boundary.kind !== "off-tinder" || !boundary.platform
+    || source?.direction !== "incoming" || !source.external_message_id) return null;
+  return { platform: boundary.platform, sourceExternalMessageId: source.external_message_id };
+}
+
 export async function recordObservedConversationBoundary(
   userId: string, input: ObservedConversationBoundary
 ): Promise<{ boundary: ConversationBoundary; applied: boolean; status: string | null }> {
@@ -92,8 +102,8 @@ export async function recordObservedConversationBoundary(
       await client.query("COMMIT"); committed = true;
       return { boundary: noBoundary, applied: false, status: null };
     }
-    const history = await client.query<{ direction: "incoming" | "outgoing"; body: string }>(
-      "SELECT direction, body FROM (SELECT direction, body, sent_at, id FROM conversation_messages "
+    const history = await client.query<{ direction: "incoming" | "outgoing"; body: string; external_message_id: string }>(
+      "SELECT direction, body, external_message_id FROM (SELECT direction, body, external_message_id, sent_at, id FROM conversation_messages "
       + "WHERE conversation_id = $1 ORDER BY sent_at DESC, id DESC LIMIT 12) recent "
       + "ORDER BY sent_at ASC, id ASC",
       [row.id]
@@ -101,20 +111,25 @@ export async function recordObservedConversationBoundary(
     const persisted = history.rows.map(m => ({ direction: m.direction, text: m.body }));
     const boundary = verifiedConversationBoundary(input.messages, persisted);
     const transition = desiredBoundaryTransition(boundary);
+    const handoff = handoffProvenance(boundary, history.rows.at(-1));
     const canApply = Boolean(transition && row.management_state === "ai-managed"
       && row.management_selected_at && ["active", "waiting-for-them"].includes(row.status));
-    if (!canApply || !transition) {
+    if (!canApply || !transition || (transition.status === "moved-off-tinder" && !handoff)) {
       await client.query("COMMIT"); committed = true;
       return { boundary, applied: false, status: row.status };
     }
     const update = await client.query<{ status: string }>(
       "UPDATE conversations SET status = $3, management_state = $4, "
       + "management_selected_at = CASE WHEN $4 = 'ai-managed' THEN management_selected_at ELSE NULL END, "
+      + "handoff_platform = CASE WHEN $3 = 'moved-off-tinder' THEN $5 ELSE handoff_platform END, "
+      + "handoff_source_external_message_id = CASE WHEN $3 = 'moved-off-tinder' THEN $6 ELSE handoff_source_external_message_id END, "
       + "updated_at = now() WHERE user_id = $1 AND id = $2 "
       + "AND management_state = 'ai-managed' AND management_selected_at IS NOT NULL "
       + "AND status IN ('active', 'waiting-for-them') "
       + "AND (status <> $3 OR management_state <> $4) RETURNING status",
-      [userId, row.id, transition.status, transition.managementState]
+      [userId, row.id, transition.status, transition.managementState,
+        handoff?.platform ?? null,
+        handoff?.sourceExternalMessageId ?? null]
     );
     await client.query("COMMIT"); committed = true;
     return { boundary, applied: Boolean(update.rowCount), status: update.rows[0]?.status ?? row.status };
