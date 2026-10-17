@@ -1,4 +1,7 @@
+import { safeTinderPhotoUrl } from "../../../src/tinder-chat-identity";
 export type MatchProfileVisibleFields = {
+  photoUrl?: string;
+  photoUrls?: string[];
   firstName?: string;
   age?: number;
   bio?: string;
@@ -43,6 +46,7 @@ export type MatchProfileViewModel = {
   freshnessState: MatchProfileFreshnessState;
   fields: Array<{ label: string; value: string }>;
   sourceFields: Array<{ label: string; value: string }>;
+  photoUrls?: string[];
 };
 
 function formatDate(value: string): string {
@@ -93,6 +97,11 @@ export function buildMatchProfileViewModel(record: MatchProfileRecord, now = new
     freshnessLabel: captureFreshness.label,
     freshnessState: captureFreshness.state,
     fields: entries(normalized),
-    sourceFields: entries(source)
+    sourceFields: entries(source),
+    ...(() => {
+      const photoUrls = [...new Set([...(normalized.photoUrls ?? []), normalized.photoUrl]
+        .map(safeTinderPhotoUrl).filter((url): url is string => Boolean(url)))].slice(0,12);
+      return photoUrls.length ? {photoUrls} : {};
+    })()
   };
 }
