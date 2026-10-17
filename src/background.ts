@@ -9,6 +9,7 @@ import "./tinder-smart-swipe-automation-background";
 import { newMatchSendPermission } from "./tinder-new-match-background";
 import { currentAuthorizedTinderThread } from "./tinder-sender-route-guard";
 import "./tinder-global-existing-runner";
+import "./tinder-read-only-bulk-sync-background";
 import { generateSuggestions } from "./gemini";
 import { loadTinderConversationManagement } from "./tinder-backend-management";
 import { syncConversationDelta } from "./conversation-sync";
