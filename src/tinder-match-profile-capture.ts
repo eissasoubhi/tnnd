@@ -5,6 +5,7 @@ export type TinderProfileCaptureInput = {
   firstName?: string | null;
   age?: number | null;
   photoUrl?: string | null;
+  photoUrls?: string[] | null;
   bio?: string | null;
   job?: string | null;
   education?: string | null;
@@ -25,6 +26,7 @@ export type TinderVisibleProfileSource = {
     firstName?: string;
     age?: number;
     photoUrl?: string;
+    photoUrls?: string[];
     bio?: string;
     job?: string;
     education?: string;
@@ -82,6 +84,7 @@ export function buildReadOnlyProfileSource(
       firstName: boundedText(input.firstName),
       age: boundedAge(input.age),
       photoUrl: safeTinderPhotoUrl(input.photoUrl),
+      ...(input.photoUrls?.length ? {photoUrls:[...new Set(input.photoUrls.map(safeTinderPhotoUrl).filter((url): url is string => Boolean(url)))].slice(0,12)} : {}),
       bio: boundedText(input.bio),
       job: boundedText(input.job),
       education: boundedText(input.education),
@@ -99,6 +102,7 @@ export function hasMeaningfulVisibleProfileFields(source: TinderVisibleProfileSo
   return Boolean(
     fields.firstName
     || fields.photoUrl
+    || fields.photoUrls?.length
     || fields.age
     || fields.bio
     || fields.job
@@ -121,6 +125,7 @@ export function buildProfileCaptureDedupeKey(source: TinderVisibleProfileSource)
       firstName: fields.firstName ?? null,
       age: fields.age ?? null,
       photoUrl: fields.photoUrl ?? null,
+      photoUrls: fields.photoUrls ?? [],
       bio: fields.bio ?? null,
       job: fields.job ?? null,
       education: fields.education ?? null,

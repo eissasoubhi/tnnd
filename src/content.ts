@@ -31,6 +31,8 @@ let lastNewMatchObservation = "";
 let lastNewMatchObservationAt = 0;
 let lastBulkCollectionFingerprint = "";
 let lastBulkCollectionAt = 0;
+let lastAutoImportRef: string | null = null;
+let lastAutoImportAt = 0;
 let identitySyncBusy = false;
 let lastIdentityFingerprint = "";
 let lastIdentityAttemptAt = 0;
@@ -373,6 +375,20 @@ async function observeBulkCollection(): Promise<void> {
   lastBulkCollectionFingerprint = fingerprint;
   lastBulkCollectionAt = Date.now();
   await sendRuntimeMessage({ type: "TNND_BULK_SYNC_OBSERVE_REFS", refs });
+}
+
+/** This signal contains only the observed thread ref, never message text.
+ * The background verifies the logged-in account's explicit Web setting
+ * before fetching visible messages from this exact current Tinder tab.
+ */
+async function notifyOpenedThreadForOptInSync(): Promise<void> {
+  if (!hasLiveExtensionContext() || busy || spaNavigationBusy) return;
+  const ref = currentConversationRef();
+  if (!ref || !adapter.diagnose().composerFound) return;
+  if (ref === lastAutoImportRef && Date.now()-lastAutoImportAt < 20_000) return;
+  lastAutoImportRef = ref;
+  lastAutoImportAt = Date.now();
+  await sendRuntimeMessage({type:"TNND_IMPORT_OPENED_THREAD_OBSERVED",ref});
 }
 
 async function observeRuntimeReadMode(): Promise<void> {
@@ -1099,6 +1115,7 @@ function scheduleScan(): void {
   void observeVisibleIdentity().catch(() => undefined);
   void observeNewMatchLinks().catch(() => undefined);
   void observeBulkCollection().catch(() => undefined);
+  void notifyOpenedThreadForOptInSync().catch(() => undefined);
   if (scanTimer) window.clearTimeout(scanTimer);
   scanTimer = window.setTimeout(() => {
     if (!hasLiveExtensionContext()) return;

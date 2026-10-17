@@ -120,7 +120,8 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
       }
     }
 
-    if (acceptedOutgoingCount > 0) {
+    // Historical imports must not consume temporary instruction quotas.
+    if (!input.readOnlyImport && acceptedOutgoingCount > 0) {
       await client.query(
         `UPDATE conversations
          SET temporary_instruction = CASE

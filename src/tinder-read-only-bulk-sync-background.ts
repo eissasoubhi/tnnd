@@ -1,12 +1,16 @@
 import { getBackendSession, getConfig } from "./storage";
 import { assertTinderContentBridge } from "./tinder-tab-connection";
-import { prepareReadOnlyImport, type VisibleTinderMessage } from "./tinder-manual-import";
+import { prepareReadOnlyImportBatches, type VisibleTinderMessage } from "./tinder-manual-import";
+import { uploadVisibleMatchProfileCapture } from "./tinder-match-profile-backend";
+import { DEFAULT_TINDER_IMPORT_SETTINGS, validateTinderImportSettings, shouldImportThread, type TinderImportSettings } from "./tinder-import-settings";
+import type { TinderVisibleProfileSource } from "./tinder-match-profile-capture";
 import { safeBulkRefs, nextBulkSyncRef, canContinueBulkSync, bulkSyncCounts, type BulkSyncProgress } from "./tinder-bulk-sync-policy";
 
 const KEY = "tnnd.readOnlyBulkSync.v1";
 const ALARM = "tnnd.readOnlyBulkSync.tick";
 const API = "http://127.0.0.1:4000";
 let processing = false;
+const autoOpenedInFlight = new Set<string>();
 const popupOnly = (sender: chrome.runtime.MessageSender): boolean =>
   sender.id === chrome.runtime.id && sender.url === `chrome-extension://${chrome.runtime.id}/popup.html`;
 
@@ -84,7 +88,31 @@ async function stop(reason?: string): Promise<BulkSyncProgress | null> {
   await chrome.alarms.clear(ALARM);
   return load();
 }
-async function upload(ref: string, messages: VisibleTinderMessage[], expectedUserId: string): Promise<{ partial: boolean }> {
+async function settingsFor(userId: string): Promise<TinderImportSettings> {
+  const session = await getBackendSession();
+  if (!session || session.user.id !== userId) throw new Error("tnnd_account_changed");
+  const response = await fetch(API + "/api/v1/tinder/import-settings", {
+    headers: { authorization: "Bearer "+session.token }, cache: "no-store"
+  });
+  if (!response.ok) throw new Error("import_preferences_unavailable");
+  const result = await response.json() as {settings?: unknown};
+  return validateTinderImportSettings(result.settings ?? DEFAULT_TINDER_IMPORT_SETTINGS);
+}
+interface ProfileSnapshot {
+  ok?: boolean;
+  conversationRef?: string;
+  age?: number | null;
+  capture?: TinderVisibleProfileSource;
+}
+async function readProfile(tabId: number, ref: string): Promise<TinderVisibleProfileSource | null> {
+  const snapshot = await chrome.tabs.sendMessage(tabId, {type:"TNND_IMPORT_VISIBLE_MATCH_PROFILE"}) as ProfileSnapshot;
+  if (!snapshot?.ok || snapshot.conversationRef !== ref) throw new Error("profile_thread_mismatch");
+  return snapshot.capture ?? null;
+}
+async function upload(
+  ref: string, messages: VisibleTinderMessage[], expectedUserId: string,
+  settings: TinderImportSettings, profile: TinderVisibleProfileSource | null
+): Promise<{ partial: boolean }> {
   const session = await getBackendSession();
   if (!session || session.user.id !== expectedUserId) throw new Error("tnnd_account_changed");
   const lookup = await fetch(API + "/api/v1/conversations/by-external-thread?externalThreadId=" + encodeURIComponent(ref), {
@@ -92,27 +120,47 @@ async function upload(ref: string, messages: VisibleTinderMessage[], expectedUse
   });
   if (!lookup.ok && lookup.status !== 404) throw new Error("conversation_lookup_failed");
   const existing = lookup.ok;
-  const visible = messages.slice(-40);
-  const payload = visible.length ? prepareReadOnlyImport(visible, existing, new Date().toISOString()) : null;
-  // Existing statuses and AI-management choices are untouched. New chats are
-  // strictly paused/unmanaged until separate explicit consent is granted.
-  const response = await fetch(API + "/api/v1/conversations/sync", {
-    method: "POST",
-    headers: { authorization: "Bearer " + session.token, "content-type": "application/json" },
-    body: JSON.stringify({
-      externalThreadId: ref,
-      status: existing ? undefined : "paused",
-      messages: payload?.messages ?? [],
-      ...(payload ? { nextCursor: payload.nextCursor } : {})
-    })
-  });
-  if (!response.ok) throw new Error("conversation_import_failed");
-  const result = await response.json() as { conversationId?: unknown; acceptedMessageIds?: unknown };
-  if (typeof result.conversationId !== "string" || !Array.isArray(result.acceptedMessageIds)) {
-    throw new Error("unconfirmed_import_response");
+  const batches = settings.includeMessages
+    ? prepareReadOnlyImportBatches(messages, existing, new Date().toISOString()) : [];
+  // Even with zero visible messages, create the thread as paused and unmanaged
+  // when importing profile/photo evidence. Never re-enable existing status.
+  const work = batches.length ? batches : [{messages:[],requestedStatus:existing?null:"paused",nextCursor:undefined}];
+  let conversationId = "";
+  for (const [index, batch] of work.entries()) {
+    if ((await getBackendSession())?.user.id !== expectedUserId) throw new Error("tnnd_account_changed");
+    const response = await fetch(API + "/api/v1/conversations/sync", {
+      method:"POST",headers:{authorization:"Bearer "+session.token,"content-type":"application/json"},
+      body:JSON.stringify({
+        externalThreadId:ref, readOnlyImport:true,
+        ...(index === 0 && !existing ? {status:"paused"} : {}),
+        messages:batch.messages, ...(batch.nextCursor ? {nextCursor:batch.nextCursor}: {})
+      })
+    });
+    if (!response.ok) throw new Error("conversation_import_failed");
+    const result = await response.json() as {conversationId?: unknown; acceptedMessageIds?: unknown};
+    if (typeof result.conversationId !== "string" || !Array.isArray(result.acceptedMessageIds)
+      || (conversationId && result.conversationId !== conversationId)) throw new Error("unconfirmed_import_response");
+    conversationId = result.conversationId;
   }
-  return { partial: messages.length > 40 };
+  if ((settings.includeProfile || settings.includePhotos) && profile) {
+    const fields = profile.visibleFields;
+    const selected: TinderVisibleProfileSource = {
+      ...profile,
+      visibleFields: settings.includeProfile ? {
+        ...fields,
+        ...(!settings.includePhotos ? {photoUrl:undefined,photoUrls:undefined}:{})
+      } : {
+        ...(settings.includePhotos ? {photoUrl:fields.photoUrl, photoUrls:fields.photoUrls}:{})
+      }
+    };
+    if (Object.values(selected.visibleFields).some(value=>Array.isArray(value) ? value.length > 0 : Boolean(value))) {
+      await uploadVisibleMatchProfileCapture(session, selected, {conversationId});
+    }
+  }
+  // Tinder has not proven that the oldest message/photos were loaded.
+  return {partial:true};
 }
+
 async function tick(): Promise<void> {
   if (processing) return;
   processing = true;
@@ -165,7 +213,17 @@ async function tick(): Promise<void> {
           await stop("account_or_automation_changed"); return;
         }
         const observed = snapshot?.ok ? snapshot.messages! : [];
-        const imported = await upload(ref, observed, state.userId);
+        const prefs = await settingsFor(state.userId);
+        const profile = (prefs.includeProfile || prefs.includePhotos || prefs.scope === "filtered")
+          ? await readProfile(state.tabId,ref) : null;
+        const eligibility = shouldImportThread(prefs,{
+          age:profile?.visibleFields.age ?? null,messageCount:observed.length
+        });
+        if (!eligibility.eligible) {
+          await save({...live,failed:{...live.failed,[ref]:"filtered_"+eligibility.reason}});
+          continue;
+        }
+        const imported = await upload(ref, observed, state.userId,prefs,profile);
         state = { ...live, done: [...live.done, ref],
           partial: imported.partial ? [...live.partial, ref] : live.partial };
         await save(state);
@@ -198,12 +256,67 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   void (async () => {
     const state = await load();
     const session = await getBackendSession();
-    if (!state?.collecting || state.active || !session || state.userId !== session.user.id
-      || sender.tab?.id !== state.tabId) return {ok:false};
-    const observed = safeBulkRefs(input.refs, 500);
-    const merged = safeBulkRefs([...state.refs,...observed],500);
-    if (merged.length !== state.refs.length) await save({...state,refs:merged});
-    return {ok:true,added:merged.length-state.refs.length};
+    if (!session || (state?.active) || (state?.userId && state.userId !== session.user.id)
+      || (state?.tabId && sender.tab?.id !== state.tabId)) return {ok:false};
+    const prefs = await settingsFor(session.user.id);
+    if (!state?.collecting && !prefs.autoCollectLoaded) return {ok:false};
+    const observed = safeBulkRefs(input.refs,500);
+    const original = state?.refs ?? [];
+    const merged = safeBulkRefs([...original,...observed],500);
+    if (!merged.length) return {ok:false};
+    if (merged.length !== original.length) {
+      const next: BulkSyncProgress = state ?? {
+        active:false,collecting:false,stopReason:null,
+        userId:session.user.id,tabId:sender.tab!.id!,refs:[],done:[],failed:{},partial:[],
+        initialRef:pathRef(sender.url),lastRef:null,
+        startedAt:new Date().toISOString(),updatedAt:new Date().toISOString()
+      };
+      await save({...next,refs:merged});
+    }
+    return {ok:true,added:merged.length-original.length};
+  })().then(sendResponse).catch(()=>sendResponse({ok:false}));
+  return true;
+});
+
+/** Automatic *passive* sync of an already opened Tinder conversation.
+ * This never navigates or sends. Disabled by default in the account's Web
+ * import preferences, independent from all Tinder AI-send permissions.
+ */
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (!message || typeof message !== "object" ||
+      (message as {type?: unknown}).type !== "TNND_IMPORT_OPENED_THREAD_OBSERVED") return false;
+  const ref = (message as {ref?: unknown}).ref;
+  if (sender.id !== chrome.runtime.id || !sender.tab?.id ||
+      !/^https:\/\/(?:www\.)?tinder\.com\//.test(sender.url ?? "") ||
+      typeof ref !== "string" || !/^[a-zA-Z0-9_-]{3,512}$/.test(ref) ||
+      pathRef(sender.url) !== ref) { sendResponse({ok:false});return false; }
+  void (async () => {
+    const session = await getBackendSession();
+    if (!session) return {ok:false};
+    const key = session.user.id + ":" + sender.tab!.id + ":" + ref;
+    if (autoOpenedInFlight.has(key)) return {ok:false};
+    const prefs = await settingsFor(session.user.id);
+    if (!prefs.autoSyncOpened) return {ok:false};
+    const tab = await chrome.tabs.get(sender.tab!.id!);
+    if (pathRef(tab.url) !== ref) return {ok:false};
+    autoOpenedInFlight.add(key);
+    try {
+      const snapshot = await chrome.tabs.sendMessage(tab.id!,{type:"TNND_GET_VISIBLE_THREAD_MESSAGES"}) as
+        {ok?:boolean;conversationRef?:string;threadKey?:string;messages?:VisibleTinderMessage[];error?:string};
+      const isEmpty = snapshot?.error === "no_recognized_messages";
+      if (!isEmpty && !(snapshot?.ok && snapshot.conversationRef === ref &&
+          snapshot.threadKey === ref && Array.isArray(snapshot.messages))) return {ok:false};
+      const observed = snapshot?.ok ? snapshot.messages! : [];
+      const profile = await readProfile(tab.id!,ref);
+      const eligible = shouldImportThread(prefs,{age:profile?.visibleFields.age ?? null,
+        messageCount:observed.length});
+      if (!eligible.eligible) return {ok:false,reason:eligible.reason};
+      if ((await getBackendSession())?.user.id !== session.user.id ||
+          pathRef((await chrome.tabs.get(tab.id!)).url) !== ref ||
+          !(await settingsFor(session.user.id)).autoSyncOpened) return {ok:false};
+      await upload(ref,observed,session.user.id,prefs,profile);
+      return {ok:true};
+    } finally {autoOpenedInFlight.delete(key);}
   })().then(sendResponse).catch(()=>sendResponse({ok:false}));
   return true;
 });

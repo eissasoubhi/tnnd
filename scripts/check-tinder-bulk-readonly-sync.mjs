@@ -32,7 +32,7 @@ test("source contract guarantees no send and preserves existing statuses", () =>
   assert.match(background, /disable_all_auto_chat_before_read_only_import/);
   assert.match(background, /TNND_BULK_SYNC_READONLY_NAVIGATE/);
   assert.match(background, /TNND_GET_VISIBLE_THREAD_MESSAGES/);
-  assert.match(background, /status: existing \? undefined : "paused"/);
+  assert.match(background, /index === 0 && !existing/);
   assert.match(background, /conversation_import_failed/);
   assert.doesNotMatch(background, /TNND_START_FIRST_MESSAGE|TNND_AUTO_START_NEW_MATCH|TNND_CLAIM_FIRST_MESSAGE/);
   assert.match(content, /unsent_message_draft_present/);
@@ -47,10 +47,10 @@ test("passive inbox collection is opt-in, account-scoped and never reads message
   assert.match(popup, /TNND_BULK_SYNC_COLLECT_STOP/);
   assert.match(content, /visibleTinderMessageThreadRefs\(\)/);
   assert.match(content, /TNND_BULK_SYNC_OBSERVE_REFS/);
-  assert.match(background, /!state\?\.collecting \|\| state\.active/);
-  assert.match(background, /state\.userId !== session\.user\.id/);
-  assert.match(background, /sender\.tab\?\.id !== state\.tabId/);
-  assert.match(background, /safeBulkRefs\(input\.refs, 500\)/);
+  assert.ok(background.includes("!state?.collecting && !prefs.autoCollectLoaded"));
+  assert.ok(background.includes("state.userId !== session.user.id"));
+  assert.ok(background.includes("sender.tab?.id !== state.tabId"));
+  assert.ok(background.includes("safeBulkRefs(input.refs,500)"));
   assert.match(background, /collecting: false, stopReason: null/);
   assert.doesNotMatch(background, /upload-artifact|TNND_START_FIRST_MESSAGE/);
 });

@@ -20,6 +20,7 @@ async function loadOptionalPanels(): Promise<void> {
   for (const loader of [
     () => import("./ai-provider-panel"),
     () => import("./smart-auto-swipe-panel"),
+    () => import("./tinder-import-settings-panel"),
     () => import("./identity-builder-panel"),
     () => import("./personal-memory-panel"),
     () => import("./conversation-panel"),

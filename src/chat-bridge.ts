@@ -1,6 +1,8 @@
 import { TinderDomAdapter } from "./tinder-adapter";
 import { TINDER_BRIDGE_PROTOCOL } from "./tinder-tab-connection";
 import { readVisibleTinderMatchIdentity } from "./tinder-chat-identity";
+import { readVisibleTinderProfilePanel } from "./tinder-visible-profile-panel";
+import { buildReadOnlyProfileSource } from "./tinder-match-profile-capture";
 import { detectVisibleTinderSidebarTab, visibleTinderThreadRefs, visibleTinderMessageThreadRefs } from "./tinder-visible-thread-links";
 import { detectTinderChat } from "./tinder-chat-detection";
 import { buildNormalizedMessageKeys } from "./tinder-message-key";
@@ -88,6 +90,23 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       })),
       composerFound: true
     });
+    return false;
+  }
+
+  if (input.type === "TNND_IMPORT_VISIBLE_MATCH_PROFILE") {
+    const route = classifyTinderPath(location.pathname);
+    const current = route.state === "conversation" ? route.conversationRef : null;
+    if (!current || !adapter.diagnose().composerFound) {
+      sendResponse({ok:false,error:"verified_chat_required"});return false;
+    }
+    const identity = readVisibleTinderMatchIdentity(current);
+    const profile = readVisibleTinderProfilePanel(current, identity);
+    const source = buildReadOnlyProfileSource(profile ?? {
+      route: location.pathname, firstName: identity.firstName,
+      age: identity.age, photoUrl: identity.photoUrl
+    });
+    sendResponse({ok:true,conversationRef:current,age:source.visibleFields.age ?? null,
+      capture:source});
     return false;
   }
 

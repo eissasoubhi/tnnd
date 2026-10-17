@@ -1,4 +1,4 @@
-import { parseVisibleMatchHeading, type VisibleTinderMatchIdentity } from "./tinder-chat-identity.ts";
+import { parseVisibleMatchHeading, safeTinderPhotoUrl, type VisibleTinderMatchIdentity } from "./tinder-chat-identity.ts";
 import type { TinderProfileCaptureInput } from "./tinder-match-profile-capture.ts";
 
 /** Verified against an Oct 2026 redacted Tinder diagnostic:
@@ -87,13 +87,21 @@ export function readVisibleTinderProfilePanel(
       if (question && answer && prompts.length < 24) prompts.push({ section: label, question, answer });
     }
   }
+  // Only images rendered inside the matched, verified profile panel; never
+  // scrape unrelated Discovery photos or infer images that Tinder has not loaded.
+  const photoUrls = [...new Set([identity.photoUrl,
+    ...Array.from(root.querySelectorAll<HTMLImageElement>("img"))
+      .filter(img => img.getClientRects().length > 0)
+      .map(img => safeTinderPhotoUrl(img.currentSrc || img.getAttribute("src")))
+  ].filter((url): url is string => Boolean(url)))].slice(0,12);
   // Never derive height from a photo or hometown from a kilometre distance.
-  if (!relationshipGoal && !bio && !heightCm && !interests.length && !prompts.length) return null;
+  if (!relationshipGoal && !bio && !heightCm && !interests.length && !prompts.length && !photoUrls.length) return null;
   return {
     route: pathname.slice(0, 512),
     firstName: identity.firstName,
     age: identity.age ?? panelIdentity.age,
     photoUrl: identity.photoUrl,
+    ...(photoUrls.length ? {photoUrls} : {}),
     relationshipGoal, bio, heightCm,
     ...(interests.length ? { interests } : {}),
     ...(prompts.length ? { prompts } : {})
