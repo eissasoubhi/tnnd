@@ -1,6 +1,7 @@
 import { getBackendSession, getConfig } from "./storage";
 import { assertTinderContentBridge } from "./tinder-tab-connection";
 import { prepareReadOnlyImportBatches, type VisibleTinderMessage } from "./tinder-manual-import";
+import { mergeOlderHistory, olderBackfillKey } from "./tinder-history-page-merge";
 import { uploadVisibleMatchProfileCapture } from "./tinder-match-profile-backend";
 import { DEFAULT_TINDER_IMPORT_SETTINGS, validateTinderImportSettings, shouldImportThread, type TinderImportSettings } from "./tinder-import-settings";
 import type { TinderVisibleProfileSource } from "./tinder-match-profile-capture";
@@ -169,6 +170,42 @@ async function upload(
   }
   // Tinder has not proven that the oldest message/photos were loaded.
   return {partial:true};
+}
+
+type HistorySnapshot = {ok?:boolean;threadKey?:string;conversationRef?:string;threadKeyHash?:string;messages?:VisibleTinderMessage[];error?:string};
+async function readBackToFirstRenderedPage(
+  tabId:number, ref:string, initial:HistorySnapshot
+): Promise<{messages:VisibleTinderMessage[];reachedTop:boolean;additional:number}> {
+  const first=initial.messages ?? [];
+  if(!first.length)return {messages:[],reachedTop:false,additional:0};
+  let all=[...first],reachedTop=false,stableTop=0;
+  const threadHash=initial.threadKeyHash;
+  // Only page through a verified chat scroller; a mismatch is an explicit
+  // partial result. Do not use undocumented Tinder APIs or arbitrary wheel.
+  for(let page=0;page<80 && all.length<1000;page++){
+    const moved=await chrome.tabs.sendMessage(tabId,{type:"TNND_IMPORT_SCROLL_OLDER_PAGE",ref})
+      .catch(()=>null) as {ok?:boolean;atTop?:boolean;moved?:boolean}|null;
+    if(!moved?.ok)break;
+    const snapshot=await chrome.tabs.sendMessage(tabId,{type:"TNND_GET_VISIBLE_THREAD_MESSAGES"})
+      .catch(()=>null) as HistorySnapshot|null;
+    if(!snapshot?.ok || snapshot.threadKey!==ref || snapshot.conversationRef!==ref ||
+       snapshot.threadKeyHash!==threadHash || !Array.isArray(snapshot.messages)) break;
+    const merged=mergeOlderHistory(all,snapshot.messages);
+    if(!merged || merged.messages.length>1000)break;
+    all=merged.messages;
+    stableTop=moved.atTop && merged.added===0 ? stableTop+1 : 0;
+    if(stableTop>=2){reachedTop=true;break;}
+    if(!moved.moved && !moved.atTop)break;
+  }
+  // Restore the view once collection is finished. Failure just means the
+  // user navigated or the message list is no longer safe to manipulate.
+  await chrome.tabs.sendMessage(tabId,{type:"TNND_IMPORT_RESTORE_LATEST",ref})
+    .catch(()=>undefined);
+  const additional=all.length-first.length;
+  const messages=all.map((message,index)=> index<additional
+    ? {...message,key:olderBackfillKey(ref,index-additional,message)}
+    : {...message,key:first[index-additional].key});
+  return {messages,reachedTop,additional};
 }
 
 async function tick(): Promise<void> {
