@@ -71,7 +71,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       sendResponse({ ok: false, error: "composer_not_found", view: diagnostics.view });
       return false;
     }
-    const messages = adapter.readVisibleMessages();
+    const messages = adapter.readVisibleMessages(1000);
     if (!messages.length) {
       sendResponse({ ok: false, error: "no_recognized_messages", view: diagnostics.view });
       return false;
@@ -81,6 +81,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     sendResponse({
       ok: true,
       threadKey: detectTinderChat(location.pathname, true).threadKey,
+      threadKeyHash: diagnostics.threadKeyHash,
       conversationRef: route.conversationRef,
       identity: readVisibleTinderMatchIdentity(route.conversationRef),
       messages: normalized.map(message => ({
