@@ -4,7 +4,7 @@ import { executeReservedTinderRightLike } from "./tinder-swipe-live-action";
 import { redactDiagnosticInlineStyle } from "./tinder-diagnostic-inline-style-redaction";
 import { readVisibleTinderMatchIdentity, type VisibleTinderMatchIdentity } from "./tinder-chat-identity";
 import { readVisibleTinderProfilePanel } from "./tinder-visible-profile-panel";
-import { detectVisibleTinderSidebarTab, visibleTinderThreadRefs } from "./tinder-visible-thread-links";
+import { detectVisibleTinderSidebarTab, visibleTinderThreadRefs, visibleTinderMessageThreadRefs } from "./tinder-visible-thread-links";
 import { firstMessageAttemptKey, firstMessageBlocker, firstMessageContext } from "./tinder-first-message";
 import { groundedOpenerFragments, sameOpenerThreadUninterrupted } from "./tinder-opener-fragments";
 import { openerDelaySeconds, openerTypingDelaySeconds } from "./tinder-opener-timing";
@@ -29,6 +29,8 @@ let scanTimer: number | undefined;
 let runtimeReadBusy = false;
 let lastNewMatchObservation = "";
 let lastNewMatchObservationAt = 0;
+let lastBulkCollectionFingerprint = "";
+let lastBulkCollectionAt = 0;
 let identitySyncBusy = false;
 let lastIdentityFingerprint = "";
 let lastIdentityAttemptAt = 0;
@@ -356,6 +358,21 @@ async function observeNewMatchLinks(): Promise<void> {
   lastNewMatchObservationAt = Date.now();
   await sendRuntimeMessage({ type: "TNND_NEW_MATCH_LINKS_SEEN", refs });
   await sendRuntimeMessage({ type: "TNND_WATCHER_MATCHES_SEEN", refs });
+}
+
+/** Only sends opaque, observed conversation refs when a human is browsing
+ * the Messages sidebar. Background stores them only during an explicit
+ * opt-in collection session tied to the same TNND user and Tinder tab.
+ */
+async function observeBulkCollection(): Promise<void> {
+  if (!hasLiveExtensionContext() || detectVisibleTinderSidebarTab() !== "messages") return;
+  const refs = visibleTinderMessageThreadRefs();
+  if (!refs.length) return;
+  const fingerprint = JSON.stringify(refs);
+  if (fingerprint === lastBulkCollectionFingerprint && Date.now() - lastBulkCollectionAt < 30_000) return;
+  lastBulkCollectionFingerprint = fingerprint;
+  lastBulkCollectionAt = Date.now();
+  await sendRuntimeMessage({ type: "TNND_BULK_SYNC_OBSERVE_REFS", refs });
 }
 
 async function observeRuntimeReadMode(): Promise<void> {
@@ -1081,6 +1098,7 @@ function scheduleScan(): void {
   void observeRuntimeReadMode();
   void observeVisibleIdentity().catch(() => undefined);
   void observeNewMatchLinks().catch(() => undefined);
+  void observeBulkCollection().catch(() => undefined);
   if (scanTimer) window.clearTimeout(scanTimer);
   scanTimer = window.setTimeout(() => {
     if (!hasLiveExtensionContext()) return;

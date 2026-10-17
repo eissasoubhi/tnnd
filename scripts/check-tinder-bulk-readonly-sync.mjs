@@ -38,3 +38,19 @@ test("source contract guarantees no send and preserves existing statuses", () =>
   assert.match(content, /unsent_message_draft_present/);
   assert.match(bridge, /TNND_BULK_SYNC_VISIBLE_MESSAGE_REFS/);
 });
+
+test("passive inbox collection is opt-in, account-scoped and never reads message bodies", () => {
+  const background = readFileSync(new URL("../src/tinder-read-only-bulk-sync-background.ts",import.meta.url),"utf8");
+  const content = readFileSync(new URL("../src/content.ts",import.meta.url),"utf8");
+  const popup = readFileSync(new URL("../src/tinder-bulk-sync-popup.ts",import.meta.url),"utf8");
+  assert.match(popup, /TNND_BULK_SYNC_COLLECT_START/);
+  assert.match(popup, /TNND_BULK_SYNC_COLLECT_STOP/);
+  assert.match(content, /visibleTinderMessageThreadRefs\(\)/);
+  assert.match(content, /TNND_BULK_SYNC_OBSERVE_REFS/);
+  assert.match(background, /!state\?\.collecting \|\| state\.active/);
+  assert.match(background, /state\.userId !== session\.user\.id/);
+  assert.match(background, /sender\.tab\?\.id !== state\.tabId/);
+  assert.match(background, /safeBulkRefs\(input\.refs, 500\)/);
+  assert.match(background, /collecting: false, stopReason: null/);
+  assert.doesNotMatch(background, /upload-artifact|TNND_START_FIRST_MESSAGE/);
+});

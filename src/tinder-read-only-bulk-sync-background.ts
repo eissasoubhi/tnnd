@@ -61,7 +61,8 @@ async function collect(): Promise<BulkSyncProgress> {
   const merged = safeBulkRefs([...(same ? previous.refs : []), ...refs], 500);
   if (!merged.length) throw new Error("no_loaded_tinder_conversations");
   const state: BulkSyncProgress = {
-    active: false, userId: session.user.id, tabId: tab.id!,
+    active: false, collecting: same ? previous.collecting === true : false, stopReason: null,
+    userId: session.user.id, tabId: tab.id!,
     refs: merged, done: same ? previous.done.filter(ref=>merged.includes(ref)) : [],
     failed: same ? Object.fromEntries(Object.entries(previous.failed).filter(([ref])=>merged.includes(ref))) : {},
     partial: same ? previous.partial.filter(ref=>merged.includes(ref)) : [],
@@ -73,14 +74,14 @@ async function collect(): Promise<BulkSyncProgress> {
   return state;
 }
 function counts(state: BulkSyncProgress | null) {
-  return state ? { active: state.active, ...bulkSyncCounts(state), updatedAt: state.updatedAt }
-    : { active: false, selected: 0, completed: 0, failed: 0, partial: 0, pending: 0, updatedAt: null };
+  return state ? { active: state.active, collecting: state.collecting === true,
+      stopReason: state.stopReason ?? null, ...bulkSyncCounts(state), updatedAt: state.updatedAt }
+    : { active: false, collecting: false, stopReason: null, selected: 0, completed: 0, failed: 0, partial: 0, pending: 0, updatedAt: null };
 }
 async function stop(reason?: string): Promise<BulkSyncProgress | null> {
   const state = await load();
-  if (state?.active) await save({ ...state, active: false });
+  if (state?.active) await save({ ...state, active: false, stopReason: reason ?? null });
   await chrome.alarms.clear(ALARM);
-  if (reason) { /* Reason is a fixed error code, never a chat transcript. */ }
   return load();
 }
 async function upload(ref: string, messages: VisibleTinderMessage[], expectedUserId: string): Promise<{ partial: boolean }> {
@@ -127,7 +128,7 @@ async function tick(): Promise<void> {
         automationEnabled: config.automation.enabled,
         otherRunnerActive: await otherRunnersActive()
       });
-      if (!session || reason) { await stop(); return; }
+      if (!session || reason) { await stop(reason ?? "tnnd_account_disconnected"); return; }
       const ref = nextBulkSyncRef(state);
       if (!ref) { await stop(); return; }
       try {
@@ -137,7 +138,7 @@ async function tick(): Promise<void> {
         }) as { ok?: boolean; currentRef?: string; error?: string };
         if (!result?.ok || result.currentRef !== ref) {
           if (["unsent_message_draft_present","conversation_processing_in_progress","unexpected_current_thread"].includes(result?.error ?? "")) {
-            await stop(); return;
+            await stop("human_draft_or_chat_busy"); return;
           }
           state = { ...state, failed: { ...state.failed, [ref]: result?.error ?? "navigation_not_confirmed" } };
           await save(state);
@@ -161,7 +162,7 @@ async function tick(): Promise<void> {
         if (!live?.active || live.startedAt !== state.startedAt
           || (await getBackendSession())?.user.id !== state.userId
           || (await getConfig()).automation.enabled || await otherRunnersActive()) {
-          await stop(); return;
+          await stop("account_or_automation_changed"); return;
         }
         const observed = snapshot?.ok ? snapshot.messages! : [];
         const imported = await upload(ref, observed, state.userId);
@@ -175,7 +176,7 @@ async function tick(): Promise<void> {
       }
     }
   } catch {
-    await stop();
+    await stop("tinder_or_api_unavailable");
   } finally {
     processing = false;
     const state = await load();
@@ -183,13 +184,37 @@ async function tick(): Promise<void> {
   }
 }
 
+/** Passive user-authorized discovery as the human scrolls Tinder Messages.
+ * Collect thread refs only: no messages, prompts, AI sends or invented URLs.
+ */
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (!message || typeof message !== "object"
+    || (message as {type?: unknown}).type !== "TNND_BULK_SYNC_OBSERVE_REFS") return false;
+  const input = message as { refs?: unknown };
+  if (sender.id !== chrome.runtime.id || !sender.tab?.id ||
+    !/^https:\/\/(?:www\.)?tinder\.com\//.test(sender.url ?? "")) {
+    sendResponse({ok:false}); return false;
+  }
+  void (async () => {
+    const state = await load();
+    const session = await getBackendSession();
+    if (!state?.collecting || state.active || !session || state.userId !== session.user.id
+      || sender.tab?.id !== state.tabId) return {ok:false};
+    const observed = safeBulkRefs(input.refs, 500);
+    const merged = safeBulkRefs([...state.refs,...observed],500);
+    if (merged.length !== state.refs.length) await save({...state,refs:merged});
+    return {ok:true,added:merged.length-state.refs.length};
+  })().then(sendResponse).catch(()=>sendResponse({ok:false}));
+  return true;
+});
+
 chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === ALARM) void tick();
 });
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (!message || typeof message !== "object") return false;
   const input = message as { type?: unknown };
-  if (!["TNND_BULK_SYNC_STATUS","TNND_BULK_SYNC_COLLECT","TNND_BULK_SYNC_START","TNND_BULK_SYNC_STOP","TNND_BULK_SYNC_RETRY"].includes(String(input.type))) return false;
+  if (!["TNND_BULK_SYNC_STATUS","TNND_BULK_SYNC_COLLECT","TNND_BULK_SYNC_COLLECT_START","TNND_BULK_SYNC_COLLECT_STOP","TNND_BULK_SYNC_START","TNND_BULK_SYNC_STOP","TNND_BULK_SYNC_RETRY"].includes(String(input.type))) return false;
   if (!popupOnly(sender)) {
     sendResponse({ ok:false, error:"popup_only" }); return false;
   }
@@ -199,6 +224,16 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       return { ok:true, state: state?.userId === session?.user.id ? counts(state) : counts(null) };
     }
     if (input.type === "TNND_BULK_SYNC_COLLECT") return { ok:true, state: counts(await collect()) };
+    if (input.type === "TNND_BULK_SYNC_COLLECT_START") {
+      const state = await collect();
+      await save({ ...state, collecting: true, stopReason: null });
+      return { ok: true, state: counts(await load()) };
+    }
+    if (input.type === "TNND_BULK_SYNC_COLLECT_STOP") {
+      const state = await load();
+      if (state?.collecting) await save({ ...state, collecting: false });
+      return { ok: true, state: counts(await load()) };
+    }
     if (input.type === "TNND_BULK_SYNC_STOP") return { ok:true, state: counts(await stop()) };
     let state = await load();
     const session = await getBackendSession();
@@ -209,7 +244,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     if (input.type === "TNND_BULK_SYNC_RETRY") {
       state = { ...state, failed: {} };
     }
-    state = { ...state, active: true, initialRef: pathRef((await tinderTab()).url),
+    state = { ...state, active: true, collecting: false, stopReason: null, initialRef: pathRef((await tinderTab()).url),
       lastRef: null, startedAt: new Date().toISOString() };
     await save(state);
     await chrome.alarms.create(ALARM, { periodInMinutes: 1 });

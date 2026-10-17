@@ -3,6 +3,8 @@
  */
 export interface BulkSyncProgress {
   active: boolean;
+  collecting?: boolean;
+  stopReason?: string | null;
   userId: string;
   tabId: number;
   refs: string[];
