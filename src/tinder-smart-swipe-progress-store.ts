@@ -15,6 +15,8 @@ export function validSmartSwipeProgress(value: unknown): value is SmartSwipeDail
   if (typeof p.dayKey !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(p.dayKey) ||
       !integer(p.startedSessions) || !integer(p.rightSwipesConfirmed) ||
       !integer(p.rightSwipesReserved) || !timestamp(p.lastSessionEndedAtMs)) return false;
+  const slot = (p as Partial<SmartSwipeDailyProgress> & { lastSessionSlotIndex?: unknown }).lastSessionSlotIndex;
+  if (slot !== undefined && !integer(slot)) return false;
   if (p.session === null) return true;
   if (!p.session || typeof p.session !== "object") return false;
   const s = p.session;
