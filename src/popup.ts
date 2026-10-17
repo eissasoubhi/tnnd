@@ -1072,6 +1072,48 @@ stopNewMatchObservation.addEventListener("click", () => {
   })().catch(e => { newMatchObservationStatus.textContent = e instanceof Error ? e.message : "Stop failed."; });
 });
 
+// Display extension-side planning status without exposing profile information or triggering Likes.
+async function refreshSmartSwipeRuntime(): Promise<void> {
+  const summary = document.getElementById("smartSwipeRuntimeSummary");
+  const refresh = document.getElementById("refreshSmartSwipeRuntime") as HTMLButtonElement | null;
+  if (!summary || !refresh) return;
+  refresh.disabled = true;
+  summary.textContent = "Checking TNND settings and Tinder Discovery…";
+  try {
+    const result = await chrome.runtime.sendMessage({
+      type: "TNND_SMART_SWIPE_RUNTIME_STATUS"
+    }) as {
+      ok?: boolean; reason?: string; status?: string; enabled?: boolean;
+      nextActivity?: string | null; executionAvailable?: boolean;
+      controls?: { status?: string; likeControls?: number };
+      progress?: { startedSessions?: number; rightSwipesConfirmed?: number; rightSwipesReserved?: number };
+    };
+    if (!result?.ok) {
+      summary.textContent = "Unavailable: " + (result?.reason ?? "runtime_status_unavailable");
+      return;
+    }
+    if (!result.enabled) {
+      summary.textContent = "Smart Auto Swipe disabled in TNND Web.";
+      return;
+    }
+    const count = result.progress?.rightSwipesConfirmed ?? 0;
+    const reserved = result.progress?.rightSwipesReserved ?? 0;
+    summary.textContent = "State: " + (result.status ?? "unknown") +
+      " · Priority: " + (result.nextActivity ?? "none") +
+      " · Likes confirmed: " + count +
+      " · Unresolved: " + reserved +
+      " · Tinder actions: not active.";
+  } catch {
+    summary.textContent = "Could not read runtime state. Check extension and TNND API.";
+  } finally {
+    refresh.disabled = false;
+  }
+}
+document.getElementById("refreshSmartSwipeRuntime")?.addEventListener("click", () => {
+  void refreshSmartSwipeRuntime();
+});
+void refreshSmartSwipeRuntime();
+
 void renderNewMatchObservation();
 void refreshGlobalExisting();
 void refreshBackendAuth();

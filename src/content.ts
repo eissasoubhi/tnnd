@@ -1057,6 +1057,22 @@ function scheduleScan(): void {
   }, 900);
 }
 
+// Read-only, privacy-safe Discovery control snapshot. Never clicks Tinder.
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (!message || typeof message !== "object" ||
+      (message as { type?: unknown }).type !== "TNND_SMART_SWIPE_OBSERVE") return false;
+  if (sender.id !== chrome.runtime.id || !hasLiveExtensionContext()) {
+    sendResponse({ ok: false, error: "extension_context_unavailable" });
+    return false;
+  }
+  const ui = readCurrentTinderUiState();
+  sendResponse({
+    ok: true,
+    evidence: observeSwipeDiscoveryControls(document, location.pathname, !ui.boundedActionAllowed)
+  });
+  return false;
+});
+
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
   if (!message || typeof message !== "object" || (message as { type?: string }).type !== "TNND_GET_DIAGNOSTICS") return false;
   void diagnosticSnapshot()
