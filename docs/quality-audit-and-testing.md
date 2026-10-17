@@ -49,7 +49,7 @@ Avant d'affirmer la release prête, suivre `docs/v1-release-checklist.md` et con
 
 Ouvrir **Analytics → Conversation style audit → Run audit**. L'API authentifiée lit jusqu'aux 600 derniers messages synchronisés appartenant au compte connecté. Aucun envoi Tinder, aucun appel Gemini et aucune mutation des réglages.
 
-Le tableau de bord affiche nombre de messages entrants/sortants, nombre de conversations, occurrences d'emojis, expressions de rire, formules formelles, longueurs et paires de langues classifiables. Les alertes sont heuristiques ; en dessous de dix réponses sortantes, l'échantillon est considéré comme insuffisant. L'interface ne renvoie **jamais** le texte des conversations.
+Le tableau de bord affiche nombre de messages entrants/sortants, nombre de conversations, occurrences d'emojis, expressions de rire, formules formelles, longueurs et paires de langues classifiables. L'audit compare désormais aussi la fréquence des emojis et rires du côté de l'utilisateur **et du côté des matchs**, sur le même échantillon global : si les deux personnes utilisent naturellement beaucoup d'emojis, le système évite de suggérer une réduction automatique. Cette comparaison globale n'est pas une preuve des préférences d'un match précis. Les alertes sont heuristiques ; en dessous de dix réponses sortantes, l'échantillon est considéré comme insuffisant. L'interface ne renvoie **jamais** le texte des conversations.
 
 ## 5. Audit par commande, en lecture seule
 
