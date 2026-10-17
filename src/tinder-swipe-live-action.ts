@@ -27,6 +27,14 @@ function singleLiveLike(doc: Document): HTMLButtonElement | null {
 
 const wait = (durationMs: number) => new Promise<void>(resolve => setTimeout(resolve, durationMs));
 let clickInFlight = false;
+let lastTrustedUserActionAt = 0;
+// Observations only. Never intercept, prevent, delay or replay user events.
+for (const eventType of ["pointerdown", "keydown", "touchstart"]) {
+  document.addEventListener(eventType, event => {
+    if (event.isTrusted) lastTrustedUserActionAt = Date.now();
+  }, { capture: true, passive: true });
+}
+const userRecentlyActive = () => Date.now() - lastTrustedUserActionAt < 8000;
 
 /** Intended to be invoked only after an atomically persisted, account-scoped
  * reservation and lease have been confirmed by the background worker.
@@ -37,6 +45,9 @@ export async function executeReservedTinderRightLike(): Promise<TinderSwipeActio
   if (clickInFlight) return { status: "blocked", reason: "another_like_in_flight", serverConfirmed: false };
   clickInFlight = true;
   try {
+    if (userRecentlyActive()) {
+      return { status: "blocked", reason: "recent_user_interaction", serverConfirmed: false };
+    }
     const ui = readCurrentTinderUiState();
     if (location.pathname !== "/app/recs" || !ui.boundedActionAllowed)
       return { status: "blocked", reason: "unsafe_discovery_state", serverConfirmed: false };
@@ -48,7 +59,7 @@ export async function executeReservedTinderRightLike(): Promise<TinderSwipeActio
     await wait(250);
     if (location.pathname !== "/app/recs" || !readCurrentTinderUiState().boundedActionAllowed ||
         first !== activeCardMarker(document) || !button.isConnected ||
-        button.disabled || singleLiveLike(document) !== button)
+        button.disabled || userRecentlyActive() || singleLiveLike(document) !== button)
       return { status: "blocked", reason: "preflight_state_changed", serverConfirmed: false };
 
     // Exactly one irreversible action. Do not dispatch artificial pointer
