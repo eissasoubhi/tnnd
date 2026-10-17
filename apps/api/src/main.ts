@@ -34,6 +34,7 @@ import { deleteConversationData, deleteMatchProfileData } from "./privacy-delete
 import { handleProductionAiHttp } from "./production-ai-http-handler.js";
 import { routeAuthenticatedPersonalMemoryRequest } from "./personal-memory-authenticated-route.js";
 import { handleTextingStyleAnalysisRequest } from "./texting-style-analysis-controller.js";
+import { readTinderImportSettings, saveTinderImportSettings } from "./tinder-import-settings-service.js";
 import { safeApiErrorLog } from "./safe-error-log.js";
 import { isAllowedRequestTransport } from "./transport-security.js";
 import { CORS_ALLOW_METHODS, resolveCorsOrigin } from "./cors.js";
@@ -229,6 +230,23 @@ const server = createServer(async (request, response) => {
         apiVersion: "v1",
         capabilities: ["health", "profile-schema", "account-registration", "password-login", "session-auth", "session-revocation", "session-management", "session-client-metadata", "account-profile", "account-data-export", "account-deletion", "individual-data-deletion", "texting-style-analysis", "identity-builder", "personal-memories", "token-budgeted-context", "extension-sync-foundation", "conversation-sync", "conversation-read", "conversation-thread-lookup", "conversation-status-control", "conversation-management", "conversation-temporary-instructions", "conversation-overrides", "conversation-generation", "conversation-outgoing-confirmation", "match-profiles", "human-actions", "human-action-manual-answer", "security-baseline"]
       });
+      return;
+    }
+
+    if ((request.method === "GET" || request.method === "PUT") &&
+        url.pathname === "/api/v1/tinder/import-settings") {
+      const session = await authenticatedUser(request);
+      if (!session) { sendJson(response, 401, { error: "invalid_or_expired_session" }); return; }
+      if (request.method === "GET") {
+        sendJson(response, 200, await readTinderImportSettings(session.user.id));
+        return;
+      }
+      try {
+        const body = await readJsonBody(request);
+        sendJson(response, 200, await saveTinderImportSettings(session.user.id, body));
+      } catch {
+        sendJson(response, 400, { error: "invalid_import_settings" });
+      }
       return;
     }
 
