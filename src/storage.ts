@@ -190,7 +190,7 @@ export async function getBackendSession(): Promise<BackendSession | null> {
   const value = result[BACKEND_SESSION_KEY] as BackendSession | undefined;
   if (!value?.token || !value?.expiresAt || !value.user?.id || !value.user?.email) return null;
   if (Date.parse(value.expiresAt) <= Date.now()) {
-    await chrome.storage.local.remove(BACKEND_SESSION_KEY);
+    await clearBackendSession();
     return null;
   }
   return value;
@@ -201,6 +201,16 @@ export async function saveBackendSession(session: BackendSession): Promise<void>
 }
 
 export async function clearBackendSession(): Promise<void> {
+  const raw = (await chrome.storage.local.get(BACKEND_SESSION_KEY))[BACKEND_SESSION_KEY] as BackendSession | undefined;
+  // A sign-out or expired account session revokes its automatic swiping arm.
+  // It must never resume merely because the user signs in again later.
+  if (raw?.user?.id) {
+    await chrome.storage.local.set({
+      ["tnnd.smartSwipeLiveArm.v1:" + raw.user.id]: {
+        armed: false, userId: raw.user.id, tabId: -1
+      }
+    });
+  }
   await chrome.storage.local.remove(BACKEND_SESSION_KEY);
 }
 
