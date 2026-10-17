@@ -1140,3 +1140,20 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
 
 .attention-score-bar { width: 100%; max-width: 120px; height: 7px; overflow: hidden; border-radius: 999px; background: var(--nb-border); }
 .attention-score-bar span { display: block; height: 100%; border-radius: inherit; background: var(--nb-primary); }
+
+
+/* Verified Tinder profile galleries: compact, responsive, no third-party embeds. */
+.match-profile-photo-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 115px), 1fr));
+  gap: 12px;
+  margin-block: 12px;
+}
+.match-profile-photo-list img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: 14px;
+  object-fit: cover;
+  background: var(--surface-muted, #ededed);
+}
