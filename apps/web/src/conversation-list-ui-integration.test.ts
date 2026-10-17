@@ -29,3 +29,11 @@ test("semantic stage and tone are optional, labeled as estimates and clear with 
   assert.match(source, /elements.semanticStage.value = "all"/);
   assert.match(source, /elements.semanticTone.value = "all"/);
 });
+
+
+test("handoff status names a verified platform without implying an external message was sent", () => {
+  assert.match(source, /item\.status === "moved-off-tinder" && item\.handoffPlatform/);
+  assert.match(source, /detail\.status === "moved-off-tinder"/);
+  assert.match(source, /Handoff platform was not recorded/);
+  assert.match(source, /TNND has not sent a message outside Tinder/);
+});
