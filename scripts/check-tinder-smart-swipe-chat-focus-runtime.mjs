@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { isObservedFocusedChat } from "../src/tinder-smart-swipe-chat-focus-runtime.ts";
+import { isObservedFocusedChat } from "../src/tinder-chat-focus-eligibility.ts";
 const now = Date.parse("2026-10-17T13:00:00Z");
 const state = {
   enabled:true,mode:"watcher",activeConversationRef:"thread-1",
