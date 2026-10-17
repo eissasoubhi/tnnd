@@ -11,6 +11,10 @@ export const CONVERSATION_STATUSES = [
 ] as const;
 
 export type ConversationStatus = (typeof CONVERSATION_STATUSES)[number];
+export type OffTinderPlatform = "instagram" | "whatsapp" | "snapchat" | "telegram";
+export function knownHandoffPlatform(value: unknown): OffTinderPlatform | null {
+  return typeof value === "string" && ["instagram", "whatsapp", "snapchat", "telegram"].includes(value) ? value as OffTinderPlatform : null;
+}
 
 export type ConversationStageTag = "introductions" | "getting-to-know" | "date-discussion" | "off-tinder";
 export type ConversationToneTag = "playful" | "flirty" | "warm" | "direct";
@@ -37,6 +41,7 @@ export interface ConversationListItem {
   semanticStage?: ConversationStageTag | null;
   semanticTone?: ConversationToneTag | null;
   semanticSource?: "rule-based" | "unknown";
+  handoffPlatform?: OffTinderPlatform | null;
 }
 
 export interface ConversationControlSummary {
@@ -92,5 +97,6 @@ export function normalizeConversationListItem(value: unknown): ConversationListI
     semanticStage: typeof input.semanticStage === "string" && semanticStages.includes(input.semanticStage as ConversationStageTag) ? input.semanticStage as ConversationStageTag : null,
     semanticTone: typeof input.semanticTone === "string" && semanticTones.includes(input.semanticTone as ConversationToneTag) ? input.semanticTone as ConversationToneTag : null,
     semanticSource: input.semanticSource === "rule-based" ? "rule-based" : "unknown",
+    handoffPlatform: input.status === "moved-off-tinder" ? knownHandoffPlatform(input.handoffPlatform) : null,
   };
 }
