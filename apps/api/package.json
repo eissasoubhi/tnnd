@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test src/*.test.ts",
     "migrate": "tsx src/migration-command.ts",
-    "backfill:outgoing-contacts": "tsx src/outgoing-contact-backfill-command.ts"
+    "backfill:outgoing-contacts": "tsx src/outgoing-contact-backfill-command.ts",
+    "audit:quality": "tsx src/conversation-quality-audit-command.ts"
   },
   "dependencies": {
     "pg": "^8.13.1",
