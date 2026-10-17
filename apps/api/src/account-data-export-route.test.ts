@@ -14,6 +14,7 @@ function exportFixture(): AccountDataExport {
     profile: null,
     aiProvider: null,
     smartAutoSwipeSettings: null,
+    smartSwipeAttempts: [],
     textingStyleSourceExamples: null,
     conversations: [],
     messages: [],
