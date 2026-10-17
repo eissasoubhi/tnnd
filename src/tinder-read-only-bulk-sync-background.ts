@@ -71,6 +71,7 @@ async function collect(): Promise<BulkSyncProgress> {
     refs: merged, done: same ? previous.done.filter(ref=>merged.includes(ref)) : [],
     failed: same ? Object.fromEntries(Object.entries(previous.failed).filter(([ref])=>merged.includes(ref))) : {},
     partial: same ? previous.partial.filter(ref=>merged.includes(ref)) : [],
+    reachedScrollTop:same ? (previous.reachedScrollTop ?? []).filter(ref=>merged.includes(ref)) : [],
     initialRef: pathRef(tab.url), lastRef: null,
     startedAt: same ? previous.startedAt : new Date().toISOString(),
     updatedAt: new Date().toISOString()
@@ -80,8 +81,9 @@ async function collect(): Promise<BulkSyncProgress> {
 }
 function counts(state: BulkSyncProgress | null) {
   return state ? { active: state.active, collecting: state.collecting === true,
-      stopReason: state.stopReason ?? null, ...bulkSyncCounts(state), updatedAt: state.updatedAt }
-    : { active: false, collecting: false, stopReason: null, selected: 0, completed: 0, failed: 0, partial: 0, pending: 0, updatedAt: null };
+      stopReason: state.stopReason ?? null, reachedScrollTop:(state.reachedScrollTop ?? []).length,
+      ...bulkSyncCounts(state), updatedAt: state.updatedAt }
+    : { active: false, collecting: false, stopReason: null, reachedScrollTop:0, selected: 0, completed: 0, failed: 0, partial: 0, pending: 0, updatedAt: null };
 }
 async function stop(reason?: string): Promise<BulkSyncProgress | null> {
   const state = await load();
@@ -260,19 +262,23 @@ async function tick(): Promise<void> {
           await stop("account_or_automation_changed"); return;
         }
         const observed = snapshot?.ok ? snapshot.messages! : [];
+        const history = snapshot?.ok
+          ? await readBackToFirstRenderedPage(state.tabId,ref,snapshot)
+          : {messages:observed,reachedTop:false,additional:0};
         const prefs = await settingsFor(state.userId);
         const profile = (prefs.includeProfile || prefs.includePhotos || prefs.scope === "filtered")
           ? await readProfile(state.tabId,ref) : null;
         const eligibility = shouldImportThread(prefs,{
-          age:profile?.visibleFields.age ?? null,messageCount:observed.length
+          age:profile?.visibleFields.age ?? null,messageCount:history.messages.length
         });
         if (!eligibility.eligible) {
           await save({...live,failed:{...live.failed,[ref]:"filtered_"+eligibility.reason}});
           continue;
         }
-        const imported = await upload(ref, observed, state.userId,prefs,profile);
+        const imported = await upload(ref, history.messages, state.userId,prefs,profile);
         state = { ...live, done: [...live.done, ref],
-          partial: imported.partial ? [...live.partial, ref] : live.partial };
+          partial: imported.partial ? [...live.partial, ref] : live.partial,
+          reachedScrollTop:history.reachedTop ? [...new Set([...(live.reachedScrollTop ?? []),ref])] : (live.reachedScrollTop ?? []) };
         await save(state);
       } catch {
         const latest = await load();
