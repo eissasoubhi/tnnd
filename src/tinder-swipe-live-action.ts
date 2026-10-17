@@ -1,28 +1,12 @@
 import { observeSwipeDiscoveryControls } from "./tinder-swipe-discovery-evidence.ts";
 import { readCurrentTinderUiState } from "./tinder-runtime-state";
 import { classifySwipeCardTransition, type TinderSwipeActionResult } from "./tinder-swipe-card-transition-policy";
+import { activeTinderDiscoveryCardMarker } from "./tinder-swipe-card-marker";
 
 /** No profile fields or image URL are ever persisted, returned, logged or exported.
  * The private marker is used only inside a single in-memory attempt.
  */
-function activeCardMarker(doc: Document): string | null {
-  // The sidebar's .recCard__img is a MATCH AVATAR, not a Discovery card.
-  // Steps 07/08 show exactly one active gamepad card (aria-hidden=false,
-  // not inert) inside Tinder's Discovery card stack.
-  const active = Array.from(doc.querySelectorAll<HTMLElement>(
-    '.recsCardboard__cards > [data-keyboard-gamepad][aria-hidden="false"]:not([inert])'
-  )).filter(el => {
-    const rect = el.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  });
-  if (active.length !== 1) return null;
-  // The first slide stays fixed when the user switches photographs on the
-  // same profile. Its image changes when the *profile card* changes.
-  const firstSlide = active[0].querySelector<HTMLElement>('.keen-slider__slide');
-  const image = firstSlide?.querySelector<HTMLElement>('[style*="url("]');
-  const marker = image?.getAttribute("style") ?? null;
-  return marker && marker.includes("url(") ? marker : null;
-}
+
 function singleLiveLike(doc: Document): HTMLButtonElement | null {
   const matches = Array.from(doc.querySelectorAll<HTMLButtonElement>("button.gamepad-button"))
     .filter(el => el.classList.contains("Bgc($c-ds-background-gamepad-sparks-like-default)") &&
@@ -59,12 +43,12 @@ export async function executeReservedTinderRightLike(): Promise<TinderSwipeActio
       return { status: "blocked", reason: "unsafe_discovery_state", serverConfirmed: false };
     const evidence = observeSwipeDiscoveryControls(document, location.pathname, false);
     const button = singleLiveLike(document);
-    const first = activeCardMarker(document);
+    const first = activeTinderDiscoveryCardMarker(document);
     if (evidence.status !== "observed" || !button || !first)
       return { status: "blocked", reason: "like_or_card_not_unique", serverConfirmed: false };
     await wait(250);
     if (location.pathname !== "/app/recs" || !readCurrentTinderUiState().boundedActionAllowed ||
-        first !== activeCardMarker(document) || !button.isConnected ||
+        first !== activeTinderDiscoveryCardMarker(document) || !button.isConnected ||
         button.disabled || userRecentlyActive() || singleLiveLike(document) !== button)
       return { status: "blocked", reason: "preflight_state_changed", serverConfirmed: false };
 
@@ -75,13 +59,13 @@ export async function executeReservedTinderRightLike(): Promise<TinderSwipeActio
     while (Date.now() < expiresAt) {
       await wait(200);
       const current = readCurrentTinderUiState();
-      const after = activeCardMarker(document);
+      const after = activeTinderDiscoveryCardMarker(document);
       const controls = observeSwipeDiscoveryControls(
         document, location.pathname, !current.boundedActionAllowed);
       if (after && first !== after) {
         await wait(350); // stabilization; no additional click
         return classifySwipeCardTransition(
-          first, activeCardMarker(document),
+          first, activeTinderDiscoveryCardMarker(document),
           location.pathname === "/app/recs",
           controls.status === "observed",
           !readCurrentTinderUiState().boundedActionAllowed
