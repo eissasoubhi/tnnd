@@ -48,3 +48,7 @@ Les interrupteurs **Auto-sync new messages in conversations I open on Tinder** e
 ### Champs de profil complémentaires
 
 Quand une fiche Tinder est effectivement affichée et liée au fil ouvert, TNND conserve maintenant aussi jusqu'à 24 **sections visibles avec leur libellé et leur valeur textuelle d'origine** (500 caractères par valeur). Cela permet de conserver des informations dont le format de Tinder ne correspond pas encore aux champs normalisés « emploi », « études », etc., sans inventer leur signification. La capture reste limitée aux cartes du profil du match reconnu ; elle n'extrait pas les contenus cachés et ne certifie pas qu'une fiche a été parcourue intégralement. Les photos sont traitées séparément par URL vérifiée, et ne sont pas téléchargées sous forme de fichiers.
+
+### Valeurs par défaut
+
+Pour tout compte sans paramètres enregistrés, les deux synchronisations **en lecture seule** sont maintenant **activées par défaut** : les chats ouverts sont importés, et les conversations de la liste Messages chargées sont collectées automatiquement. Ces paramètres se changent dans **Settings → Tinder conversation import**. Les paramètres déjà enregistrés par l'utilisateur restent prioritaires. **Aucune autorisation d'écrire ou envoyer un message à un match n'est accordée.** Le navigateur, l'extension et l'API TNND doivent être actifs.
