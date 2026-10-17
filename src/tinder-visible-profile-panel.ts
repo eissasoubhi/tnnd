@@ -95,7 +95,7 @@ export function readVisibleTinderProfilePanel(
       .map(img => safeTinderPhotoUrl(img.currentSrc || img.getAttribute("src")))
   ].filter((url): url is string => Boolean(url)))].slice(0,12);
   // Never derive height from a photo or hometown from a kilometre distance.
-  if (!relationshipGoal && !bio && !heightCm && !interests.length && !prompts.length) return null;
+  if (!relationshipGoal && !bio && !heightCm && !interests.length && !prompts.length && !photoUrls.length) return null;
   return {
     route: pathname.slice(0, 512),
     firstName: identity.firstName,
