@@ -1,4 +1,5 @@
 import { getBackendSession } from "./storage";
+import { isObservedFocusedChat } from "./tinder-chat-focus-eligibility";
 import {
   readConversationFocusLedger, startConversationFocus,
   heartbeatConversationFocus, stopConversationFocus,
@@ -26,18 +27,6 @@ async function configuredFor(userId: string): Promise<Settings | null> {
   return data.settings;
 }
 
-export function isObservedFocusedChat(
-  state: {
-    enabled: boolean; mode: string; activeConversationRef: string | null;
-    activeConversationUntil: string | null; phase: string;
-  }, ref: string, nowMs: number
-): boolean {
-  if (!state.enabled || state.mode !== "watcher" || state.activeConversationRef !== ref ||
-      !state.activeConversationUntil || Date.parse(state.activeConversationUntil) <= nowMs)
-    return false;
-  // The waiting phase is idle, even when the watcher keeps a chat open.
-  return ["incoming", "generating", "sending", "checking"].includes(state.phase);
-}
 function serialize<T>(job: () => Promise<T>): Promise<T> {
   const run = serialized.then(job, job);
   serialized = run.then(() => undefined, () => undefined);
