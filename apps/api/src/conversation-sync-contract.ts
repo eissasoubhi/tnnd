@@ -34,6 +34,7 @@ export interface ConversationSyncRequest {
   cursor?: string;
   nextCursor?: string;
   status?: ConversationStatus;
+  readOnlyImport?: boolean;
   messages: ConversationMessageDelta[];
 }
 
@@ -78,6 +79,7 @@ export function validateConversationSyncRequest(value: unknown): ConversationSyn
   if (input.status !== undefined && !isConversationStatus(input.status)) {
     throw new Error("status is invalid");
   }
+  if (input.readOnlyImport !== undefined && typeof input.readOnlyImport !== "boolean") throw new Error("invalid_read_only_import");
   if (!Array.isArray(input.messages)) throw new Error("messages must be an array");
   if (input.messages.length > CONVERSATION_SYNC_LIMITS.maxMessages) {
     throw new Error(`messages exceeds ${CONVERSATION_SYNC_LIMITS.maxMessages} items`);
@@ -120,6 +122,7 @@ export function validateConversationSyncRequest(value: unknown): ConversationSyn
     ...(typeof input.cursor === "string" ? { cursor: input.cursor } : {}),
     ...(typeof input.nextCursor === "string" ? { nextCursor: input.nextCursor.trim() } : {}),
     ...(isConversationStatus(input.status) ? { status: input.status } : {}),
+    ...(input.readOnlyImport === true ? {readOnlyImport:true} : {}),
     messages,
   };
 }
