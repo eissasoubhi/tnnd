@@ -68,10 +68,10 @@ export async function claimSmartSwipeAttempt(
       return { ok: false, claimed: false, reason: decision, attemptsToday: count };
     }
     await client.query(
-      \`INSERT INTO user_smart_swipe_execution_lease(user_id,owner_device_id,expires_at)
+      `INSERT INTO user_smart_swipe_execution_lease(user_id,owner_device_id,expires_at)
        VALUES($1,$2,now() + ($3::text || ' seconds')::interval)
        ON CONFLICT(user_id) DO UPDATE SET owner_device_id=EXCLUDED.owner_device_id,
-          expires_at=EXCLUDED.expires_at,updated_at=now()\`,
+          expires_at=EXCLUDED.expires_at,updated_at=now()`,
       [userId, deviceId, EXECUTION_LEASE_SECONDS]
     );
     await client.query(
