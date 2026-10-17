@@ -22,6 +22,21 @@ test("explicitly agreed app handoff stops Tinder replies", () => {
   assert.deepEqual(classify(exchange(["incoming", "Écris-moi sur Instagram plutôt"])), {kind:"off-tinder",platform:"instagram"});
 });
 
+test("abbreviated WhatsApp handoffs pause Tinder automation", () => {
+  for (const message of ["On passe wtsp", "on passe wtsap ?", "On passe wsp ?", "On passe sur watsapp !"]) {
+    assert.deepEqual(classify(exchange(["outgoing", "Ça va ?"], ["incoming", message])),
+      { kind: "off-tinder", platform: "whatsapp" }, message);
+  }
+  assert.deepEqual(classify(exchange(["incoming", "wtsp, on se parle là-bas ?"])),
+    { kind: "off-tinder", platform: "whatsapp" });
+  assert.deepEqual(classify(exchange(["outgoing", "On passe wtsp ?"], ["incoming", "OK"])),
+    { kind: "off-tinder", platform: "whatsapp" });
+  // Never mistake simply naming an app or declining an invitation for consent.
+  assert.equal(classify(exchange(["incoming", "J'ai wtsp mais je préfère ici"])).kind, "continue");
+  assert.equal(classify(exchange(["incoming", "Non merci, on passe pas wtsp"])).kind, "continue");
+  assert.equal(classify(exchange(["incoming", "wtsp"])).kind, "continue");
+});
+
 test("contact discovery and generic assent never establish a handoff", () => {
   assert.equal(classify(exchange(["outgoing", "Tu as Instagram ?"], ["incoming", "@lola_03"])).kind, "continue");
   assert.equal(classify(exchange(["outgoing", "Coucou"], ["incoming", "ok"])).kind, "continue");

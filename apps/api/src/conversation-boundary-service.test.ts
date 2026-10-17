@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { classifyConversationBoundary } from "../../../src/conversation-boundary-policy.js";
-import { desiredBoundaryTransition, handoffProvenance, validateObservedConversationBoundary, verifiedConversationBoundary } from "./conversation-boundary-service.js";
+import { desiredBoundaryTransition, handoffProvenance, handoffReviewAction, validateObservedConversationBoundary, verifiedConversationBoundary } from "./conversation-boundary-service.js";
 
 test("normal farewells do not disable a chat on their own", () => {
   const input = validateObservedConversationBoundary({
@@ -93,4 +93,22 @@ test("persisted platform provenance requires verified incoming source ID, never 
   assert.equal(handoffProvenance(boundary, { direction: "incoming", external_message_id: "" }), null);
   assert.equal(handoffProvenance({ kind: "continue", platform: null }, { direction: "incoming", external_message_id: "id" }), null);
   assert.equal(handoffProvenance({ kind: "rest", platform: null }, { direction: "incoming", external_message_id: "id" }), null);
+});
+
+test("match's wtsp proposal prompts a private human action, not an outbound message", () => {
+  const messages = [{ direction: "incoming" as const, text: "On passe wtsp" }];
+  const boundary = verifiedConversationBoundary(messages, messages);
+  assert.deepEqual(boundary, { kind: "off-tinder", platform: "whatsapp" });
+  const evidence = handoffProvenance(boundary, { direction: "incoming", external_message_id: "verified-msg" });
+  const action = handoffReviewAction(evidence);
+  assert.equal(action?.severity, "action-required");
+  assert.match(action?.title ?? "", /WhatsApp/);
+  assert.match(action?.detail ?? "", /No message was sent outside Tinder/);
+  assert.deepEqual(action?.context, {
+    kind: "off-tinder-handoff", platform: "whatsapp", sourceExternalMessageId: "verified-msg"
+  });
+  assert.equal(handoffReviewAction(null), null);
+  assert.equal(handoffReviewAction(handoffProvenance(boundary, {
+    direction: "outgoing", external_message_id: "unverified"
+  })), null);
 });
