@@ -154,7 +154,17 @@ async function upload(
       }
     };
     if (Object.values(selected.visibleFields).some(value=>Array.isArray(value) ? value.length > 0 : Boolean(value))) {
-      await uploadVisibleMatchProfileCapture(session, selected, {conversationId});
+      const savedProfile = await uploadVisibleMatchProfileCapture(session, selected, {conversationId});
+      if (settings.includePhotos && (selected.visibleFields.photoUrls?.length || selected.visibleFields.photoUrl)) {
+        // Archiving saves real image binaries in local PostgreSQL; linking a
+        // Tinder photo URL alone is not a completed backup.
+        const archived = await fetch(API + "/api/v1/match-profiles/" + encodeURIComponent(savedProfile.id) + "/archive-photos", {
+          method:"POST",headers:{authorization:"Bearer "+session.token}
+        });
+        if (!archived.ok) throw new Error("photo_archive_unavailable");
+        const result = await archived.json() as {unavailable?:number};
+        if ((result.unavailable ?? 0) > 0) throw new Error("photo_archive_incomplete");
+      }
     }
   }
   // Tinder has not proven that the oldest message/photos were loaded.

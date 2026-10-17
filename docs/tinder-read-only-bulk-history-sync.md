@@ -52,3 +52,11 @@ Quand une fiche Tinder est effectivement affichée et liée au fil ouvert, TNND 
 ### Valeurs par défaut
 
 Pour tout compte sans paramètres enregistrés, les deux synchronisations **en lecture seule** sont maintenant **activées par défaut** : les chats ouverts sont importés, et les conversations de la liste Messages chargées sont collectées automatiquement. Ces paramètres se changent dans **Settings → Tinder conversation import**. Les paramètres déjà enregistrés par l'utilisateur restent prioritaires. **Aucune autorisation d'écrire ou envoyer un message à un match n'est accordée.** Le navigateur, l'extension et l'API TNND doivent être actifs.
+
+## Archivage réel des photos
+
+Lorsqu'une fiche de match fournit des URLs Tinder HTTPS vérifiées et que **Import photos** est activé, TNND tente de télécharger **les octets des images** depuis le domaine Tinder autorisé et de les conserver **dans ta base PostgreSQL privée** (`match_profile_photo_archives`, migration 0022). Une URL n'est pas comptée comme une sauvegarde réussie si le téléchargement échoue. Chaque image est limitée à 4 Mio, jusqu'à 12 URLs par fiche, en JPEG, PNG, WebP ou GIF vérifiés par la signature binaire ; les redirections et les liens non Tinder sont interdits. Les images sont isolées par compte et profil, accessibles seulement par les endpoints authentifiés `GET /api/v1/match-profiles/:profileId/photos` et `GET /api/v1/match-profiles/:profileId/photos/:photoId`. Les suppressions de profil/compte entraînent la suppression des images par cascade SQL.
+
+Un rapport d'archivage indique `stored`, `alreadySaved` et `unavailable`; ce dernier marque l'import de la conversation comme à reprendre, même si les messages sont déjà synchronisés. Certaines photos demandent une session Tinder ou peuvent avoir expiré : dans ce cas, elles ne sont **pas** archivées. L'API TNND doit pouvoir accéder aux hôtes des images en HTTPS. La sauvegarde de la base PostgreSQL reste de la responsabilité de l'opérateur.
+
+Les droits Tinder pour télécharger et conserver les images doivent être respectés ; les fichiers sont uniquement destinés à l'usage privé du compte. Il n'y a aucun upload public ni copie GitHub.
