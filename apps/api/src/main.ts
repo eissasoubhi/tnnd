@@ -21,6 +21,7 @@ import { conversationSyncErrorResponse } from "./conversation-sync-error-respons
 import { handleConversationThreadLookupRequest } from "./conversation-thread-lookup-controller.js";
 import { getPool } from "./db-client.js";
 import { getSmartSwipeSettings, putSmartSwipeSettings, validateSmartSwipeSettings } from "./smart-auto-swipe-settings.js";
+import { claimSmartSwipeAttempt, resolveSmartSwipeAttempt, readSmartSwipeAttemptSummary } from "./smart-swipe-attempt-ledger.js";
 import { handleHumanActionManualAnswerRequest } from "./human-action-manual-answer-controller.js";
 import { createHumanAction, listHumanActions, updateHumanActionStatus, type HumanActionSeverity, type HumanActionStatus } from "./human-action-service.js";
 import { handleConversationMatchProfileRequest, handleMatchProfileCaptureRequest, handleMatchProfilePromoteRequest } from "./match-profile-controller.js";
@@ -359,6 +360,42 @@ const server = createServer(async (request, response) => {
       }
       const topics = await listUserTopicCoverage(session.user.id);
       sendJson(response, 200, { topics });
+      return;
+    }
+
+    // Authenticated, account-serialized reservations. These routes never touch Tinder.
+    if (url.pathname.startsWith("/api/v1/automation/smart-swipe/attempts/")) {
+      const session = await authenticatedUser(request);
+      if (!session) {
+        sendJson(response, 401, { error: "invalid_or_expired_session" });
+        return;
+      }
+      if (url.pathname === "/api/v1/automation/smart-swipe/attempts/summary" && request.method === "GET") {
+        sendJson(response, 200, await readSmartSwipeAttemptSummary(session.user.id));
+        return;
+      }
+      if (url.pathname === "/api/v1/automation/smart-swipe/attempts/claim" && request.method === "POST") {
+        const body = await readJsonBody(request);
+        if (typeof body.attemptId !== "string" || typeof body.deviceId !== "string") {
+          sendJson(response, 400, { error: "invalid_claim_request" });
+          return;
+        }
+        const result = await claimSmartSwipeAttempt(session.user.id, body.attemptId, body.deviceId);
+        sendJson(response, result.ok ? 201 : 409, result);
+        return;
+      }
+      if (url.pathname === "/api/v1/automation/smart-swipe/attempts/resolve" && request.method === "POST") {
+        const body = await readJsonBody(request);
+        if (typeof body.attemptId !== "string" || typeof body.deviceId !== "string" ||
+            (body.status !== "ui_observed" && body.status !== "uncertain")) {
+          sendJson(response, 400, { error: "invalid_resolution_request" });
+          return;
+        }
+        const result = await resolveSmartSwipeAttempt(session.user.id, body.attemptId, body.deviceId, body.status);
+        sendJson(response, result.ok ? 200 : 409, result);
+        return;
+      }
+      sendJson(response, 404, { error: "unknown_attempt_route" });
       return;
     }
 

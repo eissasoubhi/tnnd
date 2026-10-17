@@ -58,6 +58,17 @@ test("main server exposes production AI routes without breaking health", async (
     assert.equal(smartSwipeGet.status, 401);
     assert.deepEqual(await smartSwipeGet.json(), { error: "invalid_or_expired_session" });
 
+    for (const path of ["/api/v1/automation/smart-swipe/attempts/summary",
+      "/api/v1/automation/smart-swipe/attempts/claim",
+      "/api/v1/automation/smart-swipe/attempts/resolve"]) {
+      const unauth = await fetch(base + path, {
+        method: path.endsWith("summary") ? "GET" : "POST",
+        headers: { "content-type": "application/json" },
+        body: path.endsWith("summary") ? undefined : JSON.stringify({})
+      });
+      assert.equal(unauth.status, 401);
+    }
+
     const smartSwipePut = await fetch(`${base}/api/v1/automation/smart-swipe`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
