@@ -72,7 +72,7 @@ test("adapter reads one Tinder article message text without message timestamps o
   assert.match(adapter, /transcript\.querySelectorAll<HTMLElement>\('\[role="article"\]'\)/);
   assert.match(adapter, /querySelector<HTMLElement>\('\.msg \.text'\)/);
   assert.match(adapter, /directionFromVerifiedTinderClasses\(markers\)/);
-  assert.match(adapter, /return verified\.slice\(-40\)/);
+  assert.match(adapter, /return verified\.slice\(-Math\.max/);
 });
 
 test("an empty verified transcript never falls back to page-wide Messages sidebar candidates", async () => {
@@ -80,9 +80,9 @@ test("an empty verified transcript never falls back to page-wide Messages sideba
   const source = await readFile(new URL("../src/tinder-adapter.ts", import.meta.url), "utf8");
   const candidateFn = source.slice(source.indexOf("function candidateMessages("), source.indexOf("function simpleHash("));
   assert.match(candidateFn, /if \(transcript\) \{/);
-  assert.match(candidateFn, /return verified\.slice\(-40\);/);
+  assert.match(candidateFn, /return verified\.slice\(-Math\.max;/);
   assert.match(candidateFn, /for \(const selector of MESSAGE_SELECTORS\)/);
-  assert.ok(candidateFn.indexOf("return verified.slice(-40)") < candidateFn.indexOf("for (const selector of MESSAGE_SELECTORS)"));
+  assert.ok(candidateFn.indexOf("return verified.slice(-Math.max(1,Math.min(maxItems,1000)))") < candidateFn.indexOf("for (const selector of MESSAGE_SELECTORS)"));
   assert.match(candidateFn, /visible\(element\) && !element\.contains\(composer\)/);
 });
 
@@ -115,5 +115,5 @@ test("Tinder adapter scopes fallback candidates to the chat pane and filters con
   assert.match(fallback, /conversationRoot && !conversationRoot\.contains\(element\)/);
   assert.match(fallback, /if \(isTinderMessageUiControl\(element\)\) continue;/);
   assert.ok(fallback.indexOf("isTinderMessageUiControl(element)") < fallback.indexOf("const text = messageText(element)"));
-  assert.match(source, /if \(transcript\) \{[\s\S]*return verified\.slice\(-40\)/);
+  assert.match(source, /if \(transcript\) \{[\s\S]*return verified\.slice\(-Math\.max/);
 });
