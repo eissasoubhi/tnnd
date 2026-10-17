@@ -20,6 +20,8 @@ export interface QualityReport {
   metrics: {
     emojiMessages: number;
     laughterMessages: number;
+    incomingEmojiMessages: number;
+    incomingLaughterMessages: number;
     veryLongReplies: number;
     formalPhrases: number;
     questions: number;
@@ -43,6 +45,8 @@ export function assessSavedMessages(messages: readonly AuditMessage[], date = ne
   const metrics = {
     emojiMessages: outgoing.filter(m => emojiPattern.test(m.text)).length,
     laughterMessages: outgoing.filter(m => laughPattern.test(m.text)).length,
+    incomingEmojiMessages: incoming.filter(m => emojiPattern.test(m.text)).length,
+    incomingLaughterMessages: incoming.filter(m => laughPattern.test(m.text)).length,
     veryLongReplies: outgoing.filter(m => [...m.text].length > 240).length,
     formalPhrases: outgoing.filter(m => formalPattern.test(m.text)).length,
     questions: outgoing.filter(m => /[?؟？]/u.test(m.text)).length,
@@ -63,18 +67,27 @@ export function assessSavedMessages(messages: readonly AuditMessage[], date = ne
     lastIncoming.delete(m.conversationId);
   }
   const sufficient = outgoing.length >= 10;
+  // Without enough incoming turns, no comparative claim about match style is
+  // justified. Raw outgoing frequency is still a provisional signal.
+  const matchBaselineAvailable = incoming.length >= 5;
+  const ownEmojiRate = percent(metrics.emojiMessages, outgoing.length);
+  const matchEmojiRate = percent(metrics.incomingEmojiMessages, incoming.length);
+  const ownLaughRate = percent(metrics.laughterMessages, outgoing.length);
+  const matchLaughRate = percent(metrics.incomingLaughterMessages, incoming.length);
+  const disproportionateEmoji = !matchBaselineAvailable || ownEmojiRate >= matchEmojiRate + 15;
+  const disproportionateLaughter = !matchBaselineAvailable || ownLaughRate >= matchLaughRate + 15;
   const findings: AuditFinding[] = [];
   if (!sufficient) findings.push({
     id: "small-sample", severity: "info", evidence: outgoing.length + " outgoing messages in this sample.",
     recommendation: "Sync more conversations before interpreting style rates; review examples manually."
   });
-  if (sufficient && percent(metrics.laughterMessages, outgoing.length) >= 25) findings.push({
-    id: "laughter", severity: "attention", evidence: percent(metrics.laughterMessages, outgoing.length) + "% of outgoing messages include a laughter expression.",
+  if (sufficient && ownLaughRate >= 25 && disproportionateLaughter) findings.push({
+    id: "laughter", severity: "attention", evidence: ownLaughRate + "% of outgoing messages include laughter" + (matchBaselineAvailable ? " vs " + matchLaughRate + "% of incoming messages in the sample." : "; too few incoming messages for a style comparison."),
     recommendation: "Reduce repeated laughter fillers. Check whether they fit the actual exchange.",
     suggestedSetting: { key: "humorLevel", value: 45 }
   });
-  if (sufficient && percent(metrics.emojiMessages, outgoing.length) >= 35) findings.push({
-    id: "emoji", severity: "attention", evidence: percent(metrics.emojiMessages, outgoing.length) + "% of outgoing messages contain an emoji.",
+  if (sufficient && ownEmojiRate >= 35 && disproportionateEmoji) findings.push({
+    id: "emoji", severity: "attention", evidence: ownEmojiRate + "% of outgoing messages contain emoji" + (matchBaselineAvailable ? " vs " + matchEmojiRate + "% of incoming messages in the sample." : "; too few incoming messages for a style comparison."),
     recommendation: "Use emojis sparingly and in context; avoid adding them to every reply.",
     suggestedSetting: { key: "emojiLevel", value: "low" }
   });
@@ -111,6 +124,8 @@ export function assessSavedMessages(messages: readonly AuditMessage[], date = ne
       "No messages, names, account identifiers or social handles are returned.",
       "These are heuristics, not an AI detector or a measure of real conversational success.",
       "Language heuristics may miss Darija, very short messages and ordinary code-switching.",
+      "The incoming/outgoing style baseline aggregates distinct conversations, not one specific match. Adapt settings per chat.",
+      "Outgoing history includes human-written and AI-assisted messages; this report cannot attribute every message to a model.",
       "No configuration changes or automatic message sends are performed."
     ]
   };

@@ -41,3 +41,28 @@ test("outgoing text and unique source IDs are absent from the audit report", () 
   assert.equal(json.includes("@dont_share_123"), false);
   assert.equal(json.includes("chat-1"), false);
 });
+
+test("avoid flagging high emoji/laughter usage when matches use them equally or more", () => {
+  const report = assessSavedMessages([
+    ...Array.from({length: 12}, () => incoming("haha super 😄")),
+    ...Array.from({length: 12}, () => outgoing("haha super 😄"))
+  ]);
+  assert.equal(report.metrics.incomingEmojiMessages, 12);
+  assert.equal(report.metrics.incomingLaughterMessages, 12);
+  assert.equal(report.findings.some(x=>x.id==="emoji"||x.id==="laughter"),false);
+});
+test("compare emoji and laughter rates against incoming style before recommending lower settings", () => {
+  const report = assessSavedMessages([
+    ...Array.from({length: 12}, () => incoming("Tu fais quoi ?")),
+    ...Array.from({length: 12}, () => outgoing("haha rien 😄"))
+  ]);
+  const emoji = report.findings.find(x=>x.id==="emoji");
+  const laughter = report.findings.find(x=>x.id==="laughter");
+  assert.equal(report.metrics.incomingEmojiMessages,0);
+  assert.match(emoji?.evidence ?? "",/100% of outgoing.*0% of incoming/);
+  assert.match(laughter?.evidence ?? "",/100% of outgoing.*0% of incoming/);
+});
+test("with too few incoming turns, qualify rather than invent a matched style baseline", () => {
+  const report = assessSavedMessages(Array.from({length: 12},()=>outgoing("haha okay 😄")));
+  assert.match(report.findings.find(x=>x.id==="emoji")?.evidence ?? "",/too few incoming messages/);
+});
