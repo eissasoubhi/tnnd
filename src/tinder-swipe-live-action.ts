@@ -2,6 +2,7 @@ import { observeSwipeDiscoveryControls } from "./tinder-swipe-discovery-evidence
 import { readCurrentTinderUiState } from "./tinder-runtime-state";
 import { classifySwipeCardTransition, type TinderSwipeActionResult } from "./tinder-swipe-card-transition-policy";
 import { activeTinderDiscoveryCardMarker } from "./tinder-swipe-card-marker";
+import { findUpgradeLikeOffer } from "./tinder-swipe-upgrade-like-offer";
 
 /** No profile fields or image URL are ever persisted, returned, logged or exported.
  * The private marker is used only inside a single in-memory attempt.
@@ -55,20 +56,53 @@ export async function executeReservedTinderRightLike(): Promise<TinderSwipeActio
     // Exactly one irreversible action. Do not dispatch artificial pointer
     // events, call hidden endpoints, or bypass the host's own safeguards.
     button.click();
-    const expiresAt = Date.now() + 5000;
+    let dismissedUpgradeOfferAt: number | null = null;
+    // This is still ONE Like attempt. A subsequent click, if any, is ONLY on
+    // the verified "No Thanks" dismissal of Tinder's own post-Like upsell.
+    // Never click Send Super Like, retry the Like or infer Tinder acceptance.
+    const expiresAt = Date.now() + 7000;
     while (Date.now() < expiresAt) {
       await wait(200);
+      const offer = findUpgradeLikeOffer(document);
+      if (offer.status === "recognized") {
+        if (dismissedUpgradeOfferAt !== null) {
+          // Tinder may take a moment to remove the same modal; do not click
+          // again. If it persists, report unknown and require manual review.
+          if (Date.now() - dismissedUpgradeOfferAt > 1800)
+            return { status: "uncertain", reason: "modal_or_navigation_after_click", serverConfirmed: false };
+          continue;
+        }
+        // Only while still on Discovery, with no trusted manual interaction.
+        if (location.pathname !== "/app/recs" || userRecentlyActive())
+          return { status: "uncertain", reason: "modal_or_navigation_after_click", serverConfirmed: false };
+        await wait(120);
+        const rechecked = findUpgradeLikeOffer(document);
+        if (rechecked.status !== "recognized" ||
+            rechecked.dismissButton !== offer.dismissButton ||
+            !offer.dismissButton.isConnected || userRecentlyActive())
+          return { status: "uncertain", reason: "modal_or_navigation_after_click", serverConfirmed: false };
+        dismissedUpgradeOfferAt = Date.now();
+        rechecked.dismissButton.click(); // Exact "No Thanks" only, once.
+        continue;
+      }
+      if (offer.status === "ambiguous")
+        return { status: "uncertain", reason: "modal_or_navigation_after_click", serverConfirmed: false };
       const current = readCurrentTinderUiState();
       const after = activeTinderDiscoveryCardMarker(document);
-      const controls = observeSwipeDiscoveryControls(
-        document, location.pathname, !current.boundedActionAllowed);
       if (after && first !== after) {
-        await wait(350); // stabilization; no additional click
+        await wait(750); // allow any delayed Tinder post-Like upsell to appear
+        const stabilizedOffer = findUpgradeLikeOffer(document);
+        if (stabilizedOffer.status === "recognized") continue;
+        if (stabilizedOffer.status === "ambiguous")
+          return { status: "uncertain", reason: "modal_or_navigation_after_click", serverConfirmed: false };
+        const latest = readCurrentTinderUiState();
+        const controls = observeSwipeDiscoveryControls(
+          document, location.pathname, !latest.boundedActionAllowed);
         return classifySwipeCardTransition(
           first, activeTinderDiscoveryCardMarker(document),
           location.pathname === "/app/recs",
           controls.status === "observed",
-          !readCurrentTinderUiState().boundedActionAllowed
+          !latest.boundedActionAllowed
         );
       }
       if (location.pathname !== "/app/recs" || !current.boundedActionAllowed) {
