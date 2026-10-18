@@ -12,7 +12,7 @@ import {
   type ScheduledSwipeProgress
 } from "./tinder-smart-swipe-daily-scheduler";
 import { readSmartSwipeProgress, validSmartSwipeProgress } from "./tinder-smart-swipe-progress-store";
-import { parseDayReconciliationProof, reconcileReviewedLocalSwipeAttempt } from "./tinder-smart-swipe-reconciliation";
+import { parseDayReconciliationProof, reconcileReviewedLocalSwipeAttempt, publicSwipeReconciliationCounts } from "./tinder-smart-swipe-reconciliation";
 import { emptySmartSwipeDay, tinderAccountDayKey } from "./tinder-smart-auto-swipe-policy";
 import type { SwipeDiscoveryEvidence } from "./tinder-swipe-discovery-evidence";
 import type { TinderSwipeActionResult } from "./tinder-swipe-card-transition-policy";
@@ -341,7 +341,12 @@ async function setArmed(arm: boolean, expectedStopEpoch: number): Promise<Record
   const proof = parseDayReconciliationProof(await proofResponse.json(), initial.dayKey);
   if (!proof) return { ok: false, reason: "invalid_server_reconciliation" };
   const review = reconcileReviewedLocalSwipeAttempt(initial, proof);
-  if (!review.ok) return { ok: false, reason: review.reason };
+  if (!review.ok) return {
+    ok: false, reason: review.reason,
+    // A rejected Start does not set armed. These counts help the operator
+    // diagnose old local writes without exposing account/profile identifiers.
+    reconciliationCounts: publicSwipeReconciliationCounts(initial, proof)
+  };
   const read = readSmartSwipeProgress(review.progress, now, settings.timeZone);
   if (!read.ok) return { ok: false, reason: read.reason };
   let updatedProgress = read.progress;

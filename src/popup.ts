@@ -1190,13 +1190,32 @@ for (const [id, armed] of [
     if (feedback) feedback.textContent = armed ? "Checking whether Start is permitted…" : "Confirming Stop…";
     void chrome.runtime.sendMessage({
       type: "TNND_SMART_SWIPE_SET_ARMED", armed
-    }).then(async (reply: { ok?: boolean; armed?: boolean; reason?: string }) => {
+    }).then(async (reply: {
+      ok?: boolean; armed?: boolean; reason?: string; reconciliationCounts?: string;
+    }) => {
       if (!reply?.ok || reply.armed !== armed) {
-        if (feedback) feedback.textContent = armed ? "Start not confirmed." : "Stop not confirmed. Disable the TNND extension if an immediate halt is needed.";
-        if (summary) summary.textContent = (armed
-          ? "Start was not confirmed: " : "STOP was not confirmed: ") +
-          (reply?.reason ?? "unknown_status") +
-          ". Disable TNND in chrome://extensions if you need to stop immediately.";
+        const reason = reply?.reason ?? "unknown_status";
+        if (armed) {
+          // A rejected Start never became armed: reopening popup is correct.
+          // Do not direct users to emergency-disable Chrome for a Start refusal.
+          const reconcileFailure = reason.includes("mismatch") ||
+            reason === "server_attempts_not_fully_resolved" ||
+            reason === "server_attempt_unresolved";
+          if (feedback) feedback.textContent = reconcileFailure
+            ? "Start blocked by the safety ledger. Historical Likes will not be retried."
+            : "Start was not confirmed. No automatic swiping session was launched.";
+          if (summary) summary.textContent = "Automation: stopped · Start refused: " +
+            reason + ". " + (reconcileFailure
+              ? "Local and server attempt evidence need review. Do not reset Chrome storage or PostgreSQL."
+              : "Check TNND Web settings, Tinder Discovery and runner ownership.") +
+            (typeof reply?.reconciliationCounts === "string"
+              ? " · Diagnostic counts: " + reply.reconciliationCounts : "");
+        } else {
+          if (feedback) feedback.textContent =
+            "Stop not confirmed. Disable the TNND extension if an immediate halt is needed.";
+          if (summary) summary.textContent = "STOP was not confirmed: " + reason +
+            ". Disable TNND in chrome://extensions if you need to stop immediately.";
+        }
         return;
       }
       smartSwipeLastKnownArmed = armed;
