@@ -1,5 +1,5 @@
 import { readSession } from "./auth-client";
-import { parseSmartSwipeHistory, parseSmartSwipeSummary, remainingSmartSwipeAttempts, smartSwipeLedgerError } from "./smart-swipe-dashboard-model";
+import { parseSmartSwipeHistory, parseSmartSwipeSummary, remainingSmartSwipeAttempts, smartSwipeLedgerError, describeSwipeOutcomeReason } from "./smart-swipe-dashboard-model";
 
 type Activity = "swipe" | "new-match" | "active-chat";
 interface Settings {
@@ -172,7 +172,11 @@ async function refreshActivity(): Promise<void> {
         const label = attempt.status === "ui_observed" ? "Card change observed — Tinder acceptance unverified"
           : attempt.status === "uncertain" ? "Uncertain — automatic Likes stopped"
             : "Reserved — outcome pending";
-        item.append(time, document.createTextNode(" · " + label + " · account day " + attempt.dayKey));
+        const reason = attempt.status === "uncertain"
+          ? " · " + describeSwipeOutcomeReason(attempt.outcomeReason)
+          : attempt.outcomeReason ? " · " + describeSwipeOutcomeReason(attempt.outcomeReason) : "";
+        item.append(time, document.createTextNode(" · " + label + reason +
+          " · account day " + attempt.dayKey));
         ledgerHistory.append(item);
       }
       if (!historyResult.data.length) {
