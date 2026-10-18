@@ -1,5 +1,5 @@
 import { readSession } from "./auth-client";
-import { parseSmartSwipeHistory, parseSmartSwipeSummary, remainingSmartSwipeAttempts } from "./smart-swipe-dashboard-model";
+import { parseSmartSwipeHistory, parseSmartSwipeSummary, remainingSmartSwipeAttempts, smartSwipeLedgerError } from "./smart-swipe-dashboard-model";
 
 type Activity = "swipe" | "new-match" | "active-chat";
 interface Settings {
@@ -108,64 +108,93 @@ let loadedSettings: Settings | null = null;
 async function refreshActivity(): Promise<void> {
   const session = readSession();
   const serial = ++activitySerial;
-  if (!session || session.user.id !== loadedForUser || !loadedSettings) return;
+  const settings = loadedSettings;
+  if (!session || session.user.id !== loadedForUser || !settings) return;
   ledgerStatus.textContent = "Loading server activity…";
   ledgerTotals.replaceChildren();
   ledgerHistory.replaceChildren();
   ledgerRefresh.disabled = true;
+
+  // Fetch independently: a broken history route must not hide valid daily
+  // counts. Missing data is *unavailable*, never silently treated as zero.
+  async function readLedger<T>(
+    resource: "summary" | "history", parser: (value: unknown) => T | null
+  ): Promise<{ data: T | null; error: string | null }> {
+    try {
+      const response = await fetch(endpoint + "/attempts/" + resource, {
+        headers: { authorization: "Bearer " + session!.token }, cache: "no-store"
+      });
+      if (!response.ok) return { data: null, error: smartSwipeLedgerError(resource, response.status) };
+      const data = parser(await response.json());
+      return data === null
+        ? { data: null, error: smartSwipeLedgerError(resource, "invalid") }
+        : { data, error: null };
+    } catch {
+      return { data: null, error: smartSwipeLedgerError(resource, "network") };
+    }
+  }
+
   try {
-    const headers = { authorization: "Bearer " + session.token };
-    const [summaryResponse, historyResponse] = await Promise.all([
-      fetch(endpoint + "/attempts/summary", { headers, cache: "no-store" }),
-      fetch(endpoint + "/attempts/history", { headers, cache: "no-store" })
+    const [summaryResult, historyResult] = await Promise.all([
+      readLedger("summary", parseSmartSwipeSummary),
+      readLedger("history", parseSmartSwipeHistory)
     ]);
-    if (!summaryResponse.ok || !historyResponse.ok) throw new Error("Server activity is unavailable. Refresh to try again.");
-    const summary = parseSmartSwipeSummary(await summaryResponse.json());
-    const history = parseSmartSwipeHistory(await historyResponse.json());
-    if (!summary || !history) throw new Error("Server activity is invalid. Refresh to try again.");
     if (serial !== activitySerial || readSession()?.user.id !== session.user.id) return;
-    const remaining = remainingSmartSwipeAttempts(summary, loadedSettings.maxRightSwipesPerDay);
-    const totals = [
-      ["Account day", summary.dayKey + " (" + loadedSettings.timeZone + ")"],
-      ["Attempt slots used", String(summary.attemptsToday) + " / " + loadedSettings.maxRightSwipesPerDay],
-      ["Attempt slots remaining", remaining === null ? "Unavailable" : String(remaining)],
-      ["Card transitions observed", String(summary.uiObservedToday)],
-      ["Unresolved across days", String(summary.unresolvedAttempts)]
-    ];
-    for (const [label, value] of totals) {
-      const item = document.createElement("p");
-      item.className = "subtle";
-      const heading = document.createElement("strong");
-      heading.textContent = label + ": ";
-      item.append(heading, document.createTextNode(value));
-      ledgerTotals.append(item);
+
+    if (summaryResult.data) {
+      const summary = summaryResult.data;
+      const remaining = remainingSmartSwipeAttempts(summary, settings.maxRightSwipesPerDay);
+      const totals = [
+        ["Account day", summary.dayKey + " (" + settings.timeZone + ")"],
+        ["Attempt slots used", String(summary.attemptsToday) + " / " + settings.maxRightSwipesPerDay],
+        ["Attempt slots remaining", remaining === null ? "Unavailable" : String(remaining)],
+        ["Card transitions observed", String(summary.uiObservedToday)],
+        ["Unresolved across days", String(summary.unresolvedAttempts)]
+      ];
+      for (const [label, value] of totals) {
+        const item = document.createElement("p");
+        item.className = "subtle";
+        const heading = document.createElement("strong");
+        heading.textContent = label + ": ";
+        item.append(heading, document.createTextNode(value));
+        ledgerTotals.append(item);
+      }
     }
-    for (const attempt of history) {
-      const item = document.createElement("li");
-      const time = document.createElement("time");
-      time.dateTime = attempt.createdAt;
-      time.textContent = new Date(attempt.createdAt).toLocaleString();
-      const label = attempt.status === "ui_observed" ? "Card change observed — Tinder acceptance unverified"
-        : attempt.status === "uncertain" ? "Uncertain — automatic Likes stopped"
-          : "Reserved — outcome pending";
-      item.append(time, document.createTextNode(" · " + label + " · account day " + attempt.dayKey));
-      ledgerHistory.append(item);
+    if (historyResult.data) {
+      for (const attempt of historyResult.data) {
+        const item = document.createElement("li");
+        const time = document.createElement("time");
+        time.dateTime = attempt.createdAt;
+        time.textContent = new Date(attempt.createdAt).toLocaleString();
+        const label = attempt.status === "ui_observed" ? "Card change observed — Tinder acceptance unverified"
+          : attempt.status === "uncertain" ? "Uncertain — automatic Likes stopped"
+            : "Reserved — outcome pending";
+        item.append(time, document.createTextNode(" · " + label + " · account day " + attempt.dayKey));
+        ledgerHistory.append(item);
+      }
+      if (!historyResult.data.length) {
+        const empty = document.createElement("li");
+        empty.textContent = "No attempts recorded yet.";
+        ledgerHistory.append(empty);
+      }
+    } else {
+      const unavailable = document.createElement("li");
+      unavailable.textContent = "Recent attempts unavailable; no records were changed.";
+      ledgerHistory.append(unavailable);
     }
-    if (!history.length) {
-      const empty = document.createElement("li");
-      empty.textContent = "No attempts recorded yet.";
-      ledgerHistory.append(empty);
-    }
-    ledgerStatus.textContent = summary.unresolvedAttempts > 0
-      ? "Action required: unresolved attempts block further automatic Likes. Inspect the extension and Tinder before any new run."
-      : "Server activity loaded. Tinder acceptance is not independently verified.";
-  } catch (error) {
-    if (serial === activitySerial) ledgerStatus.textContent = error instanceof Error
-      ? error.message : "Server activity is unavailable. Refresh to try again.";
+
+    const errors = [summaryResult.error, historyResult.error].filter(
+      (error): error is string => error !== null
+    );
+    ledgerStatus.textContent = errors.length ? errors.join(" ")
+      : summaryResult.data && summaryResult.data.unresolvedAttempts > 0
+        ? "Action required: unresolved attempts block further automatic Likes. Inspect the extension and Tinder before any new run."
+        : "Server activity loaded. Tinder acceptance is not independently verified.";
   } finally {
     if (serial === activitySerial) ledgerRefresh.disabled = false;
   }
 }
+
 ledgerRefresh.addEventListener("click", () => { void refreshActivity(); });
 
 function renderPriority(): void {
