@@ -4,6 +4,34 @@ import { getSmartSwipeSettings } from "./smart-auto-swipe-settings.js";
 export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export const EXECUTION_LEASE_SECONDS = 120;
 export type SmartSwipeAttemptStatus = "reserved" | "ui_observed" | "uncertain";
+// Whitelist ONLY non-identifying codes created by our executor. Never persist
+// arbitrary strings, page/profile content, private identifiers or error messages.
+export const SMART_SWIPE_OUTCOME_REASONS = [
+  "new_card_visually_observed",
+  "another_like_in_flight",
+  "recent_user_interaction",
+  "unsafe_discovery_state",
+  "like_or_card_not_unique",
+  "preflight_state_changed",
+  "modal_or_navigation_after_click",
+  "card_transition_timeout",
+  "like_action_exception",
+  "route_or_modal_changed",
+  "insufficient_transition_evidence",
+  "card_not_confirmed_changed",
+  "action_result_unavailable",
+  "pre_action_guard_blocked"
+] as const;
+export type SmartSwipeOutcomeReason = typeof SMART_SWIPE_OUTCOME_REASONS[number];
+export function safeSwipeOutcomeReason(
+  status: "ui_observed" | "uncertain", reason: unknown
+): reason is SmartSwipeOutcomeReason {
+  if (typeof reason !== "string" ||
+      !SMART_SWIPE_OUTCOME_REASONS.some(allowed => allowed === reason)) return false;
+  return status === "ui_observed"
+    ? reason === "new_card_visually_observed"
+    : reason !== "new_card_visually_observed";
+}
 export type ClaimResponse =
   | { ok: true; claimed: true; dayKey: string; attemptsToday: number }
   | { ok: false; claimed: false; reason: string; attemptsToday?: number };
@@ -89,10 +117,13 @@ export async function claimSmartSwipeAttempt(
 /** A changed card is UI evidence, not Tinder's server-side receipt. */
 export async function resolveSmartSwipeAttempt(
   userId: string, attemptId: string, deviceId: string,
-  status: "ui_observed" | "uncertain"
+  status: "ui_observed" | "uncertain",
+  outcomeReason: SmartSwipeOutcomeReason | null = null
 ): Promise<{ ok: boolean; reason?: string }> {
   if (!UUID_PATTERN.test(attemptId) || !UUID_PATTERN.test(deviceId) ||
-      !["ui_observed", "uncertain"].includes(status)) return { ok: false, reason: "invalid_input" };
+      !["ui_observed", "uncertain"].includes(status) ||
+      (outcomeReason !== null && !safeSwipeOutcomeReason(status, outcomeReason)))
+    return { ok: false, reason: "invalid_input" };
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
@@ -103,10 +134,10 @@ export async function resolveSmartSwipeAttempt(
     );
     if (!owned.rows.length) { await client.query("ROLLBACK"); return { ok: false, reason: "device_not_owner" }; }
     const result = await client.query(
-      "UPDATE user_smart_swipe_attempts SET status=$4, resolved_at=now() " +
+      "UPDATE user_smart_swipe_attempts SET status=$4, resolved_at=now(), outcome_reason=$5 " +
       "WHERE user_id=$1 AND attempt_id=$2 AND status='reserved' " +
       "AND EXISTS (SELECT 1 FROM user_smart_swipe_execution_lease WHERE user_id=$1 AND owner_device_id=$3) RETURNING attempt_id",
-      [userId, attemptId, deviceId, status]
+      [userId, attemptId, deviceId, status, outcomeReason]
     );
     await client.query("COMMIT");
     return result.rows.length ? { ok: true } : { ok: false, reason: "attempt_not_reserved" };
@@ -140,13 +171,14 @@ export async function readSmartSwipeAttemptSummary(userId: string): Promise<{
 /** Bounded, account-scoped operational history. No profile or device data is exposed. */
 export async function readSmartSwipeAttemptHistory(userId: string): Promise<{
   attempts: Array<{ dayKey: string; status: SmartSwipeAttemptStatus;
-    createdAt: string; resolvedAt: string | null }>;
+    createdAt: string; resolvedAt: string | null; outcomeReason: SmartSwipeOutcomeReason | null }>;
 }> {
   const result = await getPool().query<{
     day_key: string; status: SmartSwipeAttemptStatus;
     created_at: Date; resolved_at: Date | null;
+    outcome_reason: SmartSwipeOutcomeReason | null;
   }>(
-    `SELECT day_key, status, created_at, resolved_at
+    `SELECT day_key, status, created_at, resolved_at, outcome_reason
      FROM user_smart_swipe_attempts
      WHERE user_id = $1 ORDER BY created_at DESC, attempt_id DESC LIMIT 30`,
     [userId]
@@ -154,6 +186,7 @@ export async function readSmartSwipeAttemptHistory(userId: string): Promise<{
   return { attempts: result.rows.map(row => ({
     dayKey: row.day_key, status: row.status,
     createdAt: row.created_at.toISOString(),
-    resolvedAt: row.resolved_at?.toISOString() ?? null
+    resolvedAt: row.resolved_at?.toISOString() ?? null,
+    outcomeReason: row.outcome_reason ?? null
   })) };
 }

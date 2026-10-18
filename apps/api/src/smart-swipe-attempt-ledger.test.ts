@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { accountDayKey, canClaimAttempt, UUID_PATTERN } from "./smart-swipe-attempt-ledger.js";
+import { accountDayKey, canClaimAttempt, UUID_PATTERN, SMART_SWIPE_OUTCOME_REASONS, safeSwipeOutcomeReason } from "./smart-swipe-attempt-ledger.js";
 test("attempt claiming is idempotent, quota-bound, and refuses uncertain prior actions", () => {
   assert.equal(canClaimAttempt(0, 10, false, false), "ready");
   assert.equal(canClaimAttempt(9, 10, false, false), "ready");
@@ -15,4 +15,18 @@ test("account-local date key respects DST and Paris midnight", () => {
   assert.equal(accountDayKey(Date.parse("2026-10-16T22:30:00Z"), "Europe/Paris"), "2026-10-17");
   assert.equal(accountDayKey(Date.parse("2026-10-16T22:30:00Z"), "America/New_York"), "2026-10-16");
   assert.throws(() => accountDayKey(Date.now(), "Unknown/Invalid"));
+});
+
+test("only non-identifying executor codes are accepted for outcome diagnostics", () => {
+  for (const reason of SMART_SWIPE_OUTCOME_REASONS) {
+    assert.equal(safeSwipeOutcomeReason(reason === "new_card_visually_observed"
+      ? "ui_observed" : "uncertain", reason), true, reason);
+  }
+  assert.equal(safeSwipeOutcomeReason("uncertain", "new_card_visually_observed"), false);
+  assert.equal(safeSwipeOutcomeReason("ui_observed", "card_transition_timeout"), false);
+  assert.equal(safeSwipeOutcomeReason("uncertain", "private user contact +33612345678"), false);
+  assert.equal(safeSwipeOutcomeReason("uncertain", "http://tinder.com/private/profile"), false);
+  assert.equal(safeSwipeOutcomeReason("uncertain", { profile: "private" }), false);
+  assert.equal(safeSwipeOutcomeReason("uncertain", null), false);
+  assert.equal(safeSwipeOutcomeReason("uncertain", ""), false);
 });
