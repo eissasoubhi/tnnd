@@ -110,6 +110,21 @@ async function serve(req, res) {
       } });
     }
     if (pathname === "/api/v1/ai/provider-settings") return json(res, 200, { configured: true, model: "fixture-model" });
+    if (pathname === "/api/v1/automation/smart-swipe") return json(res, 200, { settings: {
+      enabled: true, sessionsPerDay: 3, sessionDurationMinSeconds: 300,
+      sessionDurationMaxSeconds: 600, swipeDelayMinSeconds: 2,
+      swipeDelayMaxSeconds: 5, maxRightSwipesPerDay: 5,
+      priority: ["swipe", "new-match", "active-chat"],
+      pauseSwipeDuringActiveConversation: true,
+      maxActiveChatSecondsPerConversationPerDay: null, timeZone: "Europe/Paris"
+    }, liveExecutionAvailable: false, unavailableReason: "runtime_not_implemented" });
+    if (pathname === "/api/v1/automation/smart-swipe/attempts/summary") return json(res, 200, {
+      dayKey: "2026-10-18", attemptsToday: 2, uiObservedToday: 1, unresolvedAttempts: 1
+    });
+    if (pathname === "/api/v1/automation/smart-swipe/attempts/history") return json(res, 200, { attempts: [
+      { dayKey: "2026-10-18", status: "uncertain", createdAt: now, resolvedAt: now },
+      { dayKey: "2026-10-18", status: "ui_observed", createdAt: now, resolvedAt: now }
+    ] });
     if (pathname === "/api/v1/ai/test-connection") return json(res, 200, { provider: "gemini", connected: true, model: "fixture-model" });
     if (pathname === "/api/v1/human-actions") return json(res, 200, { actions: [] });
     if (pathname === "/api/v1/personal-memories") return json(res, 200, { memories: [] });
@@ -231,6 +246,9 @@ async function main() {
     await step(cdp, "Account sign-in and asynchronous workspace panels load",
       'document.querySelector("#auth-signed-in")?.hidden === false && document.querySelector("#login-form")?.hidden === true',
       Boolean);
+    await waitFor(cdp, 'document.querySelector("#smart-swipe-ledger-status")?.textContent?.includes("Action required")');
+    await step(cdp, "Smart Swipe shows server-backed attempt counts and uncertainty",
+      'document.querySelector("#smart-swipe-ledger-totals")?.textContent?.includes("2 / 5") && document.querySelector("#smart-swipe-ledger-history")?.textContent?.includes("Tinder acceptance unverified") && document.querySelector("#smart-swipe-ledger-history")?.textContent?.includes("Uncertain")', Boolean);
     await step(cdp, "A synced fixture conversation opens with real messages",
       'document.querySelector("#conversation-detail")?.textContent?.includes("Hi! How are you?")',
       Boolean);
