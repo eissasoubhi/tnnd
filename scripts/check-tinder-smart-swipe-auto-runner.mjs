@@ -51,6 +51,10 @@ assert.ok(popup.includes("reply.armed !== armed"),
   "Stop must require an explicit disarmed acknowledgement, not just a success flag");
 assert.ok(popup.includes("Stop confirmed: Smart Swipe is disarmed"),
   "successful Stop should be clearly reported");
+assert.ok(popup.includes("Stop confirmed locally. Server status unavailable: "),
+  "a confirmed offline Stop must remain visible if status refresh fails");
+assert.ok(popup.includes("smartSwipeStopConfirmed = true;"),
+  "Stop acknowledgement must survive an unavailable status request");
 assert.ok(popup.includes("start.disabled = view.startDisabled"),
   "Start should only unlock after authenticated inspection of actual status");
 assert.ok(!popup.includes("if (!updateSucceeded) start.disabled = false;"),
