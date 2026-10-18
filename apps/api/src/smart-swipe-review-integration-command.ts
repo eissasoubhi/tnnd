@@ -20,6 +20,14 @@ function requireDisposableCiDatabase(): void {
   }
 }
 
+function expectClaimDenied(
+  result: Awaited<ReturnType<typeof claimSmartSwipeAttempt>>, reason: string
+): void {
+  assert.equal(result.ok, false);
+  if (result.ok) throw new Error("Unexpected successful claim");
+  assert.equal(result.reason, reason);
+}
+
 async function main(): Promise<void> {
   requireDisposableCiDatabase();
   const pool = getPool();
@@ -39,7 +47,7 @@ async function main(): Promise<void> {
     assert.equal((await resolveSmartSwipeAttempt(userId, attemptId, deviceId,
       "uncertain", "card_transition_timeout")).ok, true);
 
-    assert.equal((await claimSmartSwipeAttempt(userId, randomUUID(), deviceId)).reason, "unresolved");
+    expectClaimDenied(await claimSmartSwipeAttempt(userId, randomUUID(), deviceId), "unresolved");
     assert.equal((await reviewUncertainSmartSwipeAttempt(userId, attemptId,
       "any_non_authorized_value")).ok, false);
     assert.equal((await reviewUncertainSmartSwipeAttempt(userId, attemptId,
@@ -67,9 +75,9 @@ async function main(): Promise<void> {
     });
 
     // Review does NOT resume automation, not even for the same installation.
-    assert.equal((await claimSmartSwipeAttempt(userId, randomUUID(), deviceId)).reason,
+    expectClaimDenied(await claimSmartSwipeAttempt(userId, randomUUID(), deviceId),
       "manual_review_requires_explicit_start");
-    assert.equal((await claimSmartSwipeAttempt(userId, randomUUID(), randomUUID())).reason,
+    expectClaimDenied(await claimSmartSwipeAttempt(userId, randomUUID(), randomUUID()),
       "manual_review_requires_explicit_start");
     assert.equal((await authorizeSmartSwipeRearm(userId, randomUUID())).reason,
       "other_device_owns_account");
@@ -78,7 +86,7 @@ async function main(): Promise<void> {
     assert.equal((await claimSmartSwipeAttempt(userId, nextAttempt, deviceId)).ok, true);
     assert.equal((await resolveSmartSwipeAttempt(userId, nextAttempt, deviceId,
       "ui_observed", "new_card_visually_observed")).ok, true);
-    assert.equal((await claimSmartSwipeAttempt(userId, randomUUID(), deviceId)).reason, "daily_cap");
+    expectClaimDenied(await claimSmartSwipeAttempt(userId, randomUUID(), deviceId), "daily_cap");
     const final = await readSmartSwipeAttemptSummary(userId);
     assert.equal(final.attemptsToday, 2);
     assert.equal(final.uiObservedToday, 1);
