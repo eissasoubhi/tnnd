@@ -3,6 +3,7 @@ import { loginBackend, logoutBackend, validateBackendSession } from "./backend-s
 import { renderExtensionSetupProgress } from "./setup-extension-panel";
 import { getBackendSession, getChatSettings, getConfig, saveChatSettings } from "./storage";
 import { firstMessageDailyLimit } from "./tinder-first-message-daily-limit";
+import { classifySwipePopupState } from "./tinder-smart-swipe-popup-state";
 import { conversationAttention, type ConversationActivity } from "./tinder-conversation-activity";
 import { cappedAttentionWaitMs } from "./tinder-attention-cap";
 import "./tinder-bulk-sync-popup";
@@ -1073,11 +1074,18 @@ stopNewMatchObservation.addEventListener("click", () => {
   })().catch(e => { newMatchObservationStatus.textContent = e instanceof Error ? e.message : "Stop failed."; });
 });
 
-// Display extension-side planning status without exposing profile information or triggering Likes.
+// Popup reports what is ARMED separately from historical unsafe attempts.
+// Even after a successful Stop the server may retain a previously uncertain Like.
+let smartSwipeStatusRevision = 0;
+let smartSwipeStopConfirmed = false;
 async function refreshSmartSwipeRuntime(): Promise<void> {
+  const revision = ++smartSwipeStatusRevision;
   const summary = document.getElementById("smartSwipeRuntimeSummary");
   const refresh = document.getElementById("refreshSmartSwipeRuntime") as HTMLButtonElement | null;
+  const start = document.getElementById("startSmartSwipeRuntime") as HTMLButtonElement | null;
   if (!summary || !refresh) return;
+  // Unknown state: fail closed for Start, but never disable emergency Stop.
+  if (start) start.disabled = true;
   refresh.disabled = true;
   summary.textContent = "Checking TNND settings and Tinder Discovery…";
   try {
@@ -1093,52 +1101,65 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
       controls?: { status?: string; likeControls?: number };
       progress?: { startedSessions?: number; rightSwipesConfirmed?: number; rightSwipesReserved?: number };
     };
+    if (revision !== smartSwipeStatusRevision) return;
     if (!result?.ok) {
-      summary.textContent = "Unavailable: " + (result?.reason ?? "runtime_status_unavailable");
+      summary.textContent = (smartSwipeStopConfirmed
+        ? "Stop confirmed locally. Server status unavailable: "
+        : "Unable to confirm swiping state: ") +
+        (result?.reason ?? "runtime_status_unavailable") +
+        ". Start disabled until status is available. Stop remains available.";
       return;
     }
-    if (!result.enabled) {
-      summary.textContent = "Smart Auto Swipe disabled in TNND Web.";
+    if (result.armed === true) smartSwipeStopConfirmed = false;
+    const view = classifySwipePopupState({
+      enabled: result.enabled === true,
+      armed: result.armed === true,
+      unresolvedOnServer: result.unresolvedOnServer
+    });
+    if (start) start.disabled = view.startDisabled;
+    if (view.phase === "disabled") {
+      summary.textContent = "Automation: disabled in TNND Web. No automatic Likes should be sent.";
       return;
     }
     const known = (value: number | null | undefined) =>
       typeof value === "number" ? String(value) : "unknown";
-    const unresolved = typeof result.unresolvedOnServer === "number" &&
-      result.unresolvedOnServer > 0;
-    const ledgerUnavailable = result.unresolvedOnServer == null;
-    // Armed means the popup requested execution, NOT that a Like is running.
-    // A reserved or uncertain attempt blocks subsequent Likes until reviewed.
-    const blocked = unresolved || ledgerUnavailable;
-    const remaining = result.session
+    const hasUnsafeLedger = view.needsReview || view.ledgerUnavailable;
+    const sessionRemaining = result.session
       ? Math.ceil(result.session.remainingMs / 1000) + " sec" +
-        (blocked ? " (not available while blocked)" : result.session.active ? "" : " (paused)")
+        (view.phase === "stopped" ? " (not running while stopped)"
+          : view.phase === "blocked" ? " (paused for review)"
+            : result.session.active ? "" : " (paused)")
       : "not in session";
-    const statusText = unresolved
-      ? "BLOCKED: unresolved attempt requires review; no further automatic Likes"
-      : ledgerUnavailable
-        ? "BLOCKED: server attempt journal unavailable; cannot verify safe restart"
-        : (result.lastResult ?? result.schedule ?? result.status ?? "unknown");
+    const statusText = view.phase === "stopped"
+      ? "STOPPED: extension disarmed; no new automatic Likes. " +
+        (view.needsReview ? "Previous uncertain Like still requires review."
+          : view.ledgerUnavailable ? "Attempt journal unavailable; do not restart until verified."
+            : "Ready to review scheduling before a future Start.")
+      : view.phase === "blocked"
+        ? view.needsReview
+          ? "BLOCKED: unresolved attempt requires review; no further automatic Likes"
+          : "BLOCKED: server attempt journal unavailable; cannot verify safe restart"
+        : (result.lastResult ?? result.schedule ?? result.status ?? "armed");
     summary.textContent = [
-      "Automation: " + (blocked ? "blocked" : result.armed ? "armed" : "stopped"),
+      "Automation: " + view.phase,
       "Status: " + statusText,
       "Sessions left: " + known(result.remainingSessions),
       "Like attempt slots left: " + known(result.remainingAttempts) +
-        (blocked ? " (not usable while blocked)" : ""),
+        (hasUnsafeLedger ? " (not usable until review)" : ""),
       "Card transitions observed: " + known(result.uiObservedToday),
       "Unresolved: " + known(result.unresolvedOnServer),
-      "Session remaining: " + remaining,
-      "Priority: " + (blocked ? "paused for review" : (result.nextActivity ?? "none")),
-      ...(unresolved ? ["Review: TNND Web → Settings → Smart Auto Swipe → Recent attempts"] : []),
+      "Session remaining: " + sessionRemaining,
+      "Priority: " + (view.phase === "armed" ? (result.nextActivity ?? "none") : "not running"),
+      ...(view.needsReview ? ["Review: TNND Web → Settings → Smart Auto Swipe → Recent attempts"] : []),
       "Tinder server acceptance: not independently verified"
     ].join(" · ");
-    const start = document.getElementById("startSmartSwipeRuntime") as HTMLButtonElement | null;
-    if (start) start.disabled = result.armed === true || blocked;
-    // Keep Stop enabled even when the backend becomes unreachable.
-
   } catch {
-    summary.textContent = "Could not read runtime state. Check extension and TNND API.";
+    if (revision === smartSwipeStatusRevision)
+      summary.textContent = (smartSwipeStopConfirmed
+        ? "Stop confirmed locally. " : "") +
+        "Could not load runtime state. Start disabled. Stop remains available.";
   } finally {
-    refresh.disabled = false;
+    if (revision === smartSwipeStatusRevision) refresh.disabled = false;
   }
 }
 document.getElementById("refreshSmartSwipeRuntime")?.addEventListener("click", () => {
@@ -1150,30 +1171,41 @@ for (const [id, armed] of [
   ["stopSmartSwipeRuntime", false]
 ] as const) {
   document.getElementById(id)?.addEventListener("click", () => {
+    // A late response from an earlier status refresh must not overwrite Stop.
+    ++smartSwipeStatusRevision;
     const summary = document.getElementById("smartSwipeRuntimeSummary");
     const start = document.getElementById("startSmartSwipeRuntime") as HTMLButtonElement;
     const stop = document.getElementById("stopSmartSwipeRuntime") as HTMLButtonElement;
+    const refresh = document.getElementById("refreshSmartSwipeRuntime") as HTMLButtonElement;
     start.disabled = true;
     stop.disabled = true;
-    if (summary) summary.textContent = armed ? "Checking Tinder before start…" : "Stopping before the next attempt…";
-    let updateSucceeded = false;
+    refresh.disabled = true;
+    if (summary) summary.textContent = armed
+      ? "Checking Tinder before start…" : "Disarming Smart Swipe…";
     void chrome.runtime.sendMessage({
       type: "TNND_SMART_SWIPE_SET_ARMED", armed
-    }).then(async (result: { ok?: boolean; reason?: string }) => {
-      if (!result?.ok) {
-        if (summary) summary.textContent = "Cannot update swiping: " +
-          (result?.reason ?? "unavailable");
-      } else {
-        updateSucceeded = true;
-        await refreshSmartSwipeRuntime();
+    }).then(async (reply: { ok?: boolean; armed?: boolean; reason?: string }) => {
+      if (!reply?.ok || reply.armed !== armed) {
+        if (summary) summary.textContent = (armed
+          ? "Start was not confirmed: " : "STOP was not confirmed: ") +
+          (reply?.reason ?? "unknown_status") +
+          ". Disable TNND in chrome://extensions if you need to stop immediately.";
+        return;
       }
+      if (!armed) {
+        smartSwipeStopConfirmed = true;
+        if (summary) summary.textContent =
+          "Stop confirmed: Smart Swipe is disarmed. Historical uncertain attempts remain protected.";
+      } else smartSwipeStopConfirmed = false;
+      await refreshSmartSwipeRuntime();
     }).catch(() => {
-      if (summary) summary.textContent = "Could not contact the TNND extension worker.";
+      if (summary) summary.textContent =
+        "Could not contact TNND worker. Disable the extension in chrome://extensions to stop it.";
     }).finally(() => {
-      // Do not re-enable Start over a verified blocked/armed state reported
-      // by refreshSmartSwipeRuntime. Stop remains available even when offline.
-      if (!updateSucceeded) start.disabled = false;
+      // Never enable Start by default after an unknown result. Only an actual
+      // authenticated status refresh may prove it safe to arm again.
       stop.disabled = false;
+      refresh.disabled = false;
     });
   });
 }
