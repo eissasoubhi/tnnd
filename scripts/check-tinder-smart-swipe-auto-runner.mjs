@@ -21,4 +21,12 @@ assert.ok(background.includes('sender.url !== `chrome-extension://${chrome.runti
   "the popup origin must interpolate the live extension ID");
 assert.ok(!background.includes('chrome-extension://\\${chrome.runtime.id}'),
   "an escaped template interpolation would block Start and Stop");
+const claimPosition = background.indexOf('"/api/v1/automation/smart-swipe/attempts/claim"');
+const ownershipRecheckPosition = background.indexOf('const preActionGate = decideAutoSwipeDrive(');
+const executePosition = background.indexOf('type: "TNND_SMART_SWIPE_EXECUTE_RESERVED"');
+assert.ok(claimPosition >= 0 && ownershipRecheckPosition > claimPosition &&
+  executePosition > ownershipRecheckPosition,
+  "ownership must be revalidated after server claim and before the Like action");
+assert.ok(background.includes('const latestRunners = await competingRunners();'),
+  "new and existing chat runners must be re-read after the server claim");
 console.log("Smart Swipe single tab/owner/runner safety gates passed.");
