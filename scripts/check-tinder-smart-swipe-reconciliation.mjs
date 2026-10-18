@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {
-  parseDayReconciliationProof, reconcileReviewedLocalSwipeAttempt
+  parseDayReconciliationProof, reconcileReviewedLocalSwipeAttempt, publicSwipeReconciliationCounts
 } from "../src/tinder-smart-swipe-reconciliation.ts";
 import { emptySmartSwipeDay } from "../src/tinder-smart-auto-swipe-policy.ts";
 import { readFileSync } from "node:fs";
@@ -68,6 +68,19 @@ const rearmAt = runner.indexOf('"/api/v1/automation/smart-swipe/attempts/rearm"'
 const armedAt = runner.indexOf("[key]: { armed: true");
 assert.ok(proofAt > 0 && rearmAt > proofAt && armedAt > rearmAt,
   "explicit Start must obtain and match account-day proof BEFORE rearming");
-assert.ok(runner.includes('if (!review.ok) return { ok: false, reason: review.reason };'),
+assert.ok(runner.includes('if (!review.ok) return {') &&
+  runner.includes('ok: false, reason: review.reason,'),
   "unmatched unknown reservations must fail closed");
+const sanitized = publicSwipeReconciliationCounts(missedLocalWrite, evidence);
+assert.match(sanitized, /local UI transitions 0/);
+assert.match(sanitized, /server UI transitions 1/);
+assert.match(sanitized, /server reviewed unknown 1/);
+assert.doesNotMatch(sanitized, /userId|deviceId|token|profile|tinder.com/);
+const popup = readFileSync(new URL("../src/popup.ts", import.meta.url),"utf8");
+assert.ok(popup.includes("Start refused: ") && popup.includes("Diagnostic counts: "),
+  "a rejected Start should show safe counts, not imply the runner is running");
+assert.ok(popup.includes("No automatic swiping session was launched."),
+  "a failed Start must not be confused with a failed Stop");
+assert.ok(popup.includes("Disable TNND in chrome://extensions if you need to stop immediately."),
+  "emergency Stop guidance must remain available only for Stop failures");
 console.log("Smart Swipe review/rearm proof and no-retry guards passed.");
