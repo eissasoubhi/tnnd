@@ -29,4 +29,16 @@ assert.ok(claimPosition >= 0 && ownershipRecheckPosition > claimPosition &&
   "ownership must be revalidated after server claim and before the Like action");
 assert.ok(background.includes('const latestRunners = await competingRunners();'),
   "new and existing chat runners must be re-read after the server claim");
+const popup = readFileSync(new URL("../src/popup.ts", import.meta.url), "utf8");
+assert.ok(popup.includes('result.unresolvedOnServer > 0'),
+  "popup must explicitly detect unresolved server attempts");
+assert.ok(popup.includes('const blocked = unresolved || ledgerUnavailable;'),
+  "unknown server attempt history must not be treated as zero");
+assert.ok(popup.includes("start.disabled = result.armed === true || blocked"),
+  "Start must remain disabled while an attempt is unresolved or ledger unavailable");
+assert.ok(popup.includes("if (!updateSucceeded) start.disabled = false;"),
+  "Start/Stop completion must not override a blocked status");
+const webPanel = readFileSync(new URL("../apps/web/src/smart-auto-swipe-panel.ts", import.meta.url), "utf8");
+assert.ok(webPanel.includes("if (summary.unresolvedAttempts > 0) ledgerDetails.open = true"),
+  "Web must reveal the history without an extra click when unresolved attempts block swiping");
 console.log("Smart Swipe single tab/owner/runner safety gates passed.");
