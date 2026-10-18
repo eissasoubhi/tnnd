@@ -14,6 +14,7 @@ import {
 import { readSmartSwipeProgress } from "./tinder-smart-swipe-progress-store";
 import type { SwipeDiscoveryEvidence } from "./tinder-swipe-discovery-evidence";
 import type { TinderSwipeActionResult } from "./tinder-swipe-card-transition-policy";
+import { withTinderRunnerTransition } from "./tinder-runner-transition";
 
 const API = "http://127.0.0.1:4000";
 const STORAGE_PROGRESS = "tnnd.smartSwipeDailyProgress.v1:";
@@ -312,7 +313,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
     if (typeof armed !== "boolean") {
       respond({ ok: false, reason: "invalid_start_stop" }); return false;
     }
-    void setArmed(armed).then(respond)
+    void withTinderRunnerTransition(() => setArmed(armed)).then(respond)
       .catch(() => respond({ ok: false, reason: "start_stop_failed" }));
     return true;
   }

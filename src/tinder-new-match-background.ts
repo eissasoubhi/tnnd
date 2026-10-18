@@ -6,6 +6,7 @@ import {
 import { getBackendSession, getConfig } from "./storage";
 import { finishNewMatchAttempt } from "./tinder-new-match-observation";
 import { recoverVerifiedPreSendFailures } from "./tinder-first-message-recovery";
+import { assertSwipeNotArmed, withTinderRunnerTransition } from "./tinder-runner-transition";
 const KEY = "tnnd.newMatchLinkObservation.v3";
 
 type Request =
@@ -79,7 +80,8 @@ chrome.runtime.onMessage.addListener((message: Request, sender, respond) => {
     return true;
   }
   if (message.type === "TNND_NEW_MATCH_OBSERVATION_START" && popupSender(sender)) {
-    void serialized(async () => {
+    void serialized(() => withTinderRunnerTransition(async () => {
+      await assertSwipeNotArmed();
       if (!Array.isArray(message.refs) || message.refs.length < 2 || message.refs.length > 500) throw new Error("Select the Tinder Matches tab with at least two loaded match tiles before starting.");
       const existingRunner = (await chrome.storage.local.get("tnnd.globalExistingRunner.v2"))["tnnd.globalExistingRunner.v2"] as { enabled?: boolean } | undefined;
       if (existingRunner?.enabled) throw new Error("Global existing chats are running. Stop that runner before starting new-match AI: Tinder supports a single tab.");
@@ -90,12 +92,13 @@ chrome.runtime.onMessage.addListener((message: Request, sender, respond) => {
       const next = await saveNewMatchState(armNewMatchObservation(message.refs, session.user.id));
       await chrome.alarms.create("tnnd.globalNewMatches.cycle", { periodInMinutes: 1 });
       return next;
-    }).then(state => respond({ ok: true, state }))
+    })).then(state => respond({ ok: true, state }))
       .catch(error => respond({ ok: false, error: error instanceof Error ? error.message : "arm_failed" }));
     return true;
   }
   if (message.type === "TNND_EXISTING_MATCHES_START" && popupSender(sender)) {
-    void serialized(async () => {
+    void serialized(() => withTinderRunnerTransition(async () => {
+      await assertSwipeNotArmed();
       if (!Array.isArray(message.refs) || message.refs.length < 1 || message.refs.length > 500) throw new Error("Select Matches to see the existing Tinder match tiles.");
       const existing = (await chrome.storage.local.get("tnnd.globalExistingRunner.v2"))["tnnd.globalExistingRunner.v2"] as { enabled?: boolean } | undefined;
       if (existing?.enabled) throw new Error("Stop global existing conversations before launching first messages to existing matches.");
@@ -142,12 +145,12 @@ chrome.runtime.onMessage.addListener((message: Request, sender, respond) => {
       await chrome.storage.local.set({ "tnnd.newMatchOwnedTab.v1": { tabId: message.tabId, userId: session.user.id, ref: null } });
       await chrome.alarms.create("tnnd.globalNewMatches.cycle", { periodInMinutes: 0.5 });
       return state;
-    }).then(state => respond({ ok: true, state }))
+    })).then(state => respond({ ok: true, state }))
       .catch(error => respond({ ok: false, error: error instanceof Error ? error.message : "start_existing_matches_failed" }));
     return true;
   }
   if (message.type === "TNND_NEW_MATCH_OBSERVATION_STOP" && popupSender(sender)) {
-    void serialized(async () => {
+    void serialized(() => withTinderRunnerTransition(async () => {
       const next = await saveNewMatchState(stopNewMatchObservation(await readNewMatchState()));
       await chrome.alarms.clear("tnnd.globalNewMatches.cycle");
       const ownedKey = "tnnd.newMatchOwnedTab.v1";
@@ -162,7 +165,7 @@ chrome.runtime.onMessage.addListener((message: Request, sender, respond) => {
       }
       await chrome.storage.local.remove(ownedKey);
       return next;
-    })
+    }))
       .then(state => respond({ ok: true, state }))
       .catch(() => respond({ ok: false, error: "stop_failed" }));
     return true;

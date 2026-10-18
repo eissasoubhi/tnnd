@@ -63,7 +63,7 @@
     "test:smart-swipe-chat-focus-budget": "node --experimental-strip-types scripts/check-tinder-smart-swipe-chat-focus-budget.mjs",
     "test:smart-swipe-card-transition": "node --experimental-strip-types scripts/check-tinder-swipe-card-transition.mjs",
     "test:smart-swipe-chat-focus-runtime": "node --experimental-strip-types scripts/check-tinder-smart-swipe-chat-focus-runtime.mjs",
-    "test:smart-swipe-auto-runner": "node --experimental-strip-types scripts/check-tinder-smart-swipe-auto-runner.mjs",
+    "test:smart-swipe-auto-runner": "node --experimental-strip-types scripts/check-tinder-smart-swipe-auto-runner.mjs && node --experimental-strip-types scripts/check-tinder-runner-transition.mjs",
     "test:smart-swipe-card-marker": "node --experimental-strip-types scripts/check-tinder-swipe-card-marker.mjs"
   },
   "dependencies": {
