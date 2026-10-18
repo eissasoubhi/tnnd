@@ -14,3 +14,8 @@ This includes UI work written in TypeScript: `apps/web/src/**/*.ts`, `src/popup.
 Before claiming completion, apply `references/review-checklist.md`, run appropriate existing test/build/visual QA and report what was actually checked. Do not invent browser verification or screenshots.
 
 Preserve the approved **Neo Bento** system and live product behavior. Do not refactor unrelated UI or change Tinder selectors, send gates, consent, permissions or message-delivery semantics as a side effect of cosmetic work. Pure backend/infra tasks with no user-facing change need not load this skill.
+
+
+## ChatGPT Plus Cloud engineering workflow — mandatory delivery discipline
+
+For features, bug fixes, reviews and releases, use `docs/engineering/chatgpt-cloud-delivery.md` as the product/architecture/QA operating model. Inspect `main`, open PRs, existing CI and roadmap #5 before edits. ChatGPT/Work coordination, BMAD planning personas and GitHub Actions validation are distinct capabilities; **never claim terminal access, independent review, passing tests or live Tinder confirmation without evidence**. Use isolated branches and the PR checklist; follow the current Neo Bento and release constraints above.
