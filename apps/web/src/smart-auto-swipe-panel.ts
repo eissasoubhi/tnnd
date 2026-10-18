@@ -177,6 +177,65 @@ async function refreshActivity(): Promise<void> {
           : attempt.outcomeReason ? " · " + describeSwipeOutcomeReason(attempt.outcomeReason) : "";
         item.append(time, document.createTextNode(" · " + label + reason +
           " · account day " + attempt.dayKey));
+        if (attempt.status === "uncertain" && attempt.reviewedAt) {
+          const reviewed = document.createElement("strong");
+          reviewed.textContent = " · Reviewed manually — original outcome remains UNKNOWN; old Like not retried";
+          item.append(reviewed);
+        } else if (attempt.status === "uncertain" && attempt.attemptId) {
+          const review = document.createElement("button");
+          review.type = "button";
+          review.className = "secondary";
+          review.textContent = "Review uncertain attempt (no retry)";
+          review.addEventListener("click", () => {
+            const current = readSession();
+            if (!current || current.user.id !== loadedForUser || !attempt.attemptId) {
+              ledgerStatus.textContent = "TNND session changed. Sign in and refresh before reviewing.";
+              return;
+            }
+            const consent = window.confirm(
+              "MANUAL REVIEW — UNKNOWN RESULT\\n\\n" +
+              "Only continue after checking your Tinder Discovery page yourself. " +
+              "This action does NOT prove that Tinder accepted or rejected the old Like. " +
+              "It preserves the original uncertain record and consumes its original quota slot; " +
+              "the old attempt will NEVER be retried.\\n\\n" +
+              "Review closes automatic authorization on all devices until you explicitly Start again. " +
+              "Do not proceed if you cannot tell whether the currently visible card is safe to leave behind. " +
+              "Record that you reviewed this UNKNOWN attempt?"
+            );
+            if (!consent) return;
+            review.disabled = true;
+            ledgerStatus.textContent = "Recording manual review — not sending any Tinder action…";
+            void (async () => {
+              try {
+                const response = await fetch(endpoint + "/attempts/review", {
+                  method: "POST",
+                  headers: { authorization: "Bearer " + current.token,
+                    "content-type": "application/json" },
+                  body: JSON.stringify({
+                    attemptId: attempt.attemptId,
+                    acknowledgement: "acknowledge_unknown_no_retry"
+                  }),
+                  cache: "no-store"
+                });
+                const result = await response.json() as { ok?: boolean; reason?: string };
+                if (!response.ok || !result.ok) {
+                  throw new Error(response.status === 401
+                    ? "Session expired. Sign in and refresh."
+                    : "Review refused (" + response.status + "). Attempt remains blocked.");
+                }
+                if (readSession()?.user.id !== current.user.id) return;
+                notice.textContent = "Review recorded: the Like result is still UNKNOWN. " +
+                  "No attempt was retried. Inspect Tinder before enabling and explicitly starting Smart Swipe.";
+                await refreshActivity();
+              } catch {
+                ledgerStatus.textContent =
+                  "Could not confirm manual review. No automatic retries; refresh status before continuing.";
+                review.disabled = false;
+              }
+            })();
+          });
+          item.append(document.createTextNode(" "), review);
+        }
         ledgerHistory.append(item);
       }
       if (!historyResult.data.length) {

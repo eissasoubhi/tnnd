@@ -21,7 +21,7 @@ import { conversationSyncErrorResponse } from "./conversation-sync-error-respons
 import { handleConversationThreadLookupRequest } from "./conversation-thread-lookup-controller.js";
 import { getPool } from "./db-client.js";
 import { getSmartSwipeSettings, putSmartSwipeSettings, validateSmartSwipeSettings } from "./smart-auto-swipe-settings.js";
-import { claimSmartSwipeAttempt, resolveSmartSwipeAttempt, readSmartSwipeAttemptSummary, readSmartSwipeAttemptHistory, safeSwipeOutcomeReason } from "./smart-swipe-attempt-ledger.js";
+import { claimSmartSwipeAttempt, resolveSmartSwipeAttempt, readSmartSwipeAttemptSummary, readSmartSwipeAttemptHistory, safeSwipeOutcomeReason, reviewUncertainSmartSwipeAttempt, readSmartSwipeDayReconciliation, validSmartSwipeDayKey, authorizeSmartSwipeRearm } from "./smart-swipe-attempt-ledger.js";
 import { handleHumanActionManualAnswerRequest } from "./human-action-manual-answer-controller.js";
 import { createHumanAction, listHumanActions, updateHumanActionStatus, type HumanActionSeverity, type HumanActionStatus } from "./human-action-service.js";
 import { handleConversationMatchProfileRequest, handleMatchProfileCaptureRequest, handleMatchProfilePromoteRequest } from "./match-profile-controller.js";
@@ -395,6 +395,34 @@ const server = createServer(async (request, response) => {
       }
       if (url.pathname === "/api/v1/automation/smart-swipe/attempts/history" && request.method === "GET") {
         sendJson(response, 200, await readSmartSwipeAttemptHistory(session.user.id));
+        return;
+      }
+      if (url.pathname === "/api/v1/automation/smart-swipe/attempts/reconciliation" && request.method === "GET") {
+        const dayKey = url.searchParams.get("dayKey");
+        if (!validSmartSwipeDayKey(dayKey)) {
+          sendJson(response, 400, { error: "invalid_day_key" }); return;
+        }
+        sendJson(response, 200, await readSmartSwipeDayReconciliation(session.user.id, dayKey));
+        return;
+      }
+      if (url.pathname === "/api/v1/automation/smart-swipe/attempts/review" && request.method === "POST") {
+        const body = await readJsonBody(request);
+        if (typeof body.attemptId !== "string") {
+          sendJson(response, 400, { error: "invalid_review_request" }); return;
+        }
+        const result = await reviewUncertainSmartSwipeAttempt(
+          session.user.id, body.attemptId, body.acknowledgement
+        );
+        sendJson(response, result.ok ? 200 : 409, result);
+        return;
+      }
+      if (url.pathname === "/api/v1/automation/smart-swipe/attempts/rearm" && request.method === "POST") {
+        const body = await readJsonBody(request);
+        if (typeof body.deviceId !== "string") {
+          sendJson(response, 400, { error: "invalid_device_id" }); return;
+        }
+        const result = await authorizeSmartSwipeRearm(session.user.id, body.deviceId);
+        sendJson(response, result.ok ? 200 : 409, result);
         return;
       }
       if (url.pathname === "/api/v1/automation/smart-swipe/attempts/claim" && request.method === "POST") {

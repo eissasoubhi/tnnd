@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { accountDayKey, canClaimAttempt, UUID_PATTERN, SMART_SWIPE_OUTCOME_REASONS, safeSwipeOutcomeReason } from "./smart-swipe-attempt-ledger.js";
+import { accountDayKey, canClaimAttempt, UUID_PATTERN, SMART_SWIPE_OUTCOME_REASONS, safeSwipeOutcomeReason, validSmartSwipeDayKey, REVIEW_UNKNOWN_ACKNOWLEDGEMENT } from "./smart-swipe-attempt-ledger.js";
 test("attempt claiming is idempotent, quota-bound, and refuses uncertain prior actions", () => {
   assert.equal(canClaimAttempt(0, 10, false, false), "ready");
   assert.equal(canClaimAttempt(9, 10, false, false), "ready");
@@ -29,4 +29,12 @@ test("only non-identifying executor codes are accepted for outcome diagnostics",
   assert.equal(safeSwipeOutcomeReason("uncertain", { profile: "private" }), false);
   assert.equal(safeSwipeOutcomeReason("uncertain", null), false);
   assert.equal(safeSwipeOutcomeReason("uncertain", ""), false);
+});
+
+test("manual review requires an explicit unknown-outcome acknowledgement and canonical account day", () => {
+  assert.equal(REVIEW_UNKNOWN_ACKNOWLEDGEMENT, "acknowledge_unknown_no_retry");
+  assert.equal(validSmartSwipeDayKey("2026-10-18"), true);
+  assert.equal(validSmartSwipeDayKey("2026-10-18/another-user"), false);
+  assert.equal(validSmartSwipeDayKey("2026-99-99"), false);
+  assert.equal(validSmartSwipeDayKey(null), false);
 });

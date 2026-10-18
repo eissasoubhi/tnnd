@@ -60,12 +60,17 @@ test("main server exposes production AI routes without breaking health", async (
 
     for (const path of ["/api/v1/automation/smart-swipe/attempts/summary",
       "/api/v1/automation/smart-swipe/attempts/history",
+      "/api/v1/automation/smart-swipe/attempts/reconciliation?dayKey=2026-10-18",
+      "/api/v1/automation/smart-swipe/attempts/review",
+      "/api/v1/automation/smart-swipe/attempts/rearm",
       "/api/v1/automation/smart-swipe/attempts/claim",
       "/api/v1/automation/smart-swipe/attempts/resolve"]) {
+      const isGet = path.endsWith("summary") || path.includes("/history") ||
+        path.includes("/reconciliation");
       const unauth = await fetch(base + path, {
-        method: path.endsWith("summary") ? "GET" : "POST",
+        method: isGet ? "GET" : "POST",
         headers: { "content-type": "application/json" },
-        body: path.endsWith("summary") ? undefined : JSON.stringify({})
+        body: isGet ? undefined : JSON.stringify({})
       });
       assert.equal(unauth.status, 401);
     }

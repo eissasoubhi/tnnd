@@ -54,3 +54,7 @@ jobs:
         run: npm run migrate
       - name: Re-run migrations to prove idempotency
         run: npm run migrate
+      - name: Verify Smart Swipe manual review against disposable PostgreSQL
+        env:
+          TNND_TEST_DB_EPHEMERAL: "yes"
+        run: npm run test:swipe-review-integration

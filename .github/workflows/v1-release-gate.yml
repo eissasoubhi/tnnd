@@ -72,6 +72,12 @@ jobs:
           npm run migrate
           npm run migrate
 
+      - name: Verify audited Smart Swipe review against disposable PostgreSQL
+        working-directory: apps/api
+        env:
+          TNND_TEST_DB_EPHEMERAL: "yes"
+        run: npm run test:swipe-review-integration
+
       - name: Add extension integrity metadata
         run: |
           printf '{"commit":"%s","version":"%s"}\n' "$GITHUB_SHA" "$(node -p "require('./package.json').version")" > dist/BUILD-INFO.json
