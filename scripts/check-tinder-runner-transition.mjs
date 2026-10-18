@@ -36,8 +36,10 @@ assert.ok(swipe.includes("withTinderRunnerTransition(async () => {"));
 assert.ok(swipe.includes("return setArmed(armed, expectedStopEpoch);"));
 assert.ok(swipe.includes("if (!armed) stopRequested = true;"),
   "Stop must preempt running jobs before waiting for the transition queue");
-assert.ok(swipe.includes("await chrome.storage.local.set({ ...disabled, [STORAGE_STOP]: true });"),
+assert.ok(swipe.includes("await chrome.storage.local.set({ ...disabled, ...paused, [STORAGE_STOP]: true });"),
   "Stop must persist both disarm and the durable safety latch");
+assert.ok(swipe.includes("paused[key] = recoverPausedSwipeSession("),
+  "Stop should freeze active session time instead of continuing the countdown");
 assert.ok(swipe.includes("if (await stopIsRequested()) return;"),
   "tick must fail closed when the durable Stop latch remains set");
 assert.ok(swipe.includes("if (expectedStopEpoch !== stopEpoch)"),
