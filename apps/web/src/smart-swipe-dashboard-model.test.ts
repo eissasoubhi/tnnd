@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseSmartSwipeHistory, parseSmartSwipeSummary, remainingSmartSwipeAttempts, smartSwipeLedgerError } from "./smart-swipe-dashboard-model.js";
+import { parseSmartSwipeHistory, parseSmartSwipeSummary, remainingSmartSwipeAttempts, smartSwipeLedgerError, describeSwipeOutcomeReason } from "./smart-swipe-dashboard-model.js";
 
 test("ledger counts are validated before the UI treats them as available", () => {
   assert.equal(parseSmartSwipeSummary(null), null);
@@ -36,4 +36,24 @@ test("failed ledger reads show actionable diagnostics without inventing empty co
   assert.match(smartSwipeLedgerError("summary", 503), /do not reset attempt data/i);
   assert.match(smartSwipeLedgerError("history", "invalid"), /compatible versions/i);
   assert.match(smartSwipeLedgerError("history", 429), /HTTP 429/);
+});
+
+test("new Swipe reasons are descriptive, older records remain unknown, and arbitrary text is hidden", () => {
+  const parsed = parseSmartSwipeHistory({ attempts: [
+    { dayKey: "2026-10-18", status: "uncertain",
+      createdAt: "2026-10-18T00:24:11.000Z", resolvedAt: "2026-10-18T00:24:16.000Z",
+      outcomeReason: "card_transition_timeout" },
+    { dayKey: "2026-10-18", status: "ui_observed",
+      createdAt: "2026-10-18T00:24:04.000Z", resolvedAt: "2026-10-18T00:24:07.000Z" }
+  ] });
+  assert.equal(parsed?.length, 2);
+  assert.equal(parsed?.[0]?.outcomeReason, "card_transition_timeout");
+  assert.equal(parsed?.[1]?.outcomeReason, null);
+  assert.match(describeSwipeOutcomeReason(parsed?.[0]?.outcomeReason ?? null), /timeout/);
+  assert.match(describeSwipeOutcomeReason(null), /not recorded/);
+  assert.doesNotMatch(describeSwipeOutcomeReason("match_name_private_value"), /private_value/);
+  assert.equal(parseSmartSwipeHistory({ attempts: [{ ...parsed?.[0],
+    outcomeReason: "https://tinder.com/private" }] }), null);
+  assert.equal(parseSmartSwipeHistory({ attempts: [{ ...parsed?.[0],
+    outcomeReason: "A".repeat(200) }] }), null);
 });
