@@ -78,3 +78,21 @@ export function reconcileReviewedLocalSwipeAttempt(
     }
   };
 }
+
+/** Only non-sensitive day/count fields for user's own diagnostics.
+ * No profile data, device IDs, tokens or Tinder endpoints.
+ */
+export function publicSwipeReconciliationCounts(
+  progress: SmartSwipeDailyProgress, proof: DayReconciliationProof
+): string {
+  return [
+    "local day " + progress.dayKey,
+    "local UI transitions " + progress.rightSwipesConfirmed,
+    "local pending " + progress.rightSwipesReserved,
+    "server day " + proof.dayKey,
+    "server attempts " + proof.attempts,
+    "server UI transitions " + proof.uiObserved,
+    "server reviewed unknown " + proof.reviewedUnknown,
+    "server unresolved " + proof.unresolvedAcrossDays
+  ].join(" · ");
+}
