@@ -769,6 +769,34 @@ html { scroll-behavior: smooth; scroll-padding-top: 24px; }
 }
 
 /* Conversation intent: guided, optional description instead of an opaque "Goal details" field. */
+#app #smart-auto-swipe-panel #smart-swipe-activity {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--nb-border);
+  border-radius: var(--nb-radius-lg);
+  background: var(--nb-surface-soft);
+}
+#app #smart-auto-swipe-panel #smart-swipe-ledger-totals { margin: 12px 0; }
+#app #smart-auto-swipe-panel #smart-swipe-ledger-totals p { margin: 0; }
+#app #smart-auto-swipe-panel #smart-swipe-ledger-history {
+  max-height: 240px;
+  overflow: auto;
+  padding-left: 24px;
+}
+#app #smart-auto-swipe-panel #smart-swipe-ledger-history li { padding: 6px 0; }
+#app #smart-auto-swipe-panel #smart-swipe-activity summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+#app #smart-auto-swipe-panel #smart-swipe-activity summary:focus-visible {
+  outline: 3px solid var(--nb-focus);
+  outline-offset: 3px;
+}
+@media (max-width: 560px) {
+  #app #smart-auto-swipe-panel #smart-swipe-activity { padding: 16px; }
+}
 #profile-settings .dating-goal-editor {
   display: grid;
   grid-column: 1 / -1;

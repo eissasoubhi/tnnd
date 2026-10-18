@@ -21,7 +21,7 @@ import { conversationSyncErrorResponse } from "./conversation-sync-error-respons
 import { handleConversationThreadLookupRequest } from "./conversation-thread-lookup-controller.js";
 import { getPool } from "./db-client.js";
 import { getSmartSwipeSettings, putSmartSwipeSettings, validateSmartSwipeSettings } from "./smart-auto-swipe-settings.js";
-import { claimSmartSwipeAttempt, resolveSmartSwipeAttempt, readSmartSwipeAttemptSummary } from "./smart-swipe-attempt-ledger.js";
+import { claimSmartSwipeAttempt, resolveSmartSwipeAttempt, readSmartSwipeAttemptSummary, readSmartSwipeAttemptHistory } from "./smart-swipe-attempt-ledger.js";
 import { handleHumanActionManualAnswerRequest } from "./human-action-manual-answer-controller.js";
 import { createHumanAction, listHumanActions, updateHumanActionStatus, type HumanActionSeverity, type HumanActionStatus } from "./human-action-service.js";
 import { handleConversationMatchProfileRequest, handleMatchProfileCaptureRequest, handleMatchProfilePromoteRequest } from "./match-profile-controller.js";
@@ -391,6 +391,10 @@ const server = createServer(async (request, response) => {
       }
       if (url.pathname === "/api/v1/automation/smart-swipe/attempts/summary" && request.method === "GET") {
         sendJson(response, 200, await readSmartSwipeAttemptSummary(session.user.id));
+        return;
+      }
+      if (url.pathname === "/api/v1/automation/smart-swipe/attempts/history" && request.method === "GET") {
+        sendJson(response, 200, await readSmartSwipeAttemptHistory(session.user.id));
         return;
       }
       if (url.pathname === "/api/v1/automation/smart-swipe/attempts/claim" && request.method === "POST") {

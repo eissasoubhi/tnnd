@@ -1,4 +1,5 @@
 import { readSession } from "./auth-client";
+import { parseSmartSwipeHistory, parseSmartSwipeSummary, remainingSmartSwipeAttempts } from "./smart-swipe-dashboard-model";
 
 type Activity = "swipe" | "new-match" | "active-chat";
 interface Settings {
@@ -42,6 +43,14 @@ panel.innerHTML = [
   '<p class="subtle">Automatic mode only. Gender, age, distance and discovery filters stay in Tinder.</p>',
   '</div><span class="pill" id="smart-swipe-state">Not loaded</span></div>',
   '<p id="smart-swipe-notice" class="subtle" role="status" aria-live="polite"></p>',
+  '<section id="smart-swipe-activity" class="dating-goal-editor" aria-labelledby="smart-swipe-activity-title">',
+  '<h3 id="smart-swipe-activity-title">Today and recent attempts</h3>',
+  '<p class="subtle">Counts come from the TNND server. A card change does not confirm that Tinder accepted a Like. Open the extension popup for the current scheduler and runner state.</p>',
+  '<p id="smart-swipe-ledger-status" role="status" aria-live="polite">Not loaded</p>',
+  '<div id="smart-swipe-ledger-totals" class="preferences-grid"></div>',
+  '<details><summary>Recent attempts</summary><ol id="smart-swipe-ledger-history"></ol></details>',
+  '<button id="smart-swipe-ledger-refresh" type="button" class="secondary">Refresh activity</button>',
+  '</section>',
   '<form id="smart-swipe-form" class="preferences-grid">',
   '<label><input id="smart-swipe-enabled" type="checkbox"> Request automatic scheduling</label>',
   '<div class="dating-goal-editor"><h3>Daily sessions</h3><div class="preferences-grid">',
@@ -86,8 +95,78 @@ const save = get<HTMLButtonElement>("smart-swipe-save");
 const priorityList = get<HTMLElement>("smart-swipe-priority");
 const chatMode = get<HTMLSelectElement>("smart-swipe-chat-mode");
 const chatWrap = get<HTMLElement>("smart-swipe-chat-time-wrap");
+const activity = get<HTMLElement>("smart-swipe-activity");
+const ledgerStatus = get<HTMLElement>("smart-swipe-ledger-status");
+const ledgerTotals = get<HTMLElement>("smart-swipe-ledger-totals");
+const ledgerHistory = get<HTMLOListElement>("smart-swipe-ledger-history");
+const ledgerRefresh = get<HTMLButtonElement>("smart-swipe-ledger-refresh");
 let loadedForUser: string | null = null;
 let requestSerial = 0;
+let activitySerial = 0;
+let loadedSettings: Settings | null = null;
+
+async function refreshActivity(): Promise<void> {
+  const session = readSession();
+  const serial = ++activitySerial;
+  if (!session || session.user.id !== loadedForUser || !loadedSettings) return;
+  ledgerStatus.textContent = "Loading server activity…";
+  ledgerTotals.replaceChildren();
+  ledgerHistory.replaceChildren();
+  ledgerRefresh.disabled = true;
+  try {
+    const headers = { authorization: "Bearer " + session.token };
+    const [summaryResponse, historyResponse] = await Promise.all([
+      fetch(endpoint + "/attempts/summary", { headers, cache: "no-store" }),
+      fetch(endpoint + "/attempts/history", { headers, cache: "no-store" })
+    ]);
+    if (!summaryResponse.ok || !historyResponse.ok) throw new Error("Server activity is unavailable. Refresh to try again.");
+    const summary = parseSmartSwipeSummary(await summaryResponse.json());
+    const history = parseSmartSwipeHistory(await historyResponse.json());
+    if (!summary || !history) throw new Error("Server activity is invalid. Refresh to try again.");
+    if (serial !== activitySerial || readSession()?.user.id !== session.user.id) return;
+    const remaining = remainingSmartSwipeAttempts(summary, loadedSettings.maxRightSwipesPerDay);
+    const totals = [
+      ["Account day", summary.dayKey + " (" + loadedSettings.timeZone + ")"],
+      ["Attempt slots used", String(summary.attemptsToday) + " / " + loadedSettings.maxRightSwipesPerDay],
+      ["Attempt slots remaining", remaining === null ? "Unavailable" : String(remaining)],
+      ["Card transitions observed", String(summary.uiObservedToday)],
+      ["Unresolved across days", String(summary.unresolvedAttempts)]
+    ];
+    for (const [label, value] of totals) {
+      const item = document.createElement("p");
+      item.className = "subtle";
+      const heading = document.createElement("strong");
+      heading.textContent = label + ": ";
+      item.append(heading, document.createTextNode(value));
+      ledgerTotals.append(item);
+    }
+    for (const attempt of history) {
+      const item = document.createElement("li");
+      const time = document.createElement("time");
+      time.dateTime = attempt.createdAt;
+      time.textContent = new Date(attempt.createdAt).toLocaleString();
+      const label = attempt.status === "ui_observed" ? "Card change observed — Tinder acceptance unverified"
+        : attempt.status === "uncertain" ? "Uncertain — automatic Likes stopped"
+          : "Reserved — outcome pending";
+      item.append(time, document.createTextNode(" · " + label + " · account day " + attempt.dayKey));
+      ledgerHistory.append(item);
+    }
+    if (!history.length) {
+      const empty = document.createElement("li");
+      empty.textContent = "No attempts recorded yet.";
+      ledgerHistory.append(empty);
+    }
+    ledgerStatus.textContent = summary.unresolvedAttempts > 0
+      ? "Action required: unresolved attempts block further automatic Likes. Inspect the extension and Tinder before any new run."
+      : "Server activity loaded. Tinder acceptance is not independently verified.";
+  } catch (error) {
+    if (serial === activitySerial) ledgerStatus.textContent = error instanceof Error
+      ? error.message : "Server activity is unavailable. Refresh to try again.";
+  } finally {
+    if (serial === activitySerial) ledgerRefresh.disabled = false;
+  }
+}
+ledgerRefresh.addEventListener("click", () => { void refreshActivity(); });
 
 function renderPriority(): void {
   priorityList.replaceChildren();
@@ -170,7 +249,10 @@ async function refresh(): Promise<void> {
   const session = readSession();
   const requestId = ++requestSerial;
   loadedForUser = null;
+  loadedSettings = null;
+  ++activitySerial;
   form.hidden = !session;
+  activity.hidden = !session;
   if (!session) {
     notice.textContent = "Sign in to configure Smart Auto Swipe.";
     status.textContent = "Sign-in required";
@@ -188,10 +270,11 @@ async function refresh(): Promise<void> {
     if (!response.ok || !result.settings) throw new Error(result.error || "Unable to load settings.");
     if (requestId !== requestSerial || readSession()?.user.id !== session.user.id) return;
     loadedForUser = session.user.id;
+    loadedSettings = result.settings;
     fill(result.settings);
-    status.textContent = result.settings.enabled ? "Configured · runtime pending" : "Disabled";
-    notice.textContent = "Smart Auto Swipe settings are saved. The extension is connected for readiness checks, but live Likes are not implemented yet. " +
-      "These saved settings cannot initiate Tinder actions.";
+    status.textContent = result.settings.enabled ? "Configured · browser verification pending" : "Disabled";
+    notice.textContent = "Saving settings does not start a Tinder action. Use the extension popup to inspect the current runner and stop it. Signed-in browser behavior still needs verification.";
+    void refreshActivity();
   } catch (error) {
     if (requestId !== requestSerial) return;
     notice.textContent = error instanceof Error ? error.message : "Connection error. Sign in and retry.";
@@ -219,8 +302,10 @@ form.addEventListener("submit", async (event) => {
       throw new Error(result.details?.join(", ") || result.error || "Unable to save.");
     if (readSession()?.user.id !== session.user.id) return;
     fill(result.settings);
-    status.textContent = result.settings.enabled ? "Configured · runtime pending" : "Disabled";
+    loadedSettings = result.settings;
+    status.textContent = result.settings.enabled ? "Configured · browser verification pending" : "Disabled";
     feedback.textContent = "Preferences saved to TNND. No Tinder action was started.";
+    void refreshActivity();
   } catch (error) {
     feedback.textContent = error instanceof Error ? error.message : "Unable to save. Try again.";
   } finally {

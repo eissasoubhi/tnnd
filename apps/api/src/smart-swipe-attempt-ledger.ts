@@ -136,3 +136,24 @@ export async function readSmartSwipeAttemptSummary(userId: string): Promise<{
     unresolvedAttempts: Number(row?.unresolved ?? "0")
   };
 }
+
+/** Bounded, account-scoped operational history. No profile or device data is exposed. */
+export async function readSmartSwipeAttemptHistory(userId: string): Promise<{
+  attempts: Array<{ dayKey: string; status: SmartSwipeAttemptStatus;
+    createdAt: string; resolvedAt: string | null }>;
+}> {
+  const result = await getPool().query<{
+    day_key: string; status: SmartSwipeAttemptStatus;
+    created_at: Date; resolved_at: Date | null;
+  }>(
+    `SELECT day_key, status, created_at, resolved_at
+     FROM user_smart_swipe_attempts
+     WHERE user_id = $1 ORDER BY created_at DESC, attempt_id DESC LIMIT 30`,
+    [userId]
+  );
+  return { attempts: result.rows.map(row => ({
+    dayKey: row.day_key, status: row.status,
+    createdAt: row.created_at.toISOString(),
+    resolvedAt: row.resolved_at?.toISOString() ?? null
+  })) };
+}
