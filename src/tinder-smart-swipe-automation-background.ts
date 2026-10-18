@@ -12,6 +12,8 @@ import {
   type ScheduledSwipeProgress
 } from "./tinder-smart-swipe-daily-scheduler";
 import { readSmartSwipeProgress, validSmartSwipeProgress } from "./tinder-smart-swipe-progress-store";
+import { parseDayReconciliationProof, reconcileReviewedLocalSwipeAttempt } from "./tinder-smart-swipe-reconciliation";
+import { emptySmartSwipeDay, tinderAccountDayKey } from "./tinder-smart-auto-swipe-policy";
 import type { SwipeDiscoveryEvidence } from "./tinder-swipe-discovery-evidence";
 import type { TinderSwipeActionResult } from "./tinder-swipe-card-transition-policy";
 import { withTinderRunnerTransition } from "./tinder-runner-transition";
@@ -322,8 +324,44 @@ async function setArmed(arm: boolean, expectedStopEpoch: number): Promise<Record
     return { ok: false, reason: "stop_other_tinder_runners_first" };
   const evidence = await observe(tabs[0].id);
   if (!evidence || evidence.status !== "observed") return { ok: false, reason: "discovery_not_ready" };
+  // User-initiated Start: compare local reservation with the authoritative
+  // account/day counts. An old unknown Like is never retried or relabeled.
+  const progressKey = STORAGE_PROGRESS + session.user.id;
+  const now = Date.now();
+  const storedProgress = (await chrome.storage.local.get(progressKey))[progressKey];
+  if (storedProgress !== undefined && !validSmartSwipeProgress(storedProgress))
+    return { ok: false, reason: "corrupt_local_progress_requires_review" };
+  const initial = storedProgress ?? emptySmartSwipeDay(tinderAccountDayKey(now, settings.timeZone));
+  const proofResponse = await fetch(
+    API + "/api/v1/automation/smart-swipe/attempts/reconciliation?dayKey=" +
+      encodeURIComponent(initial.dayKey),
+    { headers: { authorization: "Bearer " + session.token }, cache: "no-store" }
+  );
+  if (!proofResponse.ok) return { ok: false, reason: "server_reconciliation_unavailable" };
+  const proof = parseDayReconciliationProof(await proofResponse.json(), initial.dayKey);
+  if (!proof) return { ok: false, reason: "invalid_server_reconciliation" };
+  const review = reconcileReviewedLocalSwipeAttempt(initial, proof);
+  if (!review.ok) return { ok: false, reason: review.reason };
+  const read = readSmartSwipeProgress(review.progress, now, settings.timeZone);
+  if (!read.ok) return { ok: false, reason: read.reason };
+  let updatedProgress = read.progress;
+  // Avoid counting offline time as active when restoring an old session.
+  if (updatedProgress.session?.runningSinceMs !== null && updatedProgress.session) {
+    const savedHeartbeat = (await chrome.storage.local.get(STORAGE_HEARTBEAT + session.user.id))
+      [STORAGE_HEARTBEAT + session.user.id] as number | undefined;
+    updatedProgress = recoverPausedSwipeSession(
+      updatedProgress, savedHeartbeat ?? Number.NaN, Date.now()
+    );
+  }
+  const deviceId = await uniqueDeviceId(session.user.id);
+  if (expectedStopEpoch !== stopEpoch) return { ok: false, reason: "stop_superseded_start" };
+  const rearm = await authenticatedPost<{ ok?: boolean; reason?: string }>(
+    session.token, "/api/v1/automation/smart-swipe/attempts/rearm", { deviceId }
+  );
+  if (!rearm.ok) return { ok: false, reason: rearm.reason ?? "explicit_rearm_denied" };
   if (expectedStopEpoch !== stopEpoch) return { ok: false, reason: "stop_superseded_start" };
   await chrome.storage.local.set({
+    [progressKey]: updatedProgress,
     [key]: { armed: true, userId: session.user.id, tabId: tabs[0].id },
     [STORAGE_STOP]: false
   });
