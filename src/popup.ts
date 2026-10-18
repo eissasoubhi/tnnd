@@ -1156,16 +1156,23 @@ for (const [id, armed] of [
     start.disabled = true;
     stop.disabled = true;
     if (summary) summary.textContent = armed ? "Checking Tinder before start…" : "Stopping before the next attempt…";
+    let updateSucceeded = false;
     void chrome.runtime.sendMessage({
       type: "TNND_SMART_SWIPE_SET_ARMED", armed
-    }).then((result: { ok?: boolean; reason?: string }) => {
-      if (!result?.ok && summary) summary.textContent = "Cannot update swiping: " +
-        (result?.reason ?? "unavailable");
-      else void refreshSmartSwipeRuntime();
+    }).then(async (result: { ok?: boolean; reason?: string }) => {
+      if (!result?.ok) {
+        if (summary) summary.textContent = "Cannot update swiping: " +
+          (result?.reason ?? "unavailable");
+      } else {
+        updateSucceeded = true;
+        await refreshSmartSwipeRuntime();
+      }
     }).catch(() => {
       if (summary) summary.textContent = "Could not contact the TNND extension worker.";
     }).finally(() => {
-      start.disabled = false;
+      // Do not re-enable Start over a verified blocked/armed state reported
+      // by refreshSmartSwipeRuntime. Stop remains available even when offline.
+      if (!updateSucceeded) start.disabled = false;
       stop.disabled = false;
     });
   });
