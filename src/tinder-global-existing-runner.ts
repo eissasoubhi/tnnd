@@ -13,6 +13,7 @@ import { sendSingleWatchedMatch } from "./tinder-global-new-match-runner";
 import { nextWatcherMatchAction, nextMatchOpener, type WatcherMatchPhase } from "./tinder-watcher-match-cycle";
 import { firstMessageDailyLimit, hasReachedFirstMessageDailyLimit } from "./tinder-first-message-daily-limit";
 import { withSpaNavigationTimeout, isStalledOpening, SpaNavigationTimeoutError } from "./tinder-runner-navigation-timeout";
+import { assertSwipeNotArmed, withTinderRunnerTransition } from "./tinder-runner-transition";
 
 const KEY = "tnnd.globalExistingRunner.v2";
 const ALARM = "tnnd.globalExistingRunner.cycle";
@@ -610,10 +611,14 @@ async function tick(): Promise<void> {
     }
   } finally { busy = false; }
 }
-export async function startExistingRunner(enablePreviouslyDisabled = false, mode: "runner" | "watcher" = "runner", autoOpenersEnabled = false): Promise<GlobalExistingRunnerState> {
+export function startExistingRunner(enablePreviouslyDisabled = false, mode: "runner" | "watcher" = "runner", autoOpenersEnabled = false): Promise<GlobalExistingRunnerState> {
+  return withTinderRunnerTransition(() => startExistingRunnerUnlocked(enablePreviouslyDisabled, mode, autoOpenersEnabled));
+}
+async function startExistingRunnerUnlocked(enablePreviouslyDisabled = false, mode: "runner" | "watcher" = "runner", autoOpenersEnabled = false): Promise<GlobalExistingRunnerState> {
   if (starting) throw new Error("Runner is already starting.");
   starting = true;
   try {
+    await assertSwipeNotArmed();
     const current = await load();
     if (current.enabled) {
       if (current.mode !== mode || (mode === "watcher" && current.autoOpenersEnabled && !autoOpenersEnabled))
@@ -929,7 +934,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       ? startExistingRunner(false, "watcher")
       : input.type === "TNND_GLOBAL_WATCHER_AUTO_START"
         ? startExistingRunner(false, "watcher", true)
-        : stop())
+        : withTinderRunnerTransition(() => stop()))
     .then(state => sendResponse({ ok: true, state }))
     .catch(error => sendResponse({ ok: false, error: error instanceof Error ? error.message : "runner_failed" }));
   return true;
