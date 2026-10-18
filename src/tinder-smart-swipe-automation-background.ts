@@ -258,9 +258,12 @@ async function tick(tabId: number): Promise<void> {
       action = result?.ok ? result.outcome ?? null : null;
     } catch { /* Uncertain and permanently reserved. */ }
     const statusForServer = action?.status === "ui_observed" ? "ui_observed" : "uncertain";
+    // Only an internal, allowlisted technical code crosses the account-scoped
+    // API boundary: no profile information, UI text, images or exception bodies.
+    const outcomeReason = action?.reason ?? "action_result_unavailable";
     const resolved = await authenticatedPost<{ ok?: boolean }>(
       session.token, "/api/v1/automation/smart-swipe/attempts/resolve", {
-        attemptId, deviceId, status: statusForServer
+        attemptId, deviceId, status: statusForServer, outcomeReason
       }
     );
     if (!resolved.ok) {
