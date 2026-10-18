@@ -11,7 +11,7 @@ import {
   recoverPausedSwipeSession, scheduleSmartSwipeSession,
   type ScheduledSwipeProgress
 } from "./tinder-smart-swipe-daily-scheduler";
-import { readSmartSwipeProgress } from "./tinder-smart-swipe-progress-store";
+import { readSmartSwipeProgress, validSmartSwipeProgress } from "./tinder-smart-swipe-progress-store";
 import type { SwipeDiscoveryEvidence } from "./tinder-swipe-discovery-evidence";
 import type { TinderSwipeActionResult } from "./tinder-swipe-card-transition-policy";
 import { withTinderRunnerTransition } from "./tinder-runner-transition";
@@ -207,6 +207,8 @@ async function tick(tabId: number): Promise<void> {
     }
     if (await stopIsRequested()) return;
     const deviceId = await uniqueDeviceId(userId);
+    // Emergency Stop could arrive while the device identifier was loaded.
+    if (await stopIsRequested()) return;
     const attemptId = crypto.randomUUID();
     // Claim is atomic across every device before touching Tinder. An unknown
     // claim response is never repeated with a different attempt ID.
@@ -281,14 +283,26 @@ async function setArmed(arm: boolean, expectedStopEpoch: number): Promise<Record
   if (!arm) {
     const all = await chrome.storage.local.get(null);
     const disabled: Record<string, ArmState> = {};
+    const paused: Record<string, ScheduledSwipeProgress> = {};
     for (const key of Object.keys(all)) {
       if (key.startsWith(STORAGE_ARM)) {
         disabled[key] = { armed: false, userId: key.slice(STORAGE_ARM.length), tabId: -1 };
+      } else if (key.startsWith(STORAGE_PROGRESS)) {
+        const progress = all[key];
+        if (!validSmartSwipeProgress(progress) || !progress.session ||
+            progress.session.runningSinceMs === null) continue;
+        const accountId = key.slice(STORAGE_PROGRESS.length);
+        const heartbeat = all[STORAGE_HEARTBEAT + accountId];
+        // Freeze only time backed by an observed heartbeat, never idle time.
+        paused[key] = recoverPausedSwipeSession(
+          progress, typeof heartbeat === "number" ? heartbeat : Number.NaN, Date.now()
+        );
       }
     }
     // Persist the emergency latch even if no account is currently signed in.
-    // This must be the final write after any previously queued Start.
-    await chrome.storage.local.set({ ...disabled, [STORAGE_STOP]: true });
+    // Stop freezes the local clock without resetting quotas or attempt history.
+    // This is the final write after any previously queued Start.
+    await chrome.storage.local.set({ ...disabled, ...paused, [STORAGE_STOP]: true });
     return { ok: true, armed: false };
   }
   if (expectedStopEpoch !== stopEpoch) return { ok: false, reason: "stop_superseded_start" };
