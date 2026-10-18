@@ -21,7 +21,7 @@ import { conversationSyncErrorResponse } from "./conversation-sync-error-respons
 import { handleConversationThreadLookupRequest } from "./conversation-thread-lookup-controller.js";
 import { getPool } from "./db-client.js";
 import { getSmartSwipeSettings, putSmartSwipeSettings, validateSmartSwipeSettings } from "./smart-auto-swipe-settings.js";
-import { claimSmartSwipeAttempt, resolveSmartSwipeAttempt, readSmartSwipeAttemptSummary, readSmartSwipeAttemptHistory } from "./smart-swipe-attempt-ledger.js";
+import { claimSmartSwipeAttempt, resolveSmartSwipeAttempt, readSmartSwipeAttemptSummary, readSmartSwipeAttemptHistory, safeSwipeOutcomeReason } from "./smart-swipe-attempt-ledger.js";
 import { handleHumanActionManualAnswerRequest } from "./human-action-manual-answer-controller.js";
 import { createHumanAction, listHumanActions, updateHumanActionStatus, type HumanActionSeverity, type HumanActionStatus } from "./human-action-service.js";
 import { handleConversationMatchProfileRequest, handleMatchProfileCaptureRequest, handleMatchProfilePromoteRequest } from "./match-profile-controller.js";
@@ -414,7 +414,14 @@ const server = createServer(async (request, response) => {
           sendJson(response, 400, { error: "invalid_resolution_request" });
           return;
         }
-        const result = await resolveSmartSwipeAttempt(session.user.id, body.attemptId, body.deviceId, body.status);
+        const outcomeReason = body.outcomeReason ?? null;
+        if (outcomeReason !== null && !safeSwipeOutcomeReason(body.status, outcomeReason)) {
+          sendJson(response, 400, { error: "invalid_resolution_reason" });
+          return;
+        }
+        const result = await resolveSmartSwipeAttempt(
+          session.user.id, body.attemptId, body.deviceId, body.status, outcomeReason
+        );
         sendJson(response, result.ok ? 200 : 409, result);
         return;
       }
