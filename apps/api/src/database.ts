@@ -26,7 +26,8 @@ export const migrationFiles = [
   "0019_conversation_handoff_platform.sql",
   "0020_smart_swipe_attempt_ledger.sql",
   "0021_tinder_import_settings.sql",
-  "0022_match_profile_photo_archives.sql"
+  "0022_match_profile_photo_archives.sql",
+  "0023_smart_swipe_outcome_reason.sql"
 ] as const;
 
 export function getDatabaseConfig(env: NodeJS.ProcessEnv = process.env): DatabaseConfig {
