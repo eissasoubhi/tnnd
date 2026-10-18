@@ -211,10 +211,26 @@ async function tick(tabId: number): Promise<void> {
       return; // server reservation remains unresolved. Never retry.
     }
     await chrome.storage.local.set({ [read.key]: reserved });
+    // Recheck ownership after the atomic claim. Session, runners and tabs may
+    // change while the server request is in flight. A stopped attempt remains
+    // reserved and cannot be replayed automatically.
+    const latestSession = await getBackendSession();
     const latestArm = (await chrome.storage.local.get(STORAGE_ARM + userId))
       [STORAGE_ARM + userId] as ArmState | undefined;
-    if (!latestArm?.armed || !(await exclusiveTab(tabId))) {
-      await saveStatus(userId, "stopped_after_reservation");
+    const latestRunners = await competingRunners();
+    const preActionGate = decideAutoSwipeDrive({
+      armed: latestArm?.armed === true,
+      settingsEnabled: config.enabled,
+      authenticated: Boolean(latestSession),
+      oneTinderTab: await exclusiveTab(tabId),
+      selectedTabMatches: latestArm?.tabId === tabId,
+      userOwnsTab: latestArm?.userId === userId && latestSession?.user.id === userId,
+      existingRunnerEnabled: Boolean(latestRunners.existing?.enabled),
+      newMatchRunnerEnabled: latestRunners.newMatchEnabled,
+      userTakeover: false
+    });
+    if (preActionGate !== "allowed") {
+      await saveStatus(userId, "pre_action_" + preActionGate);
       return; // reserved permanently pending review
     }
     let action: TinderSwipeActionResult | null = null;
