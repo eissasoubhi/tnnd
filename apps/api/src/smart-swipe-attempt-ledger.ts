@@ -63,15 +63,26 @@ export async function claimSmartSwipeAttempt(
 ): Promise<ClaimResponse> {
   if (!UUID_PATTERN.test(attemptId) || !UUID_PATTERN.test(deviceId))
     return { ok: false, claimed: false, reason: "invalid_attempt_or_device" };
-  const settingsResponse = await getSmartSwipeSettings(userId);
-  const settings = settingsResponse.settings;
-  if (!settings.enabled) return { ok: false, claimed: false, reason: "swipe_disabled" };
-  const dayKey = accountDayKey(Date.now(), settings.timeZone);
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
     const account = await client.query("SELECT id FROM users WHERE id = $1 FOR UPDATE", [userId]);
     if (!account.rows.length) { await client.query("ROLLBACK"); return { ok: false, claimed: false, reason: "account_missing" }; }
+    // Read settings AFTER obtaining the account lock. A concurrent review
+    // must not make a stale, pre-review settings check authorize a new Like.
+    const settings = (await getSmartSwipeSettings(userId)).settings;
+    if (!settings.enabled) {
+      await client.query("ROLLBACK"); return { ok: false, claimed: false, reason: "swipe_disabled" };
+    }
+    const dayKey = accountDayKey(Date.now(), settings.timeZone);
+    const gate = await client.query<{ authorized_device_id: string | null }>(
+      "SELECT authorized_device_id FROM user_smart_swipe_rearm_gate WHERE user_id=$1 FOR UPDATE",
+      [userId]
+    );
+    if (gate.rows.length && gate.rows[0].authorized_device_id !== deviceId) {
+      await client.query("ROLLBACK");
+      return { ok: false, claimed: false, reason: "manual_review_requires_explicit_start" };
+    }
     const existing = await client.query(
       "SELECT user_id FROM user_smart_swipe_attempts WHERE attempt_id = $1", [attemptId]);
     if (existing.rows.length) {
@@ -86,7 +97,7 @@ export async function claimSmartSwipeAttempt(
       return { ok: false, claimed: false, reason: "other_device_owns_account" };
     }
     const outstanding = await client.query(
-      "SELECT 1 FROM user_smart_swipe_attempts WHERE user_id = $1 AND status IN ('reserved','uncertain') LIMIT 1", [userId]);
+      "SELECT 1 FROM user_smart_swipe_attempts WHERE user_id = $1 AND (status='reserved' OR (status='uncertain' AND reviewed_at IS NULL)) LIMIT 1", [userId]);
     const totals = await client.query<{ used: string }>(
       "SELECT count(*)::text AS used FROM user_smart_swipe_attempts WHERE user_id = $1 AND day_key = $2", [userId, dayKey]);
     const count = Number(totals.rows[0]?.used ?? "0");
@@ -155,7 +166,7 @@ export async function readSmartSwipeAttemptSummary(userId: string): Promise<{
   const result = await getPool().query<{ attempts_today: string; ui_today: string; unresolved: string }>(
     `SELECT count(*) FILTER (WHERE day_key = $2)::text AS attempts_today,
        count(*) FILTER (WHERE day_key = $2 AND status = 'ui_observed')::text AS ui_today,
-       count(*) FILTER (WHERE status IN ('reserved','uncertain'))::text AS unresolved
+       count(*) FILTER (WHERE status='reserved' OR (status='uncertain' AND reviewed_at IS NULL))::text AS unresolved
      FROM user_smart_swipe_attempts WHERE user_id = $1`,
     [userId, dayKey]
   );
@@ -170,23 +181,26 @@ export async function readSmartSwipeAttemptSummary(userId: string): Promise<{
 
 /** Bounded, account-scoped operational history. No profile or device data is exposed. */
 export async function readSmartSwipeAttemptHistory(userId: string): Promise<{
-  attempts: Array<{ dayKey: string; status: SmartSwipeAttemptStatus;
-    createdAt: string; resolvedAt: string | null; outcomeReason: SmartSwipeOutcomeReason | null }>;
+  attempts: Array<{ attemptId: string; dayKey: string; status: SmartSwipeAttemptStatus;
+    createdAt: string; resolvedAt: string | null; outcomeReason: SmartSwipeOutcomeReason | null;
+    reviewedAt: string | null }>;
 }> {
   const result = await getPool().query<{
-    day_key: string; status: SmartSwipeAttemptStatus;
+    attempt_id: string; day_key: string; status: SmartSwipeAttemptStatus;
     created_at: Date; resolved_at: Date | null;
-    outcome_reason: SmartSwipeOutcomeReason | null;
+    outcome_reason: SmartSwipeOutcomeReason | null; reviewed_at: Date | null;
   }>(
-    `SELECT day_key, status, created_at, resolved_at, outcome_reason
+    `SELECT attempt_id, day_key, status, created_at, resolved_at, outcome_reason, reviewed_at
      FROM user_smart_swipe_attempts
      WHERE user_id = $1 ORDER BY created_at DESC, attempt_id DESC LIMIT 30`,
     [userId]
   );
   return { attempts: result.rows.map(row => ({
+    attemptId: row.attempt_id,
     dayKey: row.day_key, status: row.status,
     createdAt: row.created_at.toISOString(),
     resolvedAt: row.resolved_at?.toISOString() ?? null,
-    outcomeReason: row.outcome_reason ?? null
+    outcomeReason: row.outcome_reason ?? null,
+    reviewedAt: row.reviewed_at?.toISOString() ?? null
   })) };
 }
