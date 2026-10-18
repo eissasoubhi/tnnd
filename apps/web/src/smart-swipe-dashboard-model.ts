@@ -6,11 +6,13 @@ export interface SmartSwipeAttemptSummary {
   unresolvedAttempts: number;
 }
 export interface SmartSwipeAttempt {
+  attemptId: string | null; // Opaque, account-scoped audit identifier; never a Tinder profile ID.
   dayKey: string;
   status: "reserved" | "ui_observed" | "uncertain";
   createdAt: string;
   resolvedAt: string | null;
   outcomeReason: string | null;
+  reviewedAt: string | null;
 }
 const count = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
@@ -44,11 +46,20 @@ export function parseSmartSwipeHistory(value: unknown): SmartSwipeAttempt[] | nu
     const reason = item.outcomeReason;
     if (reason !== undefined && reason !== null &&
         (typeof reason !== "string" || !/^[a-z_]{1,64}$/.test(reason))) return null;
+    const attemptId = item.attemptId;
+    if (attemptId !== undefined && attemptId !== null &&
+        (typeof attemptId !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(attemptId))) return null;
+    const reviewedAt = item.reviewedAt;
+    if (reviewedAt !== undefined && reviewedAt !== null &&
+        (typeof reviewedAt !== "string" || !Number.isFinite(Date.parse(reviewedAt)))) return null;
     parsed.push({
+      attemptId: typeof attemptId === "string" ? attemptId : null,
       dayKey: item.dayKey,
       status: item.status as SmartSwipeAttempt["status"],
       createdAt: item.createdAt, resolvedAt: item.resolvedAt,
-      outcomeReason: typeof reason === "string" ? reason : null
+      outcomeReason: typeof reason === "string" ? reason : null,
+      reviewedAt: typeof reviewedAt === "string" ? reviewedAt : null
     });
   }
   return parsed;
