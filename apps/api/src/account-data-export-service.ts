@@ -57,7 +57,7 @@ export async function buildAccountDataExport(
     query("SELECT schema_version, profile_json, created_at, updated_at FROM user_profiles WHERE user_id = $1 LIMIT 1", [id]),
     query("SELECT provider, model, created_at, updated_at FROM ai_provider_settings WHERE user_id = $1 LIMIT 1", [id]),
     query("SELECT settings_json, updated_at FROM user_smart_auto_swipe_settings WHERE user_id = $1 LIMIT 1", [id]),
-    query("SELECT attempt_id, day_key, status, outcome_reason, created_at, resolved_at FROM user_smart_swipe_attempts WHERE user_id = $1 ORDER BY created_at ASC", [id]),
+    query("SELECT attempt_id, day_key, status, outcome_reason, reviewed_at, review_kind, created_at, resolved_at FROM user_smart_swipe_attempts WHERE user_id = $1 ORDER BY created_at ASC", [id]),
     query("SELECT examples, created_at, updated_at FROM texting_style_source_examples WHERE user_id = $1 LIMIT 1", [id]),
     query("SELECT * FROM conversations WHERE user_id = $1 ORDER BY created_at ASC", [id]),
     query(
