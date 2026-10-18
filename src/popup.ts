@@ -1141,10 +1141,11 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
         ? view.needsReview
           ? "BLOCKED: unresolved attempt requires review; no further automatic Likes"
           : "BLOCKED: server attempt journal unavailable; cannot verify safe restart"
-        : (result.lastResult ?? result.schedule ?? result.status ?? "armed");
+        : (result.schedule ?? result.status ?? "armed");
     summary.textContent = [
       "Automation: " + view.phase,
       "Status: " + statusText,
+      "Last attempt: " + (result.lastResult ?? "none recorded"),
       "Sessions left: " + known(result.remainingSessions),
       "Like attempt slots left: " + known(result.remainingAttempts) +
         (hasUnsafeLedger ? " (not usable until review)" : ""),
