@@ -22,6 +22,11 @@ const STORAGE_ARM = "tnnd.smartSwipeLiveArm.v1:";
 const STORAGE_HEARTBEAT = "tnnd.smartSwipeHeartbeat.v1:";
 const STORAGE_DEVICE = "tnnd.smartSwipeDevice.v1:";
 const STORAGE_STATUS = "tnnd.smartSwipeLastResult.v1:";
+// A Stop request preempts new actions immediately, even if a serialized Start
+// is waiting for an API response. The storage latch survives MV3 restarts.
+const STORAGE_STOP = "tnnd.smartSwipeStopRequested.v1";
+let stopRequested = false;
+let stopEpoch = 0;
 let busy = false;
 const recoveredAccountProgress = new Set<string>();
 
@@ -74,6 +79,11 @@ async function uniqueDeviceId(userId: string): Promise<string> {
 async function saveStatus(userId: string, reason: string): Promise<void> {
   await chrome.storage.local.set({ [STORAGE_STATUS + userId]: reason.slice(0, 100) });
 }
+async function stopIsRequested(): Promise<boolean> {
+  if (stopRequested) return true;
+  const stored = await chrome.storage.local.get(STORAGE_STOP);
+  return stored[STORAGE_STOP] === true;
+}
 async function exclusiveTab(tabId: number): Promise<boolean> {
   const tabs = await chrome.tabs.query({ url: ["https://tinder.com/*", "https://www.tinder.com/*"] });
   return tabs.length === 1 && tabs[0].id === tabId && isRecs(tabs[0].url);
@@ -109,16 +119,17 @@ async function progressForUser(
   return { progress, key };
 }
 async function tick(tabId: number): Promise<void> {
-  if (busy) return;
+  if (busy || stopRequested) return;
   busy = true;
   let userId: string | null = null;
   try {
+    if (await stopIsRequested()) return;
     const session = await getBackendSession();
     if (!session) return;
     userId = session.user.id;
     const arm = (await chrome.storage.local.get(STORAGE_ARM + userId))
       [STORAGE_ARM + userId] as ArmState | undefined;
-    if (!arm?.armed) return;
+    if (!arm?.armed || stopRequested) return;
     const config = await getSettings(session.token);
     const oneTinderTab = await exclusiveTab(tabId);
     const { existing, newMatchEnabled } = await competingRunners();
@@ -194,6 +205,7 @@ async function tick(tabId: number): Promise<void> {
       await saveStatus(userId, status);
       return;
     }
+    if (await stopIsRequested()) return;
     const deviceId = await uniqueDeviceId(userId);
     const attemptId = crypto.randomUUID();
     // Claim is atomic across every device before touching Tinder. An unknown
@@ -219,11 +231,13 @@ async function tick(tabId: number): Promise<void> {
     const latestArm = (await chrome.storage.local.get(STORAGE_ARM + userId))
       [STORAGE_ARM + userId] as ArmState | undefined;
     const latestRunners = await competingRunners();
+    const latestTabExclusive = await exclusiveTab(tabId);
+    const stopPending = await stopIsRequested();
     const preActionGate = decideAutoSwipeDrive({
-      armed: latestArm?.armed === true,
+      armed: latestArm?.armed === true && !stopPending && !stopRequested,
       settingsEnabled: config.enabled,
       authenticated: Boolean(latestSession),
-      oneTinderTab: await exclusiveTab(tabId),
+      oneTinderTab: latestTabExclusive,
       selectedTabMatches: latestArm?.tabId === tabId,
       userOwnsTab: latestArm?.userId === userId && latestSession?.user.id === userId,
       existingRunnerEnabled: Boolean(latestRunners.existing?.enabled),
@@ -262,7 +276,7 @@ async function tick(tabId: number): Promise<void> {
   } finally { busy = false; }
 }
 
-async function setArmed(arm: boolean): Promise<Record<string, unknown>> {
+async function setArmed(arm: boolean, expectedStopEpoch: number): Promise<Record<string, unknown>> {
   // Stop is always available, including when signed out or disconnected.
   if (!arm) {
     const all = await chrome.storage.local.get(null);
@@ -272,9 +286,12 @@ async function setArmed(arm: boolean): Promise<Record<string, unknown>> {
         disabled[key] = { armed: false, userId: key.slice(STORAGE_ARM.length), tabId: -1 };
       }
     }
-    if (Object.keys(disabled).length) await chrome.storage.local.set(disabled);
+    // Persist the emergency latch even if no account is currently signed in.
+    // This must be the final write after any previously queued Start.
+    await chrome.storage.local.set({ ...disabled, [STORAGE_STOP]: true });
     return { ok: true, armed: false };
   }
+  if (expectedStopEpoch !== stopEpoch) return { ok: false, reason: "stop_superseded_start" };
   const session = await getBackendSession();
   if (!session) return { ok: false, reason: "tnnd_sign_in_required" };
   const key = STORAGE_ARM + session.user.id;
@@ -288,9 +305,15 @@ async function setArmed(arm: boolean): Promise<Record<string, unknown>> {
     return { ok: false, reason: "stop_other_tinder_runners_first" };
   const evidence = await observe(tabs[0].id);
   if (!evidence || evidence.status !== "observed") return { ok: false, reason: "discovery_not_ready" };
+  if (expectedStopEpoch !== stopEpoch) return { ok: false, reason: "stop_superseded_start" };
   await chrome.storage.local.set({
-    [key]: { armed: true, userId: session.user.id, tabId: tabs[0].id }
+    [key]: { armed: true, userId: session.user.id, tabId: tabs[0].id },
+    [STORAGE_STOP]: false
   });
+  // Stop may have arrived while the storage write was in flight. Its queued
+  // final disarm wins; never report a successful Start in that case.
+  if (expectedStopEpoch !== stopEpoch) return { ok: false, reason: "stop_superseded_start" };
+  stopRequested = false;
   return { ok: true, armed: true };
 }
 
@@ -313,8 +336,15 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
     if (typeof armed !== "boolean") {
       respond({ ok: false, reason: "invalid_start_stop" }); return false;
     }
-    void withTinderRunnerTransition(() => setArmed(armed)).then(respond)
-      .catch(() => respond({ ok: false, reason: "start_stop_failed" }));
+    // Raising this flag is synchronous: Stop blocks subsequent attempt claims
+    // and the final pre-action gate before the queued storage write completes.
+    const expectedStopEpoch = armed ? stopEpoch : ++stopEpoch;
+    if (!armed) stopRequested = true;
+    const latch = armed ? Promise.resolve() : chrome.storage.local.set({ [STORAGE_STOP]: true });
+    void withTinderRunnerTransition(async () => {
+      await latch;
+      return setArmed(armed, expectedStopEpoch);
+    }).then(respond).catch(() => respond({ ok: false, reason: "start_stop_failed" }));
     return true;
   }
   return false;
