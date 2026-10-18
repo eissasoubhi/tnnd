@@ -1077,6 +1077,7 @@ stopNewMatchObservation.addEventListener("click", () => {
 // Popup reports what is ARMED separately from historical unsafe attempts.
 // Even after a successful Stop the server may retain a previously uncertain Like.
 let smartSwipeStatusRevision = 0;
+let smartSwipeStopConfirmed = false;
 async function refreshSmartSwipeRuntime(): Promise<void> {
   const revision = ++smartSwipeStatusRevision;
   const summary = document.getElementById("smartSwipeRuntimeSummary");
@@ -1102,11 +1103,14 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
     };
     if (revision !== smartSwipeStatusRevision) return;
     if (!result?.ok) {
-      summary.textContent = "Unable to confirm swiping state: " +
+      summary.textContent = (smartSwipeStopConfirmed
+        ? "Stop confirmed locally. Server status unavailable: "
+        : "Unable to confirm swiping state: ") +
         (result?.reason ?? "runtime_status_unavailable") +
         ". Start disabled until status is available. Stop remains available.";
       return;
     }
+    if (result.armed === true) smartSwipeStopConfirmed = false;
     const view = classifySwipePopupState({
       enabled: result.enabled === true,
       armed: result.armed === true,
@@ -1151,7 +1155,9 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
     ].join(" · ");
   } catch {
     if (revision === smartSwipeStatusRevision)
-      summary.textContent = "Could not confirm runtime state. Start disabled. Stop remains available.";
+      summary.textContent = (smartSwipeStopConfirmed
+        ? "Stop confirmed locally. " : "") +
+        "Could not load runtime state. Start disabled. Stop remains available.";
   } finally {
     if (revision === smartSwipeStatusRevision) refresh.disabled = false;
   }
@@ -1186,8 +1192,11 @@ for (const [id, armed] of [
           ". Disable TNND in chrome://extensions if you need to stop immediately.";
         return;
       }
-      if (!armed && summary) summary.textContent =
-        "Stop confirmed: Smart Swipe is disarmed. Historical uncertain attempts remain protected.";
+      if (!armed) {
+        smartSwipeStopConfirmed = true;
+        if (summary) summary.textContent =
+          "Stop confirmed: Smart Swipe is disarmed. Historical uncertain attempts remain protected.";
+      } else smartSwipeStopConfirmed = false;
       await refreshSmartSwipeRuntime();
     }).catch(() => {
       if (summary) summary.textContent =
