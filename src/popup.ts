@@ -1078,6 +1078,7 @@ stopNewMatchObservation.addEventListener("click", () => {
 // Even after a successful Stop the server may retain a previously uncertain Like.
 let smartSwipeStatusRevision = 0;
 let smartSwipeStopConfirmed = false;
+let smartSwipeLastKnownArmed: boolean | null = null;
 async function refreshSmartSwipeRuntime(): Promise<void> {
   const revision = ++smartSwipeStatusRevision;
   const summary = document.getElementById("smartSwipeRuntimeSummary");
@@ -1110,6 +1111,7 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
         ". Start disabled until status is available. Stop remains available.";
       return;
     }
+    smartSwipeLastKnownArmed = result.armed === true;
     if (result.armed === true) smartSwipeStopConfirmed = false;
     const view = classifySwipePopupState({
       enabled: result.enabled === true,
@@ -1174,6 +1176,8 @@ for (const [id, armed] of [
     // A late response from an earlier status refresh must not overwrite Stop.
     ++smartSwipeStatusRevision;
     const summary = document.getElementById("smartSwipeRuntimeSummary");
+    const feedback = document.getElementById("smartSwipeControlFeedback");
+    const wasStopped = smartSwipeLastKnownArmed === false;
     const start = document.getElementById("startSmartSwipeRuntime") as HTMLButtonElement;
     const stop = document.getElementById("stopSmartSwipeRuntime") as HTMLButtonElement;
     const refresh = document.getElementById("refreshSmartSwipeRuntime") as HTMLButtonElement;
@@ -1182,23 +1186,33 @@ for (const [id, armed] of [
     refresh.disabled = true;
     if (summary) summary.textContent = armed
       ? "Checking Tinder before start…" : "Disarming Smart Swipe…";
+    if (feedback) feedback.textContent = armed ? "Checking whether Start is permitted…" : "Confirming Stop…";
     void chrome.runtime.sendMessage({
       type: "TNND_SMART_SWIPE_SET_ARMED", armed
     }).then(async (reply: { ok?: boolean; armed?: boolean; reason?: string }) => {
       if (!reply?.ok || reply.armed !== armed) {
+        if (feedback) feedback.textContent = armed ? "Start not confirmed." : "Stop not confirmed. Disable the TNND extension if an immediate halt is needed.";
         if (summary) summary.textContent = (armed
           ? "Start was not confirmed: " : "STOP was not confirmed: ") +
           (reply?.reason ?? "unknown_status") +
           ". Disable TNND in chrome://extensions if you need to stop immediately.";
         return;
       }
+      smartSwipeLastKnownArmed = armed;
       if (!armed) {
         smartSwipeStopConfirmed = true;
+        if (feedback) feedback.textContent = wasStopped
+          ? "Already stopped — Stop confirmed again. Historical attempts remain unchanged."
+          : "Stop confirmed — automatic swiping is disarmed. Historical attempts remain unchanged.";
         if (summary) summary.textContent =
           "Stop confirmed: Smart Swipe is disarmed. Historical uncertain attempts remain protected.";
-      } else smartSwipeStopConfirmed = false;
+      } else {
+        smartSwipeStopConfirmed = false;
+        if (feedback) feedback.textContent = "Start request accepted. This does not confirm a Tinder Like.";
+      }
       await refreshSmartSwipeRuntime();
     }).catch(() => {
+      if (feedback) feedback.textContent = "Worker unavailable — Stop was not confirmed.";
       if (summary) summary.textContent =
         "Could not contact TNND worker. Disable the extension in chrome://extensions to stop it.";
     }).finally(() => {
