@@ -48,3 +48,21 @@ export function remainingSmartSwipeAttempts(summary: SmartSwipeAttemptSummary, c
   if (!Number.isSafeInteger(cap) || cap < 1) return null;
   return Math.max(0, cap - summary.attemptsToday);
 }
+
+
+/** Actionable, non-sensitive diagnostics for the two authenticated ledger endpoints.
+ * Never fall back to a zero count when the server is unavailable.
+ */
+export function smartSwipeLedgerError(
+  resource: "summary" | "history", status: number | "network" | "invalid"
+): string {
+  const name = resource === "summary" ? "Daily attempt counts" : "Recent attempts";
+  if (status === "network") return name + " unavailable: cannot reach the TNND API. Check that the local backend is running.";
+  if (status === "invalid") return name + " unavailable: invalid API response. Check that TNND Web and API are on compatible versions.";
+  if (status === 401) return name + " unavailable: your TNND session may have expired. Sign in again.";
+  if (status === 403) return name + " unavailable: account access denied. Check your TNND sign-in.";
+  if (status === 404) return name + " unavailable: endpoint not found. Update and restart the TNND API.";
+  if (status >= 500) return name + " unavailable: TNND API error (HTTP " + status +
+    "). Check backend logs and ensure PostgreSQL migrations are applied; do not reset attempt data.";
+  return name + " unavailable (HTTP " + status + "). Check TNND API logs.";
+}
