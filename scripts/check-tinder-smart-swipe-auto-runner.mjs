@@ -59,6 +59,19 @@ assert.ok(popup.includes("start.disabled = view.startDisabled"),
   "Start should only unlock after authenticated inspection of actual status");
 assert.ok(!popup.includes("if (!updateSucceeded) start.disabled = false;"),
   "unknown Stop result must not automatically reenable Start");
+const popupMarkup = readFileSync(new URL("../public/popup.html", import.meta.url), "utf8");
+assert.ok(popupMarkup.includes('id="smartSwipeControlFeedback"') &&
+  popupMarkup.includes('aria-live="polite"'), "Stop needs an accessible separate confirmation");
+assert.ok(popup.includes('smartSwipeLastKnownArmed = result.armed === true;'),
+  "the popup must remember the last observed armed state");
+assert.ok(popup.includes('Already stopped — Stop confirmed again.'),
+  "repeated Stop must provide a visible idempotent acknowledgement");
+assert.ok(popup.includes('Stop confirmed — automatic swiping is disarmed.'),
+  "a first Stop must be explicitly acknowledged");
+assert.ok(popup.includes('if (feedback) feedback.textContent = wasStopped'),
+  "Stop acknowledgement must be separate from runtime refresh text");
+assert.ok(popup.includes('Worker unavailable — Stop was not confirmed.'),
+  "offline Stop should not falsely report success");
 const webPanel = readFileSync(new URL("../apps/web/src/smart-auto-swipe-panel.ts", import.meta.url), "utf8");
 assert.ok(webPanel.includes("if (summary.unresolvedAttempts > 0) ledgerDetails.open = true"),
   "Web must reveal the history without an extra click when unresolved attempts block swiping");
