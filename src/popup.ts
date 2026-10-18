@@ -1103,21 +1103,36 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
     }
     const known = (value: number | null | undefined) =>
       typeof value === "number" ? String(value) : "unknown";
+    const unresolved = typeof result.unresolvedOnServer === "number" &&
+      result.unresolvedOnServer > 0;
+    const ledgerUnavailable = result.unresolvedOnServer == null;
+    // Armed means the popup requested execution, NOT that a Like is running.
+    // A reserved or uncertain attempt blocks subsequent Likes until reviewed.
+    const blocked = unresolved || ledgerUnavailable;
     const remaining = result.session
-      ? Math.ceil(result.session.remainingMs / 1000) + " sec" : "not in session";
+      ? Math.ceil(result.session.remainingMs / 1000) + " sec" +
+        (blocked ? " (not available while blocked)" : result.session.active ? "" : " (paused)")
+      : "not in session";
+    const statusText = unresolved
+      ? "BLOCKED: unresolved attempt requires review; no further automatic Likes"
+      : ledgerUnavailable
+        ? "BLOCKED: server attempt journal unavailable; cannot verify safe restart"
+        : (result.lastResult ?? result.schedule ?? result.status ?? "unknown");
     summary.textContent = [
-      "Automation: " + (result.armed ? "started" : "stopped"),
-      "Status: " + (result.lastResult ?? result.schedule ?? result.status ?? "unknown"),
+      "Automation: " + (blocked ? "blocked" : result.armed ? "armed" : "stopped"),
+      "Status: " + statusText,
       "Sessions left: " + known(result.remainingSessions),
-      "Like attempts left: " + known(result.remainingAttempts),
+      "Like attempt slots left: " + known(result.remainingAttempts) +
+        (blocked ? " (not usable while blocked)" : ""),
       "Card transitions observed: " + known(result.uiObservedToday),
       "Unresolved: " + known(result.unresolvedOnServer),
       "Session remaining: " + remaining,
-      "Priority: " + (result.nextActivity ?? "none"),
-      "Server acceptance: not independently verified"
+      "Priority: " + (blocked ? "paused for review" : (result.nextActivity ?? "none")),
+      ...(unresolved ? ["Review: TNND Web → Settings → Smart Auto Swipe → Recent attempts"] : []),
+      "Tinder server acceptance: not independently verified"
     ].join(" · ");
     const start = document.getElementById("startSmartSwipeRuntime") as HTMLButtonElement | null;
-    if (start) start.disabled = result.armed === true;
+    if (start) start.disabled = result.armed === true || blocked;
     // Keep Stop enabled even when the backend becomes unreachable.
 
   } catch {
@@ -1141,16 +1156,23 @@ for (const [id, armed] of [
     start.disabled = true;
     stop.disabled = true;
     if (summary) summary.textContent = armed ? "Checking Tinder before start…" : "Stopping before the next attempt…";
+    let updateSucceeded = false;
     void chrome.runtime.sendMessage({
       type: "TNND_SMART_SWIPE_SET_ARMED", armed
-    }).then((result: { ok?: boolean; reason?: string }) => {
-      if (!result?.ok && summary) summary.textContent = "Cannot update swiping: " +
-        (result?.reason ?? "unavailable");
-      else void refreshSmartSwipeRuntime();
+    }).then(async (result: { ok?: boolean; reason?: string }) => {
+      if (!result?.ok) {
+        if (summary) summary.textContent = "Cannot update swiping: " +
+          (result?.reason ?? "unavailable");
+      } else {
+        updateSucceeded = true;
+        await refreshSmartSwipeRuntime();
+      }
     }).catch(() => {
       if (summary) summary.textContent = "Could not contact the TNND extension worker.";
     }).finally(() => {
-      start.disabled = false;
+      // Do not re-enable Start over a verified blocked/armed state reported
+      // by refreshSmartSwipeRuntime. Stop remains available even when offline.
+      if (!updateSucceeded) start.disabled = false;
       stop.disabled = false;
     });
   });

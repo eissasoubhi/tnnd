@@ -48,7 +48,7 @@ panel.innerHTML = [
   '<p class="subtle">Counts come from the TNND server. A card change does not confirm that Tinder accepted a Like. Open the extension popup for the current scheduler and runner state.</p>',
   '<p id="smart-swipe-ledger-status" role="status" aria-live="polite">Not loaded</p>',
   '<div id="smart-swipe-ledger-totals" class="preferences-grid"></div>',
-  '<details><summary>Recent attempts</summary><ol id="smart-swipe-ledger-history"></ol></details>',
+  '<details id="smart-swipe-ledger-details"><summary>Recent attempts</summary><ol id="smart-swipe-ledger-history"></ol></details>',
   '<button id="smart-swipe-ledger-refresh" type="button" class="secondary">Refresh activity</button>',
   '</section>',
   '<form id="smart-swipe-form" class="preferences-grid">',
@@ -99,6 +99,7 @@ const activity = get<HTMLElement>("smart-swipe-activity");
 const ledgerStatus = get<HTMLElement>("smart-swipe-ledger-status");
 const ledgerTotals = get<HTMLElement>("smart-swipe-ledger-totals");
 const ledgerHistory = get<HTMLOListElement>("smart-swipe-ledger-history");
+const ledgerDetails = get<HTMLDetailsElement>("smart-swipe-ledger-details");
 const ledgerRefresh = get<HTMLButtonElement>("smart-swipe-ledger-refresh");
 let loadedForUser: string | null = null;
 let requestSerial = 0;
@@ -143,6 +144,8 @@ async function refreshActivity(): Promise<void> {
 
     if (summaryResult.data) {
       const summary = summaryResult.data;
+      // Surface the actual attempt outcomes immediately when Likes are blocked.
+      if (summary.unresolvedAttempts > 0) ledgerDetails.open = true;
       const remaining = remainingSmartSwipeAttempts(summary, settings.maxRightSwipesPerDay);
       const totals = [
         ["Account day", summary.dayKey + " (" + settings.timeZone + ")"],
