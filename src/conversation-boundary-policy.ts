@@ -23,7 +23,7 @@ function normalize(value: string): string {
 
 function socialPlatform(text: string): ConversationBoundary["platform"] {
   if (/\b(?:instagram|insta|ig)\b/u.test(text) || /(?:انستغرام|انستجرام)/u.test(text)) return "instagram";
-  if (/\b(?:whatsapp|whats[ -]?app|wa)\b/u.test(text) || /واتساب/u.test(text)) return "whatsapp";
+  if (/\b(?:whatsapp|whats[ -]?app|wtsp|wtsap|wsp|watsapp|watsap|wa)\b/u.test(text) || /واتساب/u.test(text)) return "whatsapp";
   if (/\b(?:snapchat|snap)\b/u.test(text)) return "snapchat";
   if (/\b(?:telegram)\b/u.test(text)) return "telegram";
   return null;
@@ -34,7 +34,7 @@ function handoffProposal(text: string): ConversationBoundary["platform"] {
   const platform = socialPlatform(text);
   if (!platform) return null;
   const move = /\b(?:on\s+(?:se\s+)?parle|on\s+passe|on\s+continue|on\s+discute|parlons|passe|passons|viens|viens\s+me\s+parler|ecris(?:-moi)?|écris(?:-moi)?|ajoute(?:-moi)?|contacte(?:-moi)?|discutons|retrouve(?:-moi)?|let'?s\s+(?:talk|chat|move)|talk\s+(?:on|there)|message\s+me|text\s+me|dm\s+me|add\s+me|switch\s+to|move\s+to|write\s+me)\b/u.test(text);
-  const afterApp = /\b(?:instagram|insta|ig|whatsapp|whats[ -]?app|snapchat|snap|telegram)\b.{0,36}\b(?:on\s+se\s+parle|on\s+passe|parlons|écris(?:-moi)?|ecris(?:-moi)?|message\s+me|talk|chat|dm|là-bas|there)\b/u.test(text);
+  const afterApp = /\b(?:instagram|insta|ig|whatsapp|whats[ -]?app|wtsp|wtsap|wsp|watsapp|watsap|snapchat|snap|telegram)\b.{0,36}\b(?:on\s+se\s+parle|on\s+passe|parlons|écris(?:-moi)?|ecris(?:-moi)?|message\s+me|talk|chat|dm|là-bas|there)\b/u.test(text);
   const negatives = /\b(?:pas\s+(?:sur|de|envie)|ne\s+(?:veux|souhaite)\s+pas|don't|do\s+not|never|non\s+merci|refuse)\b/u.test(text);
   const darijaMove = /(?:نهضرو|نهضر|نكمّلو|نكملو|صيفط ليا|كتب ليا)/u.test(text);
   const darijaRefusal = /(?:ما بغيتش|مابغيتش|ماشي باغي|ماشي باغية)/u.test(text);
