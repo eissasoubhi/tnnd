@@ -274,7 +274,7 @@ export interface SmartSwipeDayReconciliation {
   unresolvedAcrossDays: number;
 }
 export function validSmartSwipeDayKey(value: unknown): value is string {
-  return typeof value === "string" && /^\\d{4}-\\d{2}-\\d{2}$/.test(value) &&
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
     !Number.isNaN(Date.parse(value + "T00:00:00.000Z"));
 }
 export async function readSmartSwipeDayReconciliation(
