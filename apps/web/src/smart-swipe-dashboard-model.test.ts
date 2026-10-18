@@ -57,3 +57,17 @@ test("new Swipe reasons are descriptive, older records remain unknown, and arbit
   assert.equal(parseSmartSwipeHistory({ attempts: [{ ...parsed?.[0],
     outcomeReason: "A".repeat(200) }] }), null);
 });
+
+test("reviewed unknown attempts remain uncertain and retain a validated opaque ID", () => {
+  const attemptId = "00000000-0000-4000-8000-000000000123";
+  const row = { attemptId, dayKey: "2026-10-18", status: "uncertain",
+    createdAt: "2026-10-18T00:24:11Z", resolvedAt: "2026-10-18T00:24:15Z",
+    reviewedAt: "2026-10-18T15:00:00Z", outcomeReason: null };
+  const parsed = parseSmartSwipeHistory({ attempts: [row] });
+  assert.equal(parsed?.[0]?.status, "uncertain");
+  assert.equal(parsed?.[0]?.attemptId, attemptId);
+  assert.equal(parsed?.[0]?.reviewedAt, row.reviewedAt);
+  assert.equal(parseSmartSwipeHistory({ attempts: [{ ...row, attemptId: "../user" }] }), null);
+  assert.equal(parseSmartSwipeHistory({ attempts: [{ ...row, reviewedAt: "yesterday" }] }), null);
+  assert.equal(parseSmartSwipeHistory({ attempts: [{ ...row, status: "server_confirmed" }] }), null);
+});
