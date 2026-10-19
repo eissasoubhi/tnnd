@@ -129,7 +129,8 @@ async function run() {
   await mkdir(output, { recursive: true });
   const profile = await mkdtemp(join(tmpdir(), "tnnd-extension-popup-contract-"));
   const chrome = spawn(chromeBin, [
-    "--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
+    ...(process.env.TNND_QA_HEADED === "1" ? [] : ["--headless=new"]),
+    "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
     "--no-first-run", "--no-default-browser-check", "--remote-allow-origins=*",
     "--remote-debugging-port=0", "--user-data-dir=" + profile,
     "--disable-extensions-except=" + extensionRoot,
