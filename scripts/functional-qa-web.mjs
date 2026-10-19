@@ -220,6 +220,15 @@ async function main() {
     cdp = await openCDP(port);
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
+    // A stale Web bundle must never send this fixture's login to a real API.
+    await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        const target = new URL(input instanceof Request ? input.url : String(input), location.href);
+        if (target.origin !== location.origin) throw new Error("synthetic_qa_cross_origin_blocked");
+        return originalFetch(input, init);
+      };
+    })();` });
     await cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
     await cdp.send("Page.navigate", { url: "http://127.0.0.1:5173/" });
     await waitFor(cdp, 'document.readyState === "complete" && !!document.querySelector("#login-form")');
@@ -233,7 +242,15 @@ async function main() {
       document.querySelector("#login-password").value = "fixture-password-123";
       document.querySelector("#login-form").dispatchEvent(new Event("submit",{bubbles:true,cancelable:true}));
     })()`);
-    await waitFor(cdp, 'document.querySelector("#auth-status")?.textContent === "Connected"');
+    try {
+      await waitFor(cdp, 'document.querySelector("#auth-status")?.textContent === "Connected"');
+    } catch (error) {
+      const visible = await cdp.evaluate(`({
+        status: document.querySelector("#auth-status")?.textContent,
+        message: document.querySelector("#auth-message")?.textContent
+      })`);
+      throw new Error(`Synthetic sign-in did not complete: ${JSON.stringify(visible)}; API paths: ${JSON.stringify(requests.map(item => item.path))}`, { cause: error });
+    }
     await waitFor(cdp, 'document.querySelector("#setup-guidance-panel") !== null', 150);
     await waitFor(cdp, 'document.querySelector("#conversation-panel-status")?.textContent?.includes("synced")', 150);
 
