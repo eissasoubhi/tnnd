@@ -208,7 +208,8 @@ async function main() {
   await new Promise((ok, reject) => server.listen(5173, "127.0.0.1", error => error ? reject(error) : ok()));
   const profile = await mkdtemp(join(tmpdir(), "tnnd-web-interaction-"));
   const child = spawn(chrome, [
-    "--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
+    ...(process.env.TNND_QA_HEADED === "1" ? [] : ["--headless=new"]),
+    "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
     "--no-first-run", "--no-default-browser-check", "--remote-allow-origins=*",
     "--remote-debugging-port=0", "--user-data-dir=" + profile,
     "--disable-extensions-except=" + extensionRoot, "--load-extension=" + extensionRoot,
