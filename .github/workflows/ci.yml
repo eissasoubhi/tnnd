@@ -53,7 +53,8 @@ jobs:
       - name: Click real extension Watcher and Swipe Stop controls through MV3 worker
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
-        run: node scripts/functional-qa-extension-popup.mjs
+          TNND_QA_HEADED: "1"
+        run: xvfb-run -a node scripts/functional-qa-extension-popup.mjs
       - name: Upload real popup-to-worker QA evidence
         if: always()
         uses: actions/upload-artifact@v4
