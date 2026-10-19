@@ -756,6 +756,16 @@ function displayRunnerState(state: GlobalRunnerState): void {
   watcherStatus.textContent = watcherControlPending
     ? (watcherUiNotice ?? "Checking watcher command…") : display.label;
   watcherStatus.setAttribute("data-status", watcherControlPending ? "waiting" : display.status);
+  const controlFeedback = document.getElementById("replyWatcherControlFeedback");
+  if (controlFeedback) {
+    if (!state.enabled && state.phase === "error") {
+      controlFeedback.textContent = "Watcher stopped unexpectedly: " + (state.phaseDetail || "Check Tinder connection.");
+    } else if (watcherUiError) {
+      controlFeedback.textContent = "Cannot start watcher: " + watcherUiError;
+    } else if (watcherUiNotice) {
+      controlFeedback.textContent = watcherUiNotice;
+    }
+  }
   const attentionLine = document.getElementById("replyWatcherAttention");
   if (attentionLine) {
     const ref = state.activeConversationRef;
@@ -906,6 +916,8 @@ async function runWatcherPopupCommand(
   watcherUiError = null;
   watcherUiNotice = notice;
   const watcherStatus = document.getElementById("replyWatcherStatus")!;
+  const controlFeedback = document.getElementById("replyWatcherControlFeedback");
+  if (controlFeedback) controlFeedback.textContent = notice;
   watcherStatus.textContent = notice;
   watcherStatus.setAttribute("data-status", "waiting");
   for (const id of ["startReplyWatcher", "startAutoMatchWatcher", "stopReplyWatcher"])
@@ -925,6 +937,7 @@ async function runWatcherPopupCommand(
         ? "Watcher started, first messages explicitly enabled."
         : "Watcher started, no automatic first messages.";
     globalRunnerUiError = null;
+    if (controlFeedback) controlFeedback.textContent = watcherUiNotice;
     displayRunnerState(response.state);
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Watcher could not start.";
@@ -932,10 +945,12 @@ async function runWatcherPopupCommand(
     watcherUiNotice = null;
     globalRunnerUiError = reason;
     watcherStatus.textContent = "Watcher action failed: " + reason;
+    if (controlFeedback) controlFeedback.textContent = "Cannot start watcher: " + reason;
     watcherStatus.setAttribute("data-status", "stopped");
     globalExistingStatus.textContent = reason;
   } finally {
     watcherControlPending = false;
+    if (lastGlobalExistingState) displayRunnerState(lastGlobalExistingState);
     // A read-only status refresh cannot erase the saved command failure.
     await refreshGlobalExisting();
   }
@@ -963,6 +978,8 @@ async function runWatcherPopupCommand(
     watcherUiNotice = null;
     document.getElementById("replyWatcherStatus")!.textContent =
       "Watcher action failed: " + watcherUiError;
+    document.getElementById("replyWatcherControlFeedback")!.textContent =
+      "Cannot start watcher: " + watcherUiError;
   });
 });
 (document.getElementById("stopReplyWatcher") as HTMLButtonElement).addEventListener("click", () => {
