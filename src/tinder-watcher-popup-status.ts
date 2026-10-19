@@ -37,7 +37,7 @@ export function presentWatcherStatus(
   if (commandError)
     return { label: "Watcher action failed: " + bounded(commandError), status: "stopped" };
   const watching = state.enabled && state.mode === "watcher";
-  if (state.pausedOnStop || (!state.enabled && state.phase === "error")) {
+  if (!state.enabled && state.phase === "error") {
     return {
       label: "Watcher stopped after a problem: " +
         bounded(state.phaseDetail || "Check TNND and Tinder connections before retrying."),
