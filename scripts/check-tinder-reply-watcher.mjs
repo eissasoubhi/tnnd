@@ -166,6 +166,8 @@ test("watcher Start error is not replaced by stopped during a status refresh", (
   assert.match(rejected.label, /Stop Smart Swipe/);
   assert.equal(rejected.status, "stopped");
   assert.equal(presentWatcherStatus(stopped, null, null).label, "Stopped · watcher is off");
+  assert.equal(presentWatcherStatus({ ...stopped, pausedOnStop: true }, null, null).label,
+    "Stopped · watcher is off", "manual Stop should not be misclassified as crash");
   assert.match(presentWatcherStatus({ ...stopped, enabled: true, mode: "runner" }, null, null).label,
     /Full-chat runner active/);
 });
