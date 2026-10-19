@@ -50,6 +50,18 @@ jobs:
           path: artifacts/neo-bento-extension/
           if-no-files-found: warn
           retention-days: 7
+      - name: Click real extension Watcher and Swipe Stop controls through MV3 worker
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+        run: node scripts/functional-qa-extension-popup.mjs
+      - name: Upload real popup-to-worker QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tnnd-extension-popup-worker-qa-${{ github.sha }}
+          path: artifacts/extension-popup-integration/
+          if-no-files-found: error
+          retention-days: 14
       - name: Install Web dependencies for functional browser QA
         run: npm install --prefix apps/web
       - name: Build Web UI with the synthetic same-origin API
