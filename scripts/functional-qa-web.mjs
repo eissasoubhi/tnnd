@@ -430,8 +430,10 @@ async function main() {
     }
 
     const targets = await cdp.send("Target.getTargets");
-    const extensionRunning = targets.targetInfos.some(t => t.url?.startsWith("chrome-extension://"));
-    assert.ok(extensionRunning, "The unpacked extension did not load in Chrome.");
+    const extensionRunning = targets.targetInfos.some(t =>
+      t.type === "service_worker" && t.url?.startsWith("chrome-extension://") &&
+      new URL(t.url).pathname === "/assets/background.js");
+    assert.ok(extensionRunning, "The TNND MV3 worker did not load in Chrome (other built-in Chrome extensions do not count).");
     results.push({ name: "Unpacked extension present in browser", passed: extensionRunning });
 
     // Headless Chrome registers the unpacked service worker but does not
