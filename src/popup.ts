@@ -4,6 +4,7 @@ import { renderExtensionSetupProgress } from "./setup-extension-panel";
 import { getBackendSession, getChatSettings, getConfig, saveChatSettings } from "./storage";
 import { firstMessageDailyLimit } from "./tinder-first-message-daily-limit";
 import { classifySwipePopupState } from "./tinder-smart-swipe-popup-state";
+import { presentWatcherStatus } from "./tinder-watcher-popup-status";
 import { conversationAttention, type ConversationActivity } from "./tinder-conversation-activity";
 import { cappedAttentionWaitMs } from "./tinder-attention-cap";
 import "./tinder-bulk-sync-popup";
@@ -726,6 +727,9 @@ const runnerPhaseLabels: Record<string, string> = {
 let lastGlobalExistingState: GlobalRunnerState | null = null;
 let globalRunnerRequestBusy = false;
 let globalRunnerUiError: string | null = null;
+let watcherUiError: string | null = null;
+let watcherUiNotice: string | null = null;
+let watcherControlPending = false;
 function asClock(value: string | null): string {
   if (!value || !Number.isFinite(Date.parse(value))) return "not yet";
   return new Date(value).toLocaleTimeString();
@@ -742,17 +746,26 @@ function displayRunnerState(state: GlobalRunnerState): void {
   startAutoWatcher.disabled = state.enabled && !(watcher && !state.autoOpenersEnabled);
   startWatcher.disabled = state.enabled;
   stopWatcher.disabled = !watcher;
-  const statusLabel: Record<string, string> = {
-    stopped: "Stopped", waiting: "Waiting for replies", "new-replies": "New replies found",
-    following: "Following current conversation",
-    processing: "Processing a conversation", paused: "Paused", disconnected: "Disconnected"
-  };
-  const displayStatus = state.watcherStatus ?? (watcher ? "waiting" : "stopped");
+  if (watcherControlPending) {
+    startWatcher.disabled = true;
+    stopWatcher.disabled = true;
+    startAutoWatcher.disabled = true;
+  }
+  const display = presentWatcherStatus(state, watcherUiError, watcherUiNotice);
   const watcherStatus = document.getElementById("replyWatcherStatus")!;
-  watcherStatus.textContent = (watcher || state.mode === "watcher"
-    ? statusLabel[displayStatus] ?? "Waiting" : state.enabled ? "Existing-chat runner active" : "Stopped · watcher is off")
-    + (watcher ? " · Tinder tab required" : "");
-  watcherStatus.setAttribute("data-status", displayStatus);
+  watcherStatus.textContent = watcherControlPending
+    ? (watcherUiNotice ?? "Checking watcher command…") : display.label;
+  watcherStatus.setAttribute("data-status", watcherControlPending ? "waiting" : display.status);
+  const controlFeedback = document.getElementById("replyWatcherControlFeedback");
+  if (controlFeedback) {
+    if (!state.enabled && state.phase === "error") {
+      controlFeedback.textContent = "Watcher stopped unexpectedly: " + (state.phaseDetail || "Check Tinder connection.");
+    } else if (watcherUiError) {
+      controlFeedback.textContent = "Cannot start watcher: " + watcherUiError;
+    } else if (watcherUiNotice) {
+      controlFeedback.textContent = watcherUiNotice;
+    }
+  }
   const attentionLine = document.getElementById("replyWatcherAttention");
   if (attentionLine) {
     const ref = state.activeConversationRef;
@@ -846,10 +859,21 @@ async function refreshGlobalExisting(): Promise<void> {
   try {
     const response = await chrome.runtime.sendMessage({ type: "TNND_GLOBAL_EXISTING_STATE" }) as GlobalExistingControlResponse;
     if (!response?.ok || !response.state) {
-      globalExistingStatus.textContent = response?.error ?? "Could not read runner status.";
+      const detail = response?.error ?? "Could not read runner status.";
+      globalExistingStatus.textContent = detail;
+      document.getElementById("replyWatcherStatus")!.textContent =
+        "Unable to verify watcher status: " + detail;
+      document.getElementById("replyWatcherStatus")!.setAttribute("data-status", "disconnected");
       return;
     }
     displayRunnerState(response.state);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "TNND extension worker unavailable.";
+    globalExistingStatus.textContent = detail;
+    document.getElementById("replyWatcherStatus")!.textContent =
+      "Unable to verify watcher status: " + detail +
+      ". Reload TNND in chrome://extensions and refresh the existing Tinder tab.";
+    document.getElementById("replyWatcherStatus")!.setAttribute("data-status", "disconnected");
   } finally { globalRunnerRequestBusy = false; }
 }
 
@@ -880,24 +904,62 @@ async function refreshGlobalExisting(): Promise<void> {
     globalExistingStatus.textContent = globalRunnerUiError;
   });
 });
-// Watch mode is deliberately separate from catch-up. It never bulk-enables
-// chats and reuses the same single-Tinder-tab and send-permission gates.
-(document.getElementById("startReplyWatcher") as HTMLButtonElement).addEventListener("click", () => {
-  void (async () => {
+// Watch mode is separate from catch-up and never bulk-enables per-chat permissions.
+// A rejected command must stay visible even if the periodic state refresh succeeds.
+async function runWatcherPopupCommand(
+  type: "TNND_GLOBAL_WATCHER_START" | "TNND_GLOBAL_WATCHER_AUTO_START" |
+    "TNND_GLOBAL_EXISTING_STOP",
+  notice: string
+): Promise<void> {
+  if (watcherControlPending) return;
+  watcherControlPending = true;
+  watcherUiError = null;
+  watcherUiNotice = notice;
+  const watcherStatus = document.getElementById("replyWatcherStatus")!;
+  const controlFeedback = document.getElementById("replyWatcherControlFeedback");
+  if (controlFeedback) controlFeedback.textContent = notice;
+  watcherStatus.textContent = notice;
+  watcherStatus.setAttribute("data-status", "waiting");
+  for (const id of ["startReplyWatcher", "startAutoMatchWatcher", "stopReplyWatcher"])
+    (document.getElementById(id) as HTMLButtonElement).disabled = true;
+  try {
+    const response = await chrome.runtime.sendMessage({ type }) as GlobalExistingControlResponse;
+    if (!response?.ok) throw new Error(response?.error ?? "TNND watcher command refused.");
+    // An ok response without a confirmed state is not a successful Start.
+    if (!response.state) throw new Error("Watcher command returned no verified state.");
+    const stop = type === "TNND_GLOBAL_EXISTING_STOP";
+    if (stop ? response.state.enabled : !(response.state.enabled && response.state.mode === "watcher"))
+      throw new Error("Watcher state did not match the requested action.");
+    if (type === "TNND_GLOBAL_WATCHER_AUTO_START" && !response.state.autoOpenersEnabled)
+      throw new Error("First-message permission was not confirmed.");
+    watcherUiNotice = stop ? "Watcher stopped and confirmed."
+      : type === "TNND_GLOBAL_WATCHER_AUTO_START"
+        ? "Watcher started, first messages explicitly enabled."
+        : "Watcher started, no automatic first messages.";
     globalRunnerUiError = null;
-    const response = await chrome.runtime.sendMessage({
-      type: "TNND_GLOBAL_WATCHER_START"
-    }) as GlobalExistingControlResponse;
-    if (!response?.ok) throw new Error(response?.error ?? "Watcher could not start.");
-    if (response.state) displayRunnerState(response.state);
-  })().catch(error => {
-    document.getElementById("replyWatcherStatus")!.textContent =
-      error instanceof Error ? error.message : "Watcher start failed.";
-    void refreshGlobalExisting();
-  });
+    if (controlFeedback) controlFeedback.textContent = watcherUiNotice;
+    displayRunnerState(response.state);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "Watcher could not start.";
+    watcherUiError = reason;
+    watcherUiNotice = null;
+    globalRunnerUiError = reason;
+    watcherStatus.textContent = "Watcher action failed: " + reason;
+    if (controlFeedback) controlFeedback.textContent = "Cannot start watcher: " + reason;
+    watcherStatus.setAttribute("data-status", "stopped");
+    globalExistingStatus.textContent = reason;
+  } finally {
+    watcherControlPending = false;
+    if (lastGlobalExistingState) displayRunnerState(lastGlobalExistingState);
+    // A read-only status refresh cannot erase the saved command failure.
+    await refreshGlobalExisting();
+  }
+}
+(document.getElementById("startReplyWatcher") as HTMLButtonElement).addEventListener("click", () => {
+  void runWatcherPopupCommand("TNND_GLOBAL_WATCHER_START",
+    "Starting conversations + matches watcher — checking account, API and Tinder tab…");
 });
-// Separate, explicitly confirmed opt-in. An extension update must NOT convert
-// existing read-only watchers into unsolicited first-message senders.
+// Explicit opt-in for future first messages; read-only mode never implies it.
 (document.getElementById("startAutoMatchWatcher") as HTMLButtonElement).addEventListener("click", () => {
   void (async () => {
     const limit = firstMessageDailyLimit((await getConfig()).automation.maxFirstMessagesPerDay);
@@ -909,29 +971,19 @@ async function refreshGlobalExisting(): Promise<void> {
       "and all individual/chat/backend permissions still apply. " +
       "Tinder must remain open. Continue?"
     )) return;
-    const response = await chrome.runtime.sendMessage({
-      type: "TNND_GLOBAL_WATCHER_AUTO_START"
-    }) as GlobalExistingControlResponse;
-    if (!response?.ok) throw new Error(response?.error ?? "Automatic watcher could not start.");
-    if (response.state) displayRunnerState(response.state);
+    await runWatcherPopupCommand("TNND_GLOBAL_WATCHER_AUTO_START",
+      "Enabling automatic first messages — verifying account and permissions…");
   })().catch(error => {
+    watcherUiError = error instanceof Error ? error.message : "Cannot check first-message permissions.";
+    watcherUiNotice = null;
     document.getElementById("replyWatcherStatus")!.textContent =
-      error instanceof Error ? error.message : "Automatic watcher start failed.";
-    void refreshGlobalExisting();
+      "Watcher action failed: " + watcherUiError;
+    document.getElementById("replyWatcherControlFeedback")!.textContent =
+      "Cannot start watcher: " + watcherUiError;
   });
 });
 (document.getElementById("stopReplyWatcher") as HTMLButtonElement).addEventListener("click", () => {
-  void (async () => {
-    const response = await chrome.runtime.sendMessage({
-      type: "TNND_GLOBAL_EXISTING_STOP"
-    }) as GlobalExistingControlResponse;
-    if (!response?.ok) throw new Error(response?.error ?? "Could not stop watcher.");
-    if (response.state) displayRunnerState(response.state);
-  })().catch(error => {
-    document.getElementById("replyWatcherStatus")!.textContent =
-      error instanceof Error ? error.message : "Watcher stop failed.";
-    void refreshGlobalExisting();
-  });
+  void runWatcherPopupCommand("TNND_GLOBAL_EXISTING_STOP", "Stopping watcher…");
 });
 startGlobalExisting.addEventListener("click", () => {
   void (async () => {
