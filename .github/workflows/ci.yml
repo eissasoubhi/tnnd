@@ -35,7 +35,9 @@ jobs:
       - run: npm run build
       - name: Install Chrome for extension visual smoke
         id: chrome
-        uses: browser-actions/setup-chrome@v1
+        # Chrome for Testing retains unpacked extension flags removed from
+        # modern official Chrome builds; fail if TNND's worker is not present.
+        uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
       - name: Check Neo Bento responsive and light/dark extension layouts
@@ -50,6 +52,19 @@ jobs:
           path: artifacts/neo-bento-extension/
           if-no-files-found: warn
           retention-days: 7
+      - name: Click real extension Watcher and Swipe Stop controls through MV3 worker
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          TNND_QA_HEADED: "1"
+        run: xvfb-run -a node scripts/functional-qa-extension-popup.mjs
+      - name: Upload real popup-to-worker QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tnnd-extension-popup-worker-qa-${{ github.sha }}
+          path: artifacts/extension-popup-integration/
+          if-no-files-found: error
+          retention-days: 14
       - name: Install Web dependencies for functional browser QA
         run: npm install --prefix apps/web
       - name: Build Web UI with the synthetic same-origin API
@@ -59,7 +74,8 @@ jobs:
       - name: Exercise TNND Web buttons and navigation with unpacked extension
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
-        run: node scripts/functional-qa-web.mjs
+          TNND_QA_HEADED: "1"
+        run: xvfb-run -a node scripts/functional-qa-web.mjs
       - name: Upload Web interaction QA report and screenshots
         if: always()
         uses: actions/upload-artifact@v4

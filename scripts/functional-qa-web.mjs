@@ -208,7 +208,8 @@ async function main() {
   await new Promise((ok, reject) => server.listen(5173, "127.0.0.1", error => error ? reject(error) : ok()));
   const profile = await mkdtemp(join(tmpdir(), "tnnd-web-interaction-"));
   const child = spawn(chrome, [
-    "--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
+    ...(process.env.TNND_QA_HEADED === "1" ? [] : ["--headless=new"]),
+    "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
     "--no-first-run", "--no-default-browser-check", "--remote-allow-origins=*",
     "--remote-debugging-port=0", "--user-data-dir=" + profile,
     "--disable-extensions-except=" + extensionRoot, "--load-extension=" + extensionRoot,
@@ -430,8 +431,10 @@ async function main() {
     }
 
     const targets = await cdp.send("Target.getTargets");
-    const extensionRunning = targets.targetInfos.some(t => t.url?.startsWith("chrome-extension://"));
-    assert.ok(extensionRunning, "The unpacked extension did not load in Chrome.");
+    const extensionRunning = targets.targetInfos.some(t =>
+      t.type === "service_worker" && t.url?.startsWith("chrome-extension://") &&
+      new URL(t.url).pathname === "/assets/background.js");
+    assert.ok(extensionRunning, "The TNND MV3 worker did not load in Chrome (other built-in Chrome extensions do not count).");
     results.push({ name: "Unpacked extension present in browser", passed: extensionRunning });
 
     // Headless Chrome registers the unpacked service worker but does not
