@@ -152,7 +152,8 @@ test("watcher extends focus after distinct incoming/sent events, not an old proc
   assert.match(content,/lastWatchedIncomingEvidence\.get\(conversationRef\) !== incomingEvidence/);
   assert.match(content,/reportExistingRunner\("incoming", "New reply in the current conversation\."\)/);
   assert.match(content,/phase !== "sent" && phase !== "incoming"/);
-  assert.match(popup,/Following current conversation/);
+  const watcherPopupStatus = await readFile(new URL("../src/tinder-watcher-popup-status.ts", import.meta.url), "utf8");
+  assert.match(watcherPopupStatus,/Following current conversation/);
   assert.equal(JSON.parse(manifest).version,"0.2.25");
 });
 
@@ -199,4 +200,7 @@ test("watcher buttons require worker confirmation and preserve rejected commands
   assert.match(popup, /response\.state\.enabled && response\.state\.mode === "watcher"/);
   assert.match(popup, /A read-only status refresh cannot erase the saved command failure/);
   assert.match(popup, /presentWatcherStatus\(state, watcherUiError, watcherUiNotice\)/);
+  const html = await readFile(new URL("../public/popup.html", import.meta.url), "utf8");
+  assert.match(html, /id="replyWatcherControlFeedback"[^>]*aria-live="polite"/);
+  assert.match(popup, /if \(controlFeedback\) controlFeedback.textContent = "Cannot start watcher: " \+ reason/);
 });
