@@ -35,7 +35,9 @@ jobs:
       - run: npm run build
       - name: Install Chrome for extension visual smoke
         id: chrome
-        uses: browser-actions/setup-chrome@v1
+        # Chrome for Testing retains unpacked extension flags removed from
+        # modern official Chrome builds; fail if TNND's worker is not present.
+        uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
       - name: Check Neo Bento responsive and light/dark extension layouts
