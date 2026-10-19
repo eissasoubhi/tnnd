@@ -72,7 +72,8 @@ jobs:
       - name: Exercise TNND Web buttons and navigation with unpacked extension
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
-        run: node scripts/functional-qa-web.mjs
+          TNND_QA_HEADED: "1"
+        run: xvfb-run -a node scripts/functional-qa-web.mjs
       - name: Upload Web interaction QA report and screenshots
         if: always()
         uses: actions/upload-artifact@v4
