@@ -94,7 +94,16 @@ async function waitFor(cdp, expression, attempts = 110) {
     if (last) return last;
     await sleep(110);
   }
-  throw new Error("Timed out waiting for real popup condition: " + expression);
+  const details = await cdp.evaluate(`JSON.stringify({
+    ready: document.readyState,
+    href: location.protocol + "//" + location.host + location.pathname,
+    title: document.title,
+    hasWatcherButton: !!document.querySelector("#startReplyWatcher"),
+    hasRuntime: typeof chrome !== "undefined" && typeof chrome.runtime?.sendMessage === "function",
+    bodyPrefix: (document.body?.innerText ?? "").slice(0, 120)
+  })`).catch(() => "popup_evaluation_unavailable");
+  throw new Error("Timed out waiting for real popup condition: " + expression +
+    " · actual browser: " + details);
 }
 async function check(cdp, label, expression, predicate = Boolean) {
   const result = await cdp.evaluate(expression);
