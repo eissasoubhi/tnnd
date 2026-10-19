@@ -35,9 +35,14 @@ async function waitForExtensionId(port) {
   let observed = [];
   for (let i = 0; i < 120; i++) {
     const targets = await (await fetch("http://127.0.0.1:" + port + "/json/list")).json();
-    observed = targets.map(t => ({ type: t.type, scheme: String(t.url ?? "").split(":")[0] }));
-    const extension = targets.find(t => typeof t.url === "string" &&
-      t.url.startsWith("chrome-extension://"));
+    observed = targets.filter(t => String(t.url ?? "").startsWith("chrome-extension://"))
+      .map(t => ({ type: t.type, pathname: new URL(t.url).pathname }));
+    // Chrome also launches its OWN built-in extensions. Their service workers
+    // are unrelated to TNND; the previous generic extension-present check
+    // would silently treat them as evidence that TNND loaded correctly.
+    const extension = targets.find(t => t.type === "service_worker" &&
+      typeof t.url === "string" && t.url.startsWith("chrome-extension://") &&
+      new URL(t.url).pathname === "/assets/background.js");
     if (extension) return new URL(extension.url).hostname;
     await sleep(100);
   }
