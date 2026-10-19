@@ -47,6 +47,14 @@ export function presentWatcherStatus(
   if (state.enabled && state.mode !== "watcher")
     return { label: "Full-chat runner active. Stop it before starting the watcher.",
       status: "stopped" };
+  if (watching && state.phase === "error")
+    return { label: "Watcher encountered a problem: " +
+      bounded(state.phaseDetail || "Check runner activity and network connections."),
+      status: "paused" };
+  if (watching && state.phase === "waiting" &&
+      /automatic replies are off/i.test(state.phaseDetail ?? ""))
+    return { label: "Watcher is waiting: " + bounded(state.phaseDetail ?? ""),
+      status: "paused" };
   if (!watching)
     return { label: "Stopped · watcher is off", status: "stopped" };
   const type = state.watcherStatus && state.watcherStatus in labelByStatus
