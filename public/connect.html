@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TNND — connexion de l'extension</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#f5f8f4;color:#19362e;font:15px system-ui,sans-serif}
+    main{width:min(440px,calc(100% - 32px));margin:48px auto;padding:28px;background:white;border:1px solid #d4e2d8;border-radius:19px}
+    h1{margin:0 0 12px;font-size:25px}
+    p{line-height:1.55;color:#536a61}
+    form{display:grid;gap:15px;margin:22px 0}
+    label{display:grid;gap:6px;font-weight:650}
+    input{width:100%;padding:12px;border:1px solid #aebeb4;border-radius:9px;font:inherit}
+    button{min-height:46px;background:#234b3d;color:white;border:0;border-radius:11px;padding:10px 18px;font:inherit;font-weight:700;cursor:pointer}
+    button:disabled{opacity:.65;cursor:wait}
+    #logout{background:white;color:#234b3d;border:1px solid #b4cabe}
+    :focus-visible{outline:3px solid #8170dc;outline-offset:3px}
+    #status{font-size:13px;overflow-wrap:anywhere}
+    #connected[hidden],#loginForm[hidden]{display:none}
+    a{color:#234b3d}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Connecter l'extension TNND</h1>
+    <p>TNND Web et Chrome utilisent des sessions distinctes. Connecte ici <strong>le même compte TNND</strong> pour autoriser le bouton Démarrer.</p>
+    <form id="loginForm" autocomplete="on">
+      <label>Email TNND <input id="email" type="email" autocomplete="username" required></label>
+      <label>Mot de passe TNND <input id="password" type="password" autocomplete="current-password" required></label>
+      <button id="login" type="submit">Connecter l'extension</button>
+    </form>
+    <section id="connected" hidden>
+      <p id="account"></p>
+      <button id="logout" type="button">Déconnecter cette extension</button>
+    </section>
+    <p id="status" role="status" aria-live="polite">Vérification de la session locale…</p>
+    <p><a href="http://127.0.0.1:5173/" target="_blank" rel="noopener noreferrer">Ouvrir TNND Web</a> · Ferme cette page une fois connecté, puis rouvre le popup TNND.</p>
+  </main>
+  <script src="assets/connect.js"></script>
+</body>
+</html>

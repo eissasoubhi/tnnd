@@ -74,6 +74,9 @@ toggle.addEventListener("click", () => {
           if (guidance.reviewAttempts) {
             webSettingsLink.href = "http://localhost:5173/#smart-swipe-activity";
             webSettingsLink.textContent = "Examiner les tentatives dans TNND Web";
+          } else if (guidance.connectAccount) {
+            webSettingsLink.href = chrome.runtime.getURL("connect.html");
+            webSettingsLink.textContent = "Connecter mon compte à l'extension";
           }
         } else {
           feedback.textContent = "Arrêt non confirmé : " + (result.reason ?? "commande non confirmée");

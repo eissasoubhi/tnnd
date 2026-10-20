@@ -17,7 +17,7 @@ test("all extension views load the shared Neo Bento stylesheet after their local
 });
 
 test("extension build copies the shared stylesheet into dist", () => {
-  assert.ok(read("scripts/build.mjs").includes('"popup.html", "launcher.html", "neo-bento.css"'));
+  assert.ok(read("scripts/build.mjs").includes('"popup.html", "launcher.html", "connect.html", "neo-bento.css"'));
   assert.ok(read("public/launcher.html").includes('href="neo-bento.css"'));
 });
 
@@ -96,4 +96,19 @@ test("toolbar launcher contains only one Start/Stop action and keeps legacy regr
   assert.match(controller, /TNND_UNIFIED_START/);
   assert.match(controller, /TNND_UNIFIED_STOP/);
   assert.ok(read("scripts/build.mjs").includes('["launcher", "src/launcher.ts"]'));
+});
+
+test("missing extension session leads to separate credential page, not extra toolbar buttons", () => {
+  const launcher = read("public/launcher.html");
+  const connectPage = read("public/connect.html");
+  const handler = read("src/launcher.ts");
+  const auth = read("src/connect.ts");
+  assert.equal(launcher.split("<button ").length - 1, 1);
+  assert.ok(connectPage.includes('id="loginForm"'));
+  assert.ok(connectPage.includes('type="password"'));
+  assert.ok(auth.includes('loginBackend(input)'));
+  assert.ok(auth.includes("password.value = \"\""));
+  assert.ok(handler.includes('chrome.runtime.getURL("connect.html")'));
+  assert.ok(read("scripts/build.mjs").includes('["connect", "src/connect.ts"]'));
+  assert.equal(JSON.parse(read("public/manifest.json")).action.default_popup, "launcher.html");
 });

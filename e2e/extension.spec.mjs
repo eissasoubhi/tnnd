@@ -37,6 +37,16 @@ const api = createServer(async (req, res) => {
   const path = url.pathname;
   requests.push({ method: req.method, path, authorization: req.headers.authorization === "Bearer fixture-only-token" });
   if (!apiAvailable || failingPaths.has(path)) return json(res, 503, { error: "fixture_offline" });
+  if (path === "/api/v1/auth/login" && req.method === "POST") {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    const authorized = payload.email === "e2e@example.test" &&
+      payload.password === "fixture-password-12345" && payload.clientType === "extension";
+    return authorized
+      ? json(res, 200, session)
+      : json(res, 401, { error: "invalid_credentials" });
+  }
   if (path === "/api/v1/auth/session") return json(res, 200, { user: session.user });
   if (path === "/api/v1/profile") return json(res, 404, { error: "fixture_no_profile" });
   if (path === "/api/v1/automation/smart-swipe") return json(res, 200, { settings });
@@ -150,6 +160,52 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     expect(snapshot).toMatchObject({ ok: true, enabled: true, controls: { status: "observed", likeControls: 1 } });
     expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
     expect(requests.some(item => item.path === "/api/v1/automation/smart-swipe" && item.authorization)).toBe(true);
+  });
+
+  test("extension logout from Chrome storage requires its own safe sign-in page without cluttering popup", async () => {
+    const worker = context.serviceWorkers()[0] || await context.waitForEvent("serviceworker");
+    const launcher = await context.newPage();
+    try {
+      await worker.evaluate(() => chrome.storage.local.remove("tnnd.backendSession"));
+      await launcher.goto(`chrome-extension://${extensionId}/launcher.html`);
+      await expect(launcher.locator("button")).toHaveCount(1);
+      await launcher.locator("#toggleAutomation").click();
+      await expect(launcher.locator("#engineStatus")).toContainText("Arrêté");
+      await expect(launcher.locator("#feedback")).toContainText("L'extension Chrome n'est pas connectée");
+      await expect(launcher.locator("#webSettingsLink"))
+        .toHaveAttribute("href", `chrome-extension://${extensionId}/connect.html`);
+      const beforeClaims = requests.filter(item => item.path.endsWith("/attempts/claim")).length;
+      const [connection] = await Promise.all([
+        context.waitForEvent("page"),
+        launcher.locator("#webSettingsLink").click()
+      ]);
+      try {
+        await connection.waitForLoadState("load");
+        await expect(connection.locator("#loginForm")).toBeVisible();
+        await connection.locator("#email").fill("e2e@example.test");
+        await connection.locator("#password").fill("not-the-right-password");
+        await connection.locator("#login").click();
+        await expect(connection.locator("#status")).toContainText("Connexion refusée");
+        expect((await storage())["tnnd.backendSession"]).toBeUndefined();
+        await connection.locator("#password").fill("fixture-password-12345");
+        await connection.locator("#login").click();
+        await expect(connection.locator("#status")).toContainText("Extension connectée");
+        await expect(connection.locator("#password")).toHaveValue("");
+        expect((await storage())["tnnd.backendSession"].user.id).toBe(userId);
+      } finally {
+        await connection.close();
+      }
+      await launcher.reload();
+      await expect(launcher.locator("#toggleAutomation")).toHaveText("Démarrer");
+      await expect(launcher.locator("#webSettingsLink")).toHaveAttribute(
+        "href", "http://localhost:5173/#workspace-settings-section");
+      expect(requests.filter(item => item.path.endsWith("/attempts/claim")).length)
+        .toBe(beforeClaims);
+      expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
+    } finally {
+      await launcher.close();
+      await worker.evaluate(value => chrome.storage.local.set({ "tnnd.backendSession": value }), session);
+    }
   });
 
   test("minimal default popup has one real button and starts/stops the initial Web-priority engine", async () => {

@@ -85,7 +85,7 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
     const before = await owners();
     if (before.running) return { ok: false, reason: "Un moteur est déjà actif. Clique Arrêter avant de redémarrer." };
     const session = await getBackendSession();
-    if (!session) return { ok: false, reason: "Connecte TNND à ton compte depuis le Web." };
+    if (!session) return { ok: false, reason: "tnnd_extension_session_missing" };
     const response = await fetch(API + "/api/v1/automation/smart-swipe", {
       headers: { authorization: "Bearer " + session.token }, cache: "no-store"
     });
