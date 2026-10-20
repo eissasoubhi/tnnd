@@ -79,6 +79,11 @@ async function status(): Promise<Record<string, unknown>> {
   const limitSnapshot = await readReachedLimits();
   const quota = limitSnapshot?.swipeQuota ?? null;
   const quotaReached = owner.mode === "swipe" && !owner.conflict && quota?.reached === true;
+  // Extension reloads may restore a previously armed Swipe without firing
+  // onStartup; recreate the periodic cap guard on its next status check.
+  if (owner.mode === "swipe" && !owner.conflict && store?.enabled &&
+      !(await chrome.alarms.get(CAP_ALARM)))
+    await chrome.alarms.create(CAP_ALARM, { periodInMinutes: 1 });
   // Never report active based solely on a stale master flag.
   return {
     ok: true, running: owner.running, mode: owner.mode,
@@ -91,10 +96,13 @@ async function status(): Promise<Record<string, unknown>> {
         :
       owner.running && !store?.enabled
         ? "Un ancien moteur est actif. Arrêter permet de reprendre le contrôle."
-        : owner.running && store?.enabled && store.mode === owner.mode &&
+        : owner.running && store?.enabled &&
+            (store.mode === owner.mode || (store.mode === "new-match" && owner.mode === "active-chat")) &&
             store.pausedSwipeReason
           ? store.pausedSwipeReason === "daily_cap"
-            ? "Quota Swipe atteint aujourd'hui. Surveillance des conversations et matchs autorisés active."
+            ? (owner.mode === "new-match"
+                ? "Quota Swipe atteint. Phase 1 : nouveaux matchs ; ensuite conversations en attente."
+                : "Quota Swipe atteint. Phase 2 : réponses aux conversations en attente.")
             : "Swipe en attente (ancien Like non résolu). Surveillance active, sans rejouer le Like."
           : owner.running
             ? "Activité lancée selon les priorités configurées."
@@ -204,7 +212,7 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
       // Swipe's original quota/uncertain attempts remain untouched; no Likes.
       if (epoch !== commandEpoch) return { ok: false, reason: "Démarrage annulé par Stop." };
       const result = await startExistingRunner(false, "watcher", selected === "new-match",
-        selected === "new-match" && pausedSwipeReason === "daily_cap");
+        selected === "new-match");
       if (!result.enabled || result.mode !== "watcher")
         return { ok: false, reason: "Surveillance non confirmée." };
     }
@@ -221,7 +229,7 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
     return {
       ok: true, running: true, mode: selected,
       reason: pausedSwipeReason === "daily_cap"
-        ? "Quota Swipe atteint. Surveillance des conversations et matchs autorisés active."
+        ? "Quota Swipe atteint. Phase 1 : nouveaux matchs ; ensuite conversations en attente."
         : pausedSwipeReason
           ? "Swipe en attente (ancien Like non résolu). Surveillance des conversations et matchs autorisée."
           : undefined
@@ -313,6 +321,14 @@ chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === CAP_ALARM) void handoffOnReachedCap();
 });
 chrome.runtime.onStartup.addListener(() => {
+  void (async () => {
+    const master = (await chrome.storage.local.get(MASTER))[MASTER] as
+      { enabled?: boolean; mode?: string } | undefined;
+    if (master?.enabled && master.mode === "swipe")
+      await chrome.alarms.create(CAP_ALARM, { periodInMinutes: 1 });
+  })().catch(() => undefined);
+});
+chrome.runtime.onInstalled.addListener(() => {
   void (async () => {
     const master = (await chrome.storage.local.get(MASTER))[MASTER] as
       { enabled?: boolean; mode?: string } | undefined;
