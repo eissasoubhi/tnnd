@@ -25,6 +25,7 @@ const settings = {
 const requests = [];
 let ledger = { attemptsToday: 0, uiObservedToday: 0, unresolvedAttempts: 0 };
 let apiAvailable = true;
+const failingPaths = new Set();
 
 function json(res, status, value) {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -35,7 +36,7 @@ const api = createServer(async (req, res) => {
   const url = new URL(req.url, "http://127.0.0.1:4000");
   const path = url.pathname;
   requests.push({ method: req.method, path, authorization: req.headers.authorization === "Bearer fixture-only-token" });
-  if (!apiAvailable) return json(res, 503, { error: "fixture_offline" });
+  if (!apiAvailable || failingPaths.has(path)) return json(res, 503, { error: "fixture_offline" });
   if (path === "/api/v1/auth/session") return json(res, 200, { user: session.user });
   if (path === "/api/v1/profile") return json(res, 404, { error: "fixture_no_profile" });
   if (path === "/api/v1/automation/smart-swipe") return json(res, 200, { settings });
@@ -62,6 +63,10 @@ const fakeTinder = `<!doctype html><html><head><title>Fictional Tinder fixture</
 <button class="gamepad-button Bgc($c-ds-background-gamepad-sparks-super-like-default)" aria-label="Super Like">Super Like</button>
 <button class="gamepad-button Bgc($c-ds-background-gamepad-sparks-like-default)" aria-label="Like" onclick="window.fixtureLikeClicks=(window.fixtureLikeClicks||0)+1">Like</button></main>
 </body></html>`;
+const fakeMatches = `<!doctype html><html><head><title>Fictional Matches fixture</title></head><body>
+<nav aria-label="Matches"><a class="matchListItem" href="/app/messages/fixture-a">Fixture A</a>
+<a class="matchListItem" href="/app/messages/fixture-b">Fixture B</a></nav>
+</body></html>`;
 
 let context, profile, extensionId, tinder, popup;
 async function launch() {
@@ -78,7 +83,8 @@ async function launch() {
     if (url.protocol === "chrome-extension:") return route.continue();
     if ((url.hostname === "tinder.com" || url.hostname === "www.tinder.com") &&
       url.protocol === "https:") {
-      return route.fulfill({ status: 200, contentType: "text/html", body: fakeTinder });
+      return route.fulfill({ status: 200, contentType: "text/html",
+        body: url.pathname === "/app/matches" ? fakeMatches : fakeTinder });
     }
     if (url.origin === "http://127.0.0.1:4000") return route.continue();
     return route.abort("blockedbyclient");
@@ -182,6 +188,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     await tinder.goto("https://tinder.com/app/recs");
     await openPopup();
     expect((await storage())[`tnnd.smartSwipeLiveArm.v1:${userId}`].armed).toBe(true);
+    expect((await storage())[`tnnd.smartSwipeDailyProgress.v1:${userId}`].startedSessions).toBe(1);
     const afterRestart = await command("TNND_GLOBAL_WATCHER_START");
     expect(afterRestart.ok).toBe(false);
     expect(afterRestart.error).toMatch(/swip/i);
@@ -190,11 +197,27 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
   });
 
   test("Watch Conversations survives popup closure and restart; Swipe and Matches remain exclusive", async () => {
-    await tinder.goto("https://tinder.com/app/messages");
+    await tinder.goto("https://tinder.com/app/matches");
     await popup.locator("#startReplyWatcher").click();
     await expect(popup.locator("#replyWatcherControlFeedback")).toContainText("Watcher started");
     let saved = await storage();
     expect(saved["tnnd.globalExistingRunner.v2"]).toMatchObject({ enabled: true, mode: "watcher", autoOpenersEnabled: false });
+    expect(saved["tnnd.globalExistingRunner.v2"].watchedMatches).toMatchObject({
+      baselineReady: true, existingRefs: ["fixture-a", "fixture-b"], newRefs: []
+    });
+    await tinder.evaluate(() => {
+      const tile = document.createElement("a");
+      tile.className = "matchListItem";
+      tile.href = "/app/messages/fixture-new";
+      tile.textContent = "Fixture New";
+      document.querySelector("nav")?.prepend(tile);
+    });
+    await expect.poll(async () => (await storage())["tnnd.globalExistingRunner.v2"]
+      .watchedMatches.observer.candidates.map(candidate => candidate.ref)).toEqual(["fixture-new"]);
+    saved = await storage();
+    expect(saved["tnnd.globalExistingRunner.v2"].watchedMatches).toMatchObject({
+      existingRefs: ["fixture-a", "fixture-b"], newRefs: [], observer: { autoSendEnabled: false }
+    });
     await popup.close();
     await openPopup();
     expect((await storage())["tnnd.globalExistingRunner.v2"].enabled).toBe(true);
@@ -207,10 +230,12 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     await context.close();
     await launch();
     tinder = await context.newPage();
-    await tinder.goto("https://tinder.com/app/messages");
+    await tinder.goto("https://tinder.com/app/matches");
     await openPopup();
     saved = await storage();
     expect(saved["tnnd.globalExistingRunner.v2"].enabled).toBe(true);
+    expect(saved["tnnd.globalExistingRunner.v2"].watchedMatches.existingRefs).toEqual(["fixture-a", "fixture-b"]);
+    expect(saved["tnnd.globalExistingRunner.v2"].watchedMatches.newRefs).toEqual([]);
     await popup.locator("#stopReplyWatcher").click();
     await expect(popup.locator("#replyWatcherControlFeedback")).toContainText("Watcher stopped");
     expect((await storage())["tnnd.globalExistingRunner.v2"].enabled).toBe(false);
@@ -222,6 +247,38 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     expect(blockedWatcher.error).toMatch(/match/i);
     const stoppedMatches = await command("TNND_NEW_MATCH_OBSERVATION_STOP");
     expect(stoppedMatches).toMatchObject({ ok: true, state: { enabled: false } });
+    const resumedSwipe = await command("TNND_SMART_SWIPE_SET_ARMED", { armed: true });
+    expect(resumedSwipe).toMatchObject({ ok: true, armed: true });
+    expect((await storage())[`tnnd.smartSwipeDailyProgress.v1:${userId}`].startedSessions).toBe(1);
+    await popup.locator("#stopSmartSwipeRuntime").click();
+    await expect(popup.locator("#smartSwipeControlFeedback")).toContainText("Stop confirmed");
+    await tinder.goto("https://tinder.com/app/matches");
+    const resumedWatcher = await command("TNND_GLOBAL_WATCHER_START");
+    expect(resumedWatcher).toMatchObject({ ok: true, state: { enabled: true, mode: "watcher" } });
+    expect((await command("TNND_GLOBAL_EXISTING_STOP")).state.enabled).toBe(false);
+  });
+
+  test("API failures refuse new Swipe and Watch Starts without changing ownership", async () => {
+    await tinder.goto("https://tinder.com/app/recs");
+    failingPaths.add("/api/v1/automation/smart-swipe/attempts/reconciliation");
+    const refusedSwipe = await command("TNND_SMART_SWIPE_SET_ARMED", { armed: true });
+    expect(refusedSwipe).toMatchObject({ ok: false, reason: "server_reconciliation_unavailable" });
+    expect((await storage())[`tnnd.smartSwipeLiveArm.v1:${userId}`].armed).toBe(false);
+    failingPaths.clear();
+    const started = await command("TNND_SMART_SWIPE_SET_ARMED", { armed: true });
+    expect(started).toMatchObject({ ok: true, armed: true });
+    expect((await command("TNND_SMART_SWIPE_SET_ARMED", { armed: false })).armed).toBe(false);
+    await tinder.goto("https://tinder.com/app/matches");
+    failingPaths.add("/api/v1/conversations/management");
+    const refusedWatcher = await command("TNND_GLOBAL_WATCHER_START");
+    expect(refusedWatcher.ok).toBe(false);
+    expect(refusedWatcher.error).toMatch(/conversations|API/i);
+    expect((await storage())["tnnd.globalExistingRunner.v2"].enabled).toBe(false);
+    failingPaths.clear();
+    const startedWatcher = await command("TNND_GLOBAL_WATCHER_START");
+    expect(startedWatcher).toMatchObject({ ok: true, state: { enabled: true, mode: "watcher" } });
+    expect((await command("TNND_GLOBAL_EXISTING_STOP")).state.enabled).toBe(false);
+    await tinder.goto("https://tinder.com/app/recs");
   });
 
   test("server quota and unavailable ledger fail closed without a Like", async () => {

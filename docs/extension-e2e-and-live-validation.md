@@ -17,8 +17,13 @@ On failure, inspect `artifacts/e2e/html/index.html`, `artifacts/e2e/junit.xml`
 and retained Playwright traces under `artifacts/e2e/results/`. CI uploads this
 directory even when the E2E step fails. Reports use synthetic data only.
 
-This suite checks the built popup, content script, service worker, local state,
-synthetic API requests, Stop latch, restart persistence, and mutual exclusion.
+The six scenarios check the built popup, content script, service worker, local
+state and synthetic API requests. They exercise successful Swipe and Watch
+Starts and Stops, popup closure, explicit resume, Chrome restart, scheduler
+session accounting, quota and API failure refusal, and exclusive ownership
+between Swipe, Watch and Matches. The Matches fixture verifies that Watch
+captures the initial visible tiles as an existing baseline and treats a newly
+visible tile as an unconfirmed candidate without sending a message.
 The existing `npm run build` checks still cover policy, quota, scheduler, send
 gates and other extension functions. The Web and API test workflows remain
 separate required checks. The fixture cannot prove Tinder accepts a Like or a
