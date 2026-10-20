@@ -190,10 +190,7 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
         if (currentOwners.running || currentOwners.conflict)
           return { ok: false, reason: "Mode concurrent détecté après vérification du quota." };
         if (epoch !== commandEpoch) return { ok: false, reason: "Démarrage annulé par Stop." };
-        // Respect the Web's explicit eligibility list. Only enter
-        // match-first mode if new-match is actually configured; otherwise
-        // honor the lower-priority conversations-only fallback.
-        selected = settings.priority.includes("new-match") ? "new-match" : next;
+        selected = "new-match";
         pausedSwipeReason = "daily_cap";
       }
     }
@@ -236,9 +233,7 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
     return {
       ok: true, running: true, mode: selected,
       reason: pausedSwipeReason === "daily_cap"
-        ? (selected === "new-match"
-            ? "Quota Swipe atteint. Phase 1 : nouveaux matchs ; ensuite conversations en attente."
-            : "Quota Swipe atteint. Conversations autorisées actives ; nouveaux matchs non configurés.")
+        ? "Quota Swipe atteint. Phase 1 : nouveaux matchs ; ensuite conversations en attente."
         : pausedSwipeReason
           ? "Swipe en attente (ancien Like non résolu). Surveillance des conversations et matchs autorisée."
           : undefined
