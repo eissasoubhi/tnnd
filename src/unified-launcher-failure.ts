@@ -6,6 +6,7 @@ export interface LauncherFailureGuidance {
   message: string;
   reviewAttempts: boolean;
   connectAccount?: boolean;
+  extensionSettings?: boolean;
 }
 
 const REVIEW_REASONS = new Set([
@@ -27,6 +28,25 @@ export function explainLauncherStartRefusal(reason: string | undefined): Launche
       message: "L'extension Chrome n'est pas connectée à TNND. Le site Web utilise une autre session. Ouvre la page de connexion de l'extension avec le lien ci-dessous.",
       reviewAttempts: false,
       connectAccount: true
+    };
+  }
+  if (technicalReason === "daily_cap_auto_replies_disabled") {
+    return {
+      message: "Quota de Swipe atteint. La surveillance des conversations et matchs est désactivée dans les paramètres locaux de l'extension. Active les réponses automatiques uniquement si tu autorises leurs envois ; sinon TNND reste arrêté, sans nouveau Like.",
+      reviewAttempts: false,
+      extensionSettings: true
+    };
+  }
+  if (technicalReason === "daily_cap_no_lower_priority_activity") {
+    return {
+      message: "Quota de Swipe atteint et aucune activité de priorité inférieure n'est disponible dans ta configuration Web. Aucun nouveau Like n'a été lancé.",
+      reviewAttempts: false
+    };
+  }
+  if (technicalReason === "daily_cap") {
+    return {
+      message: "Quota quotidien de Swipe atteint. Aucune autre activité n'est autorisée pour ce démarrage. TNND reste arrêté sans nouveau Like.",
+      reviewAttempts: false
     };
   }
   if (technicalReason === "server_attempt_unresolved") {
