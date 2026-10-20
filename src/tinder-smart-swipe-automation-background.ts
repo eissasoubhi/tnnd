@@ -377,6 +377,23 @@ async function setArmed(arm: boolean, expectedStopEpoch: number): Promise<Record
   return { ok: true, armed: true };
 }
 
+/** Internal service-worker entry for the new single-button launcher.
+ * Legacy popup authorization remains unchanged. Stop preempts queued Starts.
+ */
+export function startUnifiedSwipe(): Promise<Record<string, unknown>> {
+  const expected = stopEpoch;
+  return withTinderRunnerTransition(() => setArmed(true, expected));
+}
+export function stopUnifiedSwipe(): Promise<Record<string, unknown>> {
+  stopRequested = true;
+  const expected = ++stopEpoch;
+  const latch = chrome.storage.local.set({ [STORAGE_STOP]: true });
+  return withTinderRunnerTransition(async () => {
+    await latch;
+    return setArmed(false, expected);
+  });
+}
+
 chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
   if (!message || typeof message !== "object") return false;
   const type = (message as { type?: unknown }).type;
