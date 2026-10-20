@@ -5,6 +5,7 @@ import { validateSmartAutoSwipeConfig, type SmartAutoSwipeConfig,
 import { startUnifiedSwipe, stopUnifiedSwipe } from "./tinder-smart-swipe-automation-background";
 import { startExistingRunner, stopUnifiedExistingRunner } from "./tinder-global-existing-runner";
 import { readNewMatchState, stopUnifiedNewMatchRunner } from "./tinder-new-match-background";
+import { verifiedDailyQuota, type DailyQuotaEvidence } from "./unified-quota-status";
 
 const API = "http://127.0.0.1:4000";
 const MASTER = "tnnd.unifiedLauncher.v1";
@@ -40,14 +41,39 @@ async function owners(): Promise<OwnerSnapshot> {
       matches.enabled ? "new-match" : null
   };
 }
+async function currentDailyQuota(): Promise<DailyQuotaEvidence | null> {
+  try {
+    const session = await getBackendSession();
+    if (!session) return null;
+    const arm = (await chrome.storage.local.get(SWIPE_ARM + session.user.id))
+      [SWIPE_ARM + session.user.id] as { armed?: boolean } | undefined;
+    if (!arm?.armed) return null;
+    const headers = { authorization: "Bearer " + session.token };
+    const [settingsResponse, attemptsResponse] = await Promise.all([
+      fetch(API + "/api/v1/automation/smart-swipe", { headers, cache: "no-store" }),
+      fetch(API + "/api/v1/automation/smart-swipe/attempts/summary", { headers, cache: "no-store" })
+    ]);
+    if (!settingsResponse.ok || !attemptsResponse.ok) return null;
+    const settingsBody = await settingsResponse.json() as { settings?: SmartAutoSwipeConfig & { timeZone: string } };
+    if (!settingsBody.settings || validateSmartAutoSwipeConfig(settingsBody.settings).length) return null;
+    return verifiedDailyQuota(settingsBody.settings, await attemptsResponse.json(), Date.now());
+  } catch { return null; } // Unknown is NOT available quota.
+}
 async function status(): Promise<Record<string, unknown>> {
   const owner = await owners();
   const store = (await chrome.storage.local.get(MASTER))[MASTER] as
     { enabled?: boolean; mode?: ManagedTinderActivity; pausedSwipeReason?: string | null } | undefined;
+  const quota = owner.mode === "swipe" && !owner.conflict ? await currentDailyQuota() : null;
+  const quotaReached = quota?.reached === true;
   // Never report active based solely on a stale master flag.
   return {
     ok: true, running: owner.running, mode: owner.mode,
+    quotaPaused: quotaReached, quota: quotaReached ? quota : null,
     reason: owner.conflict ? "Plusieurs moteurs déjà actifs. Clique Arrêter pour les désarmer." :
+      quotaReached
+        ? "Quota quotidien de Swipe atteint (" + quota!.used + "/" + quota!.limit +
+          "). Aucun nouveau Like possible aujourd'hui. Arrête puis redémarre pour choisir une autre activité autorisée."
+        :
       owner.running && !store?.enabled
         ? "Un ancien moteur est actif. Arrêter permet de reprendre le contrôle."
         : owner.running && store?.enabled && store.mode === owner.mode &&

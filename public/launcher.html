@@ -15,6 +15,7 @@
     #engineStatus::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #94a3a0; flex: none; }
     #engineStatus[data-state="running"]::before { background: #248459; }
     #engineStatus[data-state="busy"]::before { background: #db9836; }
+    #engineStatus[data-state="paused"]::before { background: #db9836; }
     #engineStatus[data-state="error"]::before { background: #bd524b; }
     #toggleAutomation { display: block; width: 100%; min-height: 54px; padding: 13px; border: 0; border-radius: 13px; background: #234b3d; color: #fff; font: inherit; font-weight: 750; font-size: 16px; cursor: pointer; }
     #toggleAutomation[data-mode="stop"] { background: #fafcf8; border: 1px solid #a5bcb1; color: #234b3d; }
