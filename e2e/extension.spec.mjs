@@ -152,6 +152,53 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     expect(requests.some(item => item.path === "/api/v1/automation/smart-swipe" && item.authorization)).toBe(true);
   });
 
+  test("minimal default popup has one real button and starts/stops the initial Web-priority engine", async () => {
+    const simple = await context.newPage();
+    try {
+      await simple.goto(`chrome-extension://${extensionId}/launcher.html`);
+      expect(await simple.evaluate(() => chrome.runtime.getManifest().action.default_popup))
+        .toBe("launcher.html");
+      await expect(simple.locator("button")).toHaveCount(1);
+      await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
+      await expect(simple.locator("#toggleAutomation")).toHaveText("Démarrer");
+      // Rejected Start must never turn the only control into a dead button.
+      settings.enabled = false;
+      await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#feedback")).toContainText("Démarrage refusé");
+      await expect(simple.locator("#toggleAutomation")).toBeEnabled();
+      await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
+      settings.enabled = true;
+      // On fictional Discovery, Web's first priority is Swipe.
+      await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#engineStatus")).toContainText("Auto Swipe");
+      await expect(simple.locator("#toggleAutomation")).toHaveText("Arrêter");
+      expect((await storage())[`tnnd.smartSwipeLiveArm.v1:${userId}`].armed).toBe(true);
+      expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
+      await simple.reload();
+      await expect(simple.locator("#toggleAutomation")).toHaveText("Arrêter");
+      await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
+      expect((await storage())[`tnnd.smartSwipeLiveArm.v1:${userId}`].armed).toBe(false);
+      expect((await storage())["tnnd.smartSwipeStopRequested.v1"]).toBe(true);
+      // With new matches at highest priority, use the existing guarded
+      // watcher (not a second independently armed popup).
+      settings.priority = ["new-match", "active-chat", "swipe"];
+      await tinder.goto("https://tinder.com/app/matches");
+      await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#engineStatus")).toContainText("Nouveaux matchs");
+      expect((await storage())["tnnd.globalExistingRunner.v2"]).toMatchObject({
+        enabled: true, mode: "watcher", autoOpenersEnabled: true
+      });
+      await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
+      expect((await storage())["tnnd.globalExistingRunner.v2"].enabled).toBe(false);
+    } finally {
+      settings.priority = ["swipe", "new-match", "active-chat"];
+      await simple.close();
+      await tinder.goto("https://tinder.com/app/recs");
+    }
+  });
+
   test("Start, popup close, Stop and explicit resume persist in Chrome storage", async () => {
     await popup.locator("#startSmartSwipeRuntime").click();
     await expect(popup.locator("#smartSwipeControlFeedback")).toContainText("Start request accepted");

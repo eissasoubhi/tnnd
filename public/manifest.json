@@ -65,7 +65,7 @@
   ],
   "action": {
     "default_title": "Open TNND",
-    "default_popup": "popup.html"
+    "default_popup": "launcher.html"
   },
   "options_page": "options.html"
 }

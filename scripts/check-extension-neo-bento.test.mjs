@@ -17,7 +17,8 @@ test("all extension views load the shared Neo Bento stylesheet after their local
 });
 
 test("extension build copies the shared stylesheet into dist", () => {
-  assert.match(read("scripts/build.mjs"), /"popup\.html", "neo-bento\.css"/);
+  assert.ok(read("scripts/build.mjs").includes('"popup.html", "launcher.html", "neo-bento.css"'));
+  assert.ok(read("public/launcher.html").includes('href="neo-bento.css"'));
 });
 
 test("extension Neo Bento has semantic tokens, dark mode, keyboard focus and reduced motion", () => {
@@ -81,4 +82,18 @@ test("popup keeps essential stop controls reachable and legacy starts optional",
   const sweepStop = popup.indexOf('id="stopGlobalExisting"');
   assert.ok(legacy < sweepStart && sweepStart < sweepStop, "Legacy start is disclosed first; Stop remains visible");
   assert.doesNotMatch(popup, /\.quick-actions\{position:sticky/);
+});
+
+test("toolbar launcher contains only one Start/Stop action and keeps legacy regression tests", () => {
+  const manifest = JSON.parse(read("public/manifest.json"));
+  const launcher = read("public/launcher.html");
+  const controller = read("src/launcher.ts");
+  assert.equal(manifest.action.default_popup, "launcher.html");
+  assert.equal(launcher.split("<button ").length - 1, 1);
+  assert.match(launcher, /id="toggleAutomation"/);
+  assert.match(launcher, /TNND Web/);
+  assert.doesNotMatch(launcher, /id="startReplyWatcher"|id="startSmartSwipeRuntime"/);
+  assert.match(controller, /TNND_UNIFIED_START/);
+  assert.match(controller, /TNND_UNIFIED_STOP/);
+  assert.ok(read("scripts/build.mjs").includes('["launcher", "src/launcher.ts"]'));
 });
