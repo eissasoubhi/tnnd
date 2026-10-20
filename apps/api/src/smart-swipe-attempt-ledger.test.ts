@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { accountDayKey, canClaimAttempt, UUID_PATTERN, SMART_SWIPE_OUTCOME_REASONS, safeSwipeOutcomeReason, validSmartSwipeDayKey, REVIEW_UNKNOWN_ACKNOWLEDGEMENT } from "./smart-swipe-attempt-ledger.js";
+import { accountDayKey, canClaimAttempt, UUID_PATTERN, SMART_SWIPE_OUTCOME_REASONS, safeSwipeOutcomeReason, SMART_SWIPE_NO_CLICK_REASONS, validSmartSwipeDayKey, REVIEW_UNKNOWN_ACKNOWLEDGEMENT } from "./smart-swipe-attempt-ledger.js";
 test("attempt claiming is idempotent, quota-bound, and refuses uncertain prior actions", () => {
   assert.equal(canClaimAttempt(0, 10, false, false), "ready");
   assert.equal(canClaimAttempt(9, 10, false, false), "ready");
@@ -37,4 +37,14 @@ test("manual review requires an explicit unknown-outcome acknowledgement and can
   assert.equal(validSmartSwipeDayKey("2026-10-18/another-user"), false);
   assert.equal(validSmartSwipeDayKey("2026-99-99"), false);
   assert.equal(validSmartSwipeDayKey(null), false);
+});
+
+test("a not-clicked outcome needs trusted preflight evidence, never UI timeout or unknown click result", () => {
+  for (const reason of SMART_SWIPE_NO_CLICK_REASONS)
+    assert.equal(safeSwipeOutcomeReason("not_clicked", reason), true, reason);
+  for (const reason of ["card_transition_timeout", "like_action_exception",
+    "action_result_unavailable", "modal_or_navigation_after_click",
+    "new_card_visually_observed", "unknown", "http://tinder.com/private"]) {
+    assert.equal(safeSwipeOutcomeReason("not_clicked", reason), false, reason);
+  }
 });
