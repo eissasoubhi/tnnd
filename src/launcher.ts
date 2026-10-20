@@ -55,20 +55,21 @@ function renderDailyCounters(counters: DailyCounter[] | undefined): void {
   let unavailable = false;
   for (const id of ids) {
     const raw = counters.find(item => item?.id === id);
+    const used = raw?.used;
+    const max = raw?.max;
     const validDay = typeof raw?.dayKey === "string" &&
       /^\d{4}-\d{2}-\d{2}$/.test(raw.dayKey);
-    const validCount = raw && typeof raw.used === "number" &&
-      Number.isSafeInteger(raw.used) && raw.used >= 0 &&
-      typeof raw.max === "number" && Number.isSafeInteger(raw.max) &&
-      raw.max > 0 && validDay;
+    const validCount = typeof used === "number" && Number.isSafeInteger(used) &&
+      used >= 0 && typeof max === "number" && Number.isSafeInteger(max) &&
+      max > 0 && validDay;
     const row = document.createElement("li");
     const label = document.createElement("span");
     label.textContent = labels[id];
     const numbers = document.createElement("strong");
     numbers.className = "limit-count";
     if (validCount) {
-      numbers.textContent = raw.used + " / " + raw.max;
-      if (raw.used >= raw.max) {
+      numbers.textContent = used + " / " + max;
+      if (used >= max) {
         row.dataset.reached = "true";
         numbers.textContent += " ✓";
         numbers.title = "Limite atteinte";
@@ -77,8 +78,8 @@ function renderDailyCounters(counters: DailyCounter[] | undefined): void {
     } else {
       unavailable = true;
       numbers.textContent = "— / " +
-        (raw && typeof raw.max === "number" && Number.isSafeInteger(raw.max) && raw.max > 0
-          ? raw.max : "—");
+        (typeof max === "number" && Number.isSafeInteger(max) && max > 0
+          ? max : "—");
     }
     row.append(label, numbers);
     limitsList.append(row);
