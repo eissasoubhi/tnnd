@@ -78,7 +78,9 @@ async function status(): Promise<Record<string, unknown>> {
         ? "Un ancien moteur est actif. Arrêter permet de reprendre le contrôle."
         : owner.running && store?.enabled && store.mode === owner.mode &&
             store.pausedSwipeReason
-          ? "Swipe en attente (ancien Like non résolu). Surveillance active, sans rejouer le Like."
+          ? store.pausedSwipeReason === "daily_cap"
+            ? "Quota Swipe atteint aujourd'hui. Surveillance des conversations et matchs autorisés active."
+            : "Swipe en attente (ancien Like non résolu). Surveillance active, sans rejouer le Like."
           : owner.running
             ? "Activité initiale lancée. Le changement automatique entre activités viendra dans l'étape suivante."
             : ""
@@ -116,7 +118,7 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
       headers: { authorization: "Bearer " + session.token }, cache: "no-store"
     });
     if (!response.ok) return { ok: false, reason: "Impossible de lire les priorités TNND Web." };
-    const data = await response.json() as { settings?: SmartAutoSwipeConfig };
+    const data = await response.json() as { settings?: SmartAutoSwipeConfig & { timeZone: string } };
     const settings = data.settings;
     if (!settings || validateSmartAutoSwipeConfig(settings).length)
       return { ok: false, reason: "Configuration Web invalide. Corrige les priorités avant de démarrer." };
@@ -138,6 +140,28 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
     if (epoch !== commandEpoch) return { ok: false, reason: "Démarrage annulé par Stop." };
     let pausedSwipeReason: string | null = null;
     if (selected === "swipe") {
+      // Before arming any Like executor, compare this account's authoritative
+      // quota to the current calendar day in its configured timezone.
+      // An unreachable/stale summary is UNKNOWN, not permission for Likes or
+      // a switch that could overlap an in-flight Like from another client.
+      const summaryResponse = await fetch(API + "/api/v1/automation/smart-swipe/attempts/summary", {
+        headers: { authorization: "Bearer " + session.token }, cache: "no-store"
+      });
+      if (!summaryResponse.ok) return { ok: false, reason: "swipe_quota_unavailable" };
+      const quota = verifiedDailyQuota(settings, await summaryResponse.json(), Date.now());
+      if (!quota) return { ok: false, reason: "swipe_quota_unavailable" };
+      if (quota.reached) {
+        const next = fallbackAfterBlockedSwipe(settings, "daily_cap", config.automation.enabled);
+        if (!next) return { ok: false, reason: "daily_cap" };
+        const currentOwners = await owners();
+        if (currentOwners.running || currentOwners.conflict)
+          return { ok: false, reason: "Mode concurrent détecté après vérification du quota." };
+        if (epoch !== commandEpoch) return { ok: false, reason: "Démarrage annulé par Stop." };
+        selected = next;
+        pausedSwipeReason = "daily_cap";
+      }
+    }
+    if (selected === "swipe") {
       const result = await startUnifiedSwipe();
       if (result.ok !== true || result.armed !== true) {
         const reason = typeof result.reason === "string" ? result.reason : "swipe_start_unknown";
@@ -156,7 +180,8 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
     }
     if (selected !== "swipe") {
       // The established watcher performs BOTH authorized chat/match tasks.
-      // Swipe's original uncertain attempt remains untouched and blocked.
+      // Swipe's original quota/uncertain attempts remain untouched; no Likes.
+      if (epoch !== commandEpoch) return { ok: false, reason: "Démarrage annulé par Stop." };
       const result = await startExistingRunner(false, "watcher", selected === "new-match");
       if (!result.enabled || result.mode !== "watcher")
         return { ok: false, reason: "Surveillance non confirmée." };
@@ -171,9 +196,11 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
     } });
     return {
       ok: true, running: true, mode: selected,
-      reason: pausedSwipeReason
-        ? "Swipe en attente (ancien Like non résolu). Surveillance des conversations et matchs autorisée."
-        : undefined
+      reason: pausedSwipeReason === "daily_cap"
+        ? "Quota Swipe atteint. Surveillance des conversations et matchs autorisés active."
+        : pausedSwipeReason
+          ? "Swipe en attente (ancien Like non résolu). Surveillance des conversations et matchs autorisée."
+          : undefined
     };
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message.slice(0, 180) : "Erreur de démarrage." };

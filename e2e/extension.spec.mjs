@@ -234,6 +234,14 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(simple.locator("#feedback")).toContainText("Démarrage refusé");
       expect((await storage())["tnnd.globalExistingRunner.v2"]?.enabled).not.toBe(true);
       failingPaths.delete("/api/v1/automation/smart-swipe/attempts/reconciliation");
+      // Missing authoritative quota evidence must fail CLOSED; it is neither
+      // proof of remaining Likes nor permission to hand off ambiguously.
+      failingPaths.add("/api/v1/automation/smart-swipe/attempts/summary");
+      await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
+      await expect(simple.locator("#feedback")).toContainText("swipe_quota_unavailable");
+      expect((await storage())["tnnd.globalExistingRunner.v2"]?.enabled).not.toBe(true);
+      failingPaths.delete("/api/v1/automation/smart-swipe/attempts/summary");
       // One old uncertain attempt blocks Swipe, but does not take down the
       // independently permitted conversations watcher. It must NEVER retry
       // or erase the historical Like or arm both engines concurrently.
@@ -284,7 +292,32 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
         .toBe(claimCountAtCap);
       expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
       await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
+      // Starting with a *verified* full quota must not re-arm the Like
+      // executor. It may start only the next lower ranked watcher whose
+      // independent automatic replies permission is already enabled.
+      settings.priority = ["swipe", "active-chat", "new-match"];
+      const beforeFallbackClaims = requests.filter(x =>
+        x.path === "/api/v1/automation/smart-swipe/attempts/claim").length;
+      await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#engineStatus")).toContainText("Conversations");
+      await expect(simple.locator("#feedback")).toContainText("Quota Swipe atteint");
+      await expect(simple.locator("#toggleAutomation")).toHaveText("Arrêter");
+      expect((await storage())[`tnnd.smartSwipeLiveArm.v1:${userId}`]?.armed).not.toBe(true);
+      expect((await storage())["tnnd.globalExistingRunner.v2"]).toMatchObject({
+        enabled: true, mode: "watcher", autoOpenersEnabled: false
+      });
+      await simple.reload();
+      await expect(simple.locator("#feedback")).toContainText("Quota Swipe atteint");
+      expect(requests.filter(x =>
+        x.path === "/api/v1/automation/smart-swipe/attempts/claim").length).toBe(beforeFallbackClaims);
+      expect(ledger.attemptsToday).toBe(settings.maxRightSwipesPerDay);
+      expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
+      await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
+      expect((await storage())["tnnd.globalExistingRunner.v2"].enabled).toBe(false);
       ledger = { ...ledger, attemptsToday: 0, uiObservedToday: 0 };
+      settings.priority = ["swipe", "new-match", "active-chat"];
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
       expect((await storage())[`tnnd.smartSwipeLiveArm.v1:${userId}`].armed).toBe(false);
       expect((await storage())["tnnd.smartSwipeStopRequested.v1"]).toBe(true);
