@@ -168,6 +168,18 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(simple.locator("#toggleAutomation")).toBeEnabled();
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
       settings.enabled = true;
+      // Real MV3 + synthetic PostgreSQL-facing API: unresolved historical
+      // Likes block NEW Like attempts, without losing the one-button UI.
+      ledger = { ...ledger, unresolvedAttempts: 1 };
+      await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
+      await expect(simple.locator("#feedback")).toContainText("Un ancien Like reste sans résultat confirmé");
+      await expect(simple.locator("#webSettingsLink"))
+        .toHaveAttribute("href", "http://localhost:5173/#smart-swipe-activity");
+      await expect(simple.locator("#toggleAutomation")).toBeEnabled();
+      expect((await storage())[`tnnd.smartSwipeLiveArm.v1:${userId}`]?.armed).not.toBe(true);
+      expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
+      ledger = { ...ledger, unresolvedAttempts: 0 };
       // On fictional Discovery, Web's first priority is Swipe.
       await simple.locator("#toggleAutomation").click();
       await expect(simple.locator("#engineStatus")).toContainText("Auto Swipe");

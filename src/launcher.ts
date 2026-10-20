@@ -1,3 +1,4 @@
+import { explainLauncherStartRefusal } from "./unified-launcher-failure";
 /** Single-entry TNND popup. No activity-specific controls or account data.
  * This UI never dispatches Likes or messages. All actions go through the
  * service-worker orchestrator, which owns authorization and priority checks.
@@ -8,6 +9,7 @@ type Command = "TNND_UNIFIED_STATUS" | "TNND_UNIFIED_START" | "TNND_UNIFIED_STOP
 const toggle = document.getElementById("toggleAutomation") as HTMLButtonElement;
 const statusEl = document.getElementById("engineStatus") as HTMLElement;
 const feedback = document.getElementById("feedback") as HTMLElement;
+const webSettingsLink = document.getElementById("webSettingsLink") as HTMLAnchorElement;
 const version = document.getElementById("version") as HTMLElement;
 version.textContent = "v" + chrome.runtime.getManifest().version;
 let busy = false;
@@ -27,6 +29,10 @@ function render(value: Status, detail = ""): void {
   toggle.disabled = busy || !value.ok;
   feedback.textContent = detail || (value.ok ? value.reason ?? "" :
     "Impossible de lire l'état du moteur. Recharge l'extension.");
+  if (!detail) {
+    webSettingsLink.href = "http://localhost:5173/#workspace-settings-section";
+    webSettingsLink.textContent = "Configuration dans TNND Web";
+  }
 }
 async function send(type: Command): Promise<Status> {
   const response = await chrome.runtime.sendMessage({ type }) as Status | undefined;
@@ -62,8 +68,16 @@ toggle.addEventListener("click", () => {
         // Failed Start must never be described as running. Failed Stop must
         // never be described as successfully stopped; read actual ownership.
         await refresh();
-        feedback.textContent = (intent === "TNND_UNIFIED_START" ? "Démarrage refusé : " : "Arrêt non confirmé : ") +
-          (result.reason ?? "commande non confirmée");
+        if (intent === "TNND_UNIFIED_START") {
+          const guidance = explainLauncherStartRefusal(result.reason);
+          feedback.textContent = guidance.message;
+          if (guidance.reviewAttempts) {
+            webSettingsLink.href = "http://localhost:5173/#smart-swipe-activity";
+            webSettingsLink.textContent = "Examiner les tentatives dans TNND Web";
+          }
+        } else {
+          feedback.textContent = "Arrêt non confirmé : " + (result.reason ?? "commande non confirmée");
+        }
         return;
       }
       render(result, intent === "TNND_UNIFIED_START"
