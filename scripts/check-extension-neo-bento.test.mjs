@@ -95,5 +95,5 @@ test("toolbar launcher contains only one Start/Stop action and keeps legacy regr
   assert.doesNotMatch(launcher, /id="startReplyWatcher"|id="startSmartSwipeRuntime"/);
   assert.match(controller, /TNND_UNIFIED_START/);
   assert.match(controller, /TNND_UNIFIED_STOP/);
-  assert.ok(read("scripts/build.mjs").includes('"popup.html", "launcher.html", "neo-bento.css"'));
+  assert.ok(read("scripts/build.mjs").includes('["launcher", "src/launcher.ts"]'));
 });
