@@ -56,10 +56,11 @@ function renderDailyCounters(counters: DailyCounter[] | undefined): void {
   for (const id of ids) {
     const raw = counters.find(item => item?.id === id);
     const validDay = typeof raw?.dayKey === "string" &&
-      /^\\d{4}-\\d{2}-\\d{2}$/.test(raw.dayKey);
-    const validCount = raw && Number.isSafeInteger(raw.used) &&
-      raw.used !== null && raw.used >= 0 && Number.isSafeInteger(raw.max) &&
-      raw.max !== null && raw.max > 0 && validDay;
+      /^\d{4}-\d{2}-\d{2}$/.test(raw.dayKey);
+    const validCount = raw && typeof raw.used === "number" &&
+      Number.isSafeInteger(raw.used) && raw.used >= 0 &&
+      typeof raw.max === "number" && Number.isSafeInteger(raw.max) &&
+      raw.max > 0 && validDay;
     const row = document.createElement("li");
     const label = document.createElement("span");
     label.textContent = labels[id];
@@ -75,7 +76,7 @@ function renderDailyCounters(counters: DailyCounter[] | undefined): void {
     } else {
       unavailable = true;
       numbers.textContent = "— / " +
-        (raw && Number.isSafeInteger(raw.max) && raw.max !== null && raw.max > 0
+        (raw && typeof raw.max === "number" && Number.isSafeInteger(raw.max) && raw.max > 0
           ? raw.max : "—");
     }
     row.append(label, numbers);
