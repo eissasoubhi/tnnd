@@ -227,6 +227,11 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
         "v" + installedVersion + " (" + currentCommit.slice(0, 8) + ")");
       expect(await simple.evaluate(() => chrome.runtime.getManifest().version)).toBe(installedVersion);
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
+      await expect(simple.locator("#reachedLimits")).toBeVisible();
+      await expect(simple.locator("#reachedLimits h2")).toHaveText("Quotas du jour");
+      await expect(simple.locator("#reachedLimitsList li")).toHaveCount(2);
+      await expect(simple.locator("#reachedLimitsList")).toContainText("0 / 2");
+      await expect(simple.locator("#reachedLimitsList")).toContainText("— / 1");
       await expect(simple.locator("#toggleAutomation")).toHaveText("Démarrer");
       // Rejected Start must never turn the only control into a dead button.
       settings.enabled = false;
@@ -249,6 +254,8 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await simple.locator("#toggleAutomation").click();
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
       await expect(simple.locator("#feedback")).toContainText("swipe_quota_unavailable");
+      await expect(simple.locator("#reachedLimits")).toBeVisible();
+      await expect(simple.locator("#reachedLimitsList")).toContainText("— / 2");
       expect((await storage())["tnnd.globalExistingRunner.v2"]?.enabled).not.toBe(true);
       failingPaths.delete("/api/v1/automation/smart-swipe/attempts/summary");
       // One old uncertain attempt blocks Swipe, but does not take down the
@@ -273,6 +280,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await simple.reload();
       await expect(simple.locator("#engineStatus")).toContainText("Conversations");
       await expect(simple.locator("#feedback")).toContainText("Swipe en attente");
+      await expect(simple.locator("#reachedLimitsList")).toContainText("0 / 2");
       await simple.locator("#toggleAutomation").click();
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
       expect((await storage())["tnnd.globalExistingRunner.v2"].enabled).toBe(false);
@@ -298,6 +306,8 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(simple.locator("#reachedLimits")).toBeVisible();
       await expect(simple.locator("#reachedLimitsList")).toContainText("Tentatives de Like (TNND)");
       await expect(simple.locator("#reachedLimitsList")).toContainText("2 / 2");
+      await expect(simple.locator("#reachedLimitsList")).toContainText("Sessions Auto Swipe");
+      await expect(simple.locator("#reachedLimitsList li")).toHaveCount(2);
       await expect(simple.locator("button")).toHaveCount(1);
       await expect(simple.locator("#reachedLimitsNote")).toContainText("sans preuve d'acceptation Tinder");
       await expect(simple.locator("#toggleAutomation")).toHaveText("Arrêter");
@@ -349,6 +359,8 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       });
       await simple.reload();
       await expect(simple.locator("#feedback")).toContainText("Quota Swipe atteint");
+      await expect(simple.locator("#reachedLimitsList")).toContainText("2 / 2");
+      await expect(simple.locator("#reachedLimits")).toBeVisible();
       expect(requests.filter(x =>
         x.path === "/api/v1/automation/smart-swipe/attempts/claim").length).toBe(beforeFallbackClaims);
       expect(ledger.attemptsToday).toBe(settings.maxRightSwipesPerDay);
@@ -367,6 +379,8 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await tinder.goto("https://tinder.com/app/matches");
       await simple.locator("#toggleAutomation").click();
       await expect(simple.locator("#engineStatus")).toContainText("Nouveaux matchs");
+      await expect(simple.locator("#reachedLimits")).toBeVisible();
+      await expect(simple.locator("#reachedLimitsList li")).toHaveCount(2);
       expect((await storage())["tnnd.globalExistingRunner.v2"]).toMatchObject({
         enabled: true, mode: "watcher", autoOpenersEnabled: true
       });
