@@ -5,7 +5,8 @@ import { validateSmartAutoSwipeConfig, type SmartAutoSwipeConfig,
 import { startUnifiedSwipe, stopUnifiedSwipe } from "./tinder-smart-swipe-automation-background";
 import { startExistingRunner, stopUnifiedExistingRunner } from "./tinder-global-existing-runner";
 import { readNewMatchState, stopUnifiedNewMatchRunner } from "./tinder-new-match-background";
-import { verifiedDailyQuota, type DailyQuotaEvidence } from "./unified-quota-status";
+import { verifiedDailyQuota } from "./unified-quota-status";
+import { reachedUnifiedLimits, type UnifiedLimitSnapshot } from "./unified-reached-limits";
 
 const API = "http://127.0.0.1:4000";
 const MASTER = "tnnd.unifiedLauncher.v1";
@@ -41,34 +42,44 @@ async function owners(): Promise<OwnerSnapshot> {
       matches.enabled ? "new-match" : null
   };
 }
-async function currentDailyQuota(): Promise<DailyQuotaEvidence | null> {
+async function readReachedLimits(): Promise<UnifiedLimitSnapshot | null> {
   try {
     const session = await getBackendSession();
     if (!session) return null;
-    const arm = (await chrome.storage.local.get(SWIPE_ARM + session.user.id))
-      [SWIPE_ARM + session.user.id] as { armed?: boolean } | undefined;
-    if (!arm?.armed) return null;
     const headers = { authorization: "Bearer " + session.token };
     const [settingsResponse, attemptsResponse] = await Promise.all([
       fetch(API + "/api/v1/automation/smart-swipe", { headers, cache: "no-store" }),
       fetch(API + "/api/v1/automation/smart-swipe/attempts/summary", { headers, cache: "no-store" })
     ]);
     if (!settingsResponse.ok || !attemptsResponse.ok) return null;
-    const settingsBody = await settingsResponse.json() as { settings?: SmartAutoSwipeConfig & { timeZone: string } };
-    if (!settingsBody.settings || validateSmartAutoSwipeConfig(settingsBody.settings).length) return null;
-    return verifiedDailyQuota(settingsBody.settings, await attemptsResponse.json(), Date.now());
-  } catch { return null; } // Unknown is NOT available quota.
+    const settingsBody = await settingsResponse.json() as {
+      settings?: SmartAutoSwipeConfig & { timeZone: string }
+    };
+    const settings = settingsBody.settings;
+    if (!settings || validateSmartAutoSwipeConfig(settings).length) return null;
+    const key = "tnnd.smartSwipeDailyProgress.v1:" + session.user.id;
+    const storedProgress = (await chrome.storage.local.get(key))[key];
+    return reachedUnifiedLimits(settings, await attemptsResponse.json(), storedProgress, Date.now());
+  } catch {
+    // Unavailable ledger information is unknown, not a zero counter or a
+    // successful Tinder action. Never reset or infer any quota.
+    return null;
+  }
 }
 async function status(): Promise<Record<string, unknown>> {
   const owner = await owners();
   const store = (await chrome.storage.local.get(MASTER))[MASTER] as
     { enabled?: boolean; mode?: ManagedTinderActivity; pausedSwipeReason?: string | null } | undefined;
-  const quota = owner.mode === "swipe" && !owner.conflict ? await currentDailyQuota() : null;
-  const quotaReached = quota?.reached === true;
+  // Quotas remain visible even when Start was REFUSED: an exhausted Swipe
+  // attempt cap is useful information when the engine is stopped.
+  const limitSnapshot = await readReachedLimits();
+  const quota = limitSnapshot?.swipeQuota ?? null;
+  const quotaReached = owner.mode === "swipe" && !owner.conflict && quota?.reached === true;
   // Never report active based solely on a stale master flag.
   return {
     ok: true, running: owner.running, mode: owner.mode,
     quotaPaused: quotaReached, quota: quotaReached ? quota : null,
+    reachedLimits: limitSnapshot?.reached ?? [],
     reason: owner.conflict ? "Plusieurs moteurs déjà actifs. Clique Arrêter pour les désarmer." :
       quotaReached
         ? "Quota quotidien de Swipe atteint (" + quota!.used + "/" + quota!.limit +
