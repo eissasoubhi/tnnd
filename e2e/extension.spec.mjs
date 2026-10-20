@@ -1,6 +1,7 @@
 import { test, expect, chromium } from "playwright/test";
 import { createServer } from "node:http";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -217,6 +218,13 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       expect(await simple.evaluate(() => chrome.runtime.getManifest().action.default_popup))
         .toBe("launcher.html");
       await expect(simple.locator("button")).toHaveCount(1);
+      const installedInfo = JSON.parse(await readFile(resolve("dist/BUILD-INFO.json"), "utf8"));
+      const currentCommit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+      expect(installedInfo.version).toBe("0.2.26");
+      expect(installedInfo.commit).toBe(currentCommit);
+      await expect(simple.locator("footer #version")).toHaveText(
+        "v0.2.26 (" + currentCommit.slice(0, 8) + ")");
+      expect(await simple.evaluate(() => chrome.runtime.getManifest().version)).toBe("0.2.26");
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
       await expect(simple.locator("#toggleAutomation")).toHaveText("Démarrer");
       // Rejected Start must never turn the only control into a dead button.
@@ -286,6 +294,11 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await simple.reload();
       await expect(simple.locator("#engineStatus")).toContainText("Quota Swipe atteint");
       await expect(simple.locator("#feedback")).toContainText("Quota quotidien de Swipe atteint");
+      await expect(simple.locator("#reachedLimits")).toBeVisible();
+      await expect(simple.locator("#reachedLimitsList")).toContainText("Tentatives de Like (TNND)");
+      await expect(simple.locator("#reachedLimitsList")).toContainText("2 / 2");
+      await expect(simple.locator("button")).toHaveCount(1);
+      await expect(simple.locator("#reachedLimitsNote")).toContainText("sans preuve d'acceptation Tinder");
       await expect(simple.locator("#toggleAutomation")).toHaveText("Arrêter");
       expect(requests.filter(x =>
         x.path === "/api/v1/automation/smart-swipe/attempts/claim").length)
@@ -293,6 +306,8 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
       await simple.locator("#toggleAutomation").click();
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
+      await simple.reload();
+      await expect(simple.locator("#reachedLimitsList")).toContainText("2 / 2");
       // Starting with a *verified* full quota must not re-arm the Like
       // executor. It may start only the next lower ranked watcher whose
       // independent automatic replies permission is already enabled.
@@ -307,6 +322,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await simple.locator("#toggleAutomation").click();
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
       await expect(simple.locator("#feedback")).toContainText("désactivée dans les paramètres locaux");
+      await expect(simple.locator("#reachedLimitsList")).toContainText("2 / 2");
       await expect(simple.locator("#webSettingsLink"))
         .toHaveAttribute("href", `chrome-extension://${extensionId}/options.html`);
       await expect(simple.locator("#toggleAutomation")).toBeEnabled();

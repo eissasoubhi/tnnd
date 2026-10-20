@@ -4,19 +4,70 @@ import { explainLauncherStartRefusal } from "./unified-launcher-failure";
  * service-worker orchestrator, which owns authorization and priority checks.
  */
 type CurrentMode = "swipe" | "active-chat" | "new-match" | null;
-type Status = { ok: boolean; running?: boolean; mode?: CurrentMode; reason?: string; quotaPaused?: boolean };
+type ReachedLimit = { id: "swipe-attempts" | "swipe-sessions"; label: string;
+  used: number; max: number; dayKey: string };
+type Status = { ok: boolean; running?: boolean; mode?: CurrentMode; reason?: string;
+  quotaPaused?: boolean; reachedLimits?: ReachedLimit[] };
 type Command = "TNND_UNIFIED_STATUS" | "TNND_UNIFIED_START" | "TNND_UNIFIED_STOP";
 const toggle = document.getElementById("toggleAutomation") as HTMLButtonElement;
 const statusEl = document.getElementById("engineStatus") as HTMLElement;
 const feedback = document.getElementById("feedback") as HTMLElement;
 const webSettingsLink = document.getElementById("webSettingsLink") as HTMLAnchorElement;
 const version = document.getElementById("version") as HTMLElement;
-version.textContent = "v" + chrome.runtime.getManifest().version;
+const limitsSection = document.getElementById("reachedLimits") as HTMLElement;
+const limitsList = document.getElementById("reachedLimitsList") as HTMLUListElement;
+const limitsNote = document.getElementById("reachedLimitsNote") as HTMLElement;
+
+/** The build file is generated on each actual installable build. Never show a
+ * guessed commit from a page, GitHub branch, user profile, or stale API.
+ */
+async function showBuildVersion(): Promise<void> {
+  const installedVersion = chrome.runtime.getManifest().version;
+  try {
+    const response = await fetch(chrome.runtime.getURL("BUILD-INFO.json"), { cache: "no-store" });
+    if (!response.ok) throw new Error("missing_build_info");
+    const value = await response.json() as { version?: unknown; commit?: unknown };
+    if (value.version !== installedVersion ||
+        typeof value.commit !== "string" || !/^[a-f0-9]{40}$/i.test(value.commit))
+      throw new Error("invalid_build_provenance");
+    version.textContent = "v" + installedVersion + " (" + value.commit.slice(0, 8) + ")";
+    version.title = "Commit Git utilisé pour construire cette extension : " + value.commit;
+  } catch {
+    version.textContent = "v" + installedVersion + " (commit indisponible)";
+    version.title = "La provenance Git de ce build n'a pas pu être vérifiée.";
+  }
+}
+
+function renderReachedLimits(limits: ReachedLimit[] | undefined): void {
+  if (!Array.isArray(limits)) return; // A command reply without a status snapshot is not quota evidence.
+  limitsList.replaceChildren();
+  const accepted = limits.filter(item =>
+    (item.id === "swipe-attempts" || item.id === "swipe-sessions") &&
+    typeof item.label === "string" && item.label.length <= 80 &&
+    Number.isSafeInteger(item.used) && Number.isSafeInteger(item.max) &&
+    item.max > 0 && item.used >= item.max && /^\d{4}-\d{2}-\d{2}$/.test(item.dayKey));
+  for (const item of accepted) {
+    const row = document.createElement("li");
+    const label = document.createElement("span");
+    label.textContent = item.label;
+    const numbers = document.createElement("strong");
+    numbers.className = "limit-count";
+    numbers.textContent = item.used + " / " + item.max;
+    row.append(label, numbers);
+    limitsList.append(row);
+  }
+  limitsSection.hidden = accepted.length === 0;
+  limitsNote.textContent = accepted.length
+    ? "Journée du " + accepted[0].dayKey +
+      " · Tentatives comptées par TNND, sans preuve d'acceptation Tinder."
+    : "";
+}
 let busy = false;
 let running = false;
 let requestVersion = 0;
 
 function render(value: Status, detail = ""): void {
+  renderReachedLimits(value.reachedLimits);
   running = value.running === true;
   const pausedForQuota = running && value.quotaPaused === true;
   statusEl.dataset.state = !value.ok ? "error" :
@@ -105,6 +156,7 @@ toggle.addEventListener("click", () => {
     }
   })();
 });
+void showBuildVersion();
 void refresh();
 
 export {};

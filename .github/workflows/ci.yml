@@ -18,6 +18,9 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Needed to compare this PR with its merge-base on main reliably.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -32,6 +35,11 @@ jobs:
           fi
       - name: Verify extension version consistency
         run: node -e "const p=require('./package.json');const m=require('./public/manifest.json');if(p.version!==m.version){console.error('Version mismatch',p.version,m.version);process.exit(1)}"
+      - name: Require a fresh version whenever extension source changes
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+        run: node scripts/check-extension-version-bump.mjs
       - name: Install Chrome for extension visual smoke
         id: chrome
         # Chrome for Testing retains unpacked extension flags removed from
@@ -39,6 +47,20 @@ jobs:
         uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
+      - name: Ignore unavailable unrelated Microsoft apt feed for Playwright dependencies
+        # Runner occasionally ships a packages.microsoft.com apt source that
+        # returns HTTP 403, making 'playwright install --with-deps' fail before
+        # any E2E test can run. Chromium depends on Ubuntu system packages,
+        # not this vendor repository. Keep dependency installation + E2E on.
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for source in /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+            if grep -q 'packages.microsoft.com' "$source"; then
+              echo "Disabling unavailable external apt feed: $source"
+              sudo mv "$source" "$source.disabled"
+            fi
+          done
       - name: Exercise compiled extension and service worker with fictional Tinder
         run: npx playwright install --with-deps chromium && npm run test:e2e
       - name: Upload extension E2E failures and trace report
