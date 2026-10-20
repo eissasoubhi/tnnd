@@ -20,8 +20,29 @@ try {
     cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"]
   }).trim();
 } catch {
-  // Intentional build override for a verified source archive with no .git.
-  commit = process.env.TNND_BUILD_COMMIT?.trim();
+  // The Docker extension service uses node:22-alpine, which may lack the git
+  // executable. The mounted checkout still provides .git/HEAD and refs.
+  // Reading these is equivalent to git rev-parse HEAD for a normal checkout,
+  // including refs stored inside packed-refs.
+  try {
+    const head = (await readFile(resolve(root, ".git/HEAD"), "utf8")).trim();
+    if (/^[a-f0-9]{40}$/i.test(head)) {
+      commit = head;
+    } else if (head.startsWith("ref: ")) {
+      const ref = head.slice(5).trim();
+      if (!/^refs\\/(heads|tags)\\/[a-zA-Z0-9._/-]+$/.test(ref) ||
+          ref.split("/").includes("..")) throw new Error("Invalid HEAD ref");
+      try {
+        commit = (await readFile(resolve(root, ".git", ref), "utf8")).trim();
+      } catch {
+        const packed = await readFile(resolve(root, ".git/packed-refs"), "utf8");
+        const line = packed.split("\\n").find(x => x.endsWith(" " + ref));
+        commit = line?.split(" ")[0];
+      }
+    }
+  } catch { /* Worktrees or exported source archives require explicit commit. */ }
+  // Archives without a Git directory can supply their verified source SHA.
+  commit ??= process.env.TNND_BUILD_COMMIT?.trim();
 }
 if (!/^[a-f0-9]{40}$/i.test(commit ?? ""))
   throw new Error("TNND build requires a valid source Git commit. Build inside the checkout or supply verified TNND_BUILD_COMMIT.");
