@@ -15,7 +15,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,7 +32,6 @@ jobs:
           fi
       - name: Verify extension version consistency
         run: node -e "const p=require('./package.json');const m=require('./public/manifest.json');if(p.version!==m.version){console.error('Version mismatch',p.version,m.version);process.exit(1)}"
-      - run: npm run build
       - name: Install Chrome for extension visual smoke
         id: chrome
         # Chrome for Testing retains unpacked extension flags removed from
@@ -40,6 +39,16 @@ jobs:
         uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
+      - name: Exercise compiled extension and service worker with fictional Tinder
+        run: npx playwright install --with-deps chromium && npm run test:e2e
+      - name: Upload extension E2E failures and trace report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tnnd-extension-e2e-${{ github.sha }}
+          path: artifacts/e2e/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Check Neo Bento responsive and light/dark extension layouts
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
