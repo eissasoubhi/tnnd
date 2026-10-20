@@ -1,5 +1,5 @@
 import { getBackendSession, getConfig } from "./storage";
-import { initialUnifiedActivity } from "./unified-activity-policy";
+import { initialUnifiedActivity, fallbackAfterBlockedSwipe } from "./unified-activity-policy";
 import { validateSmartAutoSwipeConfig, type SmartAutoSwipeConfig,
   type ManagedTinderActivity } from "./tinder-smart-auto-swipe-policy";
 import { startUnifiedSwipe, stopUnifiedSwipe } from "./tinder-smart-swipe-automation-background";
@@ -43,16 +43,19 @@ async function owners(): Promise<OwnerSnapshot> {
 async function status(): Promise<Record<string, unknown>> {
   const owner = await owners();
   const store = (await chrome.storage.local.get(MASTER))[MASTER] as
-    { enabled?: boolean; mode?: ManagedTinderActivity } | undefined;
+    { enabled?: boolean; mode?: ManagedTinderActivity; pausedSwipeReason?: string | null } | undefined;
   // Never report active based solely on a stale master flag.
   return {
     ok: true, running: owner.running, mode: owner.mode,
     reason: owner.conflict ? "Plusieurs moteurs déjà actifs. Clique Arrêter pour les désarmer." :
       owner.running && !store?.enabled
         ? "Un ancien moteur est actif. Arrêter permet de reprendre le contrôle."
-        : owner.running
-          ? "Activité initiale lancée. Le changement automatique entre activités viendra dans l'étape suivante."
-          : ""
+        : owner.running && store?.enabled && store.mode === owner.mode &&
+            store.pausedSwipeReason
+          ? "Swipe en attente (ancien Like non résolu). Surveillance active, sans rejouer le Like."
+          : owner.running
+            ? "Activité initiale lancée. Le changement automatique entre activités viendra dans l'étape suivante."
+            : ""
   };
 }
 async function stopEverything(): Promise<{ ok: boolean; reason?: string }> {
@@ -99,7 +102,7 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
     if (tabs.length !== 1 || !tabs[0].id)
       return { ok: false, reason: "Une seule fenêtre Tinder est nécessaire." };
     const config = await getConfig();
-    const selected = initialUnifiedActivity(settings, {
+    let selected = initialUnifiedActivity(settings, {
       tinderTabPresent: true,
       discoveryVisible: new URL(tabs[0].url!).pathname.replace(/\/+$/, "") === "/app/recs",
       automaticRepliesEnabled: config.automation.enabled
@@ -107,13 +110,27 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
     if (!selected) return { ok: false, reason:
       "Aucune activité autorisée ici. Vérifie Tinder et les paramètres d'automatisation." };
     if (epoch !== commandEpoch) return { ok: false, reason: "Démarrage annulé par Stop." };
+    let pausedSwipeReason: string | null = null;
     if (selected === "swipe") {
       const result = await startUnifiedSwipe();
-      if (result.ok !== true || result.armed !== true)
-        return { ok: false, reason: String(result.reason ?? "Démarrage Swipe refusé") };
-    } else {
-      // The proven existing watcher owns BOTH chats and matches. Enabling
-      // first messages follows only the explicitly configured priority.
+      if (result.ok !== true || result.armed !== true) {
+        const reason = typeof result.reason === "string" ? result.reason : "swipe_start_unknown";
+        const next = fallbackAfterBlockedSwipe(settings, reason, config.automation.enabled);
+        if (!next) return { ok: false, reason };
+        // A refusal due to an unresolved old Like is NOT permission to
+        // start a different engine if Swipe was armed concurrently.
+        const currentOwners = await owners();
+        if (currentOwners.running || currentOwners.conflict)
+          return { ok: false, reason: "Mode concurrent détecté après le refus Swipe." };
+        if (epoch !== commandEpoch)
+          return { ok: false, reason: "Démarrage annulé par Stop." };
+        selected = next;
+        pausedSwipeReason = reason;
+      }
+    }
+    if (selected !== "swipe") {
+      // The established watcher performs BOTH authorized chat/match tasks.
+      // Swipe's original uncertain attempt remains untouched and blocked.
       const result = await startExistingRunner(false, "watcher", selected === "new-match");
       if (!result.enabled || result.mode !== "watcher")
         return { ok: false, reason: "Surveillance non confirmée." };
@@ -123,9 +140,15 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
       return { ok: false, reason: "Stop reçu pendant le démarrage." };
     }
     await chrome.storage.local.set({ [MASTER]: {
-      enabled: true, mode: selected, userId: session.user.id, startedAt: Date.now()
+      enabled: true, mode: selected, userId: session.user.id, startedAt: Date.now(),
+      pausedSwipeReason
     } });
-    return { ok: true, running: true, mode: selected };
+    return {
+      ok: true, running: true, mode: selected,
+      reason: pausedSwipeReason
+        ? "Swipe en attente (ancien Like non résolu). Surveillance des conversations et matchs autorisée."
+        : undefined
+    };
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message.slice(0, 180) : "Erreur de démarrage." };
   } finally {
