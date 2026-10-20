@@ -236,7 +236,9 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
     return {
       ok: true, running: true, mode: selected,
       reason: pausedSwipeReason === "daily_cap"
-        ? "Quota Swipe atteint. Phase 1 : nouveaux matchs ; ensuite conversations en attente."
+        ? (selected === "new-match"
+            ? "Quota Swipe atteint. Phase 1 : nouveaux matchs ; ensuite conversations en attente."
+            : "Quota Swipe atteint. Conversations autorisées actives ; nouveaux matchs non configurés.")
         : pausedSwipeReason
           ? "Swipe en attente (ancien Like non résolu). Surveillance des conversations et matchs autorisée."
           : undefined
