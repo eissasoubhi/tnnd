@@ -59,3 +59,21 @@ assert.deepEqual(reachedUnifiedLimits(fullSettings, summary,
   { ...local, startedSessions: 4 }, time).reached.map(row => row.used), [100, 4],
   "Use exact observed value rather than silently clamping an overage");
 console.log("Exact reached Swipe attempt/session counters verified without Tinder.");
+
+assert.equal(full.safeToReleaseSwipe, true, "full cap with both ledgers settled permits exclusive handoff");
+assert.equal(reachedUnifiedLimits(fullSettings,
+  { ...summary, unresolvedAttempts: 1 }, local, time).safeToReleaseSwipe, false,
+  "Never hand off with an outstanding server attempt");
+assert.equal(reachedUnifiedLimits(fullSettings, summary,
+  { ...local, rightSwipesReserved: 1 }, time).safeToReleaseSwipe, false,
+  "Never hand off with a locally outstanding potential Like");
+assert.equal(reachedUnifiedLimits(fullSettings,
+  { ...summary, unresolvedAttempts: undefined }, local, time).safeToReleaseSwipe, false,
+  "Unknown server reservations are NOT settled");
+assert.equal(reachedUnifiedLimits(fullSettings, summary,
+  { ...local, dayKey: "2026-10-19" }, time).safeToReleaseSwipe, false,
+  "Yesterday's local progress cannot authorize today's handoff");
+assert.equal(reachedUnifiedLimits(fullSettings,
+  { ...summary, attemptsToday: 99 }, local, time).safeToReleaseSwipe, false,
+  "Below-cap Swipe cannot be moved by the daily-cap handoff");
+console.log("Account-day auto-handoff eligibility fails closed for pending/unknown Likes.");
