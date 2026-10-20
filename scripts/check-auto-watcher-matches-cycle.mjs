@@ -40,6 +40,28 @@ test("new verified matches go first, already attempted or invalid refs never rep
  assert.equal(nextMatchOpener(["existing-1"],["new-1"],["new-1","existing-1"]),null);
  assert.equal(nextMatchOpener(["/bad"],["!bad"],[]),null);
 });
+test("quota-triggered match-first watcher drains only eligible first messages before ordinary queued chats", async () => {
+  const runner = await readFile(new URL("../src/tinder-global-existing-runner.ts", import.meta.url), "utf8");
+  const unified = await readFile(new URL("../src/unified-controller-background.ts", import.meta.url), "utf8");
+  assert.match(runner, /preferUnstartedMatches: mode === "watcher" && autoOpenersEnabled && preferUnstartedMatches/);
+  assert.match(runner, /state\.mode === "watcher" && state\.preferUnstartedMatches/);
+  assert.match(runner, /await scanMatchesCycle\(\{ \.\.\.current, pendingReplies \}\)/);
+  assert.match(runner, /preferUnstartedMatches: live\.preferUnstartedMatches && !matchesExhausted/);
+  for (const message of [
+    "No eligible unattempted match tiles", "Daily first-message quota",
+    "first messages are not enabled", "Match already attempted"
+  ]) {
+    const at = runner.indexOf(message);
+    assert.ok(at >= 0, "Missing chat fallback for " + message);
+    const line = runner.slice(at, runner.indexOf("\n", at));
+    assert.match(line, /true\);/, "Completed Matches phase must advance to waiting chats");
+  }
+  assert.match(unified, /await stopUnifiedSwipe\(\)/);
+  assert.match(unified, /const second = await readReachedLimits\(\)/);
+  assert.match(unified, /startExistingRunner\(false, "watcher", true, true\)/);
+  assert.match(unified, /epoch !== commandEpoch/);
+});
+
 test("one-tab guarded round-trip and shared daily send journal remain enforced",async()=>{
  const rd=p=>readFile(new URL("../"+p,import.meta.url),"utf8");
  const [runner,content,newRunner,newPermission,popup,html]=await Promise.all([
