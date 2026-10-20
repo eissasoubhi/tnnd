@@ -6,8 +6,10 @@ import { explainLauncherStartRefusal } from "./unified-launcher-failure";
 type CurrentMode = "swipe" | "active-chat" | "new-match" | null;
 type ReachedLimit = { id: "swipe-attempts" | "swipe-sessions"; label: string;
   used: number; max: number; dayKey: string };
+type DailyCounter = { id: ReachedLimit["id"]; label: string;
+  used: number | null; max: number | null; dayKey: string | null; reached: boolean };
 type Status = { ok: boolean; running?: boolean; mode?: CurrentMode; reason?: string;
-  quotaPaused?: boolean; reachedLimits?: ReachedLimit[] };
+  quotaPaused?: boolean; reachedLimits?: ReachedLimit[]; limitCounters?: DailyCounter[] };
 type Command = "TNND_UNIFIED_STATUS" | "TNND_UNIFIED_START" | "TNND_UNIFIED_STOP";
 const toggle = document.getElementById("toggleAutomation") as HTMLButtonElement;
 const statusEl = document.getElementById("engineStatus") as HTMLElement;
@@ -38,36 +40,64 @@ async function showBuildVersion(): Promise<void> {
   }
 }
 
-function renderReachedLimits(limits: ReachedLimit[] | undefined): void {
-  if (!Array.isArray(limits)) return; // A command reply without a status snapshot is not quota evidence.
+/** Quotas stay visible through Start, Stop, failed starts, Matches and chats.
+ * No value is invented when the service worker/server evidence is missing.
+ */
+function renderDailyCounters(counters: DailyCounter[] | undefined): void {
+  if (!Array.isArray(counters)) return; // Start/Stop replies are not status snapshots.
   limitsList.replaceChildren();
-  const accepted = limits.filter(item =>
-    (item.id === "swipe-attempts" || item.id === "swipe-sessions") &&
-    typeof item.label === "string" && item.label.length <= 80 &&
-    Number.isSafeInteger(item.used) && Number.isSafeInteger(item.max) &&
-    item.max > 0 && item.used >= item.max && /^\d{4}-\d{2}-\d{2}$/.test(item.dayKey));
-  for (const item of accepted) {
+  const ids = ["swipe-attempts", "swipe-sessions"] as const;
+  const labels: Record<(typeof ids)[number], string> = {
+    "swipe-attempts": "Tentatives de Like (TNND)",
+    "swipe-sessions": "Sessions Auto Swipe"
+  };
+  let verifiedDay: string | null = null;
+  let unavailable = false;
+  for (const id of ids) {
+    const raw = counters.find(item => item?.id === id);
+    const used = raw?.used;
+    const max = raw?.max;
+    const validDay = typeof raw?.dayKey === "string" &&
+      /^\d{4}-\d{2}-\d{2}$/.test(raw.dayKey);
+    const validCount = typeof used === "number" && Number.isSafeInteger(used) &&
+      used >= 0 && typeof max === "number" && Number.isSafeInteger(max) &&
+      max > 0 && validDay;
     const row = document.createElement("li");
     const label = document.createElement("span");
-    label.textContent = item.label;
+    label.textContent = labels[id];
     const numbers = document.createElement("strong");
     numbers.className = "limit-count";
-    numbers.textContent = item.used + " / " + item.max;
+    if (validCount) {
+      numbers.textContent = used + " / " + max;
+      if (used >= max) {
+        row.dataset.reached = "true";
+        numbers.textContent += " ✓";
+        numbers.title = "Limite atteinte";
+      }
+      verifiedDay ??= raw.dayKey;
+    } else {
+      unavailable = true;
+      numbers.textContent = "— / " +
+        (typeof max === "number" && Number.isSafeInteger(max) && max > 0
+          ? max : "—");
+    }
     row.append(label, numbers);
     limitsList.append(row);
   }
-  limitsSection.hidden = accepted.length === 0;
-  limitsNote.textContent = accepted.length
-    ? "Journée du " + accepted[0].dayKey +
-      " · Tentatives comptées par TNND, sans preuve d'acceptation Tinder."
-    : "";
+  limitsSection.dataset.hasReached = limitsList.querySelector('li[data-reached="true"]') ? "true" : "false";
+  limitsNote.textContent = verifiedDay
+    ? "Journée du " + verifiedDay +
+      (unavailable ? " · Compteurs manquants : indisponibles." : "") +
+      " · Tentatives TNND, sans preuve d\'acceptation Tinder."
+    : "Compteurs indisponibles : aucune valeur n'est supposée à zéro.";
 }
 let busy = false;
 let running = false;
 let requestVersion = 0;
 
 function render(value: Status, detail = ""): void {
-  renderReachedLimits(value.reachedLimits);
+  if (Array.isArray(value.limitCounters)) renderDailyCounters(value.limitCounters);
+  else if (!value.ok) renderDailyCounters([]);
   running = value.running === true;
   const pausedForQuota = running && value.quotaPaused === true;
   statusEl.dataset.state = !value.ok ? "error" :
@@ -156,6 +186,7 @@ toggle.addEventListener("click", () => {
     }
   })();
 });
+renderDailyCounters([]);
 void showBuildVersion();
 void refresh();
 
