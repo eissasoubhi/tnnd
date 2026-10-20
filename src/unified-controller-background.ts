@@ -54,7 +54,7 @@ async function currentDailyQuota(): Promise<DailyQuotaEvidence | null> {
       fetch(API + "/api/v1/automation/smart-swipe/attempts/summary", { headers, cache: "no-store" })
     ]);
     if (!settingsResponse.ok || !attemptsResponse.ok) return null;
-    const settingsBody = await settingsResponse.json() as { settings?: SmartAutoSwipeConfig };
+    const settingsBody = await settingsResponse.json() as { settings?: SmartAutoSwipeConfig & { timeZone: string } };
     if (!settingsBody.settings || validateSmartAutoSwipeConfig(settingsBody.settings).length) return null;
     return verifiedDailyQuota(settingsBody.settings, await attemptsResponse.json(), Date.now());
   } catch { return null; } // Unknown is NOT available quota.
