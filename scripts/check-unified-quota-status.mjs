@@ -77,3 +77,32 @@ assert.equal(reachedUnifiedLimits(fullSettings,
   { ...summary, attemptsToday: 99 }, local, time).safeToReleaseSwipe, false,
   "Below-cap Swipe cannot be moved by the daily-cap handoff");
 console.log("Account-day auto-handoff eligibility fails closed for pending/unknown Likes.");
+
+assert.deepEqual(full.counters, [
+  { id: "swipe-attempts", label: "Tentatives de Like (TNND)", used: 100,
+    max: 100, dayKey: "2026-10-20", reached: true },
+  { id: "swipe-sessions", label: "Sessions Auto Swipe", used: 3,
+    max: 3, dayKey: "2026-10-20", reached: true }
+], "Reached daily counters must always have their exact counts");
+const available = reachedUnifiedLimits(fullSettings, {
+  dayKey: "2026-10-20", attemptsToday: 47, uiObservedToday: 45,
+  unresolvedAttempts: 0
+}, { ...local, startedSessions: 1 }, time);
+assert.deepEqual(available.counters.map(x => [x.used, x.max, x.reached]), [
+  [47, 100, false], [1, 3, false]
+], "Daily counters remain displayed even below the limit");
+const missingServer = reachedUnifiedLimits(fullSettings, null, local, time);
+assert.deepEqual(missingServer.counters.map(x => [x.used, x.max, x.reached]), [
+  [null, 100, false], [3, 3, true]
+], "Offline remote journal cannot remove independently verified local sessions");
+const missingLocal = reachedUnifiedLimits(fullSettings, summary, undefined, time);
+assert.deepEqual(missingLocal.counters.map(x => [x.used, x.max, x.reached]), [
+  [100, 100, true], [null, 3, false]
+], "Unknown local progress must not be presented as 0 started sessions");
+const wrongDay = reachedUnifiedLimits(fullSettings,
+  { ...summary, dayKey: "2026-10-19" },
+  { ...local, dayKey: "2026-10-19" }, time);
+assert.deepEqual(wrongDay.counters.map(x => [x.used, x.max, x.reached]), [
+  [null, 100, false], [null, 3, false]
+], "Previous-day counters must not look current");
+console.log("Always-visible exact 2-counter quota statuses validated.");
