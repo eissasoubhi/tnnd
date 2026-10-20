@@ -437,19 +437,22 @@ const server = createServer(async (request, response) => {
       }
       if (url.pathname === "/api/v1/automation/smart-swipe/attempts/resolve" && request.method === "POST") {
         const body = await readJsonBody(request);
+        const status = body.status === "ui_observed" ? "ui_observed" :
+          body.status === "uncertain" ? "uncertain" :
+          body.status === "not_clicked" ? "not_clicked" : null;
         if (typeof body.attemptId !== "string" || typeof body.deviceId !== "string" ||
-            !["ui_observed", "uncertain", "not_clicked"].includes(body.status)) {
+            status === null) {
           sendJson(response, 400, { error: "invalid_resolution_request" });
           return;
         }
         const outcomeReason = body.outcomeReason ?? null;
-        if ((body.status === "not_clicked" && outcomeReason === null) ||
-            (outcomeReason !== null && !safeSwipeOutcomeReason(body.status, outcomeReason))) {
+        if ((status === "not_clicked" && outcomeReason === null) ||
+            (outcomeReason !== null && !safeSwipeOutcomeReason(status, outcomeReason))) {
           sendJson(response, 400, { error: "invalid_resolution_reason" });
           return;
         }
         const result = await resolveSmartSwipeAttempt(
-          session.user.id, body.attemptId, body.deviceId, body.status, outcomeReason
+          session.user.id, body.attemptId, body.deviceId, status, outcomeReason
         );
         sendJson(response, result.ok ? 200 : 409, result);
         return;
