@@ -712,6 +712,11 @@ async function startExistingRunnerUnlocked(enablePreviouslyDisabled = false, mod
     return load();
   } finally { starting = false; }
 }
+/** Private worker orchestrator entry: the same Stop path as the legacy popup. */
+export function stopUnifiedExistingRunner(): Promise<GlobalExistingRunnerState> {
+  return withTinderRunnerTransition(() => stop("Unified TNND automation stopped. Tinder tab kept open."));
+}
+
 async function stop(reason = "Runner stopped. Tinder tab kept open."): Promise<GlobalExistingRunnerState> {
   const state = await load();
   // Do not close a reused or newly created tab; it belongs to the user after
