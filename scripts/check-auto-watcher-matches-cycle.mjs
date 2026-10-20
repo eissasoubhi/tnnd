@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import {
-  nextWatcherMatchAction, nextMatchOpener,
+  nextWatcherMatchAction, nextMatchOpener, hasUnattemptedVisibleMatches,
   WATCHER_MATCH_SCAN_INTERVAL_MS, WATCHER_MATCH_VERIFICATION_MS
 } from "../src/tinder-watcher-match-cycle.ts";
 
@@ -40,6 +40,20 @@ test("new verified matches go first, already attempted or invalid refs never rep
  assert.equal(nextMatchOpener(["existing-1"],["new-1"],["new-1","existing-1"]),null);
  assert.equal(nextMatchOpener(["/bad"],["!bad"],[]),null);
 });
+test("when last new-match opener is durably claimed, release match-first priority to chats", () => {
+  const older = ["match-old-1", "match-old-2"];
+  const newer = ["match-new-1"];
+  const visible = [...newer, ...older];
+  assert.equal(hasUnattemptedVisibleMatches(older, newer, visible, []), true);
+  assert.equal(hasUnattemptedVisibleMatches(older, newer, visible, ["match-new-1"]), true,
+    "Still prefer remaining verified matches after one opener");
+  assert.equal(hasUnattemptedVisibleMatches(older, newer, visible,
+    ["match-new-1", "match-old-1", "match-old-2"]), false,
+    "Once every observed match was attempted, switch to waiting chats");
+  assert.equal(hasUnattemptedVisibleMatches(older, newer, [],
+    ["match-new-1"]), false, "Offscreen matches are not proof of current safe availability");
+  assert.equal(hasUnattemptedVisibleMatches(["!invalid"], [], ["!invalid"], []), false);
+});
 test("quota-triggered match-first watcher drains only eligible first messages before ordinary queued chats", async () => {
   const runner = await readFile(new URL("../src/tinder-global-existing-runner.ts", import.meta.url), "utf8");
   const unified = await readFile(new URL("../src/unified-controller-background.ts", import.meta.url), "utf8");
@@ -47,6 +61,8 @@ test("quota-triggered match-first watcher drains only eligible first messages be
   assert.match(runner, /state\.mode === "watcher" && state\.preferUnstartedMatches/);
   assert.match(runner, /await scanMatchesCycle\(\{ \.\.\.current, pendingReplies \}\)/);
   assert.match(runner, /preferUnstartedMatches: live\.preferUnstartedMatches && !matchesExhausted/);
+  assert.match(runner, /const stillPending = hasUnattemptedVisibleMatches\(/);
+  assert.match(runner, /!stillPending\);/);
   for (const message of [
     "No eligible unattempted match tiles", "Daily first-message quota",
     "first messages are not enabled", "Match already attempted"

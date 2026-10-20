@@ -10,7 +10,7 @@ import { followConversationAfterSignal, shouldKeepConversationInFocus, normalize
 import { DEFAULT_ATTENTION_CAP_SECONDS, normalizeAttentionCapSeconds, validAttentionCapSeconds } from "./tinder-attention-cap";
 import { emptyWatchedMatches, isWatchedMatches, observeWatchedMatches, type WatchedMatches } from "./tinder-match-watcher";
 import { sendSingleWatchedMatch } from "./tinder-global-new-match-runner";
-import { nextWatcherMatchAction, nextMatchOpener, type WatcherMatchPhase } from "./tinder-watcher-match-cycle";
+import { nextWatcherMatchAction, nextMatchOpener, hasUnattemptedVisibleMatches, type WatcherMatchPhase } from "./tinder-watcher-match-cycle";
 import { firstMessageDailyLimit, hasReachedFirstMessageDailyLimit } from "./tinder-first-message-daily-limit";
 import { withSpaNavigationTimeout, isStalledOpening, SpaNavigationTimeoutError } from "./tinder-runner-navigation-timeout";
 import { assertSwipeNotArmed, withTinderRunnerTransition } from "./tinder-runner-transition";
@@ -436,9 +436,22 @@ async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void>
   }
   const finished = await load();
   if (!isMatchCycleState(finished, state)) return;
+  // A processed (or uncertain) Match is durably claimed before sending and
+  // must never be retried. Check whether ANY OTHER verified visible match
+  // remains unattempted. If none does, release the matches-first priority
+  // immediately so queued conversations can resume on the next safe tick.
+  // If one remains, keep the priority and original 5-minute scan cadence.
+  const stillPending = hasUnattemptedVisibleMatches(
+    inventory.existingRefs, inventory.newRefs, snapshot.refs,
+    await readOpenerAttempts(session.user.id)
+  );
   await returnWatcherToMessages(finished, outcome.sent
-    ? "First message attempted successfully; returned to Messages."
-    : "Opener skipped without automatic retry: " + outcome.reason);
+    ? (stillPending
+        ? "First-message attempt finished; more visible matches await a safe scan."
+        : "Last eligible visible match attempted; resuming waiting conversations.")
+    : "Opener skipped without retry: " + outcome.reason +
+      (stillPending ? "; more matches await a safe scan." : "; resuming waiting conversations."),
+    !stillPending);
 }
 
 async function tick(): Promise<void> {
