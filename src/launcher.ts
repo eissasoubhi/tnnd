@@ -80,6 +80,9 @@ toggle.addEventListener("click", () => {
           } else if (guidance.connectAccount) {
             webSettingsLink.href = chrome.runtime.getURL("connect.html");
             webSettingsLink.textContent = "Connecter mon compte à l'extension";
+          } else if (guidance.extensionSettings) {
+            webSettingsLink.href = chrome.runtime.getURL("options.html");
+            webSettingsLink.textContent = "Vérifier les autorisations de l'extension";
           }
         } else {
           feedback.textContent = "Arrêt non confirmé : " + (result.reason ?? "commande non confirmée");
