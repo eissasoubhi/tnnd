@@ -71,3 +71,12 @@ test("reviewed unknown attempts remain uncertain and retain a validated opaque I
   assert.equal(parseSmartSwipeHistory({ attempts: [{ ...row, reviewedAt: "yesterday" }] }), null);
   assert.equal(parseSmartSwipeHistory({ attempts: [{ ...row, status: "server_confirmed" }] }), null);
 });
+
+test("history distinguishes a safely closed pre-click attempt without inventing a Like", () => {
+  const row = { dayKey: "2026-10-18", status: "not_clicked",
+    createdAt: "2026-10-18T00:24:11Z", resolvedAt: "2026-10-18T00:24:12Z",
+    reviewedAt: null, outcomeReason: "preflight_state_changed" };
+  const parsed = parseSmartSwipeHistory({ attempts: [row] });
+  assert.equal(parsed?.[0]?.status, "not_clicked");
+  assert.equal(parsed?.[0]?.outcomeReason, "preflight_state_changed");
+});
