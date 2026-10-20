@@ -14,6 +14,8 @@ export type ReachedUnifiedLimit = {
 export type UnifiedLimitSnapshot = {
   reached: ReachedUnifiedLimit[];
   swipeQuota: DailyQuotaEvidence | null;
+  /** No unknown Like remains locally or in the durable server journal. */
+  safeToReleaseSwipe: boolean;
 };
 
 export function reachedUnifiedLimits(
@@ -24,7 +26,7 @@ export function reachedUnifiedLimits(
 ): UnifiedLimitSnapshot {
   const quota = verifiedDailyQuota(settings, serverSummary, nowMs);
   const reached: ReachedUnifiedLimit[] = [];
-  if (!quota) return { reached, swipeQuota: null };
+  if (!quota) return { reached, swipeQuota: null, safeToReleaseSwipe: false };
   if (quota.reached) {
     reached.push({
       id: "swipe-attempts",
@@ -48,5 +50,12 @@ export function reachedUnifiedLimits(
       dayKey: quota.dayKey
     });
   }
-  return { reached, swipeQuota: quota };
+  const server = serverSummary as { unresolvedAttempts?: unknown };
+  const safeToReleaseSwipe = quota.reached &&
+    Number.isSafeInteger(server.unresolvedAttempts) &&
+    server.unresolvedAttempts === 0 &&
+    validSmartSwipeProgress(localProgress) &&
+    localProgress.dayKey === quota.dayKey &&
+    localProgress.rightSwipesReserved === 0;
+  return { reached, swipeQuota: quota, safeToReleaseSwipe };
 }
