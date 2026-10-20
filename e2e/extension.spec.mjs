@@ -50,7 +50,9 @@ const api = createServer(async (req, res) => {
   if (path === "/api/v1/auth/session") return json(res, 200, { user: session.user });
   if (path === "/api/v1/profile") return json(res, 404, { error: "fixture_no_profile" });
   if (path === "/api/v1/automation/smart-swipe") return json(res, 200, { settings });
-  if (path === "/api/v1/automation/smart-swipe/attempts/summary") return json(res, 200, ledger);
+  if (path === "/api/v1/automation/smart-swipe/attempts/summary") return json(res, 200, {
+    ...ledger, dayKey: new Date().toISOString().slice(0, 10)
+  });
   if (path === "/api/v1/automation/smart-swipe/attempts/reconciliation") return json(res, 200, {
     dayKey: url.searchParams.get("dayKey"), attempts: ledger.attemptsToday,
     uiObserved: ledger.uiObservedToday, reviewedUnknown: 0,
@@ -266,9 +268,23 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(simple.locator("#toggleAutomation")).toHaveText("Arrêter");
       expect((await storage())[`tnnd.smartSwipeLiveArm.v1:${userId}`].armed).toBe(true);
       expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
+      // The old launcher reported Active merely because the worker was
+      // armed. Full server quota must instead show a paused state, without
+      // deleting attempts or disabling the one safe Stop control.
+      ledger = { ...ledger, attemptsToday: settings.maxRightSwipesPerDay,
+        uiObservedToday: settings.maxRightSwipesPerDay - 1 };
+      const claimCountAtCap = requests.filter(x =>
+        x.path === "/api/v1/automation/smart-swipe/attempts/claim").length;
       await simple.reload();
+      await expect(simple.locator("#engineStatus")).toContainText("Quota Swipe atteint");
+      await expect(simple.locator("#feedback")).toContainText("Quota quotidien de Swipe atteint");
       await expect(simple.locator("#toggleAutomation")).toHaveText("Arrêter");
+      expect(requests.filter(x =>
+        x.path === "/api/v1/automation/smart-swipe/attempts/claim").length)
+        .toBe(claimCountAtCap);
+      expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
       await simple.locator("#toggleAutomation").click();
+      ledger = { ...ledger, attemptsToday: 0, uiObservedToday: 0 };
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
       expect((await storage())[`tnnd.smartSwipeLiveArm.v1:${userId}`].armed).toBe(false);
       expect((await storage())["tnnd.smartSwipeStopRequested.v1"]).toBe(true);
