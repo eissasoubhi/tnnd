@@ -53,7 +53,10 @@ export function fallbackAfterBlockedSwipe(
   reason: unknown,
   automaticRepliesEnabled: boolean
 ): Extract<ManagedTinderActivity, "active-chat" | "new-match"> | null {
-  if (!isPausableSwipeLedgerReason(reason) || !automaticRepliesEnabled ||
+  // A verifiably exhausted account-day cap is another safe reason to move
+  // to independent, authorized work. It NEVER permits additional Likes.
+  if (!(isPausableSwipeLedgerReason(reason) || reason === "daily_cap") ||
+      !automaticRepliesEnabled ||
       !config.enabled || validateSmartAutoSwipeConfig(config).length) return null;
   const swipeIndex = config.priority.indexOf("swipe");
   if (swipeIndex === -1) return null;
