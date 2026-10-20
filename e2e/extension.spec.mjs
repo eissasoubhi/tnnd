@@ -299,6 +299,24 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       settings.priority = ["swipe", "active-chat", "new-match"];
       const beforeFallbackClaims = requests.filter(x =>
         x.path === "/api/v1/automation/smart-swipe/attempts/claim").length;
+      // Production regression: Web says Swipe enabled but the *extension*
+      // has not been separately permitted to automatically reply.
+      const workerForPermission = context.serviceWorkers()[0] || await context.waitForEvent("serviceworker");
+      await workerForPermission.evaluate(() =>
+        chrome.storage.local.set({ "tnnd.config": { automation: { enabled: false } } }));
+      await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
+      await expect(simple.locator("#feedback")).toContainText("désactivée dans les paramètres locaux");
+      await expect(simple.locator("#webSettingsLink"))
+        .toHaveAttribute("href", `chrome-extension://${extensionId}/options.html`);
+      await expect(simple.locator("#toggleAutomation")).toBeEnabled();
+      expect((await storage())["tnnd.globalExistingRunner.v2"]?.enabled).not.toBe(true);
+      expect((await storage())[`tnnd.smartSwipeLiveArm.v1:${userId}`]?.armed).not.toBe(true);
+      expect(requests.filter(x => x.path === "/api/v1/automation/smart-swipe/attempts/claim").length)
+        .toBe(beforeFallbackClaims);
+      // Only an EXPLICIT extension-local change grants watcher permission.
+      await workerForPermission.evaluate(() =>
+        chrome.storage.local.set({ "tnnd.config": { automation: { enabled: true } } }));
       await simple.locator("#toggleAutomation").click();
       await expect(simple.locator("#engineStatus")).toContainText("Conversations");
       await expect(simple.locator("#feedback")).toContainText("Quota Swipe atteint");
