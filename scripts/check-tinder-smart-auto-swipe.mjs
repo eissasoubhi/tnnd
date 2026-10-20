@@ -6,7 +6,7 @@ import {
   rolloverSmartSwipeDay, MIN_SESSION_BREAK_MS,
   beginSmartSwipeSession, pauseSmartSwipeSession, resumeSmartSwipeSession,
   smartSwipeElapsedMs, finishSmartSwipeSession, planSmartRightSwipe,
-  reserveSmartRightSwipe, confirmSmartRightSwipe
+  reserveSmartRightSwipe, confirmSmartRightSwipe, releaseNotClickedSmartRightSwipe
 } from "../src/tinder-smart-auto-swipe-policy.ts";
 
 const cfg = { ...defaults, enabled: true };
@@ -85,3 +85,17 @@ const capped = { ...progress, rightSwipesConfirmed: cfg.maxRightSwipesPerDay };
 assert.equal(beginSmartSwipeSession(cfg, capped, now + 3600_000, tz, () => 0), null);
 assert.equal(planSmartRightSwipe(cfg, capped, now + 3600_000, tz, options), "daily-cap");
 console.log("Smart Auto Swipe scheduling policy checks passed (pure logic, no Tinder actions).");
+
+const preClickPending = { ...emptySmartSwipeDay("2026-10-15"),
+  rightSwipesReserved: 1, session: {
+    durationMs: 300_000, activeElapsedMs: 0, runningSinceMs: now,
+    nextRightSwipeNotBeforeMs: now + 2_000
+  }
+};
+const noClick = releaseNotClickedSmartRightSwipe(preClickPending, now);
+assert.equal(noClick.rightSwipesReserved, 0, "proven no-click should release local pending slot");
+assert.equal(noClick.rightSwipesConfirmed, 0, "not clicked must never count as UI-observed");
+assert.equal(noClick.session.nextRightSwipeNotBeforeMs, now + 60_000, "cooldown");
+assert.equal(preClickPending.rightSwipesReserved, 1, "pure helper must not mutate original");
+assert.deepEqual(releaseNotClickedSmartRightSwipe(noClick, now), noClick,
+  "cannot decrease reservation below zero");
