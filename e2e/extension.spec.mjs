@@ -168,18 +168,42 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(simple.locator("#toggleAutomation")).toBeEnabled();
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
       settings.enabled = true;
-      // Real MV3 + synthetic PostgreSQL-facing API: unresolved historical
-      // Likes block NEW Like attempts, without losing the one-button UI.
-      ledger = { ...ledger, unresolvedAttempts: 1 };
+      // A backend outage is NOT a proven old-claim blocker. In this case
+      // fail closed rather than switching into a possibly concurrent engine.
+      failingPaths.add("/api/v1/automation/smart-swipe/attempts/reconciliation");
       await simple.locator("#toggleAutomation").click();
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
-      await expect(simple.locator("#feedback")).toContainText("Un ancien Like reste sans résultat confirmé");
-      await expect(simple.locator("#webSettingsLink"))
-        .toHaveAttribute("href", "http://localhost:5173/#smart-swipe-activity");
-      await expect(simple.locator("#toggleAutomation")).toBeEnabled();
+      await expect(simple.locator("#feedback")).toContainText("Démarrage refusé");
+      expect((await storage())["tnnd.globalExistingRunner.v2"]?.enabled).not.toBe(true);
+      failingPaths.delete("/api/v1/automation/smart-swipe/attempts/reconciliation");
+      // One old uncertain attempt blocks Swipe, but does not take down the
+      // independently permitted conversations watcher. It must NEVER retry
+      // or erase the historical Like or arm both engines concurrently.
+      ledger = { ...ledger, unresolvedAttempts: 1 };
+      settings.priority = ["swipe", "active-chat", "new-match"];
+      const beforeClaims = requests.filter(x =>
+        x.path === "/api/v1/automation/smart-swipe/attempts/claim").length;
+      await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#engineStatus")).toContainText("Conversations");
+      await expect(simple.locator("#feedback")).toContainText("Swipe en attente");
+      await expect(simple.locator("#toggleAutomation")).toHaveText("Arrêter");
       expect((await storage())[`tnnd.smartSwipeLiveArm.v1:${userId}`]?.armed).not.toBe(true);
+      expect((await storage())["tnnd.globalExistingRunner.v2"]).toMatchObject({
+        enabled: true, mode: "watcher", autoOpenersEnabled: false
+      });
+      expect(requests.filter(x =>
+        x.path === "/api/v1/automation/smart-swipe/attempts/claim").length)
+        .toBe(beforeClaims);
       expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
+      await simple.reload();
+      await expect(simple.locator("#engineStatus")).toContainText("Conversations");
+      await expect(simple.locator("#feedback")).toContainText("Swipe en attente");
+      await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
+      expect((await storage())["tnnd.globalExistingRunner.v2"].enabled).toBe(false);
+      expect(ledger.unresolvedAttempts).toBe(1); // no deletion, no false reconciliation
       ledger = { ...ledger, unresolvedAttempts: 0 };
+      settings.priority = ["swipe", "new-match", "active-chat"];
       // On fictional Discovery, Web's first priority is Swipe.
       await simple.locator("#toggleAutomation").click();
       await expect(simple.locator("#engineStatus")).toContainText("Auto Swipe");

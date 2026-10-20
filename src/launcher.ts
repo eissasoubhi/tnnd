@@ -81,7 +81,7 @@ toggle.addEventListener("click", () => {
         return;
       }
       render(result, intent === "TNND_UNIFIED_START"
-        ? "Démarrage confirmé. Prochaine activité selon les priorités Web."
+        ? (result.reason ?? "Démarrage confirmé. Prochaine activité selon les priorités Web.")
         : "Arrêt confirmé. Aucune tentative historique supprimée.");
     } catch {
       if (ticket === requestVersion) {
