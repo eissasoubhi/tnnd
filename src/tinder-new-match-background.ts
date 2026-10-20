@@ -70,6 +70,16 @@ export async function updateNewMatchAttempt(ref: string, sent: boolean, result: 
     await saveNewMatchState(finishNewMatchAttempt(state, ref, sent, result));
   });
 }
+/** Internal worker Stop used by the single launcher. Never sends messages. */
+export function stopUnifiedNewMatchRunner(): Promise<ReturnType<typeof emptyNewMatchState>> {
+  return serialized(() => withTinderRunnerTransition(async () => {
+    const next = await saveNewMatchState(stopNewMatchObservation(await readNewMatchState()));
+    await chrome.alarms.clear("tnnd.globalNewMatches.cycle");
+    await chrome.storage.local.remove("tnnd.newMatchOwnedTab.v1");
+    return next;
+  }));
+}
+
 chrome.runtime.onMessage.addListener((message: Request, sender, respond) => {
   if (!message || typeof message !== "object" || !("type" in message)) return false;
   const types = ["TNND_NEW_MATCH_OBSERVATION_STATE", "TNND_NEW_MATCH_OBSERVATION_START", "TNND_EXISTING_MATCHES_START", "TNND_NEW_MATCH_OBSERVATION_STOP", "TNND_NEW_MATCH_LINKS_SEEN"];
