@@ -54,7 +54,7 @@ async function readReachedLimits(): Promise<UnifiedLimitSnapshot | null> {
       fetch(API + "/api/v1/automation/smart-swipe", { headers, cache: "no-store" }),
       fetch(API + "/api/v1/automation/smart-swipe/attempts/summary", { headers, cache: "no-store" })
     ]);
-    if (!settingsResponse.ok || !attemptsResponse.ok) return null;
+    if (!settingsResponse.ok) return null;
     const settingsBody = await settingsResponse.json() as {
       settings?: SmartAutoSwipeConfig & { timeZone: string }
     };
@@ -62,7 +62,10 @@ async function readReachedLimits(): Promise<UnifiedLimitSnapshot | null> {
     if (!settings || validateSmartAutoSwipeConfig(settings).length) return null;
     const key = "tnnd.smartSwipeDailyProgress.v1:" + session.user.id;
     const storedProgress = (await chrome.storage.local.get(key))[key];
-    return reachedUnifiedLimits(settings, await attemptsResponse.json(), storedProgress, Date.now());
+    // Keep visible configured maxima and local sessions when the remote
+    // attempt journal is offline. Unknown attempts stay unknown, not 0.
+    const summary = attemptsResponse.ok ? await attemptsResponse.json().catch(() => null) : null;
+    return reachedUnifiedLimits(settings, summary, storedProgress, Date.now());
   } catch {
     // Unavailable ledger information is unknown, not a zero counter or a
     // successful Tinder action. Never reset or infer any quota.
@@ -89,6 +92,7 @@ async function status(): Promise<Record<string, unknown>> {
     ok: true, running: owner.running, mode: owner.mode,
     quotaPaused: quotaReached, quota: quotaReached ? quota : null,
     reachedLimits: limitSnapshot?.reached ?? [],
+    limitCounters: limitSnapshot?.counters ?? [],
     reason: owner.conflict ? "Plusieurs moteurs déjà actifs. Clique Arrêter pour les désarmer." :
       quotaReached
         ? "Quota quotidien de Swipe atteint (" + quota!.used + "/" + quota!.limit +
