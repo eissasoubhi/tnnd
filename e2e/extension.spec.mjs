@@ -368,6 +368,21 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await simple.locator("#toggleAutomation").click();
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
       expect((await storage())["tnnd.globalExistingRunner.v2"].enabled).toBe(false);
+      // Important regression: no match opener when Web config authorizes
+      // only the lower-priority conversations activity (no "new-match").
+      settings.priority = ["swipe", "active-chat"];
+      await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#engineStatus")).toContainText("Conversations");
+      await expect(simple.locator("#feedback")).toContainText("nouveaux matchs non configurés");
+      expect((await storage())["tnnd.globalExistingRunner.v2"]).toMatchObject({
+        enabled: true, mode: "watcher", autoOpenersEnabled: false,
+        preferUnstartedMatches: false
+      });
+      expect((await storage())[`tnnd.smartSwipeLiveArm.v1:${userId}`]?.armed).not.toBe(true);
+      expect(requests.filter(x =>
+        x.path === "/api/v1/automation/smart-swipe/attempts/claim").length).toBe(beforeFallbackClaims);
+      await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
       ledger = { ...ledger, attemptsToday: 0, uiObservedToday: 0 };
       settings.priority = ["swipe", "new-match", "active-chat"];
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
