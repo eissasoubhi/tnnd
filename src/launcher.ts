@@ -45,7 +45,7 @@ function renderReachedLimits(limits: ReachedLimit[] | undefined): void {
     (item.id === "swipe-attempts" || item.id === "swipe-sessions") &&
     typeof item.label === "string" && item.label.length <= 80 &&
     Number.isSafeInteger(item.used) && Number.isSafeInteger(item.max) &&
-    item.max > 0 && item.used >= item.max && /^\\d{4}-\\d{2}-\\d{2}$/.test(item.dayKey));
+    item.max > 0 && item.used >= item.max && /^\d{4}-\d{2}-\d{2}$/.test(item.dayKey));
   for (const item of accepted) {
     const row = document.createElement("li");
     const label = document.createElement("span");
