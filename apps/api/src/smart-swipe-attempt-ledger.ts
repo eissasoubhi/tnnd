@@ -3,7 +3,7 @@ import { getSmartSwipeSettings } from "./smart-auto-swipe-settings.js";
 
 export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export const EXECUTION_LEASE_SECONDS = 120;
-export type SmartSwipeAttemptStatus = "reserved" | "ui_observed" | "uncertain";
+export type SmartSwipeAttemptStatus = "reserved" | "ui_observed" | "uncertain" | "not_clicked";
 // Whitelist ONLY non-identifying codes created by our executor. Never persist
 // arbitrary strings, page/profile content, private identifiers or error messages.
 export const SMART_SWIPE_OUTCOME_REASONS = [
@@ -23,14 +23,20 @@ export const SMART_SWIPE_OUTCOME_REASONS = [
   "pre_action_guard_blocked"
 ] as const;
 export type SmartSwipeOutcomeReason = typeof SMART_SWIPE_OUTCOME_REASONS[number];
+// Only these branches are guaranteed to return before the Like button.click().
+export const SMART_SWIPE_NO_CLICK_REASONS = [
+  "another_like_in_flight", "recent_user_interaction", "unsafe_discovery_state",
+  "like_or_card_not_unique", "preflight_state_changed", "pre_action_guard_blocked"
+] as const;
 export function safeSwipeOutcomeReason(
-  status: "ui_observed" | "uncertain", reason: unknown
+  status: "ui_observed" | "uncertain" | "not_clicked", reason: unknown
 ): reason is SmartSwipeOutcomeReason {
   if (typeof reason !== "string" ||
       !SMART_SWIPE_OUTCOME_REASONS.some(allowed => allowed === reason)) return false;
-  return status === "ui_observed"
-    ? reason === "new_card_visually_observed"
-    : reason !== "new_card_visually_observed";
+  if (status === "ui_observed") return reason === "new_card_visually_observed";
+  if (status === "not_clicked")
+    return SMART_SWIPE_NO_CLICK_REASONS.some(allowed => allowed === reason);
+  return reason !== "new_card_visually_observed";
 }
 export type ClaimResponse =
   | { ok: true; claimed: true; dayKey: string; attemptsToday: number }
@@ -128,11 +134,12 @@ export async function claimSmartSwipeAttempt(
 /** A changed card is UI evidence, not Tinder's server-side receipt. */
 export async function resolveSmartSwipeAttempt(
   userId: string, attemptId: string, deviceId: string,
-  status: "ui_observed" | "uncertain",
+  status: "ui_observed" | "uncertain" | "not_clicked",
   outcomeReason: SmartSwipeOutcomeReason | null = null
 ): Promise<{ ok: boolean; reason?: string }> {
   if (!UUID_PATTERN.test(attemptId) || !UUID_PATTERN.test(deviceId) ||
-      !["ui_observed", "uncertain"].includes(status) ||
+      !["ui_observed", "uncertain", "not_clicked"].includes(status) ||
+      (status === "not_clicked" && outcomeReason === null) ||
       (outcomeReason !== null && !safeSwipeOutcomeReason(status, outcomeReason)))
     return { ok: false, reason: "invalid_input" };
   const client = await getPool().connect();
