@@ -3,8 +3,8 @@ import { readNewMatchState } from "./tinder-new-match-background";
 import { decideAutoSwipeDrive } from "./tinder-smart-swipe-auto-runner-policy";
 import {
   validateSmartAutoSwipeConfig, pauseSmartSwipeSession, resumeSmartSwipeSession,
-  reserveSmartRightSwipe, confirmSmartRightSwipe, planSmartRightSwipe,
-  selectTinderActivity, type SmartAutoSwipeConfig
+  reserveSmartRightSwipe, confirmSmartRightSwipe, releaseNotClickedSmartRightSwipe,
+  planSmartRightSwipe, selectTinderActivity, type SmartAutoSwipeConfig
 } from "./tinder-smart-auto-swipe-policy";
 import {
   beginScheduledSwipeSession, closeExpiredScheduledSwipeSession,
@@ -15,7 +15,7 @@ import { readSmartSwipeProgress, validSmartSwipeProgress } from "./tinder-smart-
 import { parseDayReconciliationProof, reconcileReviewedLocalSwipeAttempt, publicSwipeReconciliationCounts } from "./tinder-smart-swipe-reconciliation";
 import { emptySmartSwipeDay, tinderAccountDayKey } from "./tinder-smart-auto-swipe-policy";
 import type { SwipeDiscoveryEvidence } from "./tinder-swipe-discovery-evidence";
-import type { TinderSwipeActionResult } from "./tinder-swipe-card-transition-policy";
+import { isProvenNoClickResult, type TinderSwipeActionResult } from "./tinder-swipe-card-transition-policy";
 import { withTinderRunnerTransition } from "./tinder-runner-transition";
 
 const API = "http://127.0.0.1:4000";
@@ -224,8 +224,18 @@ async function tick(tabId: number): Promise<void> {
     const reserved = reserveSmartRightSwipe(config, progress, Date.now(), config.timeZone,
       Math.random, { activeConversationInProgress: false, mandatoryStop: false });
     if (!reserved) {
-      await saveStatus(userId, "claim_without_local_reservation");
-      return; // server reservation remains unresolved. Never retry.
+      // This explicit pre-action failure is safely resolved as NO CLICK:
+      // the executor was never invoked. The server still counts the attempt
+      // against the quota, but no permanent blocking reservation is needed.
+      const resolution = await authenticatedPost<{ ok?: boolean }>(
+        session.token, "/api/v1/automation/smart-swipe/attempts/resolve", {
+          attemptId, deviceId, status: "not_clicked", outcomeReason: "pre_action_guard_blocked"
+        }
+      ).catch(() => null);
+      await saveStatus(userId, resolution?.ok
+        ? "claim_without_local_reservation_closed_no_click"
+        : "claim_without_local_reservation_unresolved");
+      return; // never initiate a Tinder action in this branch
     }
     await chrome.storage.local.set({ [read.key]: reserved });
     // Recheck ownership after the atomic claim. Session, runners and tabs may
@@ -249,8 +259,20 @@ async function tick(tabId: number): Promise<void> {
       userTakeover: false
     });
     if (preActionGate !== "allowed") {
-      await saveStatus(userId, "pre_action_" + preActionGate);
-      return; // reserved permanently pending review
+      // Verified before any content-script action. Finalize the spent attempt
+      // but do NOT falsely claim a Tinder Like; preserve the audit trail.
+      const resolution = await authenticatedPost<{ ok?: boolean }>(
+        session.token, "/api/v1/automation/smart-swipe/attempts/resolve", {
+          attemptId, deviceId, status: "not_clicked", outcomeReason: "pre_action_guard_blocked"
+        }
+      ).catch(() => null);
+      if (resolution?.ok) {
+        await chrome.storage.local.set({
+          [read.key]: releaseNotClickedSmartRightSwipe(reserved, Date.now())
+        });
+        await saveStatus(userId, "pre_action_" + preActionGate + "_no_click");
+      } else await saveStatus(userId, "pre_action_" + preActionGate + "_unresolved");
+      return;
     }
     let action: TinderSwipeActionResult | null = null;
     try {
@@ -259,10 +281,13 @@ async function tick(tabId: number): Promise<void> {
       }) as { ok?: boolean; outcome?: TinderSwipeActionResult };
       action = result?.ok ? result.outcome ?? null : null;
     } catch { /* Uncertain and permanently reserved. */ }
-    const statusForServer = action?.status === "ui_observed" ? "ui_observed" : "uncertain";
-    // Only an internal, allowlisted technical code crosses the account-scoped
-    // API boundary: no profile information, UI text, images or exception bodies.
-    const outcomeReason = action?.reason ?? "action_result_unavailable";
+    const noClick = isProvenNoClickResult(action);
+    const statusForServer = action?.status === "ui_observed" ? "ui_observed" :
+      noClick ? "not_clicked" : "uncertain";
+    // Only a trusted pre-click blocked result can become not_clicked.
+    // Missing/unknown action results always remain uncertain.
+    const outcomeReason = noClick ? action!.reason :
+      action?.status === "ui_observed" ? action.reason : "action_result_unavailable";
     const resolved = await authenticatedPost<{ ok?: boolean }>(
       session.token, "/api/v1/automation/smart-swipe/attempts/resolve", {
         attemptId, deviceId, status: statusForServer, outcomeReason
@@ -277,6 +302,11 @@ async function tick(tabId: number): Promise<void> {
         [read.key]: confirmSmartRightSwipe(reserved, true)
       });
       await saveStatus(userId, "ui_transition_observed");
+    } else if (statusForServer === "not_clicked") {
+      await chrome.storage.local.set({
+        [read.key]: releaseNotClickedSmartRightSwipe(reserved, Date.now())
+      });
+      await saveStatus(userId, "attempt_closed_without_like");
     } else await saveStatus(userId, action?.reason ?? "uncertain_attempt");
   } catch {
     if (userId) await saveStatus(userId, "runtime_error").catch(() => undefined);
