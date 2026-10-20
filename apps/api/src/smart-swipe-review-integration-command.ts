@@ -32,6 +32,7 @@ async function main(): Promise<void> {
   requireDisposableCiDatabase();
   const pool = getPool();
   const userId = randomUUID();
+  const noClickUserId = randomUUID();
   const deviceId = randomUUID();
   const attemptId = randomUUID();
   try {
@@ -91,8 +92,36 @@ async function main(): Promise<void> {
     assert.equal(final.attemptsToday, 2);
     assert.equal(final.uiObservedToday, 1);
     assert.equal(final.unresolvedAttempts, 0);
-    console.log("Smart Swipe disposable DB review/gate/quota integration passed.");
+    // A provably blocked pre-click action is preserved in history but must
+    // NOT freeze future attempts. Unknown-after-click still requires review.
+    await pool.query("INSERT INTO users(id,email,password_hash) VALUES($1,$2,$3)", [
+      noClickUserId, "test+" + noClickUserId + "@invalid.example", "test-only"
+    ]);
+    await putSmartSwipeSettings(noClickUserId, {
+      ...defaultSmartSwipeSettings(), enabled: true, timeZone: "Europe/Paris",
+      maxRightSwipesPerDay: 2
+    });
+    const noClickAttempt = randomUUID();
+    assert.equal((await claimSmartSwipeAttempt(noClickUserId, noClickAttempt, deviceId)).ok, true);
+    assert.equal((await resolveSmartSwipeAttempt(noClickUserId, noClickAttempt, deviceId,
+      "not_clicked", "card_transition_timeout")).reason, "invalid_input",
+      "post-click timeouts must not be reclassified as no Like");
+    assert.equal((await resolveSmartSwipeAttempt(noClickUserId, noClickAttempt, deviceId,
+      "not_clicked", null)).reason, "invalid_input", "proof is mandatory");
+    assert.equal((await resolveSmartSwipeAttempt(noClickUserId, noClickAttempt, deviceId,
+      "not_clicked", "preflight_state_changed")).ok, true);
+    const noClickSummary = await readSmartSwipeAttemptSummary(noClickUserId);
+    assert.equal(noClickSummary.attemptsToday, 1, "not_clicked consumes the original daily slot");
+    assert.equal(noClickSummary.unresolvedAttempts, 0, "verified no-click cannot block Swipe");
+    assert.equal(noClickSummary.uiObservedToday, 0, "not_clicked is not a Tinder receipt");
+    const noClickHistory = await readSmartSwipeAttemptHistory(noClickUserId);
+    assert.equal(noClickHistory.attempts[0]?.status, "not_clicked");
+    assert.equal(noClickHistory.attempts[0]?.outcomeReason, "preflight_state_changed");
+    assert.equal((await claimSmartSwipeAttempt(noClickUserId, randomUUID(), deviceId)).ok, true,
+      "a subsequent distinct claim is permitted without deleting historical attempts");
+    console.log("Smart Swipe disposable DB review/gate/quota + pre-click no-action integration passed.");
   } finally {
+    await pool.query("DELETE FROM users WHERE id=$1", [noClickUserId]).catch(() => undefined);
     await pool.query("DELETE FROM users WHERE id=$1", [userId]).catch(() => undefined);
     await closePool();
   }
