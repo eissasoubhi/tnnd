@@ -152,7 +152,12 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
       if (!quota) return { ok: false, reason: "swipe_quota_unavailable" };
       if (quota.reached) {
         const next = fallbackAfterBlockedSwipe(settings, "daily_cap", config.automation.enabled);
-        if (!next) return { ok: false, reason: "daily_cap" };
+        if (!next) return {
+          ok: false,
+          reason: !config.automation.enabled
+            ? "daily_cap_auto_replies_disabled"
+            : "daily_cap_no_lower_priority_activity"
+        };
         const currentOwners = await owners();
         if (currentOwners.running || currentOwners.conflict)
           return { ok: false, reason: "Mode concurrent détecté après vérification du quota." };
