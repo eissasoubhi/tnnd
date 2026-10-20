@@ -30,13 +30,13 @@ try {
       commit = head;
     } else if (head.startsWith("ref: ")) {
       const ref = head.slice(5).trim();
-      if (!/^refs\\/(heads|tags)\\/[a-zA-Z0-9._/-]+$/.test(ref) ||
+      if (!/^refs\/(heads|tags)\/[a-zA-Z0-9._/-]+$/.test(ref) ||
           ref.split("/").includes("..")) throw new Error("Invalid HEAD ref");
       try {
         commit = (await readFile(resolve(root, ".git", ref), "utf8")).trim();
       } catch {
         const packed = await readFile(resolve(root, ".git/packed-refs"), "utf8");
-        const line = packed.split("\\n").find(x => x.endsWith(" " + ref));
+        const line = packed.split("\n").find(x => x.endsWith(" " + ref));
         commit = line?.split(" ")[0];
       }
     }
