@@ -18,6 +18,9 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Needed to compare this PR with its merge-base on main reliably.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -32,6 +35,11 @@ jobs:
           fi
       - name: Verify extension version consistency
         run: node -e "const p=require('./package.json');const m=require('./public/manifest.json');if(p.version!==m.version){console.error('Version mismatch',p.version,m.version);process.exit(1)}"
+      - name: Require a fresh version whenever extension source changes
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+        run: node scripts/check-extension-version-bump.mjs
       - name: Install Chrome for extension visual smoke
         id: chrome
         # Chrome for Testing retains unpacked extension flags removed from
