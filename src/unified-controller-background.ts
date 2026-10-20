@@ -101,7 +101,7 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
     const config = await getConfig();
     const selected = initialUnifiedActivity(settings, {
       tinderTabPresent: true,
-      discoveryVisible: new URL(tabs[0].url!).pathname.replace(/\\/+$/, "") === "/app/recs",
+      discoveryVisible: new URL(tabs[0].url!).pathname.replace(/\/+$/, "") === "/app/recs",
       automaticRepliesEnabled: config.automation.enabled
     });
     if (!selected) return { ok: false, reason:
