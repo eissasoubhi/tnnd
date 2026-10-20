@@ -22,12 +22,13 @@
     #toggleAutomation:disabled { cursor: wait; opacity: .72; }
     #toggleAutomation:focus-visible { outline: 3px solid #8070dc; outline-offset: 3px; }
     #feedback { font-size: 12px; color: #5e746b; line-height: 1.45; min-height: 16px; margin: 0; overflow-wrap: anywhere; }
-    #reachedLimits { padding: 11px 12px; border: 1px solid #d9c5a1; background: #faf4e6; border-radius: 11px; }
-    #reachedLimits[hidden] { display: none; }
+    #reachedLimits { padding: 11px 12px; border: 1px solid #cfded3; background: #f0f5ef; border-radius: 11px; }
+    #reachedLimits[data-has-reached="true"] { border-color: #d9c5a1; background: #faf4e6; }
     #reachedLimits h2 { margin: 0 0 7px; font-size: 13px; font-weight: 700; }
     #reachedLimits ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
     #reachedLimits li { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; font-size: 12px; }
     #reachedLimits .limit-count { font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    #reachedLimits li[data-reached="true"] .limit-count { color: #8e611e; }
     #reachedLimits .limit-note { font-size: 11px; color: #5e746b; margin: 9px 0 0; }
     footer { border-top: 1px solid #d9e5dc; padding-top: 12px; text-align: center; }
     a { color: #325d4e; font-size: 12px; }
@@ -39,10 +40,13 @@
     <div id="engineStatus" data-state="busy" role="status">Vérification…</div>
     <button type="button" id="toggleAutomation" disabled>Démarrer</button>
     <p id="feedback" role="status" aria-live="polite"></p>
-    <section id="reachedLimits" aria-label="Limites atteintes" hidden>
-      <h2>Limites atteintes</h2>
-      <ul id="reachedLimitsList"></ul>
-      <p class="limit-note" id="reachedLimitsNote"></p>
+    <section id="reachedLimits" aria-label="Compteurs quotidiens">
+      <h2>Quotas du jour</h2>
+      <ul id="reachedLimitsList">
+        <li><span>Tentatives de Like (TNND)</span><strong class="limit-count">— / —</strong></li>
+        <li><span>Sessions Auto Swipe</span><strong class="limit-count">— / —</strong></li>
+      </ul>
+      <p class="limit-note" id="reachedLimitsNote">Chargement des compteurs…</p>
     </section>
     <footer><a id="webSettingsLink" href="http://localhost:5173/#workspace-settings-section" target="_blank" rel="noopener noreferrer">Configuration dans TNND Web</a><div id="version" class="build-version">Version en cours de vérification…</div></footer>
   </main>
