@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TNND</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; width: 292px; color: #19362e; background: #f5f8f4; font: 14px system-ui, sans-serif; }
+    main { padding: 20px; display: grid; gap: 18px; }
+    header { display: flex; align-items: center; justify-content: space-between; }
+    h1 { font-size: 20px; letter-spacing: -.04em; margin: 0; }
+    .version { font-size: 11px; color: #607b70; }
+    #engineStatus { display: flex; align-items: center; gap: 9px; font-size: 13px; min-height: 28px; }
+    #engineStatus::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #94a3a0; flex: none; }
+    #engineStatus[data-state="running"]::before { background: #248459; }
+    #engineStatus[data-state="busy"]::before { background: #db9836; }
+    #engineStatus[data-state="error"]::before { background: #bd524b; }
+    #toggleAutomation { display: block; width: 100%; min-height: 54px; padding: 13px; border: 0; border-radius: 13px; background: #234b3d; color: #fff; font: inherit; font-weight: 750; font-size: 16px; cursor: pointer; }
+    #toggleAutomation[data-mode="stop"] { background: #fafcf8; border: 1px solid #a5bcb1; color: #234b3d; }
+    #toggleAutomation:disabled { cursor: wait; opacity: .72; }
+    #toggleAutomation:focus-visible { outline: 3px solid #8070dc; outline-offset: 3px; }
+    #feedback { font-size: 12px; color: #5e746b; line-height: 1.45; min-height: 16px; margin: 0; overflow-wrap: anywhere; }
+    footer { border-top: 1px solid #d9e5dc; padding-top: 12px; text-align: center; }
+    a { color: #325d4e; font-size: 12px; }
+  </style><link rel="stylesheet" href="neo-bento.css">
+</head>
+<body>
+  <main>
+    <header><h1>TNND</h1><span id="version" class="version"></span></header>
+    <div id="engineStatus" data-state="busy" role="status">Vérification…</div>
+    <button type="button" id="toggleAutomation" disabled>Démarrer</button>
+    <p id="feedback" role="status" aria-live="polite"></p>
+    <footer><a href="http://localhost:5173/" target="_blank" rel="noopener noreferrer">Configuration dans TNND Web</a></footer>
+  </main>
+  <script src="assets/launcher.js"></script>
+</body>
+</html>
