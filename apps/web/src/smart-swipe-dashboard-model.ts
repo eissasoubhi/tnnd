@@ -8,7 +8,7 @@ export interface SmartSwipeAttemptSummary {
 export interface SmartSwipeAttempt {
   attemptId: string | null; // Opaque, account-scoped audit identifier; never a Tinder profile ID.
   dayKey: string;
-  status: "reserved" | "ui_observed" | "uncertain";
+  status: "reserved" | "ui_observed" | "uncertain" | "not_clicked";
   createdAt: string;
   resolvedAt: string | null;
   outcomeReason: string | null;
@@ -38,7 +38,7 @@ export function parseSmartSwipeHistory(value: unknown): SmartSwipeAttempt[] | nu
     if (!raw || typeof raw !== "object") return null;
     const item = raw as Record<string, unknown>;
     if (!day(item.dayKey) ||
-        !["reserved", "ui_observed", "uncertain"].includes(String(item.status)) ||
+        !["reserved", "ui_observed", "uncertain", "not_clicked"].includes(String(item.status)) ||
         typeof item.createdAt !== "string" || !Number.isFinite(Date.parse(item.createdAt)) ||
         (item.resolvedAt !== null &&
           (typeof item.resolvedAt !== "string" || !Number.isFinite(Date.parse(item.resolvedAt))))) return null;
