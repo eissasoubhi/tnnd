@@ -154,7 +154,8 @@ test("watcher extends focus after distinct incoming/sent events, not an old proc
   assert.match(content,/phase !== "sent" && phase !== "incoming"/);
   const watcherPopupStatus = await readFile(new URL("../src/tinder-watcher-popup-status.ts", import.meta.url), "utf8");
   assert.match(watcherPopupStatus,/Following current conversation/);
-  assert.equal(JSON.parse(manifest).version,"0.2.25");
+  assert.equal(JSON.parse(manifest).version, JSON.parse(await read("package.json")).version,
+    "Watcher must not hardcode an old extension release version");
 });
 
 test("watcher Start error is not replaced by stopped during a status refresh", () => {
