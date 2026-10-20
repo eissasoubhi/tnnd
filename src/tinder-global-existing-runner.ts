@@ -48,6 +48,8 @@ interface GlobalExistingRunnerState {
   mode: "runner" | "watcher";
   pendingReplies: number;
   autoOpenersEnabled: boolean;
+  /** Unified quota handoff: inspect and attempt safe empty-thread matches before queued chats. */
+  preferUnstartedMatches: boolean;
   matchPhase: WatcherMatchPhase;
   matchPhaseStartedAt: string | null;
   lastMatchScanAt: string | null;
@@ -81,7 +83,7 @@ interface GlobalExistingRunnerState {
   activity: RunnerActivity[];
 }
 const initial = (): GlobalExistingRunnerState => ({
-  enabled: false, mode: "runner", pendingReplies: 0, autoOpenersEnabled: false,
+  enabled: false, mode: "runner", pendingReplies: 0, autoOpenersEnabled: false, preferUnstartedMatches: false,
   matchPhase: "idle", matchPhaseStartedAt: null, lastMatchScanAt: null, lastIncomingAt: null, watchedMatches: null, visibleUnreadRefs: [], watcherStatus: "stopped", userId: null, tabId: null, tabMode: null, pausedOnStop: false,
   phase: "stopped", dwellSeconds: DEFAULT_CADENCE, phaseDetail: "Runner stopped.", currentLabel: null,
   eligibleCount: 0, visitedCount: 0, sentCount: 0, skippedCount: 0, errorCount: 0,
@@ -136,6 +138,8 @@ async function load(): Promise<GlobalExistingRunnerState> {
     attentionCapSeconds: await getAttentionCapSeconds(value.userId ?? null),
     pendingReplies: typeof value.pendingReplies === "number" && value.pendingReplies >= 0 ? value.pendingReplies : 0,
     autoOpenersEnabled: value.autoOpenersEnabled === true,
+    preferUnstartedMatches: value.mode === "watcher" && value.autoOpenersEnabled === true &&
+      value.preferUnstartedMatches === true,
     matchPhase: ["idle", "verifying", "opener"].includes(String(value.matchPhase)) ? value.matchPhase! : "idle",
     matchPhaseStartedAt: typeof value.matchPhaseStartedAt === "string" ? value.matchPhaseStartedAt : null,
     lastMatchScanAt: typeof value.lastMatchScanAt === "string" ? value.lastMatchScanAt : null,
@@ -297,7 +301,9 @@ async function watcherSidebar(
     type: "TNND_WATCHER_SELECT_SIDEBAR", target, expectedRef
   });
 }
-async function returnWatcherToMessages(state: GlobalExistingRunnerState, note: string): Promise<void> {
+async function returnWatcherToMessages(
+  state: GlobalExistingRunnerState, note: string, matchesExhausted = false
+): Promise<void> {
   if (state.tabId === null) return;
   try {
     const tab = await chrome.tabs.get(state.tabId);
@@ -306,6 +312,7 @@ async function returnWatcherToMessages(state: GlobalExistingRunnerState, note: s
     const live = await load();
     if (!isMatchCycleState(live, state)) return;
     await save(activity({ ...live, matchPhase: "idle", matchPhaseStartedAt: null,
+      preferUnstartedMatches: live.preferUnstartedMatches && !matchesExhausted,
       lastRef: tinderRefFromUrl(tab.url), activeConversationRef: null, activeConversationUntil: null },
       "waiting", note));
   } catch (error) {
@@ -322,7 +329,9 @@ async function returnWatcherToMessages(state: GlobalExistingRunnerState, note: s
 async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void> {
   if (state.tabId === null || !state.userId) return;
   const action = nextWatcherMatchAction(state, {
-    activeFollow: false, pendingReplies: state.pendingReplies, replyProcessing: false
+    activeFollow: false,
+    pendingReplies: state.preferUnstartedMatches ? 0 : state.pendingReplies,
+    replyProcessing: false
   });
   if (action === "none") return;
   if (action === "recover") {
@@ -355,7 +364,7 @@ async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void>
   const current = await load();
   if (!isMatchCycleState(current, state)) return;
   if (!snapshot?.ok || !Array.isArray(snapshot.refs) || !current.watchedMatches) {
-    await returnWatcherToMessages(current, "Matches not visible; returning to Messages.");
+    await returnWatcherToMessages(current, "Matches not visible; continuing with waiting conversations.", true);
     return;
   }
   const inventory = observeWatchedMatches(current.watchedMatches, snapshot.refs);
@@ -370,7 +379,7 @@ async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void>
     refs.map(ref => ({ ref, lastMessageAt: messageTimes.get(ref) ?? null,
       lastMessageDirection: messageDirections.get(ref) ?? null })));
   await saveWorkIndex(work);
-  if (pendingWatchedReplies(work) > 0) {
+  if (pendingWatchedReplies(work) > 0 && !current.preferUnstartedMatches) {
     await returnWatcherToMessages(await load(), "New reply detected; prioritizing Messages.");
     return;
   }
@@ -382,7 +391,7 @@ async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void>
     return;
   }
   if (!after.autoOpenersEnabled) {
-    await returnWatcherToMessages(after, "Matches checked; first messages are not enabled.");
+    await returnWatcherToMessages(after, "Matches checked; first messages are not enabled.", true);
     return;
   }
   const currentlyVisible = new Set(snapshot.refs.filter((ref): ref is string => typeof ref === "string"));
@@ -391,7 +400,7 @@ async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void>
     inventory.newRefs.filter(ref => currentlyVisible.has(ref)),
     await readOpenerAttempts(session.user.id));
   if (!ref) {
-    await returnWatcherToMessages(after, "No eligible unattempted match tiles; watching Messages.");
+    await returnWatcherToMessages(after, "No eligible unattempted match tiles; watching Messages.", true);
     return;
   }
   // Do not burn a match's one-shot watcher claim when today's daily opener
@@ -406,14 +415,14 @@ async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void>
   const dailyUsed = daily?.date === today && Array.isArray(daily.refs) ? daily.refs.length : 0;
   const limit = firstMessageDailyLimit(currentConfig.automation.maxFirstMessagesPerDay);
   if (dailyUsed >= limit || hasReachedFirstMessageDailyLimit(claims ?? {}, limit)) {
-    await returnWatcherToMessages(after, `Daily first-message quota (${limit}) reached; retry next UTC day without claiming a match.`);
+    await returnWatcherToMessages(after, `Daily first-message quota (${limit}) reached; retry next UTC day without claiming a match.`, true);
     return;
   }
   // Explicit opt-in, verified Matches tile, no incoming reply and same account.
   // Store a one-shot watcher claim before entering the normal first-message
   // worker. Never retry automatically if navigation/send acknowledgement fails.
   if (!(await claimWatchedOpener(session.user.id, ref))) {
-    await returnWatcherToMessages(after, "Match already attempted; watching Messages.");
+    await returnWatcherToMessages(after, "Match already attempted; watching Messages.", true);
     return;
   }
   await save(activity({ ...after, matchPhase: "opener", matchPhaseStartedAt: new Date().toISOString() }, "loading",
@@ -514,6 +523,16 @@ async function tick(): Promise<void> {
         await scanMatchesCycle({ ...pendingState, pendingReplies });
       return;
     }
+    // Quota handoff starts with Match openers, then chats. Existing sends or
+    // active reciprocal exchanges are guarded above and are never interrupted.
+    // The watcher keeps its normal five-minute Match scan cadence; it does
+    // not burst through every visible profile or circumvent a daily cap.
+    if (state.mode === "watcher" && state.preferUnstartedMatches) {
+      const current = await load();
+      if (!current.enabled) return;
+      await scanMatchesCycle({ ...current, pendingReplies });
+      return;
+    }
     const nextRef = state.mode === "watcher" ? nextWatchedReply(queued) : nextIndexedExistingThread(queued);
     if (!nextRef) {
       const detail = state.mode === "watcher"
@@ -611,10 +630,10 @@ async function tick(): Promise<void> {
     }
   } finally { busy = false; }
 }
-export function startExistingRunner(enablePreviouslyDisabled = false, mode: "runner" | "watcher" = "runner", autoOpenersEnabled = false): Promise<GlobalExistingRunnerState> {
-  return withTinderRunnerTransition(() => startExistingRunnerUnlocked(enablePreviouslyDisabled, mode, autoOpenersEnabled));
+export function startExistingRunner(enablePreviouslyDisabled = false, mode: "runner" | "watcher" = "runner", autoOpenersEnabled = false, preferUnstartedMatches = false): Promise<GlobalExistingRunnerState> {
+  return withTinderRunnerTransition(() => startExistingRunnerUnlocked(enablePreviouslyDisabled, mode, autoOpenersEnabled, preferUnstartedMatches));
 }
-async function startExistingRunnerUnlocked(enablePreviouslyDisabled = false, mode: "runner" | "watcher" = "runner", autoOpenersEnabled = false): Promise<GlobalExistingRunnerState> {
+async function startExistingRunnerUnlocked(enablePreviouslyDisabled = false, mode: "runner" | "watcher" = "runner", autoOpenersEnabled = false, preferUnstartedMatches = false): Promise<GlobalExistingRunnerState> {
   if (starting) throw new Error("Runner is already starting.");
   starting = true;
   try {
@@ -685,6 +704,7 @@ async function startExistingRunnerUnlocked(enablePreviouslyDisabled = false, mod
     const selectedRef = mode === "watcher" ? tinderRefFromUrl(selectedTab.url) : null;
     const activeRef = selectedRef && refs.includes(selectedRef) ? selectedRef : null;
     next = activity({ ...next, enabled: true, mode, autoOpenersEnabled: mode === "watcher" && autoOpenersEnabled,
+      preferUnstartedMatches: mode === "watcher" && autoOpenersEnabled && preferUnstartedMatches,
       userId: session.user.id, tabId: tab.id, tabMode: tab.mode,
       attentionCapSeconds: await getAttentionCapSeconds(session.user.id),
       ...(mode === "watcher" ? { watchedMatches: emptyWatchedMatches(session.user.id) } : {}),
@@ -721,7 +741,7 @@ async function stop(reason = "Runner stopped. Tinder tab kept open."): Promise<G
   const state = await load();
   // Do not close a reused or newly created tab; it belongs to the user after
   // taking over the sole Tinder session. Never force logout by opening another.
-  const next = activity({ ...state, enabled: false, autoOpenersEnabled: false,
+  const next = activity({ ...state, enabled: false, autoOpenersEnabled: false, preferUnstartedMatches: false,
     matchPhase: "idle", matchPhaseStartedAt: null, userId: null, pendingReplies: 0, watchedMatches: null, activeConversationRef: null, activeConversationUntil: null, pausedOnStop: state.tabId !== null }, "stopped", reason);
   await save(next);
   await chrome.alarms.clear(ALARM);
