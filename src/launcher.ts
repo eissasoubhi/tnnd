@@ -6,7 +6,7 @@ type CurrentMode = "swipe" | "active-chat" | "new-match" | null;
 type Status = { ok: boolean; running?: boolean; mode?: CurrentMode; reason?: string };
 type Command = "TNND_UNIFIED_STATUS" | "TNND_UNIFIED_START" | "TNND_UNIFIED_STOP";
 const toggle = document.getElementById("toggleAutomation") as HTMLButtonElement;
-const status = document.getElementById("engineStatus") as HTMLElement;
+const statusEl = document.getElementById("engineStatus") as HTMLElement;
 const feedback = document.getElementById("feedback") as HTMLElement;
 const version = document.getElementById("version") as HTMLElement;
 version.textContent = "v" + chrome.runtime.getManifest().version;
@@ -16,8 +16,8 @@ let requestVersion = 0;
 
 function render(value: Status, detail = ""): void {
   running = value.running === true;
-  status.dataset.state = !value.ok ? "error" : running ? "running" : "stopped";
-  status.textContent = !value.ok ? "Connexion indisponible" :
+  statusEl.dataset.state = !value.ok ? "error" : running ? "running" : "stopped";
+  statusEl.textContent = !value.ok ? "Connexion indisponible" :
     !running ? "Arrêté" :
       value.mode === "swipe" ? "Actif · Auto Swipe" :
       value.mode === "new-match" ? "Actif · Nouveaux matchs" :
@@ -51,8 +51,8 @@ toggle.addEventListener("click", () => {
   const intent = running ? "TNND_UNIFIED_STOP" : "TNND_UNIFIED_START";
   const ticket = ++requestVersion;
   toggle.disabled = true;
-  status.dataset.state = "busy";
-  status.textContent = intent === "TNND_UNIFIED_STOP" ? "Arrêt en cours…" : "Démarrage en cours…";
+  statusEl.dataset.state = "busy";
+  statusEl.textContent = intent === "TNND_UNIFIED_STOP" ? "Arrêt en cours…" : "Démarrage en cours…";
   feedback.textContent = "Vérification de l'état et des priorités Web…";
   void (async () => {
     try {
@@ -76,8 +76,10 @@ toggle.addEventListener("click", () => {
       }
     } finally {
       busy = false;
-      if (ticket === requestVersion) toggle.disabled = status.dataset.state === "error";
+      if (ticket === requestVersion) toggle.disabled = statusEl.dataset.state === "error";
     }
   })();
 });
 void refresh();
+
+export {};
