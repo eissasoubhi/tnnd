@@ -87,7 +87,7 @@ function renderDailyCounters(counters: DailyCounter[] | undefined): void {
   limitsNote.textContent = verifiedDay
     ? "Journée du " + verifiedDay +
       (unavailable ? " · Compteurs manquants : indisponibles." : "") +
-      " · Tentatives TNND, pas Likes Tinder confirmés."
+      " · Tentatives TNND, sans preuve d\'acceptation Tinder."
     : "Compteurs indisponibles : aucune valeur n'est supposée à zéro.";
 }
 let busy = false;
