@@ -70,7 +70,8 @@ function renderDailyCounters(counters: DailyCounter[] | undefined): void {
       numbers.textContent = raw.used + " / " + raw.max;
       if (raw.used >= raw.max) {
         row.dataset.reached = "true";
-        numbers.textContent += " · atteint";
+        numbers.textContent += " ✓";
+        numbers.title = "Limite atteinte";
       }
       verifiedDay ??= raw.dayKey;
     } else {
@@ -82,6 +83,7 @@ function renderDailyCounters(counters: DailyCounter[] | undefined): void {
     row.append(label, numbers);
     limitsList.append(row);
   }
+  limitsSection.dataset.hasReached = limitsList.querySelector('li[data-reached="true"]') ? "true" : "false";
   limitsNote.textContent = verifiedDay
     ? "Journée du " + verifiedDay +
       (unavailable ? " · Compteurs manquants : indisponibles." : "") +
