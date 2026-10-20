@@ -76,7 +76,9 @@ toggle.addEventListener("click", () => {
       }
     } finally {
       busy = false;
-      if (ticket === requestVersion) toggle.disabled = statusEl.dataset.state === "error";
+      // refresh() increments requestVersion. After a refused Start, the new
+      // status poll must NOT leave the only button permanently disabled.
+      toggle.disabled = statusEl.dataset.state === "error";
     }
   })();
 });
