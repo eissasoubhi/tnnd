@@ -4,7 +4,7 @@ import { explainLauncherStartRefusal } from "./unified-launcher-failure";
  * service-worker orchestrator, which owns authorization and priority checks.
  */
 type CurrentMode = "swipe" | "active-chat" | "new-match" | null;
-type Status = { ok: boolean; running?: boolean; mode?: CurrentMode; reason?: string };
+type Status = { ok: boolean; running?: boolean; mode?: CurrentMode; reason?: string; quotaPaused?: boolean };
 type Command = "TNND_UNIFIED_STATUS" | "TNND_UNIFIED_START" | "TNND_UNIFIED_STOP";
 const toggle = document.getElementById("toggleAutomation") as HTMLButtonElement;
 const statusEl = document.getElementById("engineStatus") as HTMLElement;
@@ -18,9 +18,12 @@ let requestVersion = 0;
 
 function render(value: Status, detail = ""): void {
   running = value.running === true;
-  statusEl.dataset.state = !value.ok ? "error" : running ? "running" : "stopped";
+  const pausedForQuota = running && value.quotaPaused === true;
+  statusEl.dataset.state = !value.ok ? "error" :
+    pausedForQuota ? "paused" : running ? "running" : "stopped";
   statusEl.textContent = !value.ok ? "Connexion indisponible" :
     !running ? "Arrêté" :
+      pausedForQuota ? "En pause · Quota Swipe atteint" :
       value.mode === "swipe" ? "Actif · Auto Swipe" :
       value.mode === "new-match" ? "Actif · Nouveaux matchs" :
       value.mode === "active-chat" ? "Actif · Conversations" : "Actif";
