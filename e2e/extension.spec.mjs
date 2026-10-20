@@ -168,6 +168,14 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(simple.locator("#toggleAutomation")).toBeEnabled();
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
       settings.enabled = true;
+      // A backend outage is NOT a proven old-claim blocker. In this case
+      // fail closed rather than switching into a possibly concurrent engine.
+      failingPaths.add("/api/v1/automation/smart-swipe/attempts/reconciliation");
+      await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
+      await expect(simple.locator("#feedback")).toContainText("Démarrage refusé");
+      expect((await storage())["tnnd.globalExistingRunner.v2"]?.enabled).not.toBe(true);
+      failingPaths.delete("/api/v1/automation/smart-swipe/attempts/reconciliation");
       // One old uncertain attempt blocks Swipe, but does not take down the
       // independently permitted conversations watcher. It must NEVER retry
       // or erase the historical Like or arm both engines concurrently.
