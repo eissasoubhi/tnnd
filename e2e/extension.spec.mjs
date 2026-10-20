@@ -161,6 +161,13 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(simple.locator("button")).toHaveCount(1);
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
       await expect(simple.locator("#toggleAutomation")).toHaveText("Démarrer");
+      // Rejected Start must never turn the only control into a dead button.
+      settings.enabled = false;
+      await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#feedback")).toContainText("Démarrage refusé");
+      await expect(simple.locator("#toggleAutomation")).toBeEnabled();
+      await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
+      settings.enabled = true;
       // On fictional Discovery, Web's first priority is Swipe.
       await simple.locator("#toggleAutomation").click();
       await expect(simple.locator("#engineStatus")).toContainText("Auto Swipe");
