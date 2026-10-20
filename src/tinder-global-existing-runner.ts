@@ -301,7 +301,9 @@ async function watcherSidebar(
     type: "TNND_WATCHER_SELECT_SIDEBAR", target, expectedRef
   });
 }
-async function returnWatcherToMessages(state: GlobalExistingRunnerState, note: string): Promise<void> {
+async function returnWatcherToMessages(
+  state: GlobalExistingRunnerState, note: string, matchesExhausted = false
+): Promise<void> {
   if (state.tabId === null) return;
   try {
     const tab = await chrome.tabs.get(state.tabId);
@@ -310,8 +312,7 @@ async function returnWatcherToMessages(state: GlobalExistingRunnerState, note: s
     const live = await load();
     if (!isMatchCycleState(live, state)) return;
     await save(activity({ ...live, matchPhase: "idle", matchPhaseStartedAt: null,
-      preferUnstartedMatches: live.preferUnstartedMatches &&
-        !/(no eligible|daily first-message quota|first messages are not enabled|match already attempted)/i.test(note),
+      preferUnstartedMatches: live.preferUnstartedMatches && !matchesExhausted,
       lastRef: tinderRefFromUrl(tab.url), activeConversationRef: null, activeConversationUntil: null },
       "waiting", note));
   } catch (error) {
@@ -363,7 +364,7 @@ async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void>
   const current = await load();
   if (!isMatchCycleState(current, state)) return;
   if (!snapshot?.ok || !Array.isArray(snapshot.refs) || !current.watchedMatches) {
-    await returnWatcherToMessages(current, "Matches not visible; returning to Messages.");
+    await returnWatcherToMessages(current, "Matches not visible; continuing with waiting conversations.", true);
     return;
   }
   const inventory = observeWatchedMatches(current.watchedMatches, snapshot.refs);
@@ -390,7 +391,7 @@ async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void>
     return;
   }
   if (!after.autoOpenersEnabled) {
-    await returnWatcherToMessages(after, "Matches checked; first messages are not enabled.");
+    await returnWatcherToMessages(after, "Matches checked; first messages are not enabled.", true);
     return;
   }
   const currentlyVisible = new Set(snapshot.refs.filter((ref): ref is string => typeof ref === "string"));
@@ -399,7 +400,7 @@ async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void>
     inventory.newRefs.filter(ref => currentlyVisible.has(ref)),
     await readOpenerAttempts(session.user.id));
   if (!ref) {
-    await returnWatcherToMessages(after, "No eligible unattempted match tiles; watching Messages.");
+    await returnWatcherToMessages(after, "No eligible unattempted match tiles; watching Messages.", true);
     return;
   }
   // Do not burn a match's one-shot watcher claim when today's daily opener
@@ -414,14 +415,14 @@ async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void>
   const dailyUsed = daily?.date === today && Array.isArray(daily.refs) ? daily.refs.length : 0;
   const limit = firstMessageDailyLimit(currentConfig.automation.maxFirstMessagesPerDay);
   if (dailyUsed >= limit || hasReachedFirstMessageDailyLimit(claims ?? {}, limit)) {
-    await returnWatcherToMessages(after, `Daily first-message quota (${limit}) reached; retry next UTC day without claiming a match.`);
+    await returnWatcherToMessages(after, `Daily first-message quota (${limit}) reached; retry next UTC day without claiming a match.`, true);
     return;
   }
   // Explicit opt-in, verified Matches tile, no incoming reply and same account.
   // Store a one-shot watcher claim before entering the normal first-message
   // worker. Never retry automatically if navigation/send acknowledgement fails.
   if (!(await claimWatchedOpener(session.user.id, ref))) {
-    await returnWatcherToMessages(after, "Match already attempted; watching Messages.");
+    await returnWatcherToMessages(after, "Match already attempted; watching Messages.", true);
     return;
   }
   await save(activity({ ...after, matchPhase: "opener", matchPhaseStartedAt: new Date().toISOString() }, "loading",
