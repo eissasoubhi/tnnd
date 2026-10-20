@@ -5,6 +5,7 @@
 export interface LauncherFailureGuidance {
   message: string;
   reviewAttempts: boolean;
+  connectAccount?: boolean;
 }
 
 const REVIEW_REASONS = new Set([
@@ -20,6 +21,14 @@ const REVIEW_REASONS = new Set([
 export function explainLauncherStartRefusal(reason: string | undefined): LauncherFailureGuidance {
   const technicalReason = typeof reason === "string" && reason.length > 0
     ? reason.slice(0, 160) : "commande_non_confirmee";
+  if (technicalReason === "tnnd_extension_session_missing" ||
+      technicalReason === "Connecte TNND à ton compte depuis le Web.") {
+    return {
+      message: "L'extension Chrome n'est pas connectée à TNND. Le site Web utilise une autre session. Ouvre la page de connexion de l'extension avec le lien ci-dessous.",
+      reviewAttempts: false,
+      connectAccount: true
+    };
+  }
   if (technicalReason === "server_attempt_unresolved") {
     return {
       message: "Un ancien Like reste sans résultat confirmé. Les nouveaux Likes sont bloqués jusqu'à la revue manuelle dans TNND Web. Aucun Like n'a été relancé.",
