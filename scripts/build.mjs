@@ -7,7 +7,7 @@ const root = process.cwd();
 const outDir = resolve(root, "dist");
 await rm(outDir, { recursive: true, force: true });
 await mkdir(resolve(outDir, "assets"), { recursive: true });
-for (const file of ["manifest.json", "options.html", "preview.html", "popup.html", "neo-bento.css"]) await cp(resolve(root, `public/${file}`), resolve(outDir, file));
+for (const file of ["manifest.json", "options.html", "preview.html", "popup.html", "launcher.html", "neo-bento.css"]) await cp(resolve(root, `public/${file}`), resolve(outDir, file));
 
 const entries = [
   ["background", "src/background.ts"],
@@ -18,7 +18,8 @@ const entries = [
   ["web-diagnostic-page", "src/web-diagnostic-page.ts"],
   ["web-diagnostic-bridge", "src/web-diagnostic-bridge.ts"],
   ["web-ui-audit-content", "src/web-ui-audit-content.ts"],
-  ["popup", "src/popup.ts"]
+  ["popup", "src/popup.ts"],
+  ["launcher", "src/launcher.ts"]
 ];
 const builds = entries.map(([name, entry]) => build({
   configFile: false, logLevel: "info",
