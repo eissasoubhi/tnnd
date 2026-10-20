@@ -190,7 +190,10 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
         if (currentOwners.running || currentOwners.conflict)
           return { ok: false, reason: "Mode concurrent détecté après vérification du quota." };
         if (epoch !== commandEpoch) return { ok: false, reason: "Démarrage annulé par Stop." };
-        selected = "new-match";
+        // Respect the Web's explicit eligibility list. Only enter
+        // match-first mode if new-match is actually configured; otherwise
+        // honor the lower-priority conversations-only fallback.
+        selected = settings.priority.includes("new-match") ? "new-match" : next;
         pausedSwipeReason = "daily_cap";
       }
     }
