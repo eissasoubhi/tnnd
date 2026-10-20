@@ -170,6 +170,7 @@ async function refreshActivity(): Promise<void> {
         time.dateTime = attempt.createdAt;
         time.textContent = new Date(attempt.createdAt).toLocaleString();
         const label = attempt.status === "ui_observed" ? "Card change observed — Tinder acceptance unverified"
+          : attempt.status === "not_clicked" ? "No Like clicked — preflight safely closed (quota slot spent)"
           : attempt.status === "uncertain" ? "Uncertain — automatic Likes stopped"
             : "Reserved — outcome pending";
         const reason = attempt.status === "uncertain"

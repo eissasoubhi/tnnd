@@ -262,3 +262,25 @@ export function confirmSmartRightSwipe(
     rightSwipesReserved: progress.rightSwipesReserved - 1
   };
 }
+
+
+/** The trusted executor explicitly blocked BEFORE its first Like click.
+ * Return only the local reservation slot; the durable server attempt and daily
+ * cap remain consumed. Cool down to prevent rapid repeated preflight failures.
+ * Unknown outcomes after a click MUST NOT call this function.
+ */
+export function releaseNotClickedSmartRightSwipe(
+  progress: SmartSwipeDailyProgress, nowMs: number
+): SmartSwipeDailyProgress {
+  if (progress.rightSwipesReserved < 1) return progress;
+  return {
+    ...progress,
+    rightSwipesReserved: progress.rightSwipesReserved - 1,
+    session: progress.session ? {
+      ...progress.session,
+      nextRightSwipeNotBeforeMs: Math.max(
+        progress.session.nextRightSwipeNotBeforeMs ?? 0, nowMs + 60_000
+      )
+    } : null
+  };
+}
