@@ -286,8 +286,7 @@ async function tick(tabId: number): Promise<void> {
       noClick ? "not_clicked" : "uncertain";
     // Only a trusted pre-click blocked result can become not_clicked.
     // Missing/unknown action results always remain uncertain.
-    const outcomeReason = noClick ? action!.reason :
-      action?.status === "ui_observed" ? action.reason : "action_result_unavailable";
+    const outcomeReason = action?.reason ?? "action_result_unavailable";
     const resolved = await authenticatedPost<{ ok?: boolean }>(
       session.token, "/api/v1/automation/smart-swipe/attempts/resolve", {
         attemptId, deviceId, status: statusForServer, outcomeReason
