@@ -48,6 +48,8 @@ interface GlobalExistingRunnerState {
   mode: "runner" | "watcher";
   pendingReplies: number;
   autoOpenersEnabled: boolean;
+  /** Unified quota handoff: inspect and attempt safe empty-thread matches before queued chats. */
+  preferUnstartedMatches: boolean;
   matchPhase: WatcherMatchPhase;
   matchPhaseStartedAt: string | null;
   lastMatchScanAt: string | null;
@@ -81,7 +83,7 @@ interface GlobalExistingRunnerState {
   activity: RunnerActivity[];
 }
 const initial = (): GlobalExistingRunnerState => ({
-  enabled: false, mode: "runner", pendingReplies: 0, autoOpenersEnabled: false,
+  enabled: false, mode: "runner", pendingReplies: 0, autoOpenersEnabled: false, preferUnstartedMatches: false,
   matchPhase: "idle", matchPhaseStartedAt: null, lastMatchScanAt: null, lastIncomingAt: null, watchedMatches: null, visibleUnreadRefs: [], watcherStatus: "stopped", userId: null, tabId: null, tabMode: null, pausedOnStop: false,
   phase: "stopped", dwellSeconds: DEFAULT_CADENCE, phaseDetail: "Runner stopped.", currentLabel: null,
   eligibleCount: 0, visitedCount: 0, sentCount: 0, skippedCount: 0, errorCount: 0,
@@ -136,6 +138,8 @@ async function load(): Promise<GlobalExistingRunnerState> {
     attentionCapSeconds: await getAttentionCapSeconds(value.userId ?? null),
     pendingReplies: typeof value.pendingReplies === "number" && value.pendingReplies >= 0 ? value.pendingReplies : 0,
     autoOpenersEnabled: value.autoOpenersEnabled === true,
+    preferUnstartedMatches: value.mode === "watcher" && value.autoOpenersEnabled === true &&
+      value.preferUnstartedMatches === true,
     matchPhase: ["idle", "verifying", "opener"].includes(String(value.matchPhase)) ? value.matchPhase! : "idle",
     matchPhaseStartedAt: typeof value.matchPhaseStartedAt === "string" ? value.matchPhaseStartedAt : null,
     lastMatchScanAt: typeof value.lastMatchScanAt === "string" ? value.lastMatchScanAt : null,
@@ -306,6 +310,8 @@ async function returnWatcherToMessages(state: GlobalExistingRunnerState, note: s
     const live = await load();
     if (!isMatchCycleState(live, state)) return;
     await save(activity({ ...live, matchPhase: "idle", matchPhaseStartedAt: null,
+      preferUnstartedMatches: live.preferUnstartedMatches &&
+        !/(no eligible|daily first-message quota|first messages are not enabled|match already attempted)/i.test(note),
       lastRef: tinderRefFromUrl(tab.url), activeConversationRef: null, activeConversationUntil: null },
       "waiting", note));
   } catch (error) {
@@ -322,7 +328,9 @@ async function returnWatcherToMessages(state: GlobalExistingRunnerState, note: s
 async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void> {
   if (state.tabId === null || !state.userId) return;
   const action = nextWatcherMatchAction(state, {
-    activeFollow: false, pendingReplies: state.pendingReplies, replyProcessing: false
+    activeFollow: false,
+    pendingReplies: state.preferUnstartedMatches ? 0 : state.pendingReplies,
+    replyProcessing: false
   });
   if (action === "none") return;
   if (action === "recover") {
@@ -370,7 +378,7 @@ async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void>
     refs.map(ref => ({ ref, lastMessageAt: messageTimes.get(ref) ?? null,
       lastMessageDirection: messageDirections.get(ref) ?? null })));
   await saveWorkIndex(work);
-  if (pendingWatchedReplies(work) > 0) {
+  if (pendingWatchedReplies(work) > 0 && !current.preferUnstartedMatches) {
     await returnWatcherToMessages(await load(), "New reply detected; prioritizing Messages.");
     return;
   }
@@ -514,6 +522,16 @@ async function tick(): Promise<void> {
         await scanMatchesCycle({ ...pendingState, pendingReplies });
       return;
     }
+    // Quota handoff starts with Match openers, then chats. Existing sends or
+    // active reciprocal exchanges are guarded above and are never interrupted.
+    // The watcher keeps its normal five-minute Match scan cadence; it does
+    // not burst through every visible profile or circumvent a daily cap.
+    if (state.mode === "watcher" && state.preferUnstartedMatches) {
+      const current = await load();
+      if (!current.enabled) return;
+      await scanMatchesCycle({ ...current, pendingReplies });
+      return;
+    }
     const nextRef = state.mode === "watcher" ? nextWatchedReply(queued) : nextIndexedExistingThread(queued);
     if (!nextRef) {
       const detail = state.mode === "watcher"
@@ -611,10 +629,10 @@ async function tick(): Promise<void> {
     }
   } finally { busy = false; }
 }
-export function startExistingRunner(enablePreviouslyDisabled = false, mode: "runner" | "watcher" = "runner", autoOpenersEnabled = false): Promise<GlobalExistingRunnerState> {
-  return withTinderRunnerTransition(() => startExistingRunnerUnlocked(enablePreviouslyDisabled, mode, autoOpenersEnabled));
+export function startExistingRunner(enablePreviouslyDisabled = false, mode: "runner" | "watcher" = "runner", autoOpenersEnabled = false, preferUnstartedMatches = false): Promise<GlobalExistingRunnerState> {
+  return withTinderRunnerTransition(() => startExistingRunnerUnlocked(enablePreviouslyDisabled, mode, autoOpenersEnabled, preferUnstartedMatches));
 }
-async function startExistingRunnerUnlocked(enablePreviouslyDisabled = false, mode: "runner" | "watcher" = "runner", autoOpenersEnabled = false): Promise<GlobalExistingRunnerState> {
+async function startExistingRunnerUnlocked(enablePreviouslyDisabled = false, mode: "runner" | "watcher" = "runner", autoOpenersEnabled = false, preferUnstartedMatches = false): Promise<GlobalExistingRunnerState> {
   if (starting) throw new Error("Runner is already starting.");
   starting = true;
   try {
@@ -685,6 +703,7 @@ async function startExistingRunnerUnlocked(enablePreviouslyDisabled = false, mod
     const selectedRef = mode === "watcher" ? tinderRefFromUrl(selectedTab.url) : null;
     const activeRef = selectedRef && refs.includes(selectedRef) ? selectedRef : null;
     next = activity({ ...next, enabled: true, mode, autoOpenersEnabled: mode === "watcher" && autoOpenersEnabled,
+      preferUnstartedMatches: mode === "watcher" && autoOpenersEnabled && preferUnstartedMatches,
       userId: session.user.id, tabId: tab.id, tabMode: tab.mode,
       attentionCapSeconds: await getAttentionCapSeconds(session.user.id),
       ...(mode === "watcher" ? { watchedMatches: emptyWatchedMatches(session.user.id) } : {}),
@@ -721,7 +740,7 @@ async function stop(reason = "Runner stopped. Tinder tab kept open."): Promise<G
   const state = await load();
   // Do not close a reused or newly created tab; it belongs to the user after
   // taking over the sole Tinder session. Never force logout by opening another.
-  const next = activity({ ...state, enabled: false, autoOpenersEnabled: false,
+  const next = activity({ ...state, enabled: false, autoOpenersEnabled: false, preferUnstartedMatches: false,
     matchPhase: "idle", matchPhaseStartedAt: null, userId: null, pendingReplies: 0, watchedMatches: null, activeConversationRef: null, activeConversationUntil: null, pausedOnStop: state.tabId !== null }, "stopped", reason);
   await save(next);
   await chrome.alarms.clear(ALARM);
