@@ -234,6 +234,14 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(simple.locator("#feedback")).toContainText("Démarrage refusé");
       expect((await storage())["tnnd.globalExistingRunner.v2"]?.enabled).not.toBe(true);
       failingPaths.delete("/api/v1/automation/smart-swipe/attempts/reconciliation");
+      // Missing authoritative quota evidence must fail CLOSED; it is neither
+      // proof of remaining Likes nor permission to hand off ambiguously.
+      failingPaths.add("/api/v1/automation/smart-swipe/attempts/summary");
+      await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
+      await expect(simple.locator("#feedback")).toContainText("swipe_quota_unavailable");
+      expect((await storage())["tnnd.globalExistingRunner.v2"]?.enabled).not.toBe(true);
+      failingPaths.delete("/api/v1/automation/smart-swipe/attempts/summary");
       // One old uncertain attempt blocks Swipe, but does not take down the
       // independently permitted conversations watcher. It must NEVER retry
       // or erase the historical Like or arm both engines concurrently.
