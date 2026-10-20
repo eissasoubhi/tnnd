@@ -231,7 +231,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(simple.locator("#reachedLimits h2")).toHaveText("Quotas du jour");
       await expect(simple.locator("#reachedLimitsList li")).toHaveCount(2);
       await expect(simple.locator("#reachedLimitsList")).toContainText("0 / 2");
-      await expect(simple.locator("#reachedLimitsList")).toContainText("— / 1");
+      await expect(simple.locator("#reachedLimitsList")).toContainText("0 / 1");
       await expect(simple.locator("#toggleAutomation")).toHaveText("Démarrer");
       // Rejected Start must never turn the only control into a dead button.
       settings.enabled = false;
