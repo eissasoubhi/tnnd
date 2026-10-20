@@ -50,3 +50,23 @@ export function nextMatchOpener(
   return [...newRefs, ...existingRefs].find(ref =>
     /^[a-zA-Z0-9_-]{3,512}$/.test(ref) && !attempted.has(ref)) ?? null;
 }
+
+/** Determine whether verified visible Matches still have an unclaimed
+ * first-message candidate. This uses the same strict eligibility policy as
+ * nextMatchOpener; an unknown/offscreen tile is never considered confirmed.
+ * The caller MUST still run all current backend empty-thread, per-match and
+ * daily-send guards before attempting an irreversible message.
+ */
+export function hasUnattemptedVisibleMatches(
+  existingRefs: readonly string[],
+  newRefs: readonly string[],
+  currentlyVisible: readonly string[],
+  attemptedRefs: readonly string[]
+): boolean {
+  const visible = new Set(currentlyVisible);
+  return nextMatchOpener(
+    existingRefs.filter(ref => visible.has(ref)),
+    newRefs.filter(ref => visible.has(ref)),
+    attemptedRefs
+  ) !== null;
+}
