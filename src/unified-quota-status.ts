@@ -1,4 +1,4 @@
-import { tinderAccountDayKey } from "./tinder-smart-auto-swipe-policy";
+import { tinderAccountDayKey } from "./tinder-smart-auto-swipe-policy.ts";
 
 /** Read-only quota evidence for the account's *current* local day.
  * An absent, stale or malformed server response is UNKNOWN, never zero.
