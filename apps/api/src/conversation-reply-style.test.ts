@@ -21,7 +21,7 @@ test("isolated loanwords or short ambiguous answers do not trigger language swit
 
 test("ordinary same-city exchanges get one calm answer, not an automatic extra reaction", () => {
   const history = readLabeledReplyHistory(
-    "Me: tranquille merci! t'es sur casa en ce moment?\nThem: Tunisienne sur paris"
+    "Me: Tu habites dans quelle ville ?\nThem: Je vis à Lyon"
   );
   const cues = readReplyStyleCues(history);
   assert.equal(cues.recentStockSurprise, false);
@@ -38,7 +38,7 @@ test("ordinary same-city exchanges get one calm answer, not an automatic extra r
 
 test("a recent boilerplate surprise does not lead to another stock afterthought", () => {
   const history = readLabeledReplyHistory(
-    "Them: je suis à Paris\nMe: ah le monde est petit\nThem: je travaille demain"
+    "Them: Je suis à Grenoble\nMe: ah le monde est petit\nThem: Je finis tard ce soir"
   );
   const cues = readReplyStyleCues(history);
   assert.equal(cues.recentStockSurprise, true);
