@@ -19,6 +19,33 @@ test("isolated loanwords or short ambiguous answers do not trigger language swit
   assert.match(replyStyleGuidance(readReplyStyleCues([]), false), /fixed or manually overridden/);
 });
 
+test("ordinary same-city exchanges get one calm answer, not an automatic extra reaction", () => {
+  const history = readLabeledReplyHistory(
+    "Me: Tu habites dans quelle ville ?\nThem: Je vis à Lyon"
+  );
+  const cues = readReplyStyleCues(history);
+  assert.equal(cues.recentStockSurprise, false);
+  const guidance = replyStyleGuidance(cues);
+  assert.match(guidance, /calm, low-key texting voice/);
+  assert.match(guidance, /One short sentence or fragment is usually enough/);
+  assert.match(guidance, /A complete short reply needs no extra sentence, punchline or question/);
+  assert.match(guidance, /both in Paris/);
+  assert.match(guidance, /le monde est petit/);
+  assert.match(guidance, /genuinely surprising connection/);
+  assert.match(guidance, /Keep longer replies when the question, emotional context/);
+  assert.match(replyStyleGuidance(cues, false), /calm, low-key texting voice/);
+});
+
+test("a recent boilerplate surprise does not lead to another stock afterthought", () => {
+  const history = readLabeledReplyHistory(
+    "Them: Je suis à Grenoble\nMe: ah le monde est petit\nThem: Je finis tard ce soir"
+  );
+  const cues = readReplyStyleCues(history);
+  assert.equal(cues.recentStockSurprise, true);
+  assert.match(replyStyleGuidance(cues), /Do not repeat it or replace it with another generic afterthought/);
+  assert.equal(readReplyStyleCues(readLabeledReplyHistory("Them: je travaille demain")).recentStockSurprise, false);
+});
+
 test("the match's language does not come from the sender's outgoing text", () => {
   const cues = readReplyStyleCues(readLabeledReplyHistory("Me: hello how are you doing today\nThem: oui je suis bien aujourd'hui"));
   assert.equal(cues.recentLanguage, "fr");

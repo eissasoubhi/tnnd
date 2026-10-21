@@ -237,6 +237,9 @@ test("automatic extension prompt reacts to French hhh as a gentle laughter cue, 
   assert.equal(result.suggestions.length, 1);
   assert.match(sentPrompt, /'hhh' is a small 'haha'/);
   assert.match(sentPrompt, /respond to THAT hook/);
+  assert.match(sentPrompt, /calm, low-key texting voice/);
+  assert.match(sentPrompt, /A complete short reply needs no extra sentence, punchline or question/);
+  assert.match(sentPrompt, /genuinely surprising connection/);
   assert.doesNotMatch(sentPrompt, /Prefer natural Latin-script Darija/);
 });
 

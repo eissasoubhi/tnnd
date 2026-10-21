@@ -14,9 +14,12 @@ export interface ReplyStyleCues {
   /** Laughter in the current match turn, not the sender's older "haha". */
   latestIncomingLaughter: boolean;
   latestIncomingAiQuestion: boolean;
+  /** Previous boilerplate surprise is a signal to vary reactions, not a ban on genuine surprise. */
+  recentStockSurprise: boolean;
 }
 
 const LAUGH = /\b(?:ha(?:ha)+|hi(?:hi)+|h{3,}|mdr|ptdr|lol|jaja)\b/giu;
+const STOCK_SURPRISE = /\b(?:le monde est petit|quelle co[iï]ncidence)\b/iu;
 const DARIJA = /\b(?:wakha|wakhaa|kaydouz|kaydoz|kayn|kayna|kaynin|tayer|tayr|saraha|sara7a|bzf|bzaf|bzzaf|daba|db|kifach|wach|chno|fin|labas|safi|mzyan|bghit|bghiti|bghina|nta|nti|khoya|zwin|3lach|3nd|7it|ghadi|kan|hna|hadchi|machi|safi)\b|واش|بزاف|لاباس|دابا|مزيان|شنو|فين|واخا|كنبغي|كاين/giu;
 const FRENCH = /\b(?:bonjour|salut|oui|non|bien|pourquoi|comment|avec|dans|demain|soir|semaine|routine|journée|juste|toujours|vraiment|boulot|travail|part|genre|mais|donc|quoi|pour|chez|suis|faire|fais|cest|c'est|c|tu|je|est|des|une|pas|en|le|la|les|de|et)\b|ça|être|été/giu;
 const ENGLISH = /\b(?:hello|hey|how|what|why|when|you|your|are|the|this|that|have|with|good|yeah|thanks|today|tomorrow|nice|really|just|work|weekend|doing)\b/giu;
@@ -64,7 +67,8 @@ export function readReplyStyleCues(messages: readonly ReplyStyleMessage[], lates
     recentOutgoingLaughter,
     repeatedSenderLaughter: recentOutgoingLaughter >= 1,
     latestIncomingLaughter,
-    latestIncomingAiQuestion: isDirectAiIdentityQuestion(currentIncoming)
+    latestIncomingAiQuestion: isDirectAiIdentityQuestion(currentIncoming),
+    recentStockSurprise: outgoing.some(message => STOCK_SURPRISE.test(message.text))
   };
 }
 
@@ -74,7 +78,8 @@ export function readReplyStyleCues(messages: readonly ReplyStyleMessage[], lates
  */
 export function replyStyleGuidance(cues: ReplyStyleCues, autoLanguage = true): string {
   const parts = [
-    "Reply naturally to the match's actual last message. Do not tack on 'haha', 'hhh', 'mdr' or 'lol' as a routine filler; humor can be conveyed without a laugh token."
+    "Reply to the match's actual last message in a calm, low-key texting voice. One short sentence or fragment is usually enough; use a second only when it answers another real point, adds useful context or provides needed empathy. A complete short reply needs no extra sentence, punchline or question. Do not add an obvious observation, generic surprise, exaggerated excitement, routine emoji, repeated exclamation marks, or forced joke just to keep the chat going. Match their energy gently without trying to top it. Shared residence in a common Tinder location (e.g. both in Paris) is not by itself an unexpected coincidence: 'le monde est petit' or 'quelle coïncidence' is filler there. Use surprise reactions only occasionally for a genuinely surprising connection. Keep longer replies when the question, emotional context or an explicit length setting genuinely calls for them.",
+    "Do not tack on 'haha', 'hhh', 'mdr' or 'lol' as a routine filler; humor can be conveyed without a laugh token."
   ];
   if (autoLanguage) {
     if (cues.recentLanguage === "darija") {
@@ -96,6 +101,9 @@ export function replyStyleGuidance(cues: ReplyStyleCues, autoLanguage = true): s
     parts.push(
       "The match's current message contains a laugh cue: 'hhh' is a small 'haha' in casual texting, just like 'mdr' or 'lol'. Read the tone as light if the actual words support it; it is NOT an invitation to copy the laugh or automatically flirt. If there is a playful contrast, witty wording, teasing remark or metaphor, respond to THAT hook with one short, natural observation or gentle tease before optionally asking a relevant follow-up. Do not flatten a playful remark into an interview-style factual question. Never tease about a sensitive matter or invent mutual attraction."
     );
+  }
+  if (cues.recentStockSurprise) {
+    parts.push("The sender recently used a stock surprise reaction. Do not repeat it or replace it with another generic afterthought on this turn; respond to the actual new information instead.");
   }
   if (cues.repeatedSenderLaughter) {
     parts.push("The sender already used a laugh filler in recent outgoing messages. Do NOT put any laugh token in this reply. Vary openings instead of repeating the same 'haha' pattern.");
