@@ -210,7 +210,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await launcher.reload();
       await expect(launcher.locator("#toggleAutomation")).toHaveText("Démarrer");
       await expect(launcher.locator("#webSettingsLink")).toHaveAttribute(
-        "href", "http://localhost:5173/#workspace-settings-section");
+        "href", "http://127.0.0.1:5173/#workspace-settings-section");
       expect(requests.filter(item => item.path.endsWith("/attempts/claim")).length)
         .toBe(beforeClaims);
       expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
