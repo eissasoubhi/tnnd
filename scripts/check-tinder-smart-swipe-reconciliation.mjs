@@ -9,7 +9,7 @@ const dayKey = "2026-10-18";
 const initial = { ...emptySmartSwipeDay(dayKey), startedSessions: 1,
   rightSwipesConfirmed: 1, rightSwipesReserved: 1 };
 const evidence = { dayKey, attempts: 2, uiObserved: 1, reviewedUnknown: 1,
-  unresolvedAcrossDays: 0 };
+  notClicked: 0, unresolvedAcrossDays: 0 };
 const parsed = parseDayReconciliationProof(evidence, dayKey);
 assert.ok(parsed);
 const reconciled = reconcileReviewedLocalSwipeAttempt(initial, parsed);
@@ -18,6 +18,38 @@ assert.equal(reconciled.progress.rightSwipesReserved, 0);
 assert.equal(reconciled.progress.rightSwipesConfirmed, 1);
 assert.equal(reconciled.progress.startedSessions, 1);
 assert.equal(initial.rightSwipesReserved, 1);
+
+// Synthetic match of an account-day with 39 slots and 36 UI transitions:
+// one explicitly reviewed UNKNOWN + two verified no-clicks. Those two
+// remain consumed quota slots, not extra Likes or local confirmations.
+const accountDayWithNoClicks = {
+  ...evidence, attempts: 39, uiObserved: 36, reviewedUnknown: 1, notClicked: 2
+};
+const originalWithPending = {
+  ...initial, rightSwipesConfirmed: 36, rightSwipesReserved: 1
+};
+const withNoClicks = reconcileReviewedLocalSwipeAttempt(
+  originalWithPending, accountDayWithNoClicks
+);
+assert.equal(withNoClicks.ok, true);
+if (withNoClicks.ok) {
+  assert.equal(withNoClicks.progress.rightSwipesConfirmed, 36);
+  assert.equal(withNoClicks.progress.rightSwipesReserved, 0);
+}
+assert.equal(originalWithPending.rightSwipesReserved, 1);
+assert.match(publicSwipeReconciliationCounts(originalWithPending, accountDayWithNoClicks),
+  /server verified no-click 2/);
+assert.equal(parseDayReconciliationProof({ ...evidence, notClicked: undefined }, dayKey), null,
+  "old APIs missing the no-click count must fail closed");
+assert.equal(parseDayReconciliationProof({ ...evidence, notClicked: -1 }, dayKey), null);
+assert.equal(parseDayReconciliationProof({ ...evidence, notClicked: 1 }, dayKey), null,
+  "impossible overcount must be rejected before local rearm");
+assert.equal(reconcileReviewedLocalSwipeAttempt(initial, {
+  ...evidence, reviewedUnknown: 0, notClicked: 1
+}).ok, false, "a no-click alone can never clear an unknown local reservation");
+assert.equal(reconcileReviewedLocalSwipeAttempt(initial, {
+  ...evidence, attempts: 3, notClicked: 0
+}).ok, false, "extra unexplained statuses must still fail closed");
 
 // Real crash-window shape: PostgreSQL recorded 1 card transition and 1
 // manually reviewed UNKNOWN, but Chrome persisted neither local UI counter.
