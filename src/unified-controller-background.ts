@@ -271,7 +271,7 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
       // Swipe's original quota/uncertain attempts remain untouched; no Likes.
       if (epoch !== commandEpoch) return { ok: false, reason: "Démarrage annulé par Stop." };
       const result = await startExistingRunner(false, "watcher", selected === "new-match",
-        selected === "new-match", requestedMode === "new-match" || requestedMode === "active-chat" ? selected : null);
+        selected === "new-match", requestedMode === "new-match" || requestedMode === "active-chat" ? requestedMode : null);
       if (!result.enabled || result.mode !== "watcher")
         return { ok: false, reason: "Surveillance non confirmée." };
     }
