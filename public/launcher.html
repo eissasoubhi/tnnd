@@ -20,7 +20,13 @@
     #toggleAutomation { display: block; width: 100%; min-height: 54px; padding: 13px; border: 0; border-radius: 13px; background: #234b3d; color: #fff; font: inherit; font-weight: 750; font-size: 16px; cursor: pointer; }
     #toggleAutomation[data-mode="stop"] { background: #fafcf8; border: 1px solid #a5bcb1; color: #234b3d; }
     #toggleAutomation:disabled { cursor: wait; opacity: .72; }
-    #toggleAutomation:focus-visible { outline: 3px solid #8070dc; outline-offset: 3px; }
+    #toggleAutomation:focus-visible, .mode-button:focus-visible { outline: 3px solid #8070dc; outline-offset: 3px; }
+    .mode-selector { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: -10px; }
+    .mode-button { min-height: 46px; min-width: 0; padding: 10px 2px; border: 1px solid #c3d5c8; border-radius: 10px; background: #fff; color: #234b3d; font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
+    .mode-button[aria-pressed="true"] { background: #d9efcc; border: 2px solid #234b3d; font-weight: 750; }
+    .mode-button:disabled { opacity: .6; cursor: wait; }
+    .mode-button:not(:disabled):hover { border-color: #234b3d; }
+    .mode-label { font-size: 11px; color: #5e746b; margin: -9px 0 0; }
     #feedback { font-size: 12px; color: #5e746b; line-height: 1.45; min-height: 16px; margin: 0; overflow-wrap: anywhere; }
     #reachedLimits { padding: 11px 12px; border: 1px solid #cfded3; background: #f0f5ef; border-radius: 11px; }
     #reachedLimits[data-has-reached="true"] { border-color: #d9c5a1; background: #faf4e6; }
@@ -39,6 +45,12 @@
     <header><h1>TNND</h1></header>
     <div id="engineStatus" data-state="busy" role="status">Vérification…</div>
     <button type="button" id="toggleAutomation" disabled>Démarrer</button>
+    <div class="mode-selector" role="group" aria-label="Choisir manuellement une activité">
+      <button type="button" class="mode-button" data-activity="swipe" aria-pressed="false" disabled>Swipe</button>
+      <button type="button" class="mode-button" data-activity="new-match" aria-pressed="false" disabled>Matches</button>
+      <button type="button" class="mode-button" data-activity="active-chat" aria-pressed="false" disabled>Chat</button>
+    </div>
+    <p class="mode-label">Mode manuel jusqu'au prochain arrêt.</p>
     <p id="feedback" role="status" aria-live="polite"></p>
     <section id="reachedLimits" aria-label="Compteurs quotidiens">
       <h2>Quotas du jour</h2>
