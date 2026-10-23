@@ -19,10 +19,10 @@ export function watcherSwitchSafety(value: unknown, nowMs = Date.now()): {
   if (state.enabled !== true) return { allowed: false, reason: "Le watcher n'est plus actif." };
   if (state.matchPhase !== "idle")
     return { allowed: false, reason: "Vérification ou envoi Match en cours. Réessaie après cette étape." };
-  if (["loading", "incoming", "generating", "sending"].includes(String(state.phase)) ||
+  const detail = typeof state.phaseDetail === "string" ? state.phaseDetail : "";
+  if (!["waiting", "sent", "skipped"].includes(String(state.phase)) ||
       (state.phase === "waiting" &&
-        typeof state.phaseDetail === "string" &&
-        state.phaseDetail.startsWith("Unanswered incoming message found")))
+        /^(?:Unanswered incoming message found|Current chat is busy replying)/.test(detail)))
     return { allowed: false, reason: "Réponse ou changement de conversation en cours. Réessaie après confirmation." };
   if (typeof state.activeConversationRef === "string" &&
       typeof state.activeConversationUntil === "string" &&
