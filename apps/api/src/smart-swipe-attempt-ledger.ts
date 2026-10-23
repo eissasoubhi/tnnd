@@ -278,6 +278,8 @@ export interface SmartSwipeDayReconciliation {
   attempts: number;
   uiObserved: number;
   reviewedUnknown: number;
+  /** Verified pre-click cancellations consume quota without proving Tinder Likes. */
+  notClicked: number;
   unresolvedAcrossDays: number;
 }
 export function validSmartSwipeDayKey(value: unknown): value is string {
@@ -289,12 +291,13 @@ export async function readSmartSwipeDayReconciliation(
 ): Promise<SmartSwipeDayReconciliation> {
   if (!validSmartSwipeDayKey(dayKey)) throw new Error("invalid_day_key");
   const result = await getPool().query<{
-    attempts: string; ui_observed: string; reviewed_unknown: string; unresolved: string
+    attempts: string; ui_observed: string; reviewed_unknown: string; not_clicked: string; unresolved: string
   }>(
     `SELECT count(*) FILTER (WHERE day_key=$2)::text AS attempts,
       count(*) FILTER (WHERE day_key=$2 AND status='ui_observed')::text AS ui_observed,
       count(*) FILTER (WHERE day_key=$2 AND status='uncertain'
         AND reviewed_at IS NOT NULL AND review_kind='acknowledged_unknown_no_retry')::text AS reviewed_unknown,
+      count(*) FILTER (WHERE day_key=$2 AND status='not_clicked')::text AS not_clicked,
       count(*) FILTER (WHERE status='reserved' OR
         (status='uncertain' AND reviewed_at IS NULL))::text AS unresolved
      FROM user_smart_swipe_attempts WHERE user_id=$1`, [userId, dayKey]
@@ -305,6 +308,7 @@ export async function readSmartSwipeDayReconciliation(
     attempts: Number(row?.attempts ?? "0"),
     uiObserved: Number(row?.ui_observed ?? "0"),
     reviewedUnknown: Number(row?.reviewed_unknown ?? "0"),
+    notClicked: Number(row?.not_clicked ?? "0"),
     unresolvedAcrossDays: Number(row?.unresolved ?? "0")
   };
 }

@@ -222,7 +222,10 @@ async function run() {
     for (const mode of ["swipe", "new-match", "active-chat"]) {
       await cdp.evaluate('document.querySelector("#feedback").textContent=""');
       await cdp.evaluate('Array.from(document.querySelectorAll(".mode-button")).find(x=>x.dataset.activity===' + JSON.stringify(mode) + ').click()');
-      await waitFor(cdp, 'document.querySelector("#feedback")?.textContent?.includes("Bascule refusée")');
+      await waitFor(cdp, 'document.querySelector("#feedback")?.textContent?.includes("connectée")');
+      await check(cdp, "Signed-out manual " + mode + " shows actionable connection guidance",
+        'document.querySelector("#webSettingsLink")?.getAttribute("href")',
+        url => typeof url === "string" && url.endsWith("/connect.html"));
       await check(cdp, "Worker denies signed-out manual " + mode + " without arming any engine",
         'chrome.runtime.sendMessage({type:"TNND_UNIFIED_STATUS"})',
         state => state?.ok === true && state.running === false);

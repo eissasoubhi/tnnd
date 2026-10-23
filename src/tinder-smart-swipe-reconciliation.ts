@@ -9,6 +9,7 @@ export interface DayReconciliationProof {
   attempts: number;
   uiObserved: number;
   reviewedUnknown: number;
+  notClicked: number;
   unresolvedAcrossDays: number;
 }
 const integer = (v: unknown): v is number =>
@@ -21,12 +22,12 @@ export function parseDayReconciliationProof(
   const v = data as Record<string, unknown>;
   if (v.dayKey !== expectedDay || !integer(v.attempts) ||
       !integer(v.uiObserved) || !integer(v.reviewedUnknown) ||
-      !integer(v.unresolvedAcrossDays) ||
-      v.uiObserved + v.reviewedUnknown > v.attempts) return null;
+      !integer(v.notClicked) || !integer(v.unresolvedAcrossDays) ||
+      v.uiObserved + v.reviewedUnknown + v.notClicked > v.attempts) return null;
   return {
     dayKey: expectedDay, attempts: v.attempts,
     uiObserved: v.uiObserved, reviewedUnknown: v.reviewedUnknown,
-    unresolvedAcrossDays: v.unresolvedAcrossDays
+    notClicked: v.notClicked, unresolvedAcrossDays: v.unresolvedAcrossDays
   };
 }
 
@@ -58,9 +59,10 @@ export function reconcileReviewedLocalSwipeAttempt(
     return { ok: false, reason: "reservation_day_mismatch" };
   if (progress.rightSwipesReserved !== 1 || proof.reviewedUnknown !== 1)
     return { ok: false, reason: "reservation_count_mismatch" };
-  // Require a complete server picture: no other status/attempt can be
-  // silently hidden or used to justify releasing the local reservation.
-  if (proof.attempts !== proof.uiObserved + proof.reviewedUnknown)
+  // Require a complete server picture, including resolved not_clicked rows.
+  // Their quota slots remain consumed; they NEVER count as UI transitions or
+  // reviewed UNKNOWNs and cannot release a local reservation on their own.
+  if (proof.attempts !== proof.uiObserved + proof.reviewedUnknown + proof.notClicked)
     return { ok: false, reason: "server_attempts_not_fully_resolved" };
   // The only tolerated drift is precisely ONE UI-observed resolution that
   // the old worker failed to commit locally. Never decrease local counters.
@@ -93,6 +95,7 @@ export function publicSwipeReconciliationCounts(
     "server attempts " + proof.attempts,
     "server UI transitions " + proof.uiObserved,
     "server reviewed unknown " + proof.reviewedUnknown,
+    "server verified no-click " + proof.notClicked,
     "server unresolved " + proof.unresolvedAcrossDays
   ].join(" · ");
 }

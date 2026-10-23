@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
+import { explainLauncherStartRefusal } from "../src/unified-launcher-failure.ts";
 import {
   manualActivity, manualSwipeReleaseSafe, watcherSwitchSafety
 } from "../src/unified-manual-mode-policy.ts";
@@ -12,6 +13,21 @@ const progress = {
   dayKey: "2026-10-20", startedSessions: 1, rightSwipesConfirmed: 4,
   rightSwipesReserved: 0, lastSessionEndedAtMs: null, session: null
 };
+
+test("manual Swipe shows actionable, accurate ledger guidance rather than an opaque error", async () => {
+  const guidance = explainLauncherStartRefusal("server_attempt_unresolved");
+  assert.equal(guidance.reviewAttempts, true);
+  assert.match(guidance.message, /Uncertain/);
+  assert.match(guidance.message, /Reserved/);
+  assert.match(guidance.message, /Aucun Like n'a été relancé/);
+  assert.equal(guidance.message.includes("server_attempt_unresolved"), false);
+  const launcher = await readFile(new URL("../src/launcher.ts", import.meta.url), "utf8");
+  const section = launcher.slice(launcher.indexOf('send("TNND_UNIFIED_SELECT_MODE"'));
+  assert.match(section, /explainLauncherStartRefusal\(result.reason\)/);
+  assert.match(section, /guidance.reviewAttempts/);
+  assert.match(section, /#smart-swipe-activity/);
+  assert.match(section, /Examiner les tentatives dans TNND Web/);
+});
 
 test("manual launcher accepts only the three explicit activity IDs", () => {
   assert.deepEqual(["swipe", "new-match", "active-chat"].map(manualActivity),

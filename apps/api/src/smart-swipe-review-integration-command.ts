@@ -72,7 +72,7 @@ async function main(): Promise<void> {
     const proof = await readSmartSwipeDayReconciliation(userId, summary.dayKey);
     assert.deepEqual(proof, {
       dayKey: summary.dayKey, attempts: 1, uiObserved: 0,
-      reviewedUnknown: 1, unresolvedAcrossDays: 0
+      reviewedUnknown: 1, notClicked: 0, unresolvedAcrossDays: 0
     });
 
     // Review does NOT resume automation, not even for the same installation.
@@ -110,6 +110,12 @@ async function main(): Promise<void> {
       "not_clicked", null)).reason, "invalid_input", "proof is mandatory");
     assert.equal((await resolveSmartSwipeAttempt(noClickUserId, noClickAttempt, deviceId,
       "not_clicked", "preflight_state_changed")).ok, true);
+    const noClickProof = await readSmartSwipeDayReconciliation(noClickUserId,
+      (await readSmartSwipeAttemptSummary(noClickUserId)).dayKey);
+    assert.deepEqual(noClickProof, {
+      dayKey: noClickProof.dayKey, attempts: 1, uiObserved: 0, reviewedUnknown: 0,
+      notClicked: 1, unresolvedAcrossDays: 0
+    }, "trusted not_clicked closes server ledger without granting a Like");
     const noClickSummary = await readSmartSwipeAttemptSummary(noClickUserId);
     assert.equal(noClickSummary.attemptsToday, 1, "not_clicked consumes the original daily slot");
     assert.equal(noClickSummary.unresolvedAttempts, 0, "verified no-click cannot block Swipe");

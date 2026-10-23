@@ -29,6 +29,11 @@ same attempt automatically and never convert an unknown result to confirmed.
 - Unreviewed `reserved` or `uncertain` rows anywhere on the account still
   block new claims; review is only offered for an older `uncertain` row.
 - The old attempt ID is **never reused**.
+- A `not_clicked` attempt is a **separately verified, pre-action cancelled** attempt.
+  It consumes its original quota slot but is not a Tinder Like and never needs
+  review. Account-day reconciliation must count these statuses independently:
+  `attempts = uiObserved + reviewedUnknown + notClicked` when there are no
+  unresolved/other statuses. This equality does not imply Tinder accepted Likes.
 - It does **not** confirm that Tinder accepted the original Like.
 
 ## Starting again, only after manual inspection
@@ -39,10 +44,13 @@ same attempt automatically and never convert an unknown result to confirmed.
    user action; changing Web preferences or reviewing a row must not trigger it.
 3. The extension requires an authenticated account-day count proof before it
    can discard *one matching local reserved counter* (only the local pending
-   counter, **not** the PostgreSQL attempt row or quota slot). It then requests
-   account/device-specific reauthorization. Corrupt, cross-device, missing,
-   conflicting or unavailable proofs refuse Start. Do not reset local storage
-   manually to bypass this check.
+   counter, **not** the PostgreSQL attempt row or quota slot). The proof includes
+   all server-verified `not_clicked` attempts in its accounting without treating
+   them as successful Likes or as reviewed UNKNOWN. The same strict single
+   local-reservation / single reviewed UNKNOWN matching still applies. It then
+   requests account/device-specific reauthorization. Corrupt, cross-device,
+   missing, conflicting or unavailable proofs refuse Start. Do not reset local
+   storage manually to bypass this check.
 4. Inspect `Refresh swipe status` and `Today and recent attempts`. Stop
    immediately if another unverified outcome or modal appears; confirm no
    duplicate action after extension/service-worker restart.
