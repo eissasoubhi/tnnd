@@ -161,7 +161,11 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
     const before = await owners();
     if (before.running && !requestedMode) return { ok: false, reason: "Un moteur est déjà actif. Clique Arrêter avant de redémarrer." };
     if (before.conflict) return { ok: false, reason: "Plusieurs moteurs actifs : utilise Arrêter pour sécuriser la session." };
-    if (before.running && before.mode === requestedMode) return status();
+    if (before.running && before.mode === requestedMode) {
+      const currentMaster = (await chrome.storage.local.get(MASTER))[MASTER] as
+        { enabled?: boolean; manualMode?: ManagedTinderActivity | null } | undefined;
+      if (currentMaster?.enabled && currentMaster.manualMode === requestedMode) return status();
+    }
     const session = await getBackendSession();
     if (!session) return { ok: false, reason: "tnnd_extension_session_missing" };
     const response = await fetch(API + "/api/v1/automation/smart-swipe", {
@@ -187,6 +191,32 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
     });
     if (!selected) return { ok: false, reason:
       "Aucune activité autorisée ici. Vérifie Tinder et les paramètres d'automatisation." };
+    if (requestedMode && !settings.priority.includes(requestedMode))
+      return { ok: false, reason: "Cette activité n'est pas autorisée dans TNND Web." };
+    if (selected === "swipe" && !["/app/recs", "/app/recs/"].includes(new URL(tabs[0].url!).pathname))
+      return { ok: false, reason: "Ouvre Découvrir dans Tinder pour passer à Swipe. Le mode actuel reste actif." };
+    if (selected !== "swipe" && !config.automation.enabled)
+      return { ok: false, reason: "Active les réponses automatiques dans TNND Options pour ce mode." };
+    if (before.running) {
+      const master = (await chrome.storage.local.get(MASTER))[MASTER] as
+        { enabled?: boolean; userId?: string } | undefined;
+      if (!master?.enabled || master.userId !== session.user.id)
+        return { ok: false, reason: "Moteur non géré par ce lanceur ou compte différent. Utilise Arrêter." };
+      if (before.mode === "swipe") {
+        if (!(await safeSwipeHandoff(session, settings)))
+          return { ok: false, reason: "Swipe : tentative en cours ou journal indisponible. Aucune bascule effectuée." };
+      } else {
+        const watcher = (await chrome.storage.local.get(WATCHER_KEY))[WATCHER_KEY];
+        const safety = watcherSwitchSafety(watcher);
+        if (!safety.allowed) return { ok: false, reason: safety.reason };
+      }
+      if (epoch !== commandEpoch) return { ok: false, reason: "Bascule annulée par Arrêter." };
+      const stopped = await stopEverything();
+      if (!stopped.ok || (await owners()).running)
+        return { ok: false, reason: "Arrêt de l'ancien mode non confirmé. Aucun autre moteur lancé." };
+      if (before.mode === "swipe" && !(await safeSwipeHandoff(session, settings)))
+        return { ok: false, reason: "Swipe arrêté, mais une tentative reste incertaine. Aucun autre moteur lancé." };
+    }
     if (epoch !== commandEpoch) return { ok: false, reason: "Démarrage annulé par Stop." };
     let pausedSwipeReason: string | null = null;
     if (selected === "swipe") {
