@@ -51,7 +51,7 @@ export function explainLauncherStartRefusal(reason: string | undefined): Launche
   }
   if (technicalReason === "server_attempt_unresolved") {
     return {
-      message: "Un ancien Like reste sans résultat confirmé. Les nouveaux Likes sont bloqués jusqu'à la revue manuelle dans TNND Web. Aucun Like n'a été relancé.",
+      message: "Une tentative de Like est encore non résolue. Dans TNND Web → Smart Auto Swipe → Recent attempts, vérifie son état : Uncertain peut être examiné manuellement après contrôle sur Tinder ; Reserved nécessite un diagnostic, sans forcer la reprise. Aucun Like n'a été relancé.",
       reviewAttempts: true
     };
   }
