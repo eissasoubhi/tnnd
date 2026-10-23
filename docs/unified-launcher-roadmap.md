@@ -1,14 +1,17 @@
 # TNND — single-button extension rebuild (incremental delivery)
 
 ## Product contract
-The **only extension popup control** is a single button:
+The **primary extension popup control** is a single Start/Stop button:
 - **Démarrer** when every engine is stopped;
 - **Arrêter** when an engine is active.
 
-An unobtrusive, read-only status line indicates actual service-worker ownership,
-plus a plain link to TNND Web for preferences and verbose diagnostics. The
-extension must not duplicate forms, settings, conversation controls, debug
-buttons or large explanations.
+**Phase 4 amendment (2026-10-23):** the user explicitly requested three manual
+activity buttons directly below that primary control: **Swipe | Matches | Chat**.
+These dispatch commands to the same exclusive worker controller; they are not
+settings forms or separate engine controls. Selection stays manual until Stop.
+The next ordinary Démarrer uses saved TNND Web priorities. A read-only status
+line reflects actual service-worker ownership; verbose configuration remains in
+TNND Web. See `docs/user-stories/manual-mode-switch.md`.
 
 TNND Web owns user priorities, quotas, scheduling rules, per-conversation
 budgets, identity and authorization. Do not delete historical PostgreSQL
@@ -60,3 +63,12 @@ priority does not mean the full orchestrator is ready.
 
 **Merge policy:** one behavior slice per PR, mandatory green CI, no deletion of
 user data, no regression gate removed merely to obtain green checks.
+
+## Phase 4 — explicit manual activity override (2026-10-23)
+
+- Add accessible three-button selector to the single launcher beneath Stop.
+- Use only one authenticated worker entrypoint with strict activity validation.
+- For switching, preflight new activity without disrupting the old one, stop the old engine, verify disarm, recheck Swipe ledger, then start the new engine.
+- Lock Matches first-message watch or Chat queue watch while selected; do not change Web priority or database permissions. Auto handoff on Swipe cap stays reserved for automatic (non-manual) mode.
+- Show the *confirmed* active mode after any rejection/restart. Preserve emergency Stop and installed-build version provenance.
+- Unit and fictional-browser CI validate safety. Signed-in acceptance with a real Tinder session is still a separate release gate.
