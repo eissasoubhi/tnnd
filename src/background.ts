@@ -96,6 +96,7 @@ interface AutoState {
 type TrustedContentRequest =
   | { type: "TNND_GET_CONTENT_CONFIG" }
   | { type: "TNND_GET_CHAT_AUTOMATION"; threadKey: string }
+  | { type: "TNND_GET_EXISTING_REPLY_MODE_PERMISSION" }
   | { type: "TNND_GET_BACKEND_AUTO_SEND_PERMISSION"; conversationRef: string }
   | { type: "TNND_GET_FIRST_MESSAGE_PERMISSION"; conversationRef: string }
   | { type: "TNND_GET_NEW_MATCH_SEND_PERMISSION"; conversationRef: string }
@@ -245,6 +246,19 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
     void getContentConfig()
       .then((config) => sendResponse({ ok: true, config }))
       .catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : "Could not load TNND content configuration." }));
+    return true;
+  }
+
+  if (message.type === "TNND_GET_EXISTING_REPLY_MODE_PERMISSION") {
+    // The Matches-only selection prevents unsolicited existing-chat sends,
+    // without disabling manual first messages or modifying per-chat consent.
+    void chrome.storage.local.get("tnnd.globalExistingRunner.v2")
+      .then(stored => {
+        const state = stored["tnnd.globalExistingRunner.v2"] as
+          { enabled?: boolean; mode?: string; manualActivity?: string } | undefined;
+        sendResponse({ ok: true, allowed: !(state?.enabled === true &&
+          state.mode === "watcher" && state.manualActivity === "new-match") });
+      }).catch(() => sendResponse({ ok: false, allowed: false }));
     return true;
   }
 

@@ -8,10 +8,14 @@ type ReachedLimit = { id: "swipe-attempts" | "swipe-sessions"; label: string;
   used: number; max: number; dayKey: string };
 type DailyCounter = { id: ReachedLimit["id"]; label: string;
   used: number | null; max: number | null; dayKey: string | null; reached: boolean };
-type Status = { ok: boolean; running?: boolean; mode?: CurrentMode; reason?: string;
+type Status = { ok: boolean; running?: boolean; mode?: CurrentMode; manualMode?: CurrentMode; reason?: string;
   quotaPaused?: boolean; reachedLimits?: ReachedLimit[]; limitCounters?: DailyCounter[] };
-type Command = "TNND_UNIFIED_STATUS" | "TNND_UNIFIED_START" | "TNND_UNIFIED_STOP";
+type Command = "TNND_UNIFIED_STATUS" | "TNND_UNIFIED_START" | "TNND_UNIFIED_STOP" | "TNND_UNIFIED_SELECT_MODE";
 const toggle = document.getElementById("toggleAutomation") as HTMLButtonElement;
+const modeButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".mode-button"));
+const modeLabels: Record<Exclude<CurrentMode, null>, string> = {
+  swipe: "Swipe", "new-match": "Matches", "active-chat": "Chat"
+};
 const statusEl = document.getElementById("engineStatus") as HTMLElement;
 const feedback = document.getElementById("feedback") as HTMLElement;
 const webSettingsLink = document.getElementById("webSettingsLink") as HTMLAnchorElement;
@@ -111,6 +115,11 @@ function render(value: Status, detail = ""): void {
   toggle.textContent = running ? "Arrêter" : "Démarrer";
   toggle.dataset.mode = running ? "stop" : "start";
   toggle.disabled = busy || !value.ok;
+  for (const button of modeButtons) {
+    const selected = running && button.dataset.activity === value.mode;
+    button.setAttribute("aria-pressed", String(selected));
+    button.disabled = busy || !value.ok;
+  }
   feedback.textContent = detail || (value.ok ? value.reason ?? "" :
     "Impossible de lire l'état du moteur. Recharge l'extension.");
   if (!detail) {
@@ -118,8 +127,8 @@ function render(value: Status, detail = ""): void {
     webSettingsLink.textContent = "Configuration dans TNND Web";
   }
 }
-async function send(type: Command): Promise<Status> {
-  const response = await chrome.runtime.sendMessage({ type }) as Status | undefined;
+async function send(type: Command, mode?: Exclude<CurrentMode, null>): Promise<Status> {
+  const response = await chrome.runtime.sendMessage({ type, ...(mode ? { mode } : {}) }) as Status | undefined;
   if (!response || response.ok !== true) return { ok: false, reason: response?.reason ?? "service_worker_unavailable" };
   return response;
 }
@@ -183,9 +192,50 @@ toggle.addEventListener("click", () => {
       // refresh() increments requestVersion. After a refused Start, the new
       // status poll must NOT leave the only button permanently disabled.
       toggle.disabled = statusEl.dataset.state === "error";
+      for (const button of modeButtons) button.disabled = statusEl.dataset.state === "error";
     }
   })();
 });
+/** One explicit click requests an exclusive transition from the controller.
+ * Status after a refusal remains authoritative; do not optimistically select.
+ */
+for (const button of modeButtons) {
+  button.addEventListener("click", () => {
+    const mode = button.dataset.activity as Exclude<CurrentMode, null>;
+    if (busy || !(mode in modeLabels)) return;
+    busy = true;
+    const ticket = ++requestVersion;
+    toggle.disabled = true;
+    for (const control of modeButtons) control.disabled = true;
+    statusEl.dataset.state = "busy";
+    statusEl.textContent = "Bascule vers " + modeLabels[mode] + "…";
+    feedback.textContent = "Vérification des autorisations et des opérations en cours…";
+    void (async () => {
+      try {
+        const result = await send("TNND_UNIFIED_SELECT_MODE", mode);
+        if (ticket !== requestVersion) return;
+        if (!result.ok) {
+          await refresh();
+          feedback.textContent = "Bascule refusée : " + (result.reason ?? "état non confirmé") +
+            ". Vérifie le mode affiché avant de réessayer.";
+          return;
+        }
+        render(result, result.reason || "Mode " + modeLabels[mode] +
+          " activé. Les quotas et autorisations restent applicables.");
+      } catch {
+        if (ticket === requestVersion) {
+          await refresh();
+          feedback.textContent = "Bascule non confirmée. Vérifie le mode affiché avant de réessayer.";
+        }
+      } finally {
+        busy = false;
+        toggle.disabled = statusEl.dataset.state === "error";
+        for (const control of modeButtons) control.disabled = statusEl.dataset.state === "error";
+      }
+    })();
+  });
+}
+
 renderDailyCounters([]);
 void showBuildVersion();
 void refresh();

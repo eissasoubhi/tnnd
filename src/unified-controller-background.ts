@@ -7,6 +7,7 @@ import { startExistingRunner, stopUnifiedExistingRunner } from "./tinder-global-
 import { readNewMatchState, stopUnifiedNewMatchRunner } from "./tinder-new-match-background";
 import { verifiedDailyQuota } from "./unified-quota-status";
 import { reachedUnifiedLimits, type UnifiedLimitSnapshot } from "./unified-reached-limits";
+import { manualActivity, manualSwipeReleaseSafe, watcherSwitchSafety } from "./unified-manual-mode-policy";
 
 const API = "http://127.0.0.1:4000";
 const MASTER = "tnnd.unifiedLauncher.v1";
@@ -33,7 +34,7 @@ async function owners(): Promise<OwnerSnapshot> {
       (value as { armed?: unknown }).armed === true);
   const existing = stored[WATCHER_KEY] as
     { enabled?: boolean; mode?: string; autoOpenersEnabled?: boolean;
-      preferUnstartedMatches?: boolean } | undefined;
+      preferUnstartedMatches?: boolean; manualActivity?: string } | undefined;
   const matches = await readNewMatchState();
   const active = [swipe, existing?.enabled === true, matches.enabled === true]
     .filter(Boolean).length;
@@ -41,7 +42,8 @@ async function owners(): Promise<OwnerSnapshot> {
     running: active > 0,
     conflict: active > 1,
     mode: swipe ? "swipe" :
-      existing?.enabled ? (existing.autoOpenersEnabled && existing.preferUnstartedMatches ? "new-match" : "active-chat") :
+      existing?.enabled ? (existing.manualActivity === "new-match" ||
+        (existing.autoOpenersEnabled && existing.preferUnstartedMatches) ? "new-match" : "active-chat") :
       matches.enabled ? "new-match" : null
   };
 }
@@ -76,7 +78,7 @@ async function status(): Promise<Record<string, unknown>> {
   const owner = await owners();
   const store = (await chrome.storage.local.get(MASTER))[MASTER] as
     { enabled?: boolean; mode?: ManagedTinderActivity; pausedSwipeReason?: string | null;
-      handoffBlock?: string | null } | undefined;
+      handoffBlock?: string | null; manualMode?: ManagedTinderActivity | null } | undefined;
   // Quotas remain visible even when Start was REFUSED: an exhausted Swipe
   // attempt cap is useful information when the engine is stopped.
   const limitSnapshot = await readReachedLimits();
@@ -90,6 +92,8 @@ async function status(): Promise<Record<string, unknown>> {
   // Never report active based solely on a stale master flag.
   return {
     ok: true, running: owner.running, mode: owner.mode,
+    manualMode: owner.running && !owner.conflict && store?.enabled && store.manualMode === owner.mode
+      ? store.manualMode : null,
     quotaPaused: quotaReached, quota: quotaReached ? quota : null,
     reachedLimits: limitSnapshot?.reached ?? [],
     limitCounters: limitSnapshot?.counters ?? [],
@@ -134,12 +138,34 @@ async function stop(epoch: number): Promise<Record<string, unknown>> {
   if (observed.running) return { ok: false, reason: "Un moteur est encore actif; arrêt non confirmé." };
   return { ok: true, running: false, mode: null };
 }
-async function start(epoch: number): Promise<Record<string, unknown>> {
-  if (working) return { ok: false, reason: "Démarrage déjà en cours." };
+/** Do not switch away from Swipe unless all authoritative Like claims are settled. */
+async function safeSwipeHandoff(
+  session: { token: string; user: { id: string } },
+  settings: SmartAutoSwipeConfig & { timeZone: string }
+): Promise<boolean> {
+  try {
+    const response = await fetch(API + "/api/v1/automation/smart-swipe/attempts/summary", {
+      headers: { authorization: "Bearer " + session.token }, cache: "no-store"
+    });
+    if (!response.ok) return false;
+    const summary = await response.json();
+    const key = "tnnd.smartSwipeDailyProgress.v1:" + session.user.id;
+    const stored = (await chrome.storage.local.get(key))[key];
+    return manualSwipeReleaseSafe(settings, summary, stored, Date.now());
+  } catch { return false; }
+}
+async function start(epoch: number, requestedMode: ManagedTinderActivity | null = null): Promise<Record<string, unknown>> {
+  if (working || handoffBusy) return { ok: false, reason: "Transition déjà en cours." };
   working = true;
   try {
     const before = await owners();
-    if (before.running) return { ok: false, reason: "Un moteur est déjà actif. Clique Arrêter avant de redémarrer." };
+    if (before.running && !requestedMode) return { ok: false, reason: "Un moteur est déjà actif. Clique Arrêter avant de redémarrer." };
+    if (before.conflict) return { ok: false, reason: "Plusieurs moteurs actifs : utilise Arrêter pour sécuriser la session." };
+    if (before.running && before.mode === requestedMode) {
+      const currentMaster = (await chrome.storage.local.get(MASTER))[MASTER] as
+        { enabled?: boolean; manualMode?: ManagedTinderActivity | null } | undefined;
+      if (currentMaster?.enabled && currentMaster.manualMode === requestedMode) return status();
+    }
     const session = await getBackendSession();
     if (!session) return { ok: false, reason: "tnnd_extension_session_missing" };
     const response = await fetch(API + "/api/v1/automation/smart-swipe", {
@@ -158,13 +184,39 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
     if (tabs.length !== 1 || !tabs[0].id)
       return { ok: false, reason: "Une seule fenêtre Tinder est nécessaire." };
     const config = await getConfig();
-    let selected = initialUnifiedActivity(settings, {
+    let selected = requestedMode ?? initialUnifiedActivity(settings, {
       tinderTabPresent: true,
       discoveryVisible: new URL(tabs[0].url!).pathname.replace(/\/+$/, "") === "/app/recs",
       automaticRepliesEnabled: config.automation.enabled
     });
     if (!selected) return { ok: false, reason:
       "Aucune activité autorisée ici. Vérifie Tinder et les paramètres d'automatisation." };
+    if (requestedMode && !settings.priority.includes(requestedMode))
+      return { ok: false, reason: "Cette activité n'est pas autorisée dans TNND Web." };
+    if (selected === "swipe" && !["/app/recs", "/app/recs/"].includes(new URL(tabs[0].url!).pathname))
+      return { ok: false, reason: "Ouvre Découvrir dans Tinder pour passer à Swipe. Le mode actuel reste actif." };
+    if (selected !== "swipe" && !config.automation.enabled)
+      return { ok: false, reason: "Active les réponses automatiques dans TNND Options pour ce mode." };
+    if (before.running) {
+      const master = (await chrome.storage.local.get(MASTER))[MASTER] as
+        { enabled?: boolean; userId?: string } | undefined;
+      if (!master?.enabled || master.userId !== session.user.id)
+        return { ok: false, reason: "Moteur non géré par ce lanceur ou compte différent. Utilise Arrêter." };
+      if (before.mode === "swipe") {
+        if (!(await safeSwipeHandoff(session, settings)))
+          return { ok: false, reason: "Swipe : tentative en cours ou journal indisponible. Aucune bascule effectuée." };
+      } else {
+        const watcher = (await chrome.storage.local.get(WATCHER_KEY))[WATCHER_KEY];
+        const safety = watcherSwitchSafety(watcher);
+        if (!safety.allowed) return { ok: false, reason: safety.reason };
+      }
+      if (epoch !== commandEpoch) return { ok: false, reason: "Bascule annulée par Arrêter." };
+      const stopped = await stopEverything();
+      if (!stopped.ok || (await owners()).running)
+        return { ok: false, reason: "Arrêt de l'ancien mode non confirmé. Aucun autre moteur lancé." };
+      if (before.mode === "swipe" && !(await safeSwipeHandoff(session, settings)))
+        return { ok: false, reason: "Swipe arrêté, mais une tentative reste incertaine. Aucun autre moteur lancé." };
+    }
     if (epoch !== commandEpoch) return { ok: false, reason: "Démarrage annulé par Stop." };
     let pausedSwipeReason: string | null = null;
     if (selected === "swipe") {
@@ -179,6 +231,8 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
       const quota = verifiedDailyQuota(settings, await summaryResponse.json(), Date.now());
       if (!quota) return { ok: false, reason: "swipe_quota_unavailable" };
       if (quota.reached) {
+        if (requestedMode === "swipe") return { ok: false, reason:
+          "Quota Swipe atteint pour aujourd'hui. Choisis Matches ou Chat si autorisé." };
         const next = fallbackAfterBlockedSwipe(settings, "daily_cap", config.automation.enabled);
         if (!next) return {
           ok: false,
@@ -199,6 +253,7 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
       if (result.ok !== true || result.armed !== true) {
         const reason = typeof result.reason === "string" ? result.reason : "swipe_start_unknown";
         const next = fallbackAfterBlockedSwipe(settings, reason, config.automation.enabled);
+        if (requestedMode) return { ok: false, reason };
         if (!next) return { ok: false, reason };
         // A refusal due to an unresolved old Like is NOT permission to
         // start a different engine if Swipe was armed concurrently.
@@ -216,7 +271,7 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
       // Swipe's original quota/uncertain attempts remain untouched; no Likes.
       if (epoch !== commandEpoch) return { ok: false, reason: "Démarrage annulé par Stop." };
       const result = await startExistingRunner(false, "watcher", selected === "new-match",
-        selected === "new-match");
+        selected === "new-match", requestedMode === "new-match" || requestedMode === "active-chat" ? requestedMode : null);
       if (!result.enabled || result.mode !== "watcher")
         return { ok: false, reason: "Surveillance non confirmée." };
     }
@@ -226,12 +281,12 @@ async function start(epoch: number): Promise<Record<string, unknown>> {
     }
     await chrome.storage.local.set({ [MASTER]: {
       enabled: true, mode: selected, userId: session.user.id, startedAt: Date.now(),
-      pausedSwipeReason
+      pausedSwipeReason, manualMode: requestedMode
     } });
     if (selected === "swipe") await chrome.alarms.create(CAP_ALARM, { periodInMinutes: 1 });
     else await chrome.alarms.clear(CAP_ALARM);
     return {
-      ok: true, running: true, mode: selected,
+      ok: true, running: true, mode: selected, manualMode: requestedMode,
       reason: pausedSwipeReason === "daily_cap"
         ? "Quota Swipe atteint. Phase 1 : nouveaux matchs ; ensuite conversations en attente."
         : pausedSwipeReason
@@ -254,8 +309,9 @@ async function handoffOnReachedCap(): Promise<void> {
   const epoch = commandEpoch;
   try {
     const master = (await chrome.storage.local.get(MASTER))[MASTER] as
-      { enabled?: boolean; mode?: ManagedTinderActivity; userId?: string } | undefined;
-    if (!master?.enabled || master.mode !== "swipe" || !master.userId) {
+      { enabled?: boolean; mode?: ManagedTinderActivity; userId?: string;
+        manualMode?: ManagedTinderActivity | null } | undefined;
+    if (!master?.enabled || master.mode !== "swipe" || !master.userId || master.manualMode) {
       await chrome.alarms.clear(CAP_ALARM);
       return;
     }
@@ -343,7 +399,7 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
   if (!message || typeof message !== "object") return false;
   const type = (message as { type?: unknown }).type;
-  if (!["TNND_UNIFIED_START", "TNND_UNIFIED_STOP", "TNND_UNIFIED_STATUS"].includes(String(type))) return false;
+  if (!["TNND_UNIFIED_START", "TNND_UNIFIED_STOP", "TNND_UNIFIED_STATUS", "TNND_UNIFIED_SELECT_MODE"].includes(String(type))) return false;
   if (sender.id !== chrome.runtime.id ||
       sender.url !== `chrome-extension://${chrome.runtime.id}/launcher.html`) {
     respond({ ok: false, reason: "launcher_only" }); return false;
@@ -352,10 +408,14 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
     void status().then(respond).catch(() => respond({ ok: false, reason: "status_unavailable" }));
     return true;
   }
+  if (type === "TNND_UNIFIED_SELECT_MODE" && !manualActivity((message as { mode?: unknown }).mode)) {
+    respond({ ok: false, reason: "Mode manuel invalide." }); return false;
+  }
   // An incoming Stop invalidates a pending Start immediately, even if a
   // service-worker transition queue is busy with another older operation.
   const epoch = ++commandEpoch;
-  void (type === "TNND_UNIFIED_STOP" ? stop(epoch) : start(epoch))
+  void (type === "TNND_UNIFIED_STOP" ? stop(epoch) : start(epoch,
+      type === "TNND_UNIFIED_SELECT_MODE" ? manualActivity((message as { mode?: unknown }).mode) : null))
     .then(respond).catch(() => respond({ ok: false, reason: "command_failed" }));
   return true;
 });

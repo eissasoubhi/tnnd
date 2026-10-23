@@ -146,6 +146,16 @@ async function backendAllowsAutomaticReply(conversationRef: string): Promise<boo
   return response?.ok === true && response.allowed === true;
 }
 
+/** Manual Matches suppresses unsolicited existing-chat replies but does not
+ * change the separate, verified first-message worker permissions.
+ */
+async function existingRepliesAllowedByMode(): Promise<boolean> {
+  const result = await sendRuntimeMessage<{ ok: boolean; allowed?: boolean }>({
+    type: "TNND_GET_EXISTING_REPLY_MODE_PERMISSION"
+  });
+  return result?.ok === true && result.allowed === true;
+}
+
 async function getChatAutomationEnabled(threadKey: string): Promise<boolean | null> {
   const response = await sendRuntimeMessage<{ ok: boolean; enabled?: boolean; error?: string }>({ type: "TNND_GET_CHAT_AUTOMATION", threadKey });
   if (!response) return null;
@@ -529,6 +539,10 @@ async function scan(): Promise<void> {
       }
       reportExistingRunner("incoming", "New reply in the current conversation.");
     }
+    if (!await existingRepliesAllowedByMode()) {
+      reportExistingRunner("skipped", "Manual Matches mode selected; existing-chat reply deferred.");
+      return;
+    }
     if (!await backendAllowsAutomaticReply(conversationRef)) {
       reportExistingRunner("skipped", "AI management not authorized by TNND backend.");
       return;
@@ -599,7 +613,7 @@ async function scan(): Promise<void> {
 
     const currentSnapshot = adapter.read();
     if (!currentSnapshot || currentSnapshot.latestIncomingKey !== snapshot.latestIncomingKey || currentSnapshot.threadKey !== snapshot.threadKey) return;
-    if (currentConversationRef() !== conversationRef || !await backendAllowsAutomaticReply(conversationRef)) return;
+    if (currentConversationRef() !== conversationRef || !await existingRepliesAllowedByMode() || !await backendAllowsAutomaticReply(conversationRef)) return;
     const stillEnabled = await getChatAutomationEnabled(currentSnapshot.threadKey);
     if (stillEnabled !== true) return;
 
@@ -618,6 +632,7 @@ async function scan(): Promise<void> {
     // Re-authorize immediately before the irreversible send operation.
     if (currentConversationRef() !== conversationRef
       || tinderThreadKeyFromPath(location.pathname) !== currentSnapshot.threadKey
+      || !await existingRepliesAllowedByMode()
       || !await backendAllowsAutomaticReply(conversationRef) || await autoReplyPausedAfterGlobalStop(conversationRef)) return;
     if (await getChatAutomationEnabled(currentSnapshot.threadKey) !== true) return;
     // A match may have sent a newer message or the user may have replied
@@ -680,6 +695,7 @@ async function scan(): Promise<void> {
           || fresh.latestIncomingKey !== currentSnapshot.latestIncomingKey
           || !sameOpenerThreadUninterrupted(adapter.readVisibleMessages(), bubbles[index-1])
           || !freshConfig?.automation.enabled
+          || !await existingRepliesAllowedByMode()
           || !await backendAllowsAutomaticReply(conversationRef)
           || await autoReplyPausedAfterGlobalStop(conversationRef)
           || await getChatAutomationEnabled(currentSnapshot.threadKey) !== true) {

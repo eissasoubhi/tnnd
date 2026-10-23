@@ -204,6 +204,30 @@ async function run() {
     results.push({ label: "Repeated Smart Swipe Stop is idempotent", passed: true });
 
     await capture(cdp, "controls-fail-closed");
+
+    // The current toolbar entry is launcher.html, not the legacy popup.
+    // Exercise the three *real* launcher buttons through the MV3 worker while
+    // intentionally signed out: no Tinder visit, Like, or chat send.
+    await cdp.send("Page.navigate", {
+      url: "chrome-extension://" + extensionId + "/launcher.html"
+    });
+    await waitFor(cdp,
+      'document.readyState === "complete" && document.querySelectorAll(".mode-button").length === 3 && document.querySelector("#toggleAutomation")');
+    await waitFor(cdp, 'document.querySelector("#toggleAutomation").disabled === false');
+    await check(cdp, "Launcher has Swipe, Matches, Chat under primary control",
+      'Array.from(document.querySelectorAll(".mode-button")).map(x => x.dataset.activity).join(",")',
+      v => v === "swipe,new-match,active-chat");
+    await check(cdp, "No mode is optimistically selected on signed-out startup",
+      'Array.from(document.querySelectorAll(".mode-button")).every(x => x.getAttribute("aria-pressed") === "false")');
+    for (const mode of ["swipe", "new-match", "active-chat"]) {
+      await cdp.evaluate('document.querySelector("#feedback").textContent=""');
+      await cdp.evaluate('Array.from(document.querySelectorAll(".mode-button")).find(x=>x.dataset.activity===' + JSON.stringify(mode) + ').click()');
+      await waitFor(cdp, 'document.querySelector("#feedback")?.textContent?.includes("Bascule refusée")');
+      await check(cdp, "Worker denies signed-out manual " + mode + " without arming any engine",
+        'chrome.runtime.sendMessage({type:"TNND_UNIFIED_STATUS"})',
+        state => state?.ok === true && state.running === false);
+    }
+    await capture(cdp, "launcher-manual-modes-fail-closed");
     await writeFile(join(output, "report.json"), JSON.stringify({
       kind: "tnnd-real-extension-popup-to-worker-contract",
       syntheticOnly: true,

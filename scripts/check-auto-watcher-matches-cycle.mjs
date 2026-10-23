@@ -60,7 +60,7 @@ test("quota-triggered match-first watcher drains only eligible first messages be
   assert.match(runner, /preferUnstartedMatches: mode === "watcher" && autoOpenersEnabled && preferUnstartedMatches/);
   assert.match(runner, /state\.mode === "watcher" && state\.preferUnstartedMatches/);
   assert.match(runner, /await scanMatchesCycle\(\{ \.\.\.current, pendingReplies \}\)/);
-  assert.match(runner, /preferUnstartedMatches: live\.preferUnstartedMatches && !matchesExhausted/);
+  assert.match(runner, /preferUnstartedMatches: live\.preferUnstartedMatches && \(!matchesExhausted \|\| live\.manualActivity === "new-match"\)/);
   assert.match(runner, /const stillPending = hasUnattemptedVisibleMatches\(/);
   assert.match(runner, /!stillPending\);/);
   for (const message of [
