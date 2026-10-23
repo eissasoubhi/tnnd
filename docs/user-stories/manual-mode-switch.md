@@ -25,7 +25,7 @@ L'ordre automatique configuré dans TNND Web demeure inchangé. Un choix manuel 
 - **Modes internes** : Swipe = `swipe`, Matches = `new-match`, Chat = `active-chat`. Pas de quatrième moteur ; le watcher réutilise son architecture existante.
 - **Contrôle d'accès** : nouvelle commande `TNND_UNIFIED_SELECT_MODE`, acceptée uniquement du popup du lanceur ; entrée strictement typée. Web garde l'autorité sur paramètres, comptes, quotas et autorisations.
 - **Sécurité** : deux vérifications du journal Swipe pour une bascule Swipe → autre activité, avant puis après désarmement durable. Si la seconde échoue, Swipe reste arrêté et aucun nouveau moteur ne démarre. Le manuel ne relance pas des Likes incertains.
-- **Mode Matches** : lorsqu'il n'y a plus de match éligible, rester en veille Matches, selon la cadence existante, plutôt que basculer automatiquement sur Chat. Aucun contournement de la limite de premiers messages.
+- **Mode Matches** : lorsqu'il n'y a plus de match éligible, rester en veille Matches, selon la cadence existante, plutôt que basculer automatiquement sur Chat. Bloquer les réponses automatiques aux conversations existantes avant génération et à nouveau avant chaque envoi ; préserver les premiers messages sous leurs autorisations séparées. Aucun contournement de la limite de premiers messages.
 - **Mode Chat** : pas d'inspection périodique des Matches en période d'attente. Les messages dans une conversation déjà ouverte sont toujours soumis aux contrôles de sécurité habituels.
 - **Déploiement** : mise à jour synchronisée de `package.json` et `manifest.json` vers 0.2.31 ; reconstruction et recharge Chrome requises.
 
@@ -39,8 +39,9 @@ L'ordre automatique configuré dans TNND Web demeure inchangé. Un choix manuel 
 6. Watcher en cours de génération/envoi/verification Match : refuser et conserver le mode initial.
 7. Matches épuisés : ne pas dériver vers Chat ; Chat : ne pas relancer la détection périodique des matchs.
 8. Stop, fermeture/réouverture popup, redémarrage du worker : mode confirmé lu du stockage ; pas d'activité fantôme.
-9. Exécution des tests de politique et de la CI standard ; essais sur un compte Tinder réel **non couverts par les tests synthétiques**.
+9. Matches : aucun envoi automatique en réponse à un chat existant, même après une attente Gemini ou entre deux bulles ; les premiers messages autorisés restent indépendants.
+10. Exécution des tests de politique et de la CI standard ; essais sur un compte Tinder réel **non couverts par les tests synthétiques**.
 
 ## Périmètre exclu / vigilance
 
-Le changement manuel ne résout ni un backend arrêté, ni une connexion TNND invalide, ni l'absence de conversations synchronisées. Il n'accélère pas les cadences et ne force pas une réponse lorsqu'elle est interdite. Vérifier sur environnement contrôlé l'effet des événements de messages reçus dans une conversation déjà ouverte pendant le mode Matches : le traitement global des messages du content script est une règle séparée et ne doit pas être présenté comme désactivé sans preuve.
+Le changement manuel ne résout ni un backend arrêté, ni une connexion TNND invalide, ni l'absence de conversations synchronisées. Il n'accélère pas les cadences et ne force pas une réponse lorsqu'elle est interdite. Vérifier en navigateur autorisé que le nouveau garde-fou du service worker empêche effectivement toute réponse automatique à un chat existant pendant Matches, y compris après attente du modèle et entre plusieurs bulles. Les notifications de messages et la synchronisation en lecture seule restent possibles.
