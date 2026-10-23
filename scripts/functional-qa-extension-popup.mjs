@@ -221,7 +221,7 @@ async function run() {
       'Array.from(document.querySelectorAll(".mode-button")).every(x => x.getAttribute("aria-pressed") === "false")');
     for (const mode of ["swipe", "new-match", "active-chat"]) {
       await cdp.evaluate('document.querySelector("#feedback").textContent=""');
-      await cdp.evaluate('document.querySelector(".mode-button[data-activity=' + JSON.stringify(mode) + ']").click()');
+      await cdp.evaluate('Array.from(document.querySelectorAll(".mode-button")).find(x=>x.dataset.activity===' + JSON.stringify(mode) + ').click()');
       await waitFor(cdp, 'document.querySelector("#feedback")?.textContent?.includes("Bascule refusée")');
       await check(cdp, "Worker denies signed-out manual " + mode + " without arming any engine",
         'chrome.runtime.sendMessage({type:"TNND_UNIFIED_STATUS"})',
