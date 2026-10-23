@@ -42,11 +42,12 @@ test("a watched chat or match processing is never interrupted", () => {
   const idle = { enabled: true, phase: "waiting", phaseDetail: "Watching",
     matchPhase: "idle", activeConversationRef: null, activeConversationUntil: null };
   assert.equal(watcherSwitchSafety(idle, time).allowed, true);
-  for (const phase of ["loading", "incoming", "generating", "sending"]) {
+  for (const phase of ["starting", "checking", "loading", "incoming", "generating", "sending", "error"]) {
     assert.equal(watcherSwitchSafety({ ...idle, phase }, time).allowed, false);
   }
   assert.equal(watcherSwitchSafety({ ...idle, phase: "waiting",
     phaseDetail: "Unanswered incoming message found; waiting for reply" }, time).allowed, false);
+  assert.equal(watcherSwitchSafety({ ...idle, phaseDetail: "Current chat is busy replying; switching delayed until safe." }, time).allowed, false);
   assert.equal(watcherSwitchSafety({ ...idle, matchPhase: "verifying" }, time).allowed, false);
   assert.equal(watcherSwitchSafety({ ...idle, matchPhase: "opener" }, time).allowed, false);
   assert.equal(watcherSwitchSafety({ ...idle, activeConversationRef: "ref",
