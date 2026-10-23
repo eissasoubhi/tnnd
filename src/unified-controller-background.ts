@@ -231,6 +231,8 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
       const quota = verifiedDailyQuota(settings, await summaryResponse.json(), Date.now());
       if (!quota) return { ok: false, reason: "swipe_quota_unavailable" };
       if (quota.reached) {
+        if (requestedMode === "swipe") return { ok: false, reason:
+          "Quota Swipe atteint pour aujourd'hui. Choisis Matches ou Chat si autorisé." };
         const next = fallbackAfterBlockedSwipe(settings, "daily_cap", config.automation.enabled);
         if (!next) return {
           ok: false,
