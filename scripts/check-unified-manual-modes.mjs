@@ -59,9 +59,9 @@ test("a watched chat or match processing is never interrupted", () => {
 
 test("launcher controls and worker route all manual commands through verified exclusive transition", async () => {
   const read = path => readFile(new URL("../" + path, import.meta.url), "utf8");
-  const [html, launcher, worker, watcher] = await Promise.all([
+  const [html, launcher, worker, watcher, background, content] = await Promise.all([
     "public/launcher.html", "src/launcher.ts", "src/unified-controller-background.ts",
-    "src/tinder-global-existing-runner.ts"
+    "src/tinder-global-existing-runner.ts", "src/background.ts", "src/content.ts"
   ].map(read));
   assert.match(html, /id="toggleAutomation"/);
   for (const mode of ["swipe", "new-match", "active-chat"]) {
@@ -81,4 +81,8 @@ test("launcher controls and worker route all manual commands through verified ex
   assert.match(watcher, /manualActivity === "new-match"/);
   assert.match(watcher, /state\.manualActivity !== "active-chat"/);
   assert.match(watcher, /manualActivity: null/);
+  assert.match(background, /TNND_GET_EXISTING_REPLY_MODE_PERMISSION/);
+  assert.match(background, /state\.manualActivity === "new-match"/);
+  assert.match(content, /existingRepliesAllowedByMode\(\)/);
+  assert.match(content, /Manual Matches mode selected; existing-chat reply deferred/);
 });
