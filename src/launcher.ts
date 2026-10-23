@@ -216,8 +216,22 @@ for (const button of modeButtons) {
         if (ticket !== requestVersion) return;
         if (!result.ok) {
           await refresh();
-          feedback.textContent = "Bascule refusée : " + (result.reason ?? "état non confirmé") +
-            ". Vérifie le mode affiché avant de réessayer.";
+          const guidance = explainLauncherStartRefusal(result.reason);
+          feedback.textContent = guidance.reviewAttempts || guidance.connectAccount ||
+            guidance.extensionSettings
+            ? guidance.message
+            : "Bascule refusée : " + (result.reason ?? "état non confirmé") +
+              ". Vérifie le mode affiché avant de réessayer.";
+          if (guidance.reviewAttempts) {
+            webSettingsLink.href = "http://localhost:5173/#smart-swipe-activity";
+            webSettingsLink.textContent = "Examiner les tentatives dans TNND Web";
+          } else if (guidance.connectAccount) {
+            webSettingsLink.href = chrome.runtime.getURL("connect.html");
+            webSettingsLink.textContent = "Connecter mon compte à l'extension";
+          } else if (guidance.extensionSettings) {
+            webSettingsLink.href = chrome.runtime.getURL("options.html");
+            webSettingsLink.textContent = "Vérifier les autorisations de l'extension";
+          }
           return;
         }
         render(result, result.reason || "Mode " + modeLabels[mode] +
