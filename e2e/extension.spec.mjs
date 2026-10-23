@@ -171,7 +171,8 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     try {
       await worker.evaluate(() => chrome.storage.local.remove("tnnd.backendSession"));
       await launcher.goto(`chrome-extension://${extensionId}/launcher.html`);
-      await expect(launcher.locator("button")).toHaveCount(1);
+      await expect(launcher.locator("button")).toHaveCount(4);
+       await expect(launcher.locator(".mode-button")).toHaveCount(3);
       await launcher.locator("#toggleAutomation").click();
       await expect(launcher.locator("#engineStatus")).toContainText("Arrêté");
       await expect(launcher.locator("#feedback")).toContainText("L'extension Chrome n'est pas connectée");
@@ -211,13 +212,14 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     }
   });
 
-  test("minimal default popup has one real button and starts/stops the initial Web-priority engine", async () => {
+  test("default popup has one primary Stop and three manual buttons while preserving Web-priority engine", async () => {
     const simple = await context.newPage();
     try {
       await simple.goto(`chrome-extension://${extensionId}/launcher.html`);
       expect(await simple.evaluate(() => chrome.runtime.getManifest().action.default_popup))
         .toBe("launcher.html");
-      await expect(simple.locator("button")).toHaveCount(1);
+      await expect(simple.locator("button")).toHaveCount(4);
+       await expect(simple.locator(".mode-button")).toHaveCount(3);
       const installedInfo = JSON.parse(await readFile(resolve("dist/BUILD-INFO.json"), "utf8"));
       const currentCommit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
       const installedVersion = JSON.parse(await readFile(resolve("public/manifest.json"), "utf8")).version;
@@ -308,7 +310,8 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(simple.locator("#reachedLimitsList")).toContainText("2 / 2");
       await expect(simple.locator("#reachedLimitsList")).toContainText("Sessions Auto Swipe");
       await expect(simple.locator("#reachedLimitsList li")).toHaveCount(2);
-      await expect(simple.locator("button")).toHaveCount(1);
+      await expect(simple.locator("button")).toHaveCount(4);
+       await expect(simple.locator(".mode-button")).toHaveCount(3);
       await expect(simple.locator("#reachedLimitsNote")).toContainText("sans preuve d'acceptation Tinder");
       await expect(simple.locator("#toggleAutomation")).toHaveText("Arrêter");
       expect(requests.filter(x =>
