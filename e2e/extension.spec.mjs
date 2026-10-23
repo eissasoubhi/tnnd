@@ -57,7 +57,9 @@ const api = createServer(async (req, res) => {
   if (path === "/api/v1/automation/smart-swipe/attempts/reconciliation") return json(res, 200, {
     dayKey: url.searchParams.get("dayKey"), attempts: ledger.attemptsToday,
     uiObserved: ledger.uiObservedToday, reviewedUnknown: 0,
-    unresolvedAcrossDays: ledger.unresolvedAttempts
+    // The signed-in API always supplies this distinct resolved status.
+    // Missing fields are intentionally rejected by the extension.
+    notClicked: 0, unresolvedAcrossDays: ledger.unresolvedAttempts
   });
   if (path === "/api/v1/automation/smart-swipe/attempts/rearm") return json(res, 200, { ok: true });
   if (path === "/api/v1/automation/smart-swipe/attempts/claim") {
