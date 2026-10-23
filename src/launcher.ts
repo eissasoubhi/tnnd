@@ -264,7 +264,7 @@ webSettingsLink.addEventListener("click", event => {
   void (async () => {
     try {
       const candidates = await chrome.tabs.query({
-        url: ["http://localhost:5173/*", "http://127.0.0.1:5173/*"]
+        url: ["http://localhost/*", "http://127.0.0.1/*"]
       });
       const tab = pickTnndWebTab(candidates, chrome.extension.inIncognitoContext);
       if (tab && typeof tab.id === "number" && tab.url) {
