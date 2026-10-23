@@ -12,7 +12,7 @@ type Status = { ok: boolean; running?: boolean; mode?: CurrentMode; manualMode?:
   quotaPaused?: boolean; reachedLimits?: ReachedLimit[]; limitCounters?: DailyCounter[] };
 type Command = "TNND_UNIFIED_STATUS" | "TNND_UNIFIED_START" | "TNND_UNIFIED_STOP" | "TNND_UNIFIED_SELECT_MODE";
 const toggle = document.getElementById("toggleAutomation") as HTMLButtonElement;
-const modeButtons = [...document.querySelectorAll<HTMLButtonElement>(".mode-button")];
+const modeButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".mode-button"));
 const modeLabels: Record<Exclude<CurrentMode, null>, string> = {
   swipe: "Swipe", "new-match": "Matches", "active-chat": "Chat"
 };
