@@ -58,6 +58,9 @@ test("Chrome launcher intercepts only local Web links and never copies tokens be
   assert.match(launcher, /webSettingsLink\.addEventListener\("click"/);
   assert.match(launcher, /pickTnndWebTab\(candidates/);
   assert.match(launcher, /chrome\.tabs\.update\(tab\.id/);
+  // chrome.tabs.query uses extension match patterns: hosts cannot contain ports.
+  // The trusted URL parser, not the query pattern, enforces port 5173.
+  assert.match(launcher, /url: \["http:\/\/localhost\/\*", "http:\/\/127\.0\.0\.1\/\*"\]/);
   assert.match(launcher, /chrome\.windows\.update\(tab\.windowId/);
   assert.match(launcher, /chrome\.tabs\.create\(\{ url: DEFAULT_TNND_WEB_ORIGIN/);
   assert.match(launcher, /tnndWebSection\(webSettingsLink\.href\)/);
