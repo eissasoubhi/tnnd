@@ -84,16 +84,16 @@ test("popup keeps essential stop controls reachable and legacy starts optional",
   assert.doesNotMatch(popup, /\.quick-actions\{position:sticky/);
 });
 
-test("toolbar launcher keeps one primary Start/Stop plus three manual mode actions", () => {
+test("toolbar launcher keeps global Stop plus three accessible mode tabs and actions", () => {
   const manifest = JSON.parse(read("public/manifest.json"));
   const launcher = read("public/launcher.html");
   const controller = read("src/launcher.ts");
   assert.equal(manifest.action.default_popup, "launcher.html");
-  assert.equal(launcher.split("<button ").length - 1, 4);
+  assert.equal(launcher.split("<button ").length - 1, 7);
   for (const mode of ["swipe", "new-match", "active-chat"]) {
     assert.match(launcher, new RegExp('data-activity="' + mode + '"'));
   }
-  assert.match(launcher, /aria-pressed="false"/);
+  assert.match(launcher, /aria-selected="false"/);
   assert.match(launcher, /id="toggleAutomation"/);
   assert.match(launcher, /TNND Web/);
   assert.doesNotMatch(launcher, /id="startReplyWatcher"|id="startSmartSwipeRuntime"/);
@@ -107,11 +107,11 @@ test("missing extension session still uses credential page, without credentials 
   const connectPage = read("public/connect.html");
   const handler = read("src/launcher.ts");
   const auth = read("src/connect.ts");
-  assert.equal(launcher.split("<button ").length - 1, 4);
+  assert.equal(launcher.split("<button ").length - 1, 7);
   for (const mode of ["swipe", "new-match", "active-chat"]) {
     assert.match(launcher, new RegExp('data-activity="' + mode + '"'));
   }
-  assert.match(launcher, /aria-pressed="false"/);
+  assert.match(launcher, /aria-selected="false"/);
   assert.ok(connectPage.includes('id="loginForm"'));
   assert.ok(connectPage.includes('type="password"'));
   assert.ok(auth.includes('loginBackend(input)'));
