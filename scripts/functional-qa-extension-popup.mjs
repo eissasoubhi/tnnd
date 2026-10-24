@@ -217,11 +217,12 @@ async function run() {
     await check(cdp, "Launcher has Swipe, Matches, Chat under primary control",
       'Array.from(document.querySelectorAll(".mode-button")).map(x => x.dataset.activity).join(",")',
       v => v === "swipe,new-match,active-chat");
-    await check(cdp, "No mode is optimistically selected on signed-out startup",
-      'Array.from(document.querySelectorAll(".mode-button")).every(x => x.getAttribute("aria-pressed") === "false")');
+    await check(cdp, "Swipe is displayed by default, without starting an engine",
+      'document.querySelector("#tabSwipe")?.getAttribute("aria-selected") === "true" && Array.from(document.querySelectorAll(".mode-button")).slice(1).every(x => x.getAttribute("aria-selected") === "false")');
     for (const mode of ["swipe", "new-match", "active-chat"]) {
       await cdp.evaluate('document.querySelector("#feedback").textContent=""');
       await cdp.evaluate('Array.from(document.querySelectorAll(".mode-button")).find(x=>x.dataset.activity===' + JSON.stringify(mode) + ').click()');
+      await cdp.evaluate('Array.from(document.querySelectorAll(".mode-action")).find(x=>x.dataset.activity===' + JSON.stringify(mode) + ').click()');
       await waitFor(cdp, 'document.querySelector("#feedback")?.textContent?.includes("connectée")');
       await check(cdp, "Signed-out manual " + mode + " shows actionable connection guidance",
         'document.querySelector("#webSettingsLink")?.getAttribute("href")',
