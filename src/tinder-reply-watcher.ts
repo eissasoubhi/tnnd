@@ -1,20 +1,28 @@
 import { shouldKeepConversationInFocus, type ConversationActivity } from "./tinder-conversation-activity.ts";
-import type { ExistingThreadIndex } from "./tinder-existing-thread-index";
+import { RECHECK_IDLE_MS, type ExistingThreadIndex, type IndexedThread } from "./tinder-existing-thread-index.ts";
 
 /** Watch mode only responds to positive evidence, never a broad sweep.
  * Incoming from the saved backend is trustworthy only until that exact
  * version has been checked. Unread DOM hints can override stale backend
  * outgoing state. The actual opened chat is revalidated before any send.
  */
+/** Revisit a checked incoming thread only when its scheduled cooldown has
+ * elapsed. This does NOT permit a send: content.ts still verifies fresh Tinder
+ * direction, backend authorization and its durable processed/send claim.
+ */
+function actionableWatcherCandidate(entry: IndexedThread): boolean {
+  if (entry.queuedAt === null) return false;
+  if (entry.unreadAt !== null) return true;
+  if (entry.lastMessageDirection !== "incoming" || entry.serverMessageAt === null) return false;
+  if (entry.checkedMessageAt !== entry.serverMessageAt) return true;
+  if (!entry.lastCheckedAt) return false;
+  const queued = Date.parse(entry.queuedAt);
+  const checked = Date.parse(entry.lastCheckedAt);
+  return Number.isFinite(queued) && Number.isFinite(checked) &&
+    queued - checked >= RECHECK_IDLE_MS;
+}
 export function nextWatchedReply(state: ExistingThreadIndex): string | null {
-  const pending = state.threads.filter(entry =>
-    entry.queuedAt !== null
-    && (entry.unreadAt !== null || (
-      entry.lastMessageDirection === "incoming" &&
-      entry.serverMessageAt !== null &&
-      entry.checkedMessageAt !== entry.serverMessageAt
-    ))
-  );
+  const pending = state.threads.filter(actionableWatcherCandidate);
   pending.sort((a,b) =>
     Number(b.unreadAt !== null) - Number(a.unreadAt !== null)
     || (a.queuedAt ?? "").localeCompare(b.queuedAt ?? "")
@@ -24,13 +32,7 @@ export function nextWatchedReply(state: ExistingThreadIndex): string | null {
 }
 
 export function pendingWatchedReplies(state: ExistingThreadIndex): number {
-  return state.threads.filter(entry =>
-    entry.queuedAt !== null && (
-      entry.unreadAt !== null || (
-        entry.lastMessageDirection === "incoming" && entry.serverMessageAt !== null
-        && entry.serverMessageAt !== entry.checkedMessageAt
-      )
-    )).length;
+  return state.threads.filter(actionableWatcherCandidate).length;
 }
 
 export type WatcherDisplayStatus = "stopped" | "waiting" | "new-replies"

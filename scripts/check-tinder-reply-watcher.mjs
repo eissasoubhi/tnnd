@@ -25,11 +25,24 @@ test("watcher does not sweep answered or unknown threads on initial launch",()=>
   const checked=markThreadChecked(work,"new-reply","2026-10-14T19:02:00Z");
   assert.equal(nextWatchedReply(checked),null);
   assert.equal(pendingWatchedReplies(checked),0);
-  const restarted=reconcileExistingIndex(checked,"one",[
+  const immediate=reconcileExistingIndex(checked,"one",[
     source("already-answered"),source("unknown",null),source("new-reply","incoming")
-  ],"2026-10-14T20:05:00Z");
-  assert.equal(nextWatchedReply(restarted),null,"no replay of a previously checked version after restart");
+  ],"2026-10-14T19:03:00Z");
+  assert.equal(nextWatchedReply(immediate),null,"do not re-visit within the cooldown");
+  const retried=reconcileExistingIndex(immediate,"one",[
+    source("already-answered"),source("unknown",null),source("new-reply","incoming")
+  ],"2026-10-14T19:04:10Z");
+  assert.equal(nextWatchedReply(retried),"new-reply","revisit still-incoming chat after brief cooldown; send gate retains deduplication");
 });
+test("content scan does not starve or drop a busy in-flight reply observation",async()=>{
+  const source=await readFile(new URL("../src/content.ts",import.meta.url),"utf8");
+  assert.match(source,/Math\.min\(900, 3000 - \(now - scanScheduledAt\)\)/);
+  assert.match(source,/rescanRequestedWhileBusy = true/);
+  assert.match(source,/rescanRequestedWhileBusy && hasLiveExtensionContext\(\)/);
+  assert.match(source,/scheduleScan\(\);/);
+  assert.match(source,/busy = true; \/\/ One scanner owns preflight/);
+});
+
 test("new incoming synced version requeues exactly that thread once",()=>{
   let queue=reconcileExistingIndex(null,"one",[source("a","incoming"),source("b","outgoing")]);
   queue=markThreadChecked(queue,"a");

@@ -2,7 +2,7 @@ import { explainLauncherStartRefusal } from "./unified-launcher-failure";
 import {
   DEFAULT_TNND_WEB_ORIGIN, pickTnndWebTab, tnndWebSection, tnndWebTabUrl
 } from "./tnnd-web-tab-navigation";
-/** Single-entry TNND popup. No activity-specific controls or account data.
+/** Single-entry TNND popup. Activity tabs only change the visible panel.
  * This UI never dispatches Likes or messages. All actions go through the
  * service-worker orchestrator, which owns authorization and priority checks.
  */
@@ -11,11 +11,24 @@ type ReachedLimit = { id: "swipe-attempts" | "swipe-sessions"; label: string;
   used: number; max: number; dayKey: string };
 type DailyCounter = { id: ReachedLimit["id"]; label: string;
   used: number | null; max: number | null; dayKey: string | null; reached: boolean };
+type WatcherInfo = { phase: string; detail: string; pendingReplies: number | null;
+  eligibleCount: number | null; lastActionAt: string | null };
 type Status = { ok: boolean; running?: boolean; mode?: CurrentMode; manualMode?: CurrentMode; reason?: string;
-  quotaPaused?: boolean; reachedLimits?: ReachedLimit[]; limitCounters?: DailyCounter[] };
+  quotaPaused?: boolean; reachedLimits?: ReachedLimit[]; limitCounters?: DailyCounter[];
+  watcherInfo?: WatcherInfo | null };
 type Command = "TNND_UNIFIED_STATUS" | "TNND_UNIFIED_START" | "TNND_UNIFIED_STOP" | "TNND_UNIFIED_SELECT_MODE";
 const toggle = document.getElementById("toggleAutomation") as HTMLButtonElement;
 const modeButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".mode-button"));
+const modeActions = Array.from(document.querySelectorAll<HTMLButtonElement>(".mode-action"));
+
+const chatInfo = document.getElementById("chatInfo") as HTMLElement;
+const chatPending = document.getElementById("chatPending") as HTMLElement;
+const matchesInfo = document.getElementById("matchesInfo") as HTMLElement;
+const panels: Record<Exclude<CurrentMode,null>, HTMLElement> = {
+  swipe: document.getElementById("panelSwipe") as HTMLElement,
+  "new-match": document.getElementById("panelMatches") as HTMLElement,
+  "active-chat": document.getElementById("panelChat") as HTMLElement
+};
 const modeLabels: Record<Exclude<CurrentMode, null>, string> = {
   swipe: "Swipe", "new-match": "Matches", "active-chat": "Chat"
 };
@@ -100,35 +113,73 @@ function renderDailyCounters(counters: DailyCounter[] | undefined): void {
 }
 let busy = false;
 let running = false;
+let activeMode: CurrentMode = null;
+let selectedMode: Exclude<CurrentMode,null> = "swipe";
+let lastStatus: Status = { ok: false };
 let requestVersion = 0;
 
+function selectTab(mode: Exclude<CurrentMode, null>, focus = false): void {
+  selectedMode = mode;
+  for (const button of modeButtons) {
+    const chosen = button.dataset.activity === mode;
+    button.setAttribute("aria-selected", String(chosen));
+    button.tabIndex = chosen ? 0 : -1;
+    if (chosen && focus) button.focus();
+  }
+  for (const [id, panel] of Object.entries(panels)) panel.hidden = id !== mode;
+}
+
+function updateButtons(): void {
+  toggle.textContent = running ? "Arrêter" : "Démarrer";
+  toggle.dataset.mode = running ? "stop" : "start";
+  toggle.disabled = busy || !lastStatus.ok;
+  for (const button of modeActions) {
+    const mode = button.dataset.activity as Exclude<CurrentMode, null>;
+    const current = running && activeMode === mode;
+    button.textContent = current ? "Arrêter " + modeLabels[mode] :
+      running ? "Passer à " + modeLabels[mode] : "Démarrer " + modeLabels[mode];
+    button.dataset.mode = current ? "stop" : "start";
+    button.disabled = busy || !lastStatus.ok;
+  }
+  for (const button of modeButtons)
+    button.dataset.running = String(running && activeMode === button.dataset.activity);
+}
+
 function render(value: Status, detail = ""): void {
+  lastStatus = value;
   if (Array.isArray(value.limitCounters)) renderDailyCounters(value.limitCounters);
   else if (!value.ok) renderDailyCounters([]);
   running = value.running === true;
-  const pausedForQuota = running && value.quotaPaused === true;
+  activeMode = running && value.mode ? value.mode : null;
   statusEl.dataset.state = !value.ok ? "error" :
-    pausedForQuota ? "paused" : running ? "running" : "stopped";
+    running && value.quotaPaused ? "paused" : running ? "running" : "stopped";
   statusEl.textContent = !value.ok ? "Connexion indisponible" :
     !running ? "Arrêté" :
-      pausedForQuota ? "En pause · Quota Swipe atteint" :
-      value.mode === "swipe" ? "Actif · Auto Swipe" :
-      value.mode === "new-match" ? "Actif · Nouveaux matchs" :
-      value.mode === "active-chat" ? "Actif · Conversations" : "Actif";
-  toggle.textContent = running ? "Arrêter" : "Démarrer";
-  toggle.dataset.mode = running ? "stop" : "start";
-  toggle.disabled = busy || !value.ok;
-  for (const button of modeButtons) {
-    const selected = running && button.dataset.activity === value.mode;
-    button.setAttribute("aria-pressed", String(selected));
-    button.disabled = busy || !value.ok;
-  }
+    value.quotaPaused ? "En pause · Quota Swipe atteint" :
+    activeMode === "swipe" ? "Actif · Auto Swipe" :
+    activeMode === "new-match" ? "Actif · Nouveaux matchs" : "Actif · Conversations";
+  const info = value.watcherInfo;
+  const verified = Boolean(running && info &&
+    (activeMode === "new-match" || activeMode === "active-chat"));
+  const stage = verified && info ? info.phase : "";
+  const detailText = verified && info ? info.detail : "";
+  const explanation = !verified ? "Aucune activité en cours pour ce mode." :
+    (detailText || "État en cours de vérification.");
+  chatInfo.textContent = activeMode === "active-chat" ? explanation :
+    "Mode Chat inactif. Active-le pour consulter l'état du traitement.";
+  chatPending.textContent = activeMode === "active-chat" && info &&
+    typeof info.pendingReplies === "number" ?
+      "Conversations en attente vérifiées : " + info.pendingReplies +
+      " · Étape : " + stage : "Conversations en attente : — (non vérifié)";
+  matchesInfo.textContent = activeMode === "new-match" ? explanation :
+    "Mode Matches inactif. Les premiers messages restent soumis aux quotas.";
   feedback.textContent = detail || (value.ok ? value.reason ?? "" :
     "Impossible de lire l'état du moteur. Recharge l'extension.");
   if (!detail) {
     webSettingsLink.href = DEFAULT_TNND_WEB_ORIGIN + "/#workspace-settings-section";
     webSettingsLink.textContent = "Configuration dans TNND Web";
   }
+  updateButtons();
 }
 async function send(type: Command, mode?: Exclude<CurrentMode, null>): Promise<Status> {
   const response = await chrome.runtime.sendMessage({ type, ...(mode ? { mode } : {}) }) as Status | undefined;
@@ -147,111 +198,110 @@ async function refresh(): Promise<void> {
       render({ ok: false }, "Service worker indisponible. Recharge l'extension.");
   }
 }
-toggle.addEventListener("click", () => {
-  if (busy) return;
-  busy = true;
-  const intent = running ? "TNND_UNIFIED_STOP" : "TNND_UNIFIED_START";
-  const ticket = ++requestVersion;
-  toggle.disabled = true;
-  statusEl.dataset.state = "busy";
-  statusEl.textContent = intent === "TNND_UNIFIED_STOP" ? "Arrêt en cours…" : "Démarrage en cours…";
-  feedback.textContent = "Vérification de l'état et des priorités Web…";
-  void (async () => {
-    try {
-      const result = await send(intent);
-      if (ticket !== requestVersion) return;
-      if (!result.ok) {
-        // Failed Start must never be described as running. Failed Stop must
-        // never be described as successfully stopped; read actual ownership.
-        await refresh();
-        if (intent === "TNND_UNIFIED_START") {
-          const guidance = explainLauncherStartRefusal(result.reason);
-          feedback.textContent = guidance.message;
-          if (guidance.reviewAttempts) {
-            webSettingsLink.href = DEFAULT_TNND_WEB_ORIGIN + "/#smart-swipe-activity";
-            webSettingsLink.textContent = "Examiner les tentatives dans TNND Web";
-          } else if (guidance.connectAccount) {
-            webSettingsLink.href = chrome.runtime.getURL("connect.html");
-            webSettingsLink.textContent = "Connecter mon compte à l'extension";
-          } else if (guidance.extensionSettings) {
-            webSettingsLink.href = chrome.runtime.getURL("options.html");
-            webSettingsLink.textContent = "Vérifier les autorisations de l'extension";
-          }
-        } else {
-          feedback.textContent = "Arrêt non confirmé : " + (result.reason ?? "commande non confirmée");
-        }
-        return;
-      }
-      render(result, intent === "TNND_UNIFIED_START"
-        ? (result.reason ?? "Démarrage confirmé. Prochaine activité selon les priorités Web.")
-        : "Arrêt confirmé. Aucune tentative historique supprimée.");
-    } catch {
-      if (ticket === requestVersion) {
-        await refresh();
-        feedback.textContent = "Commande non confirmée. Vérifie l'état avant de recommencer.";
-      }
-    } finally {
-      busy = false;
-      // refresh() increments requestVersion. After a refused Start, the new
-      // status poll must NOT leave the only button permanently disabled.
-      toggle.disabled = statusEl.dataset.state === "error";
-      for (const button of modeButtons) button.disabled = statusEl.dataset.state === "error";
-    }
-  })();
-});
-/** One explicit click requests an exclusive transition from the controller.
- * Status after a refusal remains authoritative; do not optimistically select.
- */
+// Tab clicks never start a runner. Swipe is the visible default only.
 for (const button of modeButtons) {
   button.addEventListener("click", () => {
     const mode = button.dataset.activity as Exclude<CurrentMode, null>;
-    if (busy || !(mode in modeLabels)) return;
-    busy = true;
-    const ticket = ++requestVersion;
-    toggle.disabled = true;
-    for (const control of modeButtons) control.disabled = true;
-    statusEl.dataset.state = "busy";
-    statusEl.textContent = "Bascule vers " + modeLabels[mode] + "…";
-    feedback.textContent = "Vérification des autorisations et des opérations en cours…";
-    void (async () => {
-      try {
-        const result = await send("TNND_UNIFIED_SELECT_MODE", mode);
-        if (ticket !== requestVersion) return;
-        if (!result.ok) {
-          await refresh();
-          const guidance = explainLauncherStartRefusal(result.reason);
-          feedback.textContent = guidance.reviewAttempts || guidance.connectAccount ||
-            guidance.extensionSettings
-            ? guidance.message
-            : "Bascule refusée : " + (result.reason ?? "état non confirmé") +
-              ". Vérifie le mode affiché avant de réessayer.";
-          if (guidance.reviewAttempts) {
-            webSettingsLink.href = DEFAULT_TNND_WEB_ORIGIN + "/#smart-swipe-activity";
-            webSettingsLink.textContent = "Examiner les tentatives dans TNND Web";
-          } else if (guidance.connectAccount) {
-            webSettingsLink.href = chrome.runtime.getURL("connect.html");
-            webSettingsLink.textContent = "Connecter mon compte à l'extension";
-          } else if (guidance.extensionSettings) {
-            webSettingsLink.href = chrome.runtime.getURL("options.html");
-            webSettingsLink.textContent = "Vérifier les autorisations de l'extension";
-          }
-          return;
-        }
-        render(result, result.reason || "Mode " + modeLabels[mode] +
-          " activé. Les quotas et autorisations restent applicables.");
-      } catch {
-        if (ticket === requestVersion) {
-          await refresh();
-          feedback.textContent = "Bascule non confirmée. Vérifie le mode affiché avant de réessayer.";
-        }
-      } finally {
-        busy = false;
-        toggle.disabled = statusEl.dataset.state === "error";
-        for (const control of modeButtons) control.disabled = statusEl.dataset.state === "error";
-      }
-    })();
+    if (mode in modeLabels) selectTab(mode);
+  });
+  button.addEventListener("keydown", event => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const ids: Exclude<CurrentMode,null>[] = ["swipe", "new-match", "active-chat"];
+    const current = ids.indexOf(selectedMode);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? 2 :
+      (current + (event.key === "ArrowRight" ? 1 : 2)) % ids.length;
+    selectTab(ids[next], true);
   });
 }
+
+function applyFailure(reason: string | undefined, isStop = false, isAutomatic = false): void {
+  const guidance = explainLauncherStartRefusal(reason);
+  feedback.textContent = isStop
+    ? "Arrêt non confirmé : " + (reason ?? "commande non confirmée")
+    : guidance.reviewAttempts || guidance.connectAccount || guidance.extensionSettings
+      ? guidance.message
+      : (isAutomatic ? "Démarrage refusé : " : "Bascule refusée : ") +
+        (reason ?? "état non confirmé").replace(/[.!?]+$/, "") +
+        ". Le mode actif reste affiché ci-dessus.";
+  if (isStop) return;
+  if (guidance.reviewAttempts) {
+    webSettingsLink.href = DEFAULT_TNND_WEB_ORIGIN + "/#smart-swipe-activity";
+    webSettingsLink.textContent = "Examiner les tentatives dans TNND Web";
+  } else if (guidance.connectAccount) {
+    webSettingsLink.href = chrome.runtime.getURL("connect.html");
+    webSettingsLink.textContent = "Connecter mon compte à l'extension";
+  } else if (guidance.extensionSettings) {
+    webSettingsLink.href = chrome.runtime.getURL("options.html");
+    webSettingsLink.textContent = "Vérifier les autorisations de l'extension";
+  }
+}
+
+function requestMode(mode: Exclude<CurrentMode, null> | null): void {
+  if (busy) return;
+  const stopping = mode === null || (running && activeMode === mode);
+  const type: Command = stopping ? "TNND_UNIFIED_STOP" : "TNND_UNIFIED_SELECT_MODE";
+  busy = true;
+  const ticket = ++requestVersion;
+  statusEl.dataset.state = "busy";
+  statusEl.textContent = stopping ? "Arrêt en cours…" : "Bascule vers " + modeLabels[mode!] + "…";
+  feedback.textContent = "Vérification des autorisations et opérations en cours…";
+  updateButtons();
+  void (async () => {
+    try {
+      const result = await send(type, stopping ? undefined : mode!);
+      if (ticket !== requestVersion) return;
+      await refresh(); // Read actual ownership, never show optimistic success.
+      if (!result.ok) {
+        applyFailure(result.reason, stopping);
+      } else {
+        feedback.textContent = stopping
+          ? "Arrêt confirmé. Aucun historique supprimé."
+          : "Mode demandé : " + modeLabels[mode!] + ". Vérifie l'activité confirmée en haut.";
+      }
+    } catch {
+      if (ticket === requestVersion) {
+        await refresh();
+        feedback.textContent = "Action non confirmée. Vérifie le mode affiché avant de réessayer.";
+      }
+    } finally {
+      busy = false;
+      updateButtons();
+    }
+  })();
+}
+for (const button of modeActions)
+  button.addEventListener("click", () => {
+    const mode = button.dataset.activity as Exclude<CurrentMode,null>;
+    if (mode in modeLabels) requestMode(mode);
+  });
+toggle.addEventListener("click", () => {
+  if (busy) return;
+  const stopping = running;
+  const ticket = ++requestVersion;
+  busy = true;
+  statusEl.dataset.state = "busy";
+  statusEl.textContent = stopping ? "Arrêt en cours…" : "Démarrage automatique…";
+  feedback.textContent = "Vérification des priorités et autorisations TNND…";
+  updateButtons();
+  void (async () => {
+    try {
+      const outcome = await send(stopping ? "TNND_UNIFIED_STOP" : "TNND_UNIFIED_START");
+      if (ticket !== requestVersion) return;
+      await refresh();
+      if (!outcome.ok) applyFailure(outcome.reason, stopping, true);
+      else feedback.textContent = stopping
+        ? "Arrêt confirmé. Aucun historique supprimé."
+          : (outcome.reason ?? "Démarrage confirmé selon les priorités TNND Web.");
+    } catch {
+      await refresh();
+      feedback.textContent = "Action non confirmée. Vérifie l'état réel du runner.";
+    } finally {
+      busy = false;
+      updateButtons();
+    }
+  })();
+});
 
 // The Web app saves auth in sessionStorage, which is tab-scoped. Reuse the
 // existing authenticated tab (and its exact localhost/127.0.0.1 origin).

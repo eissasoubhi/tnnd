@@ -26,6 +26,8 @@ import { sendRuntimeMessageSafely } from "./extension-context";
 const adapter = new TinderDomAdapter();
 let busy = false;
 let scanTimer: number | undefined;
+let scanScheduledAt = 0;
+let rescanRequestedWhileBusy = false;
 let runtimeReadBusy = false;
 let lastNewMatchObservation = "";
 let lastNewMatchObservationAt = 0;
@@ -104,6 +106,7 @@ function stopContentRuntime(): void {
   if (scanTimer !== undefined) {
     window.clearTimeout(scanTimer);
     scanTimer = undefined;
+    scanScheduledAt = 0;
   }
   observer?.disconnect();
   window.removeEventListener("focus", scheduleScan);
@@ -489,7 +492,14 @@ async function autoReplyPausedAfterGlobalStop(conversationRef: string): Promise<
 
 async function scan(): Promise<void> {
   // Never infer message sender from stale DOM during a React route change.
-  if (spaNavigationBusy || Date.now() < spaNavigationSettlesAt || busy || !hasLiveExtensionContext()) return;
+  if (busy) {
+    // An incoming message may arrive during Gemini/cadence; never drop the
+    // entire scan request when the in-flight operation finishes.
+    rescanRequestedWhileBusy = true;
+    return;
+  }
+  if (spaNavigationBusy || Date.now() < spaNavigationSettlesAt || !hasLiveExtensionContext()) return;
+  busy = true; // One scanner owns preflight, cadence, generation and send.
 
   try {
     const config = await getContentConfig();
@@ -604,7 +614,6 @@ async function scan(): Promise<void> {
       return;
     }
 
-    busy = true;
     const delaySeconds = randomCadenceSeconds(config.automation);
     console.info(`TNND queued an automatic reply in ${delaySeconds.toFixed(1)}s.`);
     reportExistingRunner("waiting", `Unanswered incoming message found (old or new) · replying after ${Math.ceil(delaySeconds)}s.`);
@@ -612,7 +621,10 @@ async function scan(): Promise<void> {
     if (!hasLiveExtensionContext()) return;
 
     const currentSnapshot = adapter.read();
-    if (!currentSnapshot || currentSnapshot.latestIncomingKey !== snapshot.latestIncomingKey || currentSnapshot.threadKey !== snapshot.threadKey) return;
+    if (!currentSnapshot || currentSnapshot.latestIncomingKey !== snapshot.latestIncomingKey || currentSnapshot.threadKey !== snapshot.threadKey) {
+      reportExistingRunner("skipped", "Chat changed while waiting; this reply was not sent.");
+      return;
+    }
     if (currentConversationRef() !== conversationRef || !await existingRepliesAllowedByMode() || !await backendAllowsAutomaticReply(conversationRef)) return;
     const stillEnabled = await getChatAutomationEnabled(currentSnapshot.threadKey);
     if (stillEnabled !== true) return;
@@ -627,7 +639,10 @@ async function scan(): Promise<void> {
     }
     reportExistingRunner("generating", "Preparing an AI reply with Gemini…");
     const reply = await generateReply(currentSnapshot.context, currentSnapshot.threadKey);
-    if (!reply || !hasLiveExtensionContext()) return;
+    if (!reply || !hasLiveExtensionContext()) {
+      reportExistingRunner("error", "No reply returned by the AI provider; no message sent.");
+      return;
+    }
     // Back-end state or the Tinder tab can change while Gemini is generating.
     // Re-authorize immediately before the irreversible send operation.
     if (currentConversationRef() !== conversationRef
@@ -717,6 +732,10 @@ async function scan(): Promise<void> {
     }
   } finally {
     busy = false;
+    if (rescanRequestedWhileBusy && hasLiveExtensionContext()) {
+      rescanRequestedWhileBusy = false;
+      scheduleScan();
+    }
   }
 }
 
@@ -1182,11 +1201,19 @@ function scheduleScan(): void {
   void observeNewMatchLinks().catch(() => undefined);
   void observeBulkCollection().catch(() => undefined);
   void notifyOpenedThreadForOptInSync().catch(() => undefined);
-  if (scanTimer) window.clearTimeout(scanTimer);
+  // A busy Tinder DOM can mutate continuously. Plain debounce kept postponing
+  // the scan forever; cap its total deferral at 3 seconds without adding a
+  // fixed poll or relaxing any send permission.
+  const now = Date.now();
+  if (!scanScheduledAt) scanScheduledAt = now;
+  const delay = Math.max(0, Math.min(900, 3000 - (now - scanScheduledAt)));
+  if (scanTimer !== undefined) window.clearTimeout(scanTimer);
   scanTimer = window.setTimeout(() => {
+    scanTimer = undefined;
+    scanScheduledAt = 0;
     if (!hasLiveExtensionContext()) return;
     void scan();
-  }, 900);
+  }, delay);
 }
 
 // Executed only after the background worker claims a durable account/device

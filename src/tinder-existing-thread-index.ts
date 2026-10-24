@@ -18,7 +18,10 @@ export interface ExistingThreadIndex {
   threads: IndexedThread[];
   updatedAt: string;
 }
-export const RECHECK_IDLE_MS = 30 * 60_000;
+/** Revisit an incoming chat that was opened but could not be processed.
+ * A successful send remains one-shot claimed and is never retried here.
+ */
+export const RECHECK_IDLE_MS = 2 * 60_000;
 export const UNREAD_HINT_COOLDOWN_MS = 60_000;
 const LIMIT = 200;
 const goodRef = (ref: string) => Boolean(ref && ref.length <= 512 && !ref.includes("/"));
@@ -41,7 +44,8 @@ export function reconcileExistingIndex(
     const changed = Boolean(old && nextMessageAt && nextMessageAt !== old.checkedMessageAt);
     const direction = lastMessageDirection ?? null;
     // Synced outgoing chats are already answered: skip initial pass, unless Tinder reports unread.
-    // Periodic safety recheck remains, but less frequently than for potential incoming chats.
+    // Incoming chats are checked again after a brief cooldown if their send
+    // was skipped/blocked transiently. Outgoing chats remain on a long cycle.
     const idleDelay = direction === "outgoing" ? 6 * 60 * 60_000 : RECHECK_IDLE_MS;
     const stale = old?.lastCheckedAt && Date.parse(now) - Date.parse(old.lastCheckedAt) >= idleDelay;
     const pending = (!old && direction !== "outgoing") || Boolean(old?.queuedAt)
