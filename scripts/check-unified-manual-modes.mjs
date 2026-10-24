@@ -22,7 +22,7 @@ test("manual Swipe shows actionable, accurate ledger guidance rather than an opa
   assert.match(guidance.message, /Aucun Like n'a été relancé/);
   assert.equal(guidance.message.includes("server_attempt_unresolved"), false);
   const launcher = await readFile(new URL("../src/launcher.ts", import.meta.url), "utf8");
-  const section = launcher.slice(launcher.indexOf('send("TNND_UNIFIED_SELECT_MODE"'));
+  const section = launcher.slice(launcher.indexOf('const guidance = explainLauncherStartRefusal'));
   assert.match(section, /explainLauncherStartRefusal\(result.reason\)/);
   assert.match(section, /guidance.reviewAttempts/);
   assert.match(section, /#smart-swipe-activity/);
@@ -83,9 +83,12 @@ test("launcher controls and worker route all manual commands through verified ex
   for (const mode of ["swipe", "new-match", "active-chat"]) {
     assert.match(html, new RegExp('data-activity="' + mode + '"'));
   }
-  assert.match(html, /aria-pressed="false"/);
+  assert.match(html, /aria-selected="false"/);
   assert.match(launcher, /TNND_UNIFIED_SELECT_MODE/);
-  assert.match(launcher, /setAttribute\("aria-pressed"/);
+  assert.match(launcher, /button.addEventListener\("keydown"/);
+  assert.match(launcher, /requestMode\(mode\)/);
+  assert.match(html, /role="tabpanel"/);
+  assert.match(launcher, /setAttribute\("aria-selected"/);
   assert.match(worker, /launcher_only/);
   assert.match(worker, /manualActivity\(\(message as \{ mode\?: unknown \}\)\.mode\)/);
   assert.match(worker, /watcherSwitchSafety\(watcher\)/);
