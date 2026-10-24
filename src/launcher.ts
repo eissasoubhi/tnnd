@@ -215,13 +215,14 @@ for (const button of modeButtons) {
   });
 }
 
-function applyFailure(reason: string | undefined, isStop = false): void {
+function applyFailure(reason: string | undefined, isStop = false, isAutomatic = false): void {
   const guidance = explainLauncherStartRefusal(reason);
   feedback.textContent = isStop
     ? "Arrêt non confirmé : " + (reason ?? "commande non confirmée")
     : guidance.reviewAttempts || guidance.connectAccount || guidance.extensionSettings
       ? guidance.message
-      : "Bascule refusée : " + (reason ?? "état non confirmé") +
+      : (isAutomatic ? "Démarrage refusé : " : "Bascule refusée : ") +
+        (reason ?? "état non confirmé").replace(/[.!?]+$/, "") +
         ". Le mode actif reste affiché ci-dessus.";
   if (isStop) return;
   if (guidance.reviewAttempts) {
@@ -288,7 +289,7 @@ toggle.addEventListener("click", () => {
       const outcome = await send(stopping ? "TNND_UNIFIED_STOP" : "TNND_UNIFIED_START");
       if (ticket !== requestVersion) return;
       await refresh();
-      if (!outcome.ok) applyFailure(outcome.reason, stopping);
+      if (!outcome.ok) applyFailure(outcome.reason, stopping, true);
       else feedback.textContent = stopping
         ? "Arrêt confirmé. Aucun historique supprimé."
         : "Démarrage demandé selon les priorités TNND Web.";
