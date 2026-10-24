@@ -1,5 +1,5 @@
 import { shouldKeepConversationInFocus, type ConversationActivity } from "./tinder-conversation-activity.ts";
-import { RECHECK_IDLE_MS, type ExistingThreadIndex, type IndexedThread } from "./tinder-existing-thread-index";
+import { RECHECK_IDLE_MS, type ExistingThreadIndex, type IndexedThread } from "./tinder-existing-thread-index.ts";
 
 /** Watch mode only responds to positive evidence, never a broad sweep.
  * Incoming from the saved backend is trustworthy only until that exact
