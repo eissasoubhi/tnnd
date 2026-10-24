@@ -1,4 +1,7 @@
 import { explainLauncherStartRefusal } from "./unified-launcher-failure";
+import {
+  DEFAULT_TNND_WEB_ORIGIN, pickTnndWebTab, tnndWebSection, tnndWebTabUrl
+} from "./tnnd-web-tab-navigation";
 /** Single-entry TNND popup. No activity-specific controls or account data.
  * This UI never dispatches Likes or messages. All actions go through the
  * service-worker orchestrator, which owns authorization and priority checks.
@@ -123,7 +126,7 @@ function render(value: Status, detail = ""): void {
   feedback.textContent = detail || (value.ok ? value.reason ?? "" :
     "Impossible de lire l'état du moteur. Recharge l'extension.");
   if (!detail) {
-    webSettingsLink.href = "http://localhost:5173/#workspace-settings-section";
+    webSettingsLink.href = DEFAULT_TNND_WEB_ORIGIN + "/#workspace-settings-section";
     webSettingsLink.textContent = "Configuration dans TNND Web";
   }
 }
@@ -165,7 +168,7 @@ toggle.addEventListener("click", () => {
           const guidance = explainLauncherStartRefusal(result.reason);
           feedback.textContent = guidance.message;
           if (guidance.reviewAttempts) {
-            webSettingsLink.href = "http://localhost:5173/#smart-swipe-activity";
+            webSettingsLink.href = DEFAULT_TNND_WEB_ORIGIN + "/#smart-swipe-activity";
             webSettingsLink.textContent = "Examiner les tentatives dans TNND Web";
           } else if (guidance.connectAccount) {
             webSettingsLink.href = chrome.runtime.getURL("connect.html");
@@ -223,7 +226,7 @@ for (const button of modeButtons) {
             : "Bascule refusée : " + (result.reason ?? "état non confirmé") +
               ". Vérifie le mode affiché avant de réessayer.";
           if (guidance.reviewAttempts) {
-            webSettingsLink.href = "http://localhost:5173/#smart-swipe-activity";
+            webSettingsLink.href = DEFAULT_TNND_WEB_ORIGIN + "/#smart-swipe-activity";
             webSettingsLink.textContent = "Examiner les tentatives dans TNND Web";
           } else if (guidance.connectAccount) {
             webSettingsLink.href = chrome.runtime.getURL("connect.html");
@@ -249,6 +252,39 @@ for (const button of modeButtons) {
     })();
   });
 }
+
+// The Web app saves auth in sessionStorage, which is tab-scoped. Reuse the
+// existing authenticated tab (and its exact localhost/127.0.0.1 origin).
+// A brand-new tab cannot inherit credentials: explain that transparently.
+// Extension-specific links (Connect / Options) keep their native navigation.
+webSettingsLink.addEventListener("click", event => {
+  const section = tnndWebSection(webSettingsLink.href);
+  if (!section) return;
+  event.preventDefault();
+  void (async () => {
+    try {
+      const candidates = await chrome.tabs.query({
+        url: ["http://localhost/*", "http://127.0.0.1/*"]
+      });
+      const tab = pickTnndWebTab(candidates, chrome.extension.inIncognitoContext);
+      if (tab && typeof tab.id === "number" && tab.url) {
+        await chrome.tabs.update(tab.id, {
+          active: true, url: tnndWebTabUrl(tab.url, section)
+        });
+        if (typeof tab.windowId === "number") {
+          await chrome.windows.update(tab.windowId, { focused: true });
+        }
+      } else {
+        await chrome.tabs.create({ url: DEFAULT_TNND_WEB_ORIGIN + "/" + section });
+        feedback.textContent =
+          "Aucun onglet TNND Web déjà ouvert : nouvel onglet créé. Une connexion peut être nécessaire.";
+      }
+    } catch {
+      feedback.textContent =
+        "Impossible d'ouvrir l'onglet TNND Web existant. Réessaie sans fermer ta session actuelle.";
+    }
+  })();
+});
 
 renderDailyCounters([]);
 void showBuildVersion();

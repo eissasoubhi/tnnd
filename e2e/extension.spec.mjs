@@ -101,6 +101,12 @@ async function launch() {
       return route.fulfill({ status: 200, contentType: "text/html",
         body: url.pathname === "/app/matches" ? fakeMatches : fakeTinder });
     }
+    // Fictional TNND Web served on both loopback origins for tab-scoped
+    // sessionStorage navigation QA. No real auth, token or user data.
+    if ((url.hostname === "localhost" || url.hostname === "127.0.0.1") &&
+        url.protocol === "http:" && url.port === "5173")
+      return route.fulfill({ status: 200, contentType: "text/html",
+        body: "<!doctype html><html><body><main>Fictional TNND Web</main></body></html>" });
     if (url.origin === "http://127.0.0.1:4000") return route.continue();
     return route.abort("blockedbyclient");
   });
@@ -204,7 +210,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await launcher.reload();
       await expect(launcher.locator("#toggleAutomation")).toHaveText("Démarrer");
       await expect(launcher.locator("#webSettingsLink")).toHaveAttribute(
-        "href", "http://localhost:5173/#workspace-settings-section");
+        "href", "http://127.0.0.1:5173/#workspace-settings-section");
       expect(requests.filter(item => item.path.endsWith("/attempts/claim")).length)
         .toBe(beforeClaims);
       expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
@@ -590,4 +596,38 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     await expect(popup.locator("#smartSwipeControlFeedback")).toContainText("Stop confirmed");
     expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
   });
+  test("launcher settings/review link reuses signed-in TNND Web tab and preserves sessionStorage", async () => {
+    const web = await context.newPage();
+    const launcher = await context.newPage();
+    try {
+      await web.goto("http://127.0.0.1:5173/");
+      await web.evaluate(() => sessionStorage.setItem("tnnd:web:auth-session", "fictional-existing-session"));
+      await launcher.goto(`chrome-extension://${extensionId}/launcher.html`);
+      await expect(launcher.locator("#engineStatus")).toContainText("Arrêté");
+      const before = context.pages().length;
+      await launcher.locator("#webSettingsLink").click();
+      await expect.poll(() => web.url()).toContain("http://127.0.0.1:5173/#workspace-settings-section");
+      expect(context.pages().length).toBe(before);
+      expect(await web.evaluate(() => sessionStorage.getItem("tnnd:web:auth-session")))
+        .toBe("fictional-existing-session");
+
+      // Navigating an existing localhost tab must retain localhost. Opening
+      // a new 127.0.0.1 tab would appear logged out due to origin isolation.
+      await web.goto("http://localhost:5173/");
+      await web.evaluate(() => sessionStorage.setItem("tnnd:web:auth-session", "fictional-localhost-session"));
+      await launcher.evaluate(() => {
+        document.getElementById("webSettingsLink").href =
+          "http://127.0.0.1:5173/#smart-swipe-activity";
+      });
+      await launcher.locator("#webSettingsLink").click();
+      await expect.poll(() => web.url()).toContain("http://localhost:5173/#smart-swipe-activity");
+      expect(context.pages().length).toBe(before);
+      expect(await web.evaluate(() => sessionStorage.getItem("tnnd:web:auth-session")))
+        .toBe("fictional-localhost-session");
+    } finally {
+      await launcher.close();
+      await web.close();
+    }
+  });
+
 });
