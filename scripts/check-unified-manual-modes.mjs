@@ -23,7 +23,7 @@ test("manual Swipe shows actionable, accurate ledger guidance rather than an opa
   assert.equal(guidance.message.includes("server_attempt_unresolved"), false);
   const launcher = await readFile(new URL("../src/launcher.ts", import.meta.url), "utf8");
   const section = launcher.slice(launcher.indexOf('const guidance = explainLauncherStartRefusal'));
-  assert.match(section, /explainLauncherStartRefusal\(result.reason\)/);
+  assert.match(section, /explainLauncherStartRefusal\(reason\)/);
   assert.match(section, /guidance.reviewAttempts/);
   assert.match(section, /#smart-swipe-activity/);
   assert.match(section, /Examiner les tentatives dans TNND Web/);
