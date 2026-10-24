@@ -157,7 +157,7 @@ function render(value: Status, detail = ""): void {
     !running ? "Arrêté" :
     value.quotaPaused ? "En pause · Quota Swipe atteint" :
     activeMode === "swipe" ? "Actif · Swipe" :
-    activeMode === "new-match" ? "Actif · Matches" : "Actif · Chat";
+    activeMode === "new-match" ? "Actif · Matches" : "Actif · Conversations";
   const info = value.watcherInfo;
   const verified = Boolean(running && info &&
     (activeMode === "new-match" || activeMode === "active-chat"));
@@ -292,7 +292,7 @@ toggle.addEventListener("click", () => {
       if (!outcome.ok) applyFailure(outcome.reason, stopping, true);
       else feedback.textContent = stopping
         ? "Arrêt confirmé. Aucun historique supprimé."
-        : "Démarrage demandé selon les priorités TNND Web.";
+          : (outcome.reason ?? "Démarrage confirmé selon les priorités TNND Web.");
     } catch {
       await refresh();
       feedback.textContent = "Action non confirmée. Vérifie l'état réel du runner.";
