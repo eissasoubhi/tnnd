@@ -21,15 +21,15 @@
     .mode-button { min-height: 44px; padding: 9px 5px; border: 1px solid #c3d5c8; border-radius: 11px; background: #fff; color: #234b3d; font: inherit; font-weight: 650; cursor: pointer; }
     .mode-button[aria-selected="true"] { background: #d9efcc; border: 2px solid #234b3d; }
     .mode-button[data-running="true"]::after { content: " ·"; font-weight: 900; color: #248459; }
-    .mode-button:focus-visible, .mode-action:focus-visible, #stopAll:focus-visible { outline: 3px solid #8070dc; outline-offset: 3px; }
+    .mode-button:focus-visible, .mode-action:focus-visible, #toggleAutomation:focus-visible { outline: 3px solid #8070dc; outline-offset: 3px; }
     .mode-panel { padding: 14px; background: #fff; border: 1px solid #d1dfd5; border-radius: 17px; display: grid; gap: 11px; }
     .mode-panel[hidden] { display: none; }
     .mode-panel h2 { font-size: 16px; margin: 0; }
     .mode-summary { font-size: 12px; line-height: 1.45; margin: 0; color: #577066; }
     .mode-action { min-height: 48px; width: 100%; background: #234b3d; color: #fff; border: 0; border-radius: 12px; font: inherit; font-weight: 750; cursor: pointer; }
     .mode-action:disabled, #stopAll:disabled { opacity: .67; cursor: wait; }
-    #stopAll { min-height: 44px; padding: 8px 11px; color: #234b3d; background: #fff; border: 1px solid #b9d0c1; border-radius: 11px; font: inherit; font-weight: 700; cursor: pointer; }
-    #stopAll[hidden] { display: none; }
+    #toggleAutomation { min-height: 45px; background: #f8fbf6; color: #234b3d; border: 1px solid #b9d0c1; border-radius: 11px; font: inherit; font-weight: 700; cursor: pointer; }
+    #toggleAutomation:disabled { opacity: .67; cursor: wait; }
     .mode-note { margin: 0; font-size: 12px; line-height: 1.5; color: #496458; overflow-wrap: anywhere; }
     .mode-meta { display: grid; gap: 6px; padding: 10px 11px; background: #f0f5ef; border-radius: 11px; }
     .mode-meta p { margin: 0; font-size: 12px; line-height: 1.45; }
@@ -49,7 +49,7 @@
   <main>
     <header><h1>TNND</h1></header>
     <div id="engineStatus" data-state="busy" role="status">Vérification…</div>
-    <button type="button" id="stopAll" hidden disabled>Arrêter tout</button>
+    <button type="button" id="toggleAutomation" disabled>Démarrer</button>
     <div class="mode-selector" role="tablist" aria-label="Activités TNND">
       <button type="button" class="mode-button" id="tabSwipe" role="tab" data-activity="swipe" aria-controls="panelSwipe" aria-selected="true" tabindex="0">Swipe</button>
       <button type="button" class="mode-button" id="tabMatches" role="tab" data-activity="new-match" aria-controls="panelMatches" aria-selected="false" tabindex="-1">Matches</button>
@@ -58,7 +58,7 @@
     <section id="panelSwipe" class="mode-panel" role="tabpanel" aria-labelledby="tabSwipe">
       <h2>Smart Auto Swipe</h2>
       <p class="mode-summary">Découvrir les profils selon tes limites TNND. Ne démarre jamais sans action explicite.</p>
-      <button type="button" class="mode-action" id="toggleAutomation" data-activity="swipe" disabled>Démarrer Swipe</button>
+      <button type="button" class="mode-action" id="swipeAction" data-activity="swipe" disabled>Démarrer Swipe</button>
       <section id="reachedLimits" aria-label="Compteurs quotidiens Swipe">
         <h2>Quotas du jour</h2>
         <ul id="reachedLimitsList">
