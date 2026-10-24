@@ -84,6 +84,24 @@ async function status(): Promise<Record<string, unknown>> {
   const limitSnapshot = await readReachedLimits();
   const quota = limitSnapshot?.swipeQuota ?? null;
   const quotaReached = owner.mode === "swipe" && !owner.conflict && quota?.reached === true;
+  // Expose only verified, bounded operational state, not chat text or match
+  // identifiers. Status is read-only and never triggers a Gemini request.
+  const watcherRaw = (await chrome.storage.local.get(WATCHER_KEY))[WATCHER_KEY] as
+    { enabled?: boolean; mode?: string; phase?: string; phaseDetail?: string;
+      pendingReplies?: number; eligibleCount?: number; lastActionAt?: string;
+      errorCount?: number; manualActivity?: string } | undefined;
+  const watcherInfo = owner.running &&
+    (owner.mode === "active-chat" || owner.mode === "new-match") &&
+    watcherRaw?.enabled === true && watcherRaw.mode === "watcher"
+    ? {
+        phase: typeof watcherRaw.phase === "string" ? watcherRaw.phase.slice(0, 30) : "unknown",
+        detail: typeof watcherRaw.phaseDetail === "string" ? watcherRaw.phaseDetail.slice(0, 200) : "",
+        pendingReplies: Number.isSafeInteger(watcherRaw.pendingReplies) && watcherRaw.pendingReplies! >= 0
+          ? watcherRaw.pendingReplies : null,
+        eligibleCount: Number.isSafeInteger(watcherRaw.eligibleCount) && watcherRaw.eligibleCount! >= 0
+          ? watcherRaw.eligibleCount : null,
+        lastActionAt: typeof watcherRaw.lastActionAt === "string" ? watcherRaw.lastActionAt : null
+      } : null;
   // Extension reloads may restore a previously armed Swipe without firing
   // onStartup; recreate the periodic cap guard on its next status check.
   if (owner.mode === "swipe" && !owner.conflict && store?.enabled &&
@@ -97,6 +115,7 @@ async function status(): Promise<Record<string, unknown>> {
     quotaPaused: quotaReached, quota: quotaReached ? quota : null,
     reachedLimits: limitSnapshot?.reached ?? [],
     limitCounters: limitSnapshot?.counters ?? [],
+    watcherInfo,
     reason: owner.conflict ? "Plusieurs moteurs déjà actifs. Clique Arrêter pour les désarmer." :
       quotaReached
         ? "Quota quotidien de Swipe atteint (" + quota!.used + "/" + quota!.limit +
