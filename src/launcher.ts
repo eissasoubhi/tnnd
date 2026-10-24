@@ -157,7 +157,7 @@ function render(value: Status, detail = ""): void {
     !running ? "Arrêté" :
     value.quotaPaused ? "En pause · Quota Swipe atteint" :
     activeMode === "swipe" ? "Actif · Auto Swipe" :
-    activeMode === "new-match" ? "Actif · Matches" : "Actif · Conversations";
+    activeMode === "new-match" ? "Actif · Nouveaux matchs" : "Actif · Conversations";
   const info = value.watcherInfo;
   const verified = Boolean(running && info &&
     (activeMode === "new-match" || activeMode === "active-chat"));
