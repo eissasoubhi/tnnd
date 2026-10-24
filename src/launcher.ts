@@ -156,7 +156,7 @@ function render(value: Status, detail = ""): void {
   statusEl.textContent = !value.ok ? "Connexion indisponible" :
     !running ? "Arrêté" :
     value.quotaPaused ? "En pause · Quota Swipe atteint" :
-    activeMode === "swipe" ? "Actif · Swipe" :
+    activeMode === "swipe" ? "Actif · Auto Swipe" :
     activeMode === "new-match" ? "Actif · Matches" : "Actif · Conversations";
   const info = value.watcherInfo;
   const verified = Boolean(running && info &&
