@@ -34,6 +34,15 @@ test("watcher does not sweep answered or unknown threads on initial launch",()=>
   ],"2026-10-14T19:04:10Z");
   assert.equal(nextWatchedReply(retried),"new-reply","revisit still-incoming chat after brief cooldown; send gate retains deduplication");
 });
+test("content scan does not starve or drop a busy in-flight reply observation",async()=>{
+  const source=await readFile(new URL("../src/content.ts",import.meta.url),"utf8");
+  assert.match(source,/Math\.min\(900, 3000 - \(now - scanScheduledAt\)\)/);
+  assert.match(source,/rescanRequestedWhileBusy = true/);
+  assert.match(source,/rescanRequestedWhileBusy && hasLiveExtensionContext\(\)/);
+  assert.match(source,/scheduleScan\(\);/);
+  assert.match(source,/busy = true; \/\/ One scanner owns preflight/);
+});
+
 test("new incoming synced version requeues exactly that thread once",()=>{
   let queue=reconcileExistingIndex(null,"one",[source("a","incoming"),source("b","outgoing")]);
   queue=markThreadChecked(queue,"a");
