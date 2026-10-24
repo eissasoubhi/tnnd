@@ -20,7 +20,7 @@ type Command = "TNND_UNIFIED_STATUS" | "TNND_UNIFIED_START" | "TNND_UNIFIED_STOP
 const toggle = document.getElementById("toggleAutomation") as HTMLButtonElement;
 const modeButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".mode-button"));
 const modeActions = Array.from(document.querySelectorAll<HTMLButtonElement>(".mode-action"));
-const stopAll = document.getElementById("stopAll") as HTMLButtonElement;
+
 const chatInfo = document.getElementById("chatInfo") as HTMLElement;
 const chatPending = document.getElementById("chatPending") as HTMLElement;
 const matchesInfo = document.getElementById("matchesInfo") as HTMLElement;
@@ -130,8 +130,9 @@ function selectTab(mode: Exclude<CurrentMode, null>, focus = false): void {
 }
 
 function updateButtons(): void {
-  stopAll.hidden = !running;
-  stopAll.disabled = busy || !lastStatus.ok;
+  toggle.textContent = running ? "Arrêter" : "Démarrer";
+  toggle.dataset.mode = running ? "stop" : "start";
+  toggle.disabled = busy || !lastStatus.ok;
   for (const button of modeActions) {
     const mode = button.dataset.activity as Exclude<CurrentMode, null>;
     const current = running && activeMode === mode;
@@ -273,7 +274,33 @@ for (const button of modeActions)
     const mode = button.dataset.activity as Exclude<CurrentMode,null>;
     if (mode in modeLabels) requestMode(mode);
   });
-stopAll.addEventListener("click", () => requestMode(null));
+toggle.addEventListener("click", () => {
+  if (busy) return;
+  const stopping = running;
+  const ticket = ++requestVersion;
+  busy = true;
+  statusEl.dataset.state = "busy";
+  statusEl.textContent = stopping ? "Arrêt en cours…" : "Démarrage automatique…";
+  feedback.textContent = "Vérification des priorités et autorisations TNND…";
+  updateButtons();
+  void (async () => {
+    try {
+      const outcome = await send(stopping ? "TNND_UNIFIED_STOP" : "TNND_UNIFIED_START");
+      if (ticket !== requestVersion) return;
+      await refresh();
+      if (!outcome.ok) applyFailure(outcome.reason, stopping);
+      else feedback.textContent = stopping
+        ? "Arrêt confirmé. Aucun historique supprimé."
+        : "Démarrage demandé selon les priorités TNND Web.";
+    } catch {
+      await refresh();
+      feedback.textContent = "Action non confirmée. Vérifie l'état réel du runner.";
+    } finally {
+      busy = false;
+      updateButtons();
+    }
+  })();
+});
 
 // The Web app saves auth in sessionStorage, which is tab-scoped. Reuse the
 // existing authenticated tab (and its exact localhost/127.0.0.1 origin).
