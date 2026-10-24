@@ -27,6 +27,7 @@ const adapter = new TinderDomAdapter();
 let busy = false;
 let scanTimer: number | undefined;
 let scanScheduledAt = 0;
+let rescanRequestedWhileBusy = false;
 let runtimeReadBusy = false;
 let lastNewMatchObservation = "";
 let lastNewMatchObservationAt = 0;
@@ -491,7 +492,13 @@ async function autoReplyPausedAfterGlobalStop(conversationRef: string): Promise<
 
 async function scan(): Promise<void> {
   // Never infer message sender from stale DOM during a React route change.
-  if (spaNavigationBusy || Date.now() < spaNavigationSettlesAt || busy || !hasLiveExtensionContext()) return;
+  if (busy) {
+    // An incoming message may arrive during Gemini/cadence; never drop the
+    // entire scan request when the in-flight operation finishes.
+    rescanRequestedWhileBusy = true;
+    return;
+  }
+  if (spaNavigationBusy || Date.now() < spaNavigationSettlesAt || !hasLiveExtensionContext()) return;
   busy = true; // One scanner owns preflight, cadence, generation and send.
 
   try {
@@ -725,6 +732,10 @@ async function scan(): Promise<void> {
     }
   } finally {
     busy = false;
+    if (rescanRequestedWhileBusy && hasLiveExtensionContext()) {
+      rescanRequestedWhileBusy = false;
+      scheduleScan();
+    }
   }
 }
 
