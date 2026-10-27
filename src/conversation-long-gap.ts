@@ -23,7 +23,8 @@ function validDate(value: unknown, nowMs: number): number | null {
     parsed <= nowMs + 120_000 ? parsed : null;
 }
 function isBoundary(text: string): boolean {
-  return /\b(?:ne m.ecris plus|laisse.moi tranquille|arrete de m.ecrire|stop|not interested|don.t (?:text|message|contact) me|leave me alone|pas interess[eé]e?)\b/iu.test(text);
+  const t = text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+  return /\b(?:ne m.ecris plus|laisse.moi tranquille|arrete de m.ecrire|stop|not interested|don.t (?:text|message|contact) me|leave me alone|pas interessee?)\b/u.test(t);
 }
 function isSerious(text: string): boolean {
   return /\b(?:urgent|urgence|danger|help me|suicide|hopital|h[oô]pital|d[eé]c[eè]s)\b/iu.test(text);
@@ -56,16 +57,18 @@ export function longGapConversationGuidance(
   if (isBoundary(last.text) || isSerious(last.text)) return "";
   const latestAt = validDate(last.sentAt, nowMs);
   if (latestAt === null) return "";
-  const gap = nowMs - latestAt;
+  // Detect both: (1) nobody has messaged since the incoming turn, and
+  // (2) the match has just restarted an otherwise dormant conversation.
+  // An unknown prior timestamp cannot prove either long gap safely.
+  const prev = recent.at(-2)!;
+  const previousAt = validDate(prev.sentAt, nowMs);
+  if (previousAt === null || previousAt > latestAt) return "";
+  const oldUnanswered = nowMs - latestAt >= LONG_GAP_REENTRY_MS;
+  const returnedAfterGap = latestAt - previousAt >= LONG_GAP_REENTRY_MS;
 
-  if (gap >= LONG_GAP_REENTRY_MS) {
-    // Previous activity must be timed reliably as well: a migrated/synthetic
-    // or unsorted record must not force a fresh greeting.
-    const prev = recent.at(-2)!;
-    const previousAt = validDate(prev.sentAt, nowMs);
-    if (previousAt === null || previousAt > latestAt) return "";
+  if (oldUnanswered || returnedAfterGap) {
     return [
-      "Long-gap conversation RE-ENTRY (verified: no activity for at least 48 hours). This is NOT a new match opener.",
+      "Long-gap conversation RE-ENTRY (verified: at least 48 hours without an exchange before this turn, or an old incoming message still unanswered after 48 hours). This is NOT a new match opener.",
       "On THIS turn, start with one short, calm greeting and one natural check-in such as 'Salut, ça va ?' or 'Bonsoir, comment tu vas ?' when the time of day is known. Match their language and tone; avoid loud enthusiasm, apologies about the absence, 'tu m'as manqué', or pretending you missed them.",
       "Do not immediately answer an old non-urgent question or revive an old topic in the same turn. After they respond to the check-in, revisit an unanswered question or meaningful topic if still relevant; otherwise start a fresh low-pressure conversation. Send only the one ordinary allowed reply; never chase, double-text or schedule a follow-up.",
       "Explicit boundaries, safety concerns, real new questions and the normal message-send permissions always take precedence."
@@ -74,14 +77,19 @@ export function longGapConversationGuidance(
 
   // Only the next incoming turn after a proven re-entry greeting can trigger
   // continuation advice. Do not search distant history or invent a topic.
-  if (recent.length < 3 || gap > FOLLOW_UP_WINDOW_MS) return "";
+  if (recent.length < 3 || nowMs - latestAt > FOLLOW_UP_WINDOW_MS) return "";
   const greeting = recent.at(-2)!;
   const older = recent.at(-3)!;
   const helloAt = validDate(greeting.sentAt, nowMs);
   const olderAt = validDate(older.sentAt, nowMs);
+  const beforeOlder = recent.at(-4);
+  const beforeAt = validDate(beforeOlder?.sentAt, nowMs);
+  const gapBeforeOlder = beforeAt !== null && beforeAt <= olderAt &&
+    olderAt - beforeAt >= LONG_GAP_REENTRY_MS;
   if (greeting.direction !== "outgoing" || older.direction !== "incoming" ||
       helloAt === null || olderAt === null || helloAt > latestAt ||
-      helloAt - olderAt < LONG_GAP_REENTRY_MS || !greetingCheckin(greeting.text)) return "";
+      (helloAt - olderAt < LONG_GAP_REENTRY_MS && !gapBeforeOlder) ||
+      !greetingCheckin(greeting.text)) return "";
   return [
     "The match has now replied to your short re-entry check-in after a long pause.",
     oldQuestion(older.text)
