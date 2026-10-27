@@ -94,7 +94,7 @@ export function longGapConversationGuidance(
       "Long-gap conversation RE-ENTRY (verified: at least 48 hours without an exchange before this turn, or an old incoming message still unanswered after 48 hours). This is NOT a new match opener.",
       "On THIS turn, start with one short, calm greeting and one natural check-in such as 'Salut, ça va ?' or 'Bonsoir, comment tu vas ?' when the time of day is known. Match their language and tone; avoid loud enthusiasm, apologies about the absence, 'tu m'as manqué', or pretending you missed them.",
       "Do not immediately answer an old non-urgent question or revive an old topic in the same turn. After they respond to the check-in, revisit an unanswered question or meaningful topic if still relevant; otherwise start a fresh low-pressure conversation. Send only the one ordinary allowed reply; never chase, double-text or schedule a follow-up.",
-      "Explicit boundaries, safety concerns, real new questions and the normal message-send permissions always take precedence."
+      "Explicit boundaries, urgent or safety-related questions, and normal message-send permissions always take precedence. Ordinary non-urgent questions can be revisited after their reaction to the check-in."
     ].join(" ");
   }
   return "";
