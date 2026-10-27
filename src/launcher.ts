@@ -2,6 +2,10 @@ import { explainLauncherStartRefusal } from "./unified-launcher-failure";
 import {
   DEFAULT_TNND_WEB_ORIGIN, pickTnndWebTab, tnndWebSection, tnndWebTabUrl
 } from "./tnnd-web-tab-navigation";
+import {
+  buildTinderPageDiagnosticArchive, saveTinderPageDiagnosticArchive,
+  screenshotDataUrlBytes, type TinderPageDiagnosticSnapshot
+} from "./tinder-page-diagnostic-export";
 /** Single-entry TNND popup. Activity tabs only change the visible panel.
  * This UI never dispatches Likes or messages. All actions go through the
  * service-worker orchestrator, which owns authorization and priority checks.
@@ -17,6 +21,8 @@ type Status = { ok: boolean; running?: boolean; mode?: CurrentMode; manualMode?:
   quotaPaused?: boolean; reachedLimits?: ReachedLimit[]; limitCounters?: DailyCounter[];
   watcherInfo?: WatcherInfo | null };
 type Command = "TNND_UNIFIED_STATUS" | "TNND_UNIFIED_START" | "TNND_UNIFIED_STOP" | "TNND_UNIFIED_SELECT_MODE";
+const exportTinderDiagnostic = document.getElementById("exportTinderDiagnostic") as HTMLButtonElement;
+const diagnosticFeedback = document.getElementById("diagnosticFeedback") as HTMLElement;
 const toggle = document.getElementById("toggleAutomation") as HTMLButtonElement;
 const modeButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".mode-button"));
 const modeActions = Array.from(document.querySelectorAll<HTMLButtonElement>(".mode-action"));
@@ -335,6 +341,60 @@ webSettingsLink.addEventListener("click", event => {
     }
   })();
 });
+
+/** One-shot read-only export. Running Swipe/Matches/Chat state is untouched.
+ * Do not call the backend or move/scroll Tinder while collecting evidence.
+ */
+function describeDiagnostic(message: string, error = false): void {
+  diagnosticFeedback.hidden = false;
+  diagnosticFeedback.dataset.state = error ? "error" : "ready";
+  diagnosticFeedback.textContent = message;
+}
+async function exportActiveTinderPage(): Promise<void> {
+  if (exportTinderDiagnostic.disabled) return;
+  exportTinderDiagnostic.disabled = true;
+  describeDiagnostic("Lecture de la page Tinder en cours…");
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id || !tab.url || !/^https:\/\/(?:www\.)?tinder\.com(?:\/|$)/i.test(tab.url)) {
+      throw new Error("Ouvre un onglet Tinder, puis relance l’export.");
+    }
+    let response: { ok?: boolean; snapshot?: TinderPageDiagnosticSnapshot; error?: string } | undefined;
+    try {
+      response = await chrome.tabs.sendMessage(tab.id, { type: "TNND_GET_DIAGNOSTICS" });
+    } catch {
+      throw new Error("Diagnostic indisponible : actualise Tinder après avoir rechargé l’extension.");
+    }
+    if (!response?.ok || !response.snapshot || typeof response.snapshot.domHtml !== "string") {
+      throw new Error("Impossible de lire cette page Tinder. Actualise Tinder, puis réessaie.");
+    }
+    const screenshotWanted = window.confirm(
+      "Inclure une capture de la zone visible ?\\nElle peut montrer des photos, noms ou messages privés.\\nAnnuler = exporter uniquement les données techniques masquées."
+    );
+    let screenshot: Uint8Array | null = null;
+    let screenshotUnavailable = false;
+    if (screenshotWanted) {
+      try {
+        const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+        screenshot = screenshotDataUrlBytes(dataUrl);
+      } catch {
+        screenshotUnavailable = true;
+      }
+    }
+    const archive = buildTinderPageDiagnosticArchive(
+      response.snapshot, chrome.runtime.getManifest().version, screenshot
+    );
+    saveTinderPageDiagnosticArchive(archive);
+    describeDiagnostic(screenshotUnavailable
+      ? "ZIP exporté sans image (capture indisponible). Structure de la page incluse."
+      : "ZIP exporté. Tu peux le joindre à notre conversation pour analyser la page.");
+  } catch (error) {
+    describeDiagnostic(error instanceof Error ? error.message : "Export impossible. Réessaie depuis Tinder.", true);
+  } finally {
+    exportTinderDiagnostic.disabled = false;
+  }
+}
+exportTinderDiagnostic.addEventListener("click", () => void exportActiveTinderPage());
 
 renderDailyCounters([]);
 void showBuildVersion();
