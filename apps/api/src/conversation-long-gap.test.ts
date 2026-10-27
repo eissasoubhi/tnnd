@@ -83,6 +83,19 @@ test("after match answers resumed greeting, do not greet again; return to an una
   ], "Cool", now), "");
 });
 
+test("match replying days after the check-in must not trigger another greeting", () => {
+  const history = [
+    { direction: "outgoing" as const, text: "Je suis de Paris", sentAt: at(175) },
+    { direction: "incoming" as const, text: "Ah et tu travailles où ?", sentAt: at(174) },
+    { direction: "outgoing" as const, text: "Salut, ça va ?", sentAt: at(120) },
+    { direction: "incoming" as const, text: "Oui merci et toi ?", sentAt: at(1) }
+  ];
+  const actual = longGapConversationGuidance(history, "Oui merci et toi ?", now);
+  assert.match(actual, /earlier unanswered question/);
+  assert.match(actual, /Do not greet them again/);
+  assert.doesNotMatch(actual, /RE-ENTRY/);
+});
+
 test("fresh follow-up after an older non-question gently starts a new topic instead", () => {
   const history = [
     { direction: "outgoing" as const, text: "À bientôt", sentAt: at(75) },
