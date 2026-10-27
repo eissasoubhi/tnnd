@@ -63,9 +63,32 @@ export function longGapConversationGuidance(
   const prev = recent.at(-2)!;
   const previousAt = validDate(prev.sentAt, nowMs);
   if (previousAt === null || previousAt > latestAt) return "";
+  // Continuation comes FIRST, otherwise a delayed response to a re-entry
+  // greeting might be mistaken for yet another gap and get "Salut" again.
+  if (recent.length >= 3 && nowMs - latestAt <= FOLLOW_UP_WINDOW_MS) {
+    const greeting = recent.at(-2)!;
+    const older = recent.at(-3)!;
+    const helloAt = validDate(greeting.sentAt, nowMs);
+    const olderAt = validDate(older.sentAt, nowMs);
+    const beforeAt = validDate(recent.at(-4)?.sentAt, nowMs);
+    const gapBeforeOlder = beforeAt !== null && olderAt !== null &&
+      beforeAt <= olderAt && olderAt - beforeAt >= LONG_GAP_REENTRY_MS;
+    if (greeting.direction === "outgoing" && older.direction === "incoming" &&
+        helloAt !== null && olderAt !== null && olderAt <= helloAt &&
+        helloAt <= latestAt && greetingCheckin(greeting.text) &&
+        (helloAt - olderAt >= LONG_GAP_REENTRY_MS || gapBeforeOlder)) {
+      return [
+        "The match has now replied to your short re-entry check-in after a long pause.",
+        oldQuestion(older.text)
+          ? "There is an earlier unanswered question from before the pause. If it is still relevant, answer it briefly and naturally after acknowledging the match's NEW message; otherwise let the old topic go. Do not invent the answer or silently ignore important direct questions."
+          : "No verified pending old question needs an answer. Respond naturally to the match's new message and start a fresh topic only if the exchange invites it.",
+        "Do not greet them again; avoid another generic 'comment ça va', a string of interview questions, or an unrelated filler remark."
+      ].join(" ");
+    }
+  }
+
   const oldUnanswered = nowMs - latestAt >= LONG_GAP_REENTRY_MS;
   const returnedAfterGap = latestAt - previousAt >= LONG_GAP_REENTRY_MS;
-
   if (oldUnanswered || returnedAfterGap) {
     return [
       "Long-gap conversation RE-ENTRY (verified: at least 48 hours without an exchange before this turn, or an old incoming message still unanswered after 48 hours). This is NOT a new match opener.",
@@ -74,27 +97,5 @@ export function longGapConversationGuidance(
       "Explicit boundaries, safety concerns, real new questions and the normal message-send permissions always take precedence."
     ].join(" ");
   }
-
-  // Only the next incoming turn after a proven re-entry greeting can trigger
-  // continuation advice. Do not search distant history or invent a topic.
-  if (recent.length < 3 || nowMs - latestAt > FOLLOW_UP_WINDOW_MS) return "";
-  const greeting = recent.at(-2)!;
-  const older = recent.at(-3)!;
-  const helloAt = validDate(greeting.sentAt, nowMs);
-  const olderAt = validDate(older.sentAt, nowMs);
-  const beforeOlder = recent.at(-4);
-  const beforeAt = validDate(beforeOlder?.sentAt, nowMs);
-  const gapBeforeOlder = beforeAt !== null && olderAt !== null &&
-    beforeAt <= olderAt && olderAt - beforeAt >= LONG_GAP_REENTRY_MS;
-  if (greeting.direction !== "outgoing" || older.direction !== "incoming" ||
-      helloAt === null || olderAt === null || helloAt > latestAt ||
-      (helloAt - olderAt < LONG_GAP_REENTRY_MS && !gapBeforeOlder) ||
-      !greetingCheckin(greeting.text)) return "";
-  return [
-    "The match has now replied to your short re-entry check-in after a long pause.",
-    oldQuestion(older.text)
-      ? "There is an earlier unanswered question from before the pause. If it is still relevant, answer it briefly and naturally after acknowledging the match's NEW message; otherwise let the old topic go. Do not invent the answer or silently ignore important direct questions."
-      : "No verified pending old question needs an answer. Respond naturally to the match's new message and start a fresh topic only if the exchange invites it.",
-    "Do not greet them again; avoid another generic 'comment ça va', a string of interview questions, or an unrelated filler remark."
-  ].join(" ");
+  return "";
 }
