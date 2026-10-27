@@ -18,6 +18,22 @@ test("after 48h of verified inactivity, first message is a brief greeting/check-
   assert.match(actual, /Send only the one ordinary allowed reply/);
 });
 
+test("a brand-new incoming message after two quiet days also starts with a short check-in", () => {
+  const messages = [
+    { direction: "outgoing" as const, text: "Bonne soirée !", sentAt: at(100) },
+    { direction: "incoming" as const, text: "Tu fais quoi ?", sentAt: at(1) }
+  ];
+  const first = longGapConversationGuidance(messages, "Tu fais quoi ?", now);
+  assert.match(first, /RE-ENTRY/);
+  const next = longGapConversationGuidance([
+    ...messages,
+    { direction: "outgoing" as const, text: "Salut, comment tu vas ?", sentAt: at(0.8) },
+    { direction: "incoming" as const, text: "Bien et toi ?", sentAt: at(0.4) }
+  ], "Bien et toi ?", now);
+  assert.match(next, /earlier unanswered question/);
+  assert.doesNotMatch(next, /RE-ENTRY/);
+});
+
 test("threshold is exactly 48h and prompt is silent before that", () => {
   assert.equal(LONG_GAP_REENTRY_MS, 172_800_000);
   assert.equal(longGapConversationGuidance([
