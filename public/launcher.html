@@ -9,6 +9,13 @@
     body { margin: 0; width: 320px; color: #19362e; background: #f5f8f4; font: 14px system-ui, sans-serif; }
     main { padding: 17px; display: grid; gap: 13px; }
     header { display: flex; align-items: center; justify-content: space-between; }
+    #exportTinderDiagnostic { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border: 1px solid #c3d5c8; border-radius: 12px; color: #234b3d; background: #fff; cursor: pointer; }
+    #exportTinderDiagnostic:hover { border-color: #234b3d; background: #edf5ec; }
+    #exportTinderDiagnostic:disabled { cursor: wait; opacity: .65; }
+    #exportTinderDiagnostic:focus-visible { outline: 3px solid #8070dc; outline-offset: 3px; }
+    #diagnosticFeedback { font-size: 12px; line-height: 1.45; margin: -5px 0 0; color: #496458; overflow-wrap: anywhere; }
+    #diagnosticFeedback[data-state="error"] { color: #a14137; }
+    #diagnosticFeedback[hidden] { display: none; }
     h1 { font-size: 20px; letter-spacing: -.04em; margin: 0; }
     .build-version { font-size: 11px; color: #647b70; margin-top: 12px; text-align: center; font-variant-numeric: tabular-nums; }
     #engineStatus { display: flex; align-items: center; gap: 9px; font-size: 13px; min-height: 28px; }
@@ -47,7 +54,13 @@
 </head>
 <body>
   <main>
-    <header><h1>TNND</h1></header>
+    <header>
+      <h1>TNND</h1>
+      <button type="button" id="exportTinderDiagnostic" aria-label="Exporter le diagnostic de la page Tinder" title="Exporter le diagnostic de la page Tinder en ZIP">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3"/></svg>
+      </button>
+    </header>
+    <p id="diagnosticFeedback" role="status" aria-live="polite" hidden></p>
     <div id="engineStatus" data-state="busy" role="status">Vérification…</div>
     <button type="button" id="toggleAutomation" disabled>Démarrer</button>
     <div class="mode-selector" role="tablist" aria-label="Activités TNND">
