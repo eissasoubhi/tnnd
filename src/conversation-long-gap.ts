@@ -84,8 +84,8 @@ export function longGapConversationGuidance(
   const olderAt = validDate(older.sentAt, nowMs);
   const beforeOlder = recent.at(-4);
   const beforeAt = validDate(beforeOlder?.sentAt, nowMs);
-  const gapBeforeOlder = beforeAt !== null && beforeAt <= olderAt &&
-    olderAt - beforeAt >= LONG_GAP_REENTRY_MS;
+  const gapBeforeOlder = beforeAt !== null && olderAt !== null &&
+    beforeAt <= olderAt && olderAt - beforeAt >= LONG_GAP_REENTRY_MS;
   if (greeting.direction !== "outgoing" || older.direction !== "incoming" ||
       helloAt === null || olderAt === null || helloAt > latestAt ||
       (helloAt - olderAt < LONG_GAP_REENTRY_MS && !gapBeforeOlder) ||
