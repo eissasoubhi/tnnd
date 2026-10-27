@@ -227,7 +227,14 @@ function safeUrl(value: string): string {
   try {
     const url = new URL(value, location.href);
     if (url.protocol !== "http:" && url.protocol !== "https:") return `[${url.protocol.replace(":", "")}]`;
-    return `${url.origin}${url.pathname}`;
+    // Never export stable Tinder thread IDs, profile/media paths or URL queries.
+    if (url.hostname === "tinder.com" || url.hostname === "www.tinder.com") {
+      const route = url.pathname.replace(/(\/app\/messages\/)[^/]+/i, "$1[thread]");
+      return url.origin + route;
+    }
+    // External media/CDN URLs can encode account or profile identifiers in
+    // path segments. Their origin is enough for network-resource diagnostics.
+    return url.origin + "/[redacted-path]";
   } catch {
     return "[redacted-url]";
   }
@@ -247,7 +254,9 @@ function sanitizeDom(): { html: string; truncated: boolean } {
 
     for (const attr of Array.from(element.attributes)) {
       const name = attr.name.toLowerCase();
-      if (/token|auth|session|cookie|secret|password|credential/.test(name)) {
+      if (/token|auth|session|cookie|secret|password|credential|^on[a-z]+$/.test(name)
+          || name === "srcset" || name === "imagesrcset" || name === "value"
+          || (name.startsWith("data-") && !["data-testid","data-state","data-role","data-qa"].includes(name))) {
         element.removeAttribute(attr.name);
         continue;
       }
@@ -255,7 +264,11 @@ function sanitizeDom(): { html: string; truncated: boolean } {
         element.setAttribute(attr.name, redactDiagnosticInlineStyle(attr.value));
         continue;
       }
-      if (["href", "src", "action", "poster"].includes(name)) {
+      if (["src", "poster"].includes(name)) {
+        element.setAttribute(attr.name, "[redacted-media-url]");
+        continue;
+      }
+      if (["href", "action", "formaction"].includes(name)) {
         element.setAttribute(attr.name, safeUrl(attr.value));
         continue;
       }
@@ -263,8 +276,13 @@ function sanitizeDom(): { html: string; truncated: boolean } {
         element.setAttribute(attr.name, "[redacted-text]");
         continue;
       }
-      if (name === "aria-label" && !/message|send|envoyer|chat|conversation|match|button|input|textbox/i.test(attr.value)) {
-        element.setAttribute(attr.name, "[redacted-label]");
+      if (name === "aria-label") {
+        // Free-form aria labels sometimes include the recipient's name.
+        // Preserve only labels whose complete value is a generic UI action.
+        const value = attr.value.trim();
+        if (!/^(?:send|envoyer|message|messages|chat|conversation|conversations|match|matches|like|nope|super like|close|fermer|back|retour|next|suivant|previous|précédent|profile|profil|menu|settings|paramètres)$/i.test(value)) {
+          element.setAttribute(attr.name, "[redacted-label]");
+        }
       }
     }
   }
@@ -279,7 +297,7 @@ function sanitizeDom(): { html: string; truncated: boolean } {
   for (const node of textNodes) node.data = "[text]";
 
   const full = `<!doctype html>\n${clone.outerHTML}`;
-  const maxLength = 1_500_000;
+  const maxLength = 6_000_000; // Entire currently mounted DOM, bounded to avoid crashing the popup.
   return { html: full.slice(0, maxLength), truncated: full.length > maxLength };
 }
 

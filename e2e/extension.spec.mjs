@@ -1,4 +1,5 @@
 import { test, expect, chromium } from "playwright/test";
+import { unzipSync, strFromU8 } from "fflate";
 import { createServer } from "node:http";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
@@ -179,7 +180,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     try {
       await worker.evaluate(() => chrome.storage.local.remove("tnnd.backendSession"));
       await launcher.goto(`chrome-extension://${extensionId}/launcher.html`);
-      await expect(launcher.locator("button")).toHaveCount(7);
+      await expect(launcher.locator("button")).toHaveCount(8);
        await expect(launcher.locator(".mode-button")).toHaveCount(3);
       await launcher.locator("#toggleAutomation").click();
       await expect(launcher.locator("#engineStatus")).toContainText("Arrêté");
@@ -226,7 +227,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await simple.goto(`chrome-extension://${extensionId}/launcher.html`);
       expect(await simple.evaluate(() => chrome.runtime.getManifest().action.default_popup))
         .toBe("launcher.html");
-      await expect(simple.locator("button")).toHaveCount(7);
+      await expect(simple.locator("button")).toHaveCount(8);
        await expect(simple.locator(".mode-button")).toHaveCount(3);
       const installedInfo = JSON.parse(await readFile(resolve("dist/BUILD-INFO.json"), "utf8"));
       const currentCommit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
@@ -318,7 +319,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(simple.locator("#reachedLimitsList")).toContainText("2 / 2");
       await expect(simple.locator("#reachedLimitsList")).toContainText("Sessions Auto Swipe");
       await expect(simple.locator("#reachedLimitsList li")).toHaveCount(2);
-      await expect(simple.locator("button")).toHaveCount(7);
+      await expect(simple.locator("button")).toHaveCount(8);
        await expect(simple.locator(".mode-button")).toHaveCount(3);
       await expect(simple.locator("#reachedLimitsNote")).toContainText("sans preuve d'acceptation Tinder");
       await expect(simple.locator("#toggleAutomation")).toHaveText("Arrêter");
@@ -629,5 +630,41 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await web.close();
     }
   });
+
+  test("header export downloads the active Tinder DOM as a redacted ZIP without changing runner state", async () => {
+    const worker = context.serviceWorkers()[0] || await context.waitForEvent("serviceworker");
+    const launcher = await context.newPage();
+    try {
+      await launcher.goto(`chrome-extension://${extensionId}/launcher.html`);
+      await expect(launcher.locator("#exportTinderDiagnostic")).toBeEnabled();
+      const before = await worker.evaluate(() => chrome.storage.local.get("tnnd.unifiedLauncher.master.v1"));
+      // A popup is not an active browser tab. For this fixture page, activate
+      // fictional Tinder and trigger the popup command from its loaded page.
+      await tinder.bringToFront();
+      const downloadWait = launcher.waitForEvent("download");
+      await launcher.evaluate(() => {
+        window.confirm = () => false; // Explicitly exclude the private screenshot.
+        document.getElementById("exportTinderDiagnostic").click();
+      });
+      const download = await downloadWait;
+      expect(download.suggestedFilename()).toMatch(/^tnnd-tinder-page-.*\.zip$/);
+      const data = unzipSync(new Uint8Array(await readFile(await download.path())));
+      for (const filename of ["metadata.json","page.json","selectors.json","resources.json","config-summary.json","dom-redacted.html"])
+        expect(data[filename], filename).toBeDefined();
+      expect(data["screenshot-visible.png"]).toBeUndefined();
+      const meta = JSON.parse(strFromU8(data["metadata.json"]));
+      expect(meta.kind).toBe("tnnd-tinder-page-diagnostic");
+      expect(meta.screenshotIncluded).toBe(false);
+      const dom = strFromU8(data["dom-redacted.html"]);
+      expect(dom).toContain("[text]");
+      expect(dom).not.toContain("fixture-only-token");
+      expect(await worker.evaluate(() => chrome.storage.local.get("tnnd.unifiedLauncher.master.v1")))
+        .toEqual(before);
+      await expect(launcher.locator("#diagnosticFeedback")).toContainText("ZIP exporté");
+    } finally {
+      await launcher.close();
+    }
+  });
+
 
 });

@@ -89,7 +89,7 @@ test("toolbar launcher keeps global Stop plus three accessible mode tabs and act
   const launcher = read("public/launcher.html");
   const controller = read("src/launcher.ts");
   assert.equal(manifest.action.default_popup, "launcher.html");
-  assert.equal(launcher.split("<button ").length - 1, 7);
+  assert.equal(launcher.split("<button ").length - 1, 8);
   for (const mode of ["swipe", "new-match", "active-chat"]) {
     assert.match(launcher, new RegExp('data-activity="' + mode + '"'));
   }
@@ -107,7 +107,7 @@ test("missing extension session still uses credential page, without credentials 
   const connectPage = read("public/connect.html");
   const handler = read("src/launcher.ts");
   const auth = read("src/connect.ts");
-  assert.equal(launcher.split("<button ").length - 1, 7);
+  assert.equal(launcher.split("<button ").length - 1, 8);
   for (const mode of ["swipe", "new-match", "active-chat"]) {
     assert.match(launcher, new RegExp('data-activity="' + mode + '"'));
   }
