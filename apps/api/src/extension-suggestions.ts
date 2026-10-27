@@ -9,6 +9,7 @@ import { ensureAiIdentityAction } from "./conversation-ai-identity-action.js";
 import { automaticReplyHold, hasUnexpectedScriptMix, replyNeedsHumanReview } from "../../../src/conversation-reply-safety.js";
 import { assessMatchIntent, matchScreeningPrompt, type MatchScreeningOptions } from "./match-intent-screening.js";
 import { conversationFlowGuidance, deriveConversationFlow } from "./conversation-flow.js";
+import { longGapConversationGuidance } from "../../../src/conversation-long-gap.js";
 import { retrievePersonalMemories } from "./personal-memory-service.js";
 import { loadAiProviderSettings } from "./ai-provider-settings-service.js";
 import { resolveAdaptiveStyle } from "./conversation-style-adaptation.js";
@@ -189,7 +190,7 @@ export async function generateExtensionSuggestions(
   // Do not make another LLM call to track the stage. Use durable messages
   // already synchronized under this authenticated user and its existing facts.
   const flowEnabled = configWithoutIdentity.conversationFlowEnabled !== false;
-  const flowLookup = flowEnabled && request.purpose !== "opener" && request.threadKey
+  const flowLookup = request.purpose !== "opener" && request.threadKey
     ? await findConversationByExternalThreadId(userId, request.threadKey) : null;
   const storedConversation = flowLookup ? await getConversation(userId, flowLookup.id) : null;
   const stageOrder = configWithoutIdentity.conversationFlowOrder === "work-first"
@@ -259,6 +260,10 @@ export async function generateExtensionSuggestions(
     matchScreening ? matchScreeningPrompt(matchScreening) : "",
     profileTopicHooks,
     personalLocationAnswerPolicy(generationContext.userProfile?.identity as Record<string, string> | undefined),
+    request.purpose !== "opener" && storedConversation
+      ? longGapConversationGuidance(storedConversation.messages,
+          observedMessages.at(-1)?.direction === "incoming" ? observedMessages.at(-1)!.text : null)
+      : "",
     request.purpose === "opener"
       ? "Write ONE opening Tinder turn with 2 or 3 short lines separated by newline characters inside one JSON array string. The lines will be sent as separate Tinder bubbles, NOT alternative messages. The FIRST line must be ONLY a short greeting (Salut, Hello, Hi, or Salut cv?); the next one or two lines should be natural short follow-ups without repeating the greeting. No previous messages exist. Do not invent profile facts, feelings, compliments or reactions (for example claiming their profile made the sender smile). Only the match name/age explicitly shown in the conversation context are verified. No profile photo, bio or appearance is verified. A neutral greeting and one natural question are better than fake personalization."
       : "Use the recent conversation flow, answer what was actually said, and avoid abruptly changing subject.",
