@@ -57,7 +57,9 @@ export function buildTinderPageDiagnosticArchive(
 }
 
 export function saveTinderPageDiagnosticArchive(archive: TinderDiagnosticArchive): void {
-  const blob = new Blob([archive.zip], { type: "application/zip" });
+  const bytes = new Uint8Array(archive.zip.byteLength);
+  bytes.set(archive.zip);
+  const blob = new Blob([bytes], { type: "application/zip" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
