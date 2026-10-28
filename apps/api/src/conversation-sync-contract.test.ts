@@ -57,3 +57,21 @@ test("rejects an oversized nextCursor before sync persistence", () => {
     /nextCursor exceeds 512 characters/
   );
 });
+
+test("source-verified message timestamps must be explicitly declared", () => {
+  const legacy = validateConversationSyncRequest({
+    externalThreadId: "thread-1",messages:[baseMessage]
+  });
+  assert.equal(legacy.messages[0].timestampVerified, undefined);
+  const observed = validateConversationSyncRequest({
+    externalThreadId: "thread-1",messages:[{...baseMessage,timestampVerified:false}]
+  });
+  assert.equal(observed.messages[0].timestampVerified, undefined);
+  const verified = validateConversationSyncRequest({
+    externalThreadId: "thread-1",messages:[{...baseMessage,timestampVerified:true}]
+  });
+  assert.equal(verified.messages[0].timestampVerified,true);
+  assert.throws(() => validateConversationSyncRequest({
+    externalThreadId: "thread-1",messages:[{...baseMessage,timestampVerified:"yes"}]
+  }),/timestampVerified must be boolean/);
+});

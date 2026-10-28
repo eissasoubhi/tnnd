@@ -10,6 +10,7 @@ import { automaticReplyHold, hasUnexpectedScriptMix, replyNeedsHumanReview } fro
 import { assessMatchIntent, matchScreeningPrompt, type MatchScreeningOptions } from "./match-intent-screening.js";
 import { conversationFlowGuidance, deriveConversationFlow } from "./conversation-flow.js";
 import { longGapConversationGuidance } from "../../../src/conversation-long-gap.js";
+import { messageChronologyGuidance, normalizeGreetingForCurrentTime, type TimeIdentity } from "../../../src/conversation-time-context.js";
 import { retrievePersonalMemories } from "./personal-memory-service.js";
 import { loadAiProviderSettings } from "./ai-provider-settings-service.js";
 import { resolveAdaptiveStyle } from "./conversation-style-adaptation.js";
@@ -169,6 +170,10 @@ export async function generateExtensionSuggestions(
   const generationContext = await loadContext(userId, request.context);
   const { identity: _clientIdentity, ...configWithoutIdentity } = request.config;
   const memoryContext = generationContext.memories;
+  const savedIdentity = generationContext.userProfile?.identity;
+  const timeIdentity: TimeIdentity | undefined =
+    savedIdentity && typeof savedIdentity === "object" && !Array.isArray(savedIdentity)
+      ? savedIdentity as TimeIdentity : undefined;
   const storedStyle = generationContext.userProfile?.textingStyle as Record<string, unknown> | undefined;
   const topicPreferences = generationContext.userProfile?.topicEngine as { avoidedTopics?: string[] } | undefined;
   // Only incoming lines determine the match's language; outgoing turns are
@@ -260,6 +265,10 @@ export async function generateExtensionSuggestions(
     matchScreening ? matchScreeningPrompt(matchScreening) : "",
     profileTopicHooks,
     personalLocationAnswerPolicy(generationContext.userProfile?.identity as Record<string, string> | undefined),
+    request.purpose !== "opener" && storedConversation && observedMessages.at(-1)?.direction === "incoming"
+      ? messageChronologyGuidance(timeIdentity, storedConversation.messages,
+          observedMessages.at(-1)!.text)
+      : "",
     request.purpose !== "opener" && storedConversation &&
       observedMessages.at(-1)?.direction === "incoming"
       ? longGapConversationGuidance(storedConversation.messages, observedMessages.at(-1)!.text)
@@ -311,7 +320,9 @@ export async function generateExtensionSuggestions(
 
   return {
     suggestions: parseSuggestions(raw, request.count).map(suggestion => {
-      const cleaned = request.purpose === "opener" ? suggestion : removeCannedFameuxOpening(limitReplyLaughter(suggestion, styleCues));
+      const cleaned = request.purpose === "opener" ? suggestion : normalizeGreetingForCurrentTime(
+        removeCannedFameuxOpening(limitReplyLaughter(suggestion, styleCues)), timeIdentity
+      );
       if (request.purpose === "auto" && (replyNeedsHumanReview(cleaned) || hasUnexpectedScriptMix(cleaned, observedMessages))) {
         throw new Error("automatic_reply_needs_human_review");
       }

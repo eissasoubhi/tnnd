@@ -1,5 +1,5 @@
 import { withGenerationStage } from "./conversation-generation-stage.js";
-import { temporalConversationGuidance } from "../../../src/conversation-time-context.js";
+import { temporalConversationGuidance, messageChronologyGuidance, normalizeGreetingForCurrentTime } from "../../../src/conversation-time-context.js";
 import { longGapConversationGuidance } from "../../../src/conversation-long-gap.js";
 import { engagementConversationGuidance } from "../../../src/conversation-engagement-guidance.js";
 import { conversationPragmaticsGuidance, removeCannedFameuxOpening } from "../../../src/conversation-pragmatics.js";
@@ -121,7 +121,8 @@ export async function generateConversationReply(
   const effectiveContext = { ...context, settings: adaptive.settings, instructions: [...context.instructions,
     replyStyleGuidance(styleCues, adaptive.autoFields.includes("languages")),
     conversationFlowGuidance(conversation.conversationFlow),
-    temporalConversationGuidance(generationProfile.userProfile?.identity, supplementalContext.matchProfile?.fields.location, conversation.messages.at(-1)?.direction === "incoming" ? conversation.messages.at(-1)?.sentAt : null),
+    temporalConversationGuidance(generationProfile.userProfile?.identity, supplementalContext.matchProfile?.fields.location, conversation.messages.at(-1)?.direction === "incoming" && conversation.messages.at(-1)?.timestampVerified === true ? conversation.messages.at(-1)?.sentAt : null),
+    messageChronologyGuidance(generationProfile.userProfile?.identity, conversation.messages, normalizedMessage),
     engagementConversationGuidance(recentMessages),
     conversationPragmaticsGuidance(recentMessages, normalizedMessage, adaptive.autoFields.includes("languages")),
     matchProfileTopicGuidance(
@@ -160,7 +161,7 @@ export async function generateConversationReply(
   return {
     conversationId,
     ...generated,
-    text: removeCannedFameuxOpening(limitReplyLaughter(generated.text, styleCues)),
+    text: normalizeGreetingForCurrentTime(removeCannedFameuxOpening(limitReplyLaughter(generated.text, styleCues)), generationProfile.userProfile?.identity),
     ...(usedId ? { usedPersonalMemoryId: usedId } : {}),
     provenance: {
       overriddenFields: context.provenance.overriddenFields.map(String),

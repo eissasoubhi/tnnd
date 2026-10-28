@@ -41,7 +41,8 @@ export function prepareReadOnlyImport(
       // The source DOM has no verified sent time. Preserve *observed order*
       // deterministically instead of assigning the same timestamp to every
       // message (which caused the API's sort-by-time fallback to scramble it).
-      sentAt: new Date(Date.parse(importedAt) + index).toISOString()
+      sentAt: new Date(Date.parse(importedAt) + index).toISOString(),
+      timestampVerified: false
     };
   });
   return {

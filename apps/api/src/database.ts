@@ -29,7 +29,8 @@ export const migrationFiles = [
   "0022_match_profile_photo_archives.sql",
   "0023_smart_swipe_outcome_reason.sql",
   "0024_smart_swipe_manual_review.sql",
-  "0025_smart_swipe_not_clicked.sql"
+  "0025_smart_swipe_not_clicked.sql",
+  "0026_conversation_message_time_provenance.sql"
 ] as const;
 
 export function getDatabaseConfig(env: NodeJS.ProcessEnv = process.env): DatabaseConfig {

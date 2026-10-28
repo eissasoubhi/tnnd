@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { longGapConversationGuidance, LONG_GAP_REENTRY_MS } from "../../../src/conversation-long-gap.js";
+import { longGapConversationGuidance as actualLongGapGuidance, LONG_GAP_REENTRY_MS } from "../../../src/conversation-long-gap.js";
+type Message = {direction:"incoming"|"outgoing"; text:string; sentAt?:string};
+const longGapConversationGuidance = (messages: readonly Message[], target: string | null, now: Date) =>
+  actualLongGapGuidance(messages.map(message => ({ ...message, timestampVerified:true })), target, now);
+
 import { readFile } from "node:fs/promises";
 
 const now = new Date("2026-10-28T19:00:00.000Z");
@@ -106,6 +110,17 @@ test("fresh follow-up after an older non-question gently starts a new topic inst
   const actual = longGapConversationGuidance(history, "Bien merci", now);
   assert.match(actual, /No verified pending old question/);
   assert.match(actual, /start a fresh topic only if/);
+});
+
+test("old imported ordering timestamps never trigger a long-gap greeting", () => {
+  assert.equal(actualLongGapGuidance([
+    {direction:"outgoing",text:"Salut",sentAt:at(74),timestampVerified:false},
+    {direction:"incoming",text:"Bonsoir",sentAt:at(73),timestampVerified:false}
+  ],"Bonsoir",now),"");
+  assert.equal(actualLongGapGuidance([
+    {direction:"outgoing",text:"Salut",sentAt:at(74),timestampVerified:true},
+    {direction:"incoming",text:"Bonsoir",sentAt:at(73),timestampVerified:false}
+  ],"Bonsoir",now),"");
 });
 
 test("both server manual drafts and extension auto generations use the shared verified rule", async () => {
