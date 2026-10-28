@@ -121,7 +121,7 @@ export async function generateConversationReply(
   const effectiveContext = { ...context, settings: adaptive.settings, instructions: [...context.instructions,
     replyStyleGuidance(styleCues, adaptive.autoFields.includes("languages")),
     conversationFlowGuidance(conversation.conversationFlow),
-    temporalConversationGuidance(generationProfile.userProfile?.identity, supplementalContext.matchProfile?.fields.location, conversation.messages.at(-1)?.direction === "incoming" ? conversation.messages.at(-1)?.sentAt : null),
+    temporalConversationGuidance(generationProfile.userProfile?.identity, supplementalContext.matchProfile?.fields.location, conversation.messages.at(-1)?.direction === "incoming" && conversation.messages.at(-1)?.timestampVerified === true ? conversation.messages.at(-1)?.sentAt : null),
     messageChronologyGuidance(generationProfile.userProfile?.identity, conversation.messages, normalizedMessage),
     engagementConversationGuidance(recentMessages),
     conversationPragmaticsGuidance(recentMessages, normalizedMessage, adaptive.autoFields.includes("languages")),
