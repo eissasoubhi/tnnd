@@ -19,6 +19,7 @@ export interface ConversationMessageDelta {
   direction: "incoming" | "outgoing";
   text: string;
   sentAt: string;
+  timestampVerified?: boolean;
 }
 
 export interface ConversationSyncInput {
