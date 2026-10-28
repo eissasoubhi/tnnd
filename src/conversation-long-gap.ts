@@ -11,6 +11,7 @@ export interface DatedChatMessage {
   direction: "incoming" | "outgoing";
   text: string;
   sentAt?: string | null;
+  timestampVerified?: boolean;
 }
 const sameText = (a: string, b: string) =>
   a.normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleLowerCase() ===
@@ -55,22 +56,23 @@ export function longGapConversationGuidance(
   if (!last || last.direction !== "incoming" || !last.text.trim() ||
       (latestIncomingText !== null && !sameText(last.text, latestIncomingText))) return "";
   if (isBoundary(last.text) || isSerious(last.text)) return "";
-  const latestAt = validDate(last.sentAt, nowMs);
+  const latestAt = last.timestampVerified === true ? validDate(last.sentAt, nowMs) : null;
   if (latestAt === null) return "";
   // Detect both: (1) nobody has messaged since the incoming turn, and
   // (2) the match has just restarted an otherwise dormant conversation.
   // An unknown prior timestamp cannot prove either long gap safely.
   const prev = recent.at(-2)!;
-  const previousAt = validDate(prev.sentAt, nowMs);
+  const previousAt = prev.timestampVerified === true ? validDate(prev.sentAt, nowMs) : null;
   if (previousAt === null || previousAt > latestAt) return "";
   // Continuation comes FIRST, otherwise a delayed response to a re-entry
   // greeting might be mistaken for yet another gap and get "Salut" again.
   if (recent.length >= 3 && nowMs - latestAt <= FOLLOW_UP_WINDOW_MS) {
     const greeting = recent.at(-2)!;
     const older = recent.at(-3)!;
-    const helloAt = validDate(greeting.sentAt, nowMs);
-    const olderAt = validDate(older.sentAt, nowMs);
-    const beforeAt = validDate(recent.at(-4)?.sentAt, nowMs);
+    const helloAt = greeting.timestampVerified === true ? validDate(greeting.sentAt, nowMs) : null;
+    const olderAt = older.timestampVerified === true ? validDate(older.sentAt, nowMs) : null;
+    const before = recent.at(-4);
+    const beforeAt = before?.timestampVerified === true ? validDate(before.sentAt, nowMs) : null;
     const gapBeforeOlder = beforeAt !== null && olderAt !== null &&
       beforeAt <= olderAt && olderAt - beforeAt >= LONG_GAP_REENTRY_MS;
     if (greeting.direction === "outgoing" && older.direction === "incoming" &&
