@@ -36,7 +36,7 @@ test("crossing midnight depends on local timezone, including DST and Morocco", (
     {direction:"incoming",text:"Bonsoir",sentAt:"2026-03-28T23:30:00Z"}
   ],"Bonsoir",now);
   assert.match(context,/Current moment: 2026-03-29 09:30 Europe\/Paris/);
-  assert.match(context,/Current calendar date differs from latest incoming date: YES|Current calendar date differs from latest incoming date: NO/);
+  assert.match(context,/Current calendar date differs from latest incoming date: NO/);
   assert.equal(normalizeGreetingForCurrentTime("Bonsoir",{currentCity:"Casa"},now),"Bonjour");
 });
 test("unknown location uses UTC reference and never guesses a timezone", () => {
@@ -47,9 +47,13 @@ test("unknown location uses UTC reference and never guesses a timezone", () => {
 });
 test("missing, inconsistent, future timestamps and stale synchronized last turn fail safe", () => {
   assert.equal(messageChronologyGuidance({currentCity:"Paris"},messages,"unseen Tinder bubble",today),"");
-  assert.equal(messageChronologyGuidance({currentCity:"Paris"},[{...messages[0],direction:"incoming"}],"Bonsoir, ça va ?",today),"");
+  assert.equal(messageChronologyGuidance({currentCity:"Paris"},[{...messages[0],direction:"outgoing"}],"Bonsoir, ça va ?",today),"");
   assert.equal(messageChronologyGuidance({currentCity:"Paris"},[{...messages[0],sentAt:"n/a"},{...messages[1],sentAt:"n/a"}],"Bonsoir ! Oui tranquille",today),"");
-  assert.equal(messageChronologyGuidance({currentCity:"Paris"},[{...messages[0],sentAt:"2026-10-29T10:00:00Z"},messages[1]],"Bonsoir ! Oui tranquille",today),"");
+  const future = messageChronologyGuidance({currentCity:"Paris"},[
+    {...messages[0],sentAt:"2026-10-29T10:00:00Z"},messages[1]
+  ],"Bonsoir ! Oui tranquille",today);
+  assert.match(future,/1 message timestamp\(s\) missing, invalid or out of order/);
+  assert.doesNotMatch(future,/#1 outgoing/);
   const partial=messageChronologyGuidance({currentCity:"Paris"},[
     {...messages[0],sentAt:"not-a-date"},messages[1]
   ],"Bonsoir ! Oui tranquille",today);
