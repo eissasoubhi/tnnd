@@ -160,6 +160,7 @@ export function temporalConversationGuidance(
  */
 export interface TimedConversationMessage {
   direction: "incoming" | "outgoing";
+  timestampVerified?: boolean;
   sentAt?: string | null;
   text?: string;
 }
@@ -214,7 +215,7 @@ export function messageChronologyGuidance(
   let lastOutgoing: Date | null = null;
   for (let i = 0; i < recent.length; i++) {
     const message = recent[i];
-    const date = verifiedMessageTime(message.sentAt, now);
+    const date = message.timestampVerified === true ? verifiedMessageTime(message.sentAt, now) : null;
     if (!date || date.getTime() < previousMs) {
       missing++;
       continue;
@@ -229,7 +230,16 @@ export function messageChronologyGuidance(
     if (message.direction === "incoming") lastIncoming = date;
     else lastOutgoing = date;
   }
-  if (!entries.length || !verifiedMessageTime(last.sentAt, now)) return "";
+  if (!entries.length || last.timestampVerified !== true || !verifiedMessageTime(last.sentAt, now)) {
+    return [
+      "Current reply generation moment: " + current.date + " " + current.time + " " + zone +
+        (place ? " (configured user timezone)" : " (UTC reference only; local timezone unknown)"),
+      "Historical Tinder message send timestamps are UNVERIFIED (captured/imported order is not real send time). Do not infer yesterday, elapsed hours, absence duration or time of an earlier greeting from imported timestamps.",
+      place ? "When greeting naturally, use the CURRENT local time rather than copying an older bonjour/bonsoir." :
+        "Do not infer local morning/evening when timezone is unknown. Prefer a neutral greeting.",
+      "Do not change send permissions or claim that a message was delivered."
+    ].join("\n");
+  }
   const lastLocal = parts(new Date(last.sentAt!), zone);
   const dateShift = lastLocal.date !== current.date;
   return [
@@ -238,7 +248,7 @@ export function messageChronologyGuidance(
       (place ? " (from configured user location)" : " (UTC reference ONLY; user's local timezone unknown)"),
     "Last " + recent.length + " synchronized messages in chronological order (text is provided separately):",
     ...entries,
-    missing ? missing + " message timestamp(s) missing, invalid or out of order: do not infer their dates." : "",
+    missing ? missing + " message timestamp(s) unverified, missing, invalid or out of order: do not infer their dates." : "",
     lastIncoming ? "Last verified incoming: " + parts(lastIncoming,zone).date + " " + parts(lastIncoming,zone).time + "." : "",
     lastOutgoing ? "Last verified outgoing: " + parts(lastOutgoing,zone).date + " " + parts(lastOutgoing,zone).time + "." : "No verified previous outgoing message in this window.",
     "Current calendar date differs from latest incoming date: " + (dateShift ? "YES" : "NO") + ".",
