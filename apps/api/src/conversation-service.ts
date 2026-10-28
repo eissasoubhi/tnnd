@@ -62,6 +62,7 @@ export interface ConversationMessageRecord {
   direction: "incoming" | "outgoing";
   text: string;
   sentAt: string;
+  timestampVerified: boolean;
 }
 
 export interface ConversationDetailRecord extends ConversationSummary {
@@ -108,11 +109,11 @@ export async function syncConversation(userId: string, input: ConversationSyncRe
     let acceptedOutgoingCount = 0;
     for (const message of input.messages) {
       const insertResult = await client.query(
-        `INSERT INTO conversation_messages (id, conversation_id, external_message_id, direction, body, sent_at)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO conversation_messages (id, conversation_id, external_message_id, direction, body, sent_at, sent_at_verified)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (conversation_id, external_message_id) DO NOTHING
          RETURNING external_message_id`,
-        [randomUUID(), conversationId, message.externalMessageId, message.direction, message.text, message.sentAt]
+        [randomUUID(), conversationId, message.externalMessageId, message.direction, message.text, message.sentAt, message.timestampVerified === true]
       );
       if (insertResult.rowCount) {
         acceptedMessageIds.push(message.externalMessageId);
@@ -330,8 +331,9 @@ export async function getConversation(userId: string, conversationId: string): P
       direction: "incoming" | "outgoing";
       body: string;
       sent_at: Date;
+      sent_at_verified: boolean;
     }>(
-      `SELECT id, direction, body, sent_at
+      `SELECT id, direction, body, sent_at, sent_at_verified
        FROM conversation_messages
        WHERE conversation_id = $1
        ORDER BY sent_at ASC, created_at ASC`,
@@ -345,7 +347,8 @@ export async function getConversation(userId: string, conversationId: string): P
     id: row.id,
     direction: row.direction,
     text: row.body,
-    sentAt: row.sent_at.toISOString()
+    sentAt: row.sent_at.toISOString(),
+    timestampVerified: row.sent_at_verified === true
   }));
 
   const temporaryInstruction = conversation.temporary_instruction && conversation.temporary_instruction_scope
