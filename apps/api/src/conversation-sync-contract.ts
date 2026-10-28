@@ -26,6 +26,8 @@ export interface ConversationMessageDelta {
   direction: "incoming" | "outgoing";
   text: string;
   sentAt: string;
+  /** True only when the source actually supplied a message send timestamp. */
+  timestampVerified?: boolean;
 }
 
 export interface ConversationSyncRequest {
@@ -105,6 +107,9 @@ export function validateConversationSyncRequest(value: unknown): ConversationSyn
     if (item.text.length > CONVERSATION_SYNC_LIMITS.maxMessageTextLength) {
       throw new Error(`messages[${index}].text exceeds ${CONVERSATION_SYNC_LIMITS.maxMessageTextLength} characters`);
     }
+    if (item.timestampVerified !== undefined && typeof item.timestampVerified !== "boolean") {
+      throw new Error(`messages[${index}].timestampVerified must be boolean`);
+    }
     if (typeof item.sentAt !== "string" || Number.isNaN(Date.parse(item.sentAt))) {
       throw new Error(`messages[${index}].sentAt must be an ISO date`);
     }
@@ -113,6 +118,7 @@ export function validateConversationSyncRequest(value: unknown): ConversationSyn
       direction: item.direction,
       text: item.text,
       sentAt: item.sentAt,
+      ...(item.timestampVerified === true ? { timestampVerified: true } : {}),
     };
   });
 
