@@ -169,7 +169,7 @@ function senderPlace(identity: TimeIdentity | undefined): Place | null {
 }
 
 function verifiedMessageTime(value: unknown, now: Date): Date | null {
-  if (typeof value !== "string" || !value.trim() || !/^\d{4}-\d{2}-\d{2}T/.test(value)) return null;
+  if (typeof value !== "string" || !value.trim() || !/^\d{4}-\d{2}-\d{2}T/.test(value) || !/(?:Z|[+-]\d{2}:\d{2})$/i.test(value)) return null;
   const date = new Date(value);
   if (!Number.isFinite(date.getTime()) ||
       date.getTime() < Date.UTC(2020,0,1) ||
@@ -206,7 +206,7 @@ export function messageChronologyGuidance(
   const place = senderPlace(identity);
   const zone = place?.zone ?? "UTC";
   const current = parts(now, zone);
-  const recent = messages.slice(-24);
+  const recent = messages.slice(-40);
   const entries: string[] = [];
   let previousMs = -Infinity;
   let missing = 0;
