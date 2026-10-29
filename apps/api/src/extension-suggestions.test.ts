@@ -353,18 +353,18 @@ test("AI suspicion followed by two short incoming bubbles never reaches the prov
   assert.equal(called, false);
 });
 
-test("acknowledgement ends a turn without another Gemini request", async () => {
-  let called = false;
-  await assert.rejects(() => generateExtensionSuggestions(
-    "test-user", {
-      purpose: "auto", count: 1, config: {},
-      context: "Me: Oui on est d'accord\nThem: Hhh mdr\nThem: Ok ça marche"
-    },
-    async () => { called = true; return { provider:"gemini",model:"test",apiKey:"test" }; },
-    async () => { called = true; return new Response(""); },
-    async () => ({memories:[]})
-  ), /conversation_acknowledged_no_reply/);
-  assert.equal(called, false);
+test("acknowledgement is a server-side AI boundary decision, not a local regex hold", async () => {
+  const { automaticReplyHold } = await import("../../../src/conversation-reply-safety.js");
+  const { acceptStructuredBoundaryDecision } = await import("../../../src/conversation-boundary-policy.js");
+  const messages = [
+    {direction:"outgoing" as const,text:"Oui, on est d'accord"},
+    {direction:"incoming" as const,text:"Hhh mdr, ok ça marche"}
+  ];
+  assert.equal(automaticReplyHold(messages),null);
+  const verified = acceptStructuredBoundaryDecision({
+    kind:"acknowledgement",platform:null,confidence:0.98,evidence:"plain-acknowledgement"
+  },messages);
+  assert.equal(verified.kind,"acknowledgement");
 });
 
 test("Gemini outputs denying AI or mixing scripts are blocked in automatic mode", async () => {
