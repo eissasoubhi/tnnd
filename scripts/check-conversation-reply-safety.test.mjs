@@ -22,14 +22,11 @@ test("unresolved AI suspicion survives consecutive incoming short messages", () 
   )), null);
 });
 
-test("plain acknowledgements and end-of-turn OK do not receive one more AI bubble", () => {
-  for (const text of ["Ok ca marche", "OK ça marche", "Hhh ok", "D'accord", "Merci", "Got it"]) {
-    assert.equal(automaticReplyHold(turns(["outgoing","je vois"],["incoming",text])), "acknowledgement", text);
+test("acknowledgements are delegated to structured Gemini, not regex",()=>{
+  for (const text of ["Ok ca marche", "OK ça marche", "Hhh ok", "D'accord", "Merci", "Got it", "Ok ça marche, et demain ?"]) {
+    assert.equal(automaticReplyHold(turns(["outgoing","je vois"],["incoming",text])),null);
   }
-  for (const text of ["Ok ça marche, et demain ?", "Je vais bien", "Ghi raha", "Hhh oui je voulais te dire un truc"]) {
-    assert.equal(automaticReplyHold(turns(["outgoing","salut"],["incoming",text])), null, text);
-  }
-  assert.equal(automaticReplyHold(turns(["incoming","Ok ça marche"],["outgoing","à demain"])), null);
+  assert.equal(automaticReplyHold(turns(["incoming","Ok"],["outgoing","à demain"])),null);
 });
 
 test("automated false denials of AI involvement need human review", () => {
