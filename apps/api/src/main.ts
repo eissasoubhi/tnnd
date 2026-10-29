@@ -628,8 +628,14 @@ const server = createServer(async (request, response) => {
         sendJson(response, 400, { error: "invalid_conversation_boundary" });
         return;
       }
-      const result = await recordObservedConversationBoundary(session.user.id, input);
-      sendJson(response, 200, result);
+      try {
+        const result = await recordObservedConversationBoundary(session.user.id, input);
+        sendJson(response, 200, result);
+      } catch {
+        // Gemini/provider/DB failure: fail closed; never expose raw chat or
+        // provider credentials, and never imply a "continue" authorization.
+        sendJson(response, 503, { error: "conversation_semantic_check_unavailable" });
+      }
       return;
     }
 
