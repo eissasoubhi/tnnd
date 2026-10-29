@@ -1,45 +1,48 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyConversationBoundary as classify } from "../src/conversation-boundary-policy.ts";
+import {
+  acceptStructuredBoundaryDecision as accept,
+  parseStructuredBoundaryDecision as parse,
+  UNCERTAIN_BOUNDARY
+} from "../src/conversation-boundary-policy.ts";
 
-const exchange = (...messages) => messages.map(([direction, text]) => ({ direction, text }));
+const exchange = (...rows) => rows.map(([direction, text]) => ({direction,text}));
+const decision = (kind,evidence,platform="none",confidence=0.98) =>
+  parse({kind,evidence,platform,confidence});
 
-test("mutual farewell ends for now without another goodbye", () => {
-  assert.equal(classify(exchange(["outgoing", "Bonne soirée !"], ["incoming", "Bye 🙂"])).kind, "rest");
-  assert.equal(classify(exchange(["outgoing", "Good night"], ["incoming", "You too"])).kind, "rest");
-  assert.equal(classify(exchange(["outgoing", "Good night"], ["incoming", "ok"])).kind, "rest");
-  assert.equal(classify(exchange(["outgoing", "تصبح على خير"], ["incoming", "بسلامة"])).kind, "rest");
+test("structured Gemini boundary outcome, not text regex, determines whether to pause a conversation", () => {
+  const unusual = exchange(["outgoing","Bonne nuit"],["incoming","M3a slama, daba ra n3as 🙏"]);
+  assert.equal(accept(decision("rest","mutual-signoff"),unusual).kind,"rest");
+  assert.equal(accept(decision("continue","ongoing"),unusual).kind,"continue");
+  assert.equal(accept(decision("acknowledgement","plain-acknowledgement"),unusual).kind,"acknowledgement");
 });
-
-test("an unmatched goodbye may receive one polite closing reply", () => {
-  assert.equal(classify(exchange(["outgoing", "How was your day?"], ["incoming", "Bonne nuit"])).kind, "continue");
-  assert.equal(classify(exchange(["incoming", "bye"])).kind, "continue");
+test("validated outside-app handoff and explicit no-contact require matching evidence", () => {
+  const history = exchange(["outgoing","Want to continue elsewhere?"],["incoming","Yes sure"]);
+  assert.deepEqual(accept(decision("off-tinder","accepted-handoff","whatsapp"),history),{
+    kind:"off-tinder",platform:"whatsapp",confidence:0.98,evidence:"accepted-handoff"
+  });
+  assert.equal(accept(decision("off-tinder","direct-handoff","telegram"),exchange(["incoming","Let's chat there"])).kind,"off-tinder");
+  assert.equal(accept(decision("do-not-contact","explicit-stop"),exchange(["incoming","Do not contact me"])).kind,"do-not-contact");
 });
-
-test("explicitly agreed app handoff stops Tinder replies", () => {
-  assert.deepEqual(classify(exchange(["outgoing", "On passe sur Insta ?"], ["incoming", "D'accord"])), {kind:"off-tinder",platform:"instagram"});
-  assert.deepEqual(classify(exchange(["outgoing", "Let's talk on WhatsApp"], ["incoming", "OK"])), {kind:"off-tinder",platform:"whatsapp"});
-  assert.deepEqual(classify(exchange(["incoming", "Écris-moi sur Instagram plutôt"])), {kind:"off-tinder",platform:"instagram"});
+test("bad or low-confidence model outputs always become unknown rather than continue", () => {
+  for (const obj of [
+    {},null,[],{kind:"continue",evidence:"ongoing",platform:"none",confidence:"1"},
+    {kind:"off-tinder",evidence:"direct-handoff",platform:"none",confidence:1},
+    {kind:"continue",evidence:"ongoing",platform:"instagram",confidence:1},
+    {kind:"send-now",evidence:"ongoing",platform:"none",confidence:1},
+    {kind:"continue",evidence:"ongoing",platform:"none",confidence:NaN}
+  ]) assert.deepEqual(parse(obj),UNCERTAIN_BOUNDARY);
+  assert.deepEqual(accept(decision("continue","ongoing","none",0.89),
+    exchange(["incoming","Hi"])),UNCERTAIN_BOUNDARY);
+  assert.deepEqual(accept(decision("rest","unclear"),
+    exchange(["outgoing","Bye"],["incoming","bye"])),UNCERTAIN_BOUNDARY);
+  assert.deepEqual(accept(decision("off-tinder","accepted-handoff","instagram"),
+    exchange(["incoming","@someuser"])),UNCERTAIN_BOUNDARY);
+  assert.deepEqual(accept(decision("acknowledgement","plain-acknowledgement"),
+    exchange(["incoming","ok"])),UNCERTAIN_BOUNDARY);
 });
-
-test("contact discovery and generic assent never establish a handoff", () => {
-  assert.equal(classify(exchange(["outgoing", "Tu as Instagram ?"], ["incoming", "@lola_03"])).kind, "continue");
-  assert.equal(classify(exchange(["outgoing", "Coucou"], ["incoming", "ok"])).kind, "continue");
-  assert.equal(classify(exchange(["outgoing", "On passe sur Insta ?"], ["incoming", "jamais"])).kind, "continue");
-  assert.equal(classify(exchange(["outgoing", "On passe sur Insta ?"], ["incoming", "Non je préfère ici"])).kind, "continue");
-});
-
-test("new message after a closed exchange may be handled again", () => {
-  const messages = exchange(["outgoing", "Bonne soirée"], ["incoming", "bye"], ["incoming", "Salut ça va ?"]);
-  assert.equal(classify(messages).kind, "continue");
-});
-
-test("clear request not to contact overrides all other policy", () => {
-  assert.equal(classify(exchange(["incoming", "Don't message me again"])).kind, "do-not-contact");
-});
-
-test("never act on outgoing-only, empty, or unknown direction evidence", () => {
-  assert.equal(classify(exchange(["outgoing", "Bye"])).kind, "continue");
-  assert.equal(classify([]).kind, "continue");
-  assert.equal(classify([{ direction: "unknown", text: "bye" }]).kind, "continue");
+test("no outgoing-only, empty, or invalid last-message direction can approve model output", () => {
+  for (const rows of [[],exchange(["outgoing","Bye"]),[{direction:"unknown",text:"hi"}]]) {
+    assert.deepEqual(accept(decision("continue","ongoing"),rows),UNCERTAIN_BOUNDARY);
+  }
 });
