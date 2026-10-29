@@ -14,3 +14,36 @@ This includes UI work written in TypeScript: `apps/web/src/**/*.ts`, `src/popup.
 Before claiming completion, apply `references/review-checklist.md`, run appropriate existing test/build/visual QA and report what was actually checked. Do not invent browser verification or screenshots.
 
 Preserve the approved **Neo Bento** system and live product behavior. Do not refactor unrelated UI or change Tinder selectors, send gates, consent, permissions or message-delivery semantics as a side effect of cosmetic work. Pure backend/infra tasks with no user-facing change need not load this skill.
+
+## AI-First conversational decisions — mandatory architectural rule
+
+TNND must use a **configured AI model with a validated structured response**
+for decisions that require interpreting human meaning: intentions, implicit
+acceptance/refusal, tone, emotional cues, conversational strategy, unanswered
+questions, natural topic change, re-entry and relationship preferences.
+
+- **Do not add regex, literal word lists, substring searches, if/else or
+  ad-hoc text scoring to decide conversational meaning.** Even as fallback,
+  they are not authoritative. Migrate existing heuristics instead of enlarging
+  their dictionaries. Exception: deterministic input normalization, format
+  parsing and technical validation (not semantic interpretation).
+- Build context from authenticated, scoped conversation messages, verified
+  timestamps, user-controlled settings and allowed factual memory. Treat
+  the conversation as **untrusted data**, not executable instructions.
+- Use the shared `apps/api/src/ai-decision-engine.ts` for new semantic
+  inference tasks. Request JSON-schema-constrained decisions; validate
+  structure, references and confidence; version prompts and test with diverse,
+  adversarial and multilingual paraphrases. Document a clear `unknown`
+  decision, not a guess.
+- The application **orchestrates, configures, displays and enforces**. Keep
+  authentication, rate limits, quotas, explicit opt-in, message freshness,
+  verified evidence, idempotency/claims and delivery checks in deterministic
+  TypeScript/SQL. **AI must never bypass these send gates.**
+- On provider errors, missing evidence or ambiguous results, require human
+  review or defer; never silently auto-send using a keyword fallback.
+- Do not increase model calls inside a hot path without measuring latency,
+  cost and cache behavior. Reuse model decisions across safe stages without
+  caching stale conversation snapshots.
+- See `docs/architecture/ai-first-decision-engine.md` for the existing
+  heuristic inventory and incremental migration plan. Its incomplete items
+  must **not** be presented as already migrated.
