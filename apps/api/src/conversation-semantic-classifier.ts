@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { loadAiProviderSettings } from "./ai-provider-settings-service.js";
+import { requestAiDecision, AiDecisionProviderError } from "./ai-decision-engine.js";
 import {
   acceptStructuredBoundaryDecision, parseStructuredBoundaryDecision,
   UNCERTAIN_BOUNDARY, type ConversationBoundaryMessage, type StructuredBoundaryDecision
@@ -12,19 +13,6 @@ const CACHE_LIMIT = 350;
 const cached = new Map<string, {expires: number; result: StructuredBoundaryDecision}>();
 const inFlight = new Map<string, Promise<StructuredBoundaryDecision>>();
 
-function responseText(raw: unknown): string {
-  if (!raw || typeof raw !== "object") return "";
-  const candidates = (raw as {candidates?: unknown}).candidates;
-  if (!Array.isArray(candidates)) return "";
-  for (const candidate of candidates) {
-    if (!candidate || typeof candidate !== "object") continue;
-    const entry = candidate as { finishReason?: string; content?: {parts?: {text?: unknown}[]} };
-    if (entry.finishReason === "MAX_TOKENS") return "";
-    const text = entry.content?.parts?.map(part => typeof part.text === "string" ? part.text : "").join("").trim();
-    if (text) return text;
-  }
-  return "";
-}
 export function classificationPrompt(messages: readonly ConversationBoundaryMessage[]): string {
   return [
     "Classify the conversational INTENT of the most recent INCOMING message in its recent chat context.",
@@ -42,9 +30,7 @@ export function classificationPrompt(messages: readonly ConversationBoundaryMess
     "Do not infer handoff merely because someone mentioned an app, asked for a handle, or said 'ok' without the relevant outgoing invitation.",
     "Confidence 0..1 reflects strength of EVIDENCE; a weak assumption requires unknown. Never invent evidence from the account or previous chats.",
     "Return only JSON matching the schema. No explanation or message contents.",
-    "Recent chat (last is newest): " + JSON.stringify(messages.slice(-12).map(m => ({
-      direction:m.direction,text:m.text.slice(0,1200)
-    })))
+    "Recent chat length: " + Math.min(messages.length,12) + " messages, newest last. Read the EVIDENCE_JSON in the task."
   ].join("\n");
 }
 export async function classifyConversationSemantics(
@@ -54,37 +40,32 @@ export async function classifyConversationSemantics(
 ): Promise<StructuredBoundaryDecision> {
   if (!messages.length || messages.at(-1)?.direction !== "incoming") return UNCERTAIN_BOUNDARY;
   if (!credentials.apiKey.trim() || !credentials.model.trim()) throw new Error("boundary_provider_not_configured");
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(credentials.model)}:generateContent`;
-  const response = await fetcher(url, {
-    method: "POST",
-    headers: {"content-type":"application/json","x-goog-api-key":credentials.apiKey},
-    body: JSON.stringify({
-      contents:[{role:"user",parts:[{text:classificationPrompt(messages)}]}],
-      generationConfig: {
-        temperature:0,
-        maxOutputTokens:300,
-        responseMimeType:"application/json",
-        responseSchema: {
-          type:"OBJECT",
-          properties:{
-            kind:{type:"STRING",enum:["continue","rest","off-tinder","do-not-contact","acknowledgement","unknown"]},
-            platform:{type:"STRING",enum:["none","instagram","whatsapp","snapchat","telegram"]},
-            confidence:{type:"NUMBER"},
-            evidence:{type:"STRING",enum:["ongoing","mutual-signoff","accepted-handoff","direct-handoff","explicit-stop","plain-acknowledgement","unclear"]}
-          },
-          required:["kind","platform","confidence","evidence"]
-        }
-      }
-    }),
-    signal:AbortSignal.timeout(12_000)
-  });
-  if (!response.ok) throw new Error("boundary_classifier_unavailable");
-  const raw = responseText(await response.json());
-  if (!raw) return UNCERTAIN_BOUNDARY;
   try {
-    return acceptStructuredBoundaryDecision(parseStructuredBoundaryDecision(JSON.parse(raw)), messages);
-  } catch {
-    return UNCERTAIN_BOUNDARY;
+    return await requestAiDecision({
+      task: "conversation-boundary",
+      instructions: [classificationPrompt(messages)],
+      evidence: messages.slice(-12).map(message => ({
+        direction: message.direction,
+        text: message.text.slice(0,1200)
+      })),
+      responseSchema: {
+        type:"OBJECT",
+        properties:{
+          kind:{type:"STRING",enum:["continue","rest","off-tinder","do-not-contact","acknowledgement","unknown"]},
+          platform:{type:"STRING",enum:["none","instagram","whatsapp","snapchat","telegram"]},
+          confidence:{type:"NUMBER"},
+          evidence:{type:"STRING",enum:["ongoing","mutual-signoff","accepted-handoff","direct-handoff","explicit-stop","plain-acknowledgement","unclear"]}
+        },
+        required:["kind","platform","confidence","evidence"]
+      },
+      validate: (raw: unknown) =>
+        acceptStructuredBoundaryDecision(parseStructuredBoundaryDecision(raw),messages),
+      maxOutputTokens:300,
+      timeoutMs:12_000
+    },credentials,fetcher) ?? UNCERTAIN_BOUNDARY;
+  } catch (error) {
+    if (error instanceof AiDecisionProviderError) throw new Error("boundary_classifier_unavailable");
+    throw error;
   }
 }
 
