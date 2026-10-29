@@ -9,7 +9,7 @@ import { firstMessageAttemptKey, firstMessageBlocker, firstMessageContext } from
 import { groundedOpenerFragments, sameOpenerThreadUninterrupted } from "./tinder-opener-fragments";
 import { openerDelaySeconds, openerTypingDelaySeconds } from "./tinder-opener-timing";
 import { naturalReplyBubbles } from "./tinder-reply-bubbles";
-import { classifyConversationBoundary, type ConversationBoundary } from "./conversation-boundary-policy";
+import { type ConversationBoundary, type ConversationBoundaryMessage } from "./conversation-boundary-policy";
 import { automaticReplyHold, hasUnexpectedScriptMix, replyNeedsHumanReview } from "./conversation-reply-safety";
 import { syncConversationDelta, syncObservedConversationBoundary } from "./conversation-sync";
 import { observeTinderRuntime } from "./tinder-runtime-observation";
@@ -498,6 +498,8 @@ function reportExistingRunner(phase: "incoming" | "waiting" | "generating" | "se
 function boundaryDescription(boundary: ConversationBoundary): string {
   if (boundary.kind === "off-tinder") return "Match proposed/confirmed continuing on " + (boundary.platform ?? "another app") + " · Tinder auto-replies stopped. No outside message sent.";
   if (boundary.kind === "do-not-contact") return "Contact stop requested · Tinder auto-replies disabled.";
+  if (boundary.kind === "unknown") return "Chat intent uncertain; no automatic reply.";
+  if (boundary.kind === "acknowledgement") return "Acknowledgement only · no unnecessary follow-up.";
   return "Mutual goodbyes · no additional Tinder reply. A new incoming message can reopen the conversation.";
 }
 
@@ -587,25 +589,29 @@ async function scan(): Promise<void> {
       direction: message.direction === "them" ? "incoming" as const : "outgoing" as const,
       text: message.text
     }));
-    const boundary = classifyConversationBoundary(visible);
+    // Semantic classification is performed by Gemini on the authenticated
+    // API against a verified persisted message tail; NEVER local keyword regex.
+    // Unknown/unavailable classifications do not authorize an automatic send.
+    let boundary: ConversationBoundary;
+    try {
+      const decision = await syncObservedConversationBoundary(conversationRef,visible);
+      boundary = decision.boundary as ConversationBoundary;
+    } catch {
+      reportExistingRunner("waiting","Semantic chat check unavailable; no automatic reply until verified.");
+      return;
+    }
+    if (boundary.kind === "unknown") {
+      reportExistingRunner("waiting","Chat intent uncertain or not synchronized; human review needed before automatic reply.");
+      return;
+    }
     if (boundary.kind !== "continue") {
-      // Record before completing the local one-shot. If the API is unreachable,
-      // still never generate/send; try to persist again during the next scan.
       if (!state.processed[snapshot.latestIncomingKey]) {
-        try {
-          const persisted = await syncObservedConversationBoundary(conversationRef, visible);
-          if (persisted.boundary.kind !== boundary.kind) {
-            reportExistingRunner("skipped", "Server could not confirm the ending · no Tinder reply.");
-            return;
-          }
-          state.processed[snapshot.latestIncomingKey] = Date.now();
-          if (!await saveState(state)) return;
-        } catch {
-          reportExistingRunner("skipped", "Chat appears finished. Backend status could not sync; no Tinder reply. Will retry.");
-          return;
-        }
+        state.processed[snapshot.latestIncomingKey] = Date.now();
+        if (!await saveState(state)) return;
       }
-      reportExistingRunner("skipped", boundaryDescription(boundary));
+      reportExistingRunner("skipped", boundary.kind === "acknowledgement"
+        ? "The match acknowledged the last message · no unnecessary follow-up sent."
+        : boundaryDescription(boundary));
       return;
     }
     const hold = automaticReplyHold(visible);
@@ -651,7 +657,14 @@ async function scan(): Promise<void> {
       direction: message.direction === "them" ? "incoming" as const : "outgoing" as const,
       text: message.text
     }));
-    if (classifyConversationBoundary(recheckMessages).kind !== "continue" || automaticReplyHold(recheckMessages)) {
+    let recheckBoundary: ConversationBoundary;
+    try {
+      recheckBoundary = (await syncObservedConversationBoundary(conversationRef,recheckMessages)).boundary as ConversationBoundary;
+    } catch {
+      reportExistingRunner("waiting","Chat intent recheck unavailable; no generation.");
+      return;
+    }
+    if (recheckBoundary.kind !== "continue" || automaticReplyHold(recheckMessages)) {
       reportExistingRunner("skipped", "Conversation now needs no automatic reply · pending generation cancelled.");
       return;
     }
@@ -681,7 +694,13 @@ async function scan(): Promise<void> {
       text: message.text
     }));
     const finalHold = automaticReplyHold(finalMessages);
-    const finalBoundary = classifyConversationBoundary(finalMessages);
+    let finalBoundary: ConversationBoundary;
+    try {
+      finalBoundary = (await syncObservedConversationBoundary(conversationRef,finalMessages)).boundary as ConversationBoundary;
+    } catch {
+      reportExistingRunner("waiting","Final chat intent check unavailable; generated reply not sent.");
+      return;
+    }
     if (finalBoundary.kind !== "continue" || finalHold || replyNeedsHumanReview(reply) || hasUnexpectedScriptMix(reply, finalMessages)) {
       const processed = await getState();
       if (!processed) return;
