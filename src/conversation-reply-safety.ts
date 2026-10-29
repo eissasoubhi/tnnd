@@ -7,14 +7,8 @@ export function automaticReplyHold(messages: readonly AiIdentityMessage[]): Auto
   const last = messages.at(-1);
   if (!last || last.direction !== "incoming") return null;
   if (latestIncomingAsksAboutAiIdentity(messages)) return "ai-identity";
-  const text = last.text.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase()
-    .replace(/[’'‘]/gu, " ").replace(/[😂🤣😄😅🙂😊👍👌❤️❤.!?,;:]/gu, " ")
-    .replace(/\s+/gu, " ").trim();
-  // The match has acknowledged the preceding turn without opening a new topic.
-  // No need to append another witty line or a second goodbye.
-  if (/^(?:(?:h{2,}|lol|mdr)\s+)?(?:ok(?:ay)?|d accord|ca marche|c est bon|compris|bien recu|parfait|entendu|oui c est bon|merci|thanks|sounds good|got it|all good)(?:\s+(?:ca marche|compris|merci|bien|parfait|mdr|h{2,}))?$/u.test(text)) {
-    return "acknowledgement";
-  }
+  // Acknowledgement, sign-off, and implicit intent are classified by Gemini
+  // using verified persisted context. Never use a list of surface phrases here.
   return null;
 }
 
