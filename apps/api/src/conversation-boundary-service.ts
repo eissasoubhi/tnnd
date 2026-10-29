@@ -1,5 +1,8 @@
 import { getPool } from "./db-client.js";
-import { classifyConversationBoundary, type ConversationBoundaryMessage, type ConversationBoundary } from "../../../src/conversation-boundary-policy.js";
+import { UNCERTAIN_BOUNDARY, acceptStructuredBoundaryDecision,
+  type ConversationBoundaryMessage, type ConversationBoundary,
+  type StructuredBoundaryDecision } from "../../../src/conversation-boundary-policy.js";
+import { classifyAuthenticatedBoundary } from "./conversation-semantic-classifier.js";
 
 /** Server independently classifies bounded, verified-direction observations.
  * Never accept a caller-supplied "set status to disabled" decision.
@@ -46,29 +49,22 @@ export function desiredBoundaryTransition(boundary: ConversationBoundary): Bound
  */
 export function verifiedConversationBoundary(
   observed: readonly ConversationBoundaryMessage[],
-  persisted: readonly ConversationBoundaryMessage[]
-): ConversationBoundary {
+  persisted: readonly ConversationBoundaryMessage[],
+  aiDecision: StructuredBoundaryDecision = UNCERTAIN_BOUNDARY
+): StructuredBoundaryDecision {
   const actual = persisted.slice(-12);
   const latest = actual.at(-1);
   const offered = observed.at(-1);
   const equal = (a: ConversationBoundaryMessage | undefined, b: ConversationBoundaryMessage | undefined): boolean =>
     Boolean(a && b && a.direction === b.direction && a.text.replace(/\s+/g, " ").trim() === b.text.replace(/\s+/g, " ").trim());
-  if (!latest || latest.direction !== "incoming" || !equal(latest, offered)) {
-    return { kind: "continue", platform: null };
-  }
-  // If the client observed more than one message, verify at least the
-  // immediate context used to infer mutual goodbyes / handoff acceptance.
-  if (observed.length > 1 && !equal(actual.at(-2), observed.at(-2))) {
-    return { kind: "continue", platform: null };
-  }
-  const boundary = classifyConversationBoundary(actual);
-  // Never infer a mutual sign-off or accepted handoff from an observation that
-  // did not include the verified predecessor.
-  if (observed.length < 2 && boundary.kind !== "do-not-contact") {
-    const single = classifyConversationBoundary([latest]);
-    return single.kind !== "continue" ? single : { kind: "continue", platform: null };
-  }
-  return boundary;
+  if (!latest || latest.direction !== "incoming" || !equal(latest, offered)) return UNCERTAIN_BOUNDARY;
+  if (observed.length > 1 && !equal(actual.at(-2), observed.at(-2))) return UNCERTAIN_BOUNDARY;
+  const assessed = acceptStructuredBoundaryDecision(aiDecision, actual);
+  // Single message cannot verify a mutual sign-off / accepted handoff.
+  if (observed.length < 2 && (assessed.kind === "rest" ||
+      (assessed.kind === "off-tinder" && assessed.evidence === "accepted-handoff") ||
+      assessed.kind === "acknowledgement")) return UNCERTAIN_BOUNDARY;
+  return assessed;
 }
 
 /** Never persist a platform without a stored, verified incoming source. */
@@ -82,57 +78,71 @@ export function handoffProvenance(
 }
 
 export async function recordObservedConversationBoundary(
-  userId: string, input: ObservedConversationBoundary
-): Promise<{ boundary: ConversationBoundary; applied: boolean; status: string | null }> {
-  const noBoundary: ConversationBoundary = { kind: "continue", platform: null };
-  const client = await getPool().connect();
+  userId: string, input: ObservedConversationBoundary,
+  classify: typeof classifyAuthenticatedBoundary = classifyAuthenticatedBoundary
+): Promise<{ boundary: StructuredBoundaryDecision; applied: boolean; status: string | null }> {
+  // Never hold the conversation row lock while calling Gemini. Pre-read
+  // persisted evidence, classify once, then re-verify under the lock.
+  const db = getPool();
+  const head = await db.query<{id:string}>(
+    "SELECT id FROM conversations WHERE user_id = $1 AND external_thread_id = $2",
+    [userId,input.externalThreadId]
+  );
+  const conversationId = head.rows[0]?.id;
+  if (!conversationId) return {boundary:UNCERTAIN_BOUNDARY,applied:false,status:null};
+  const historyQuery =
+    "SELECT direction, body, external_message_id FROM (SELECT direction, body, external_message_id, sent_at, id FROM conversation_messages " +
+    "WHERE conversation_id = $1 ORDER BY sent_at DESC, id DESC LIMIT 12) recent ORDER BY sent_at ASC, id ASC";
+  const initial = await db.query<{direction:"incoming"|"outgoing";body:string;external_message_id:string}>(historyQuery,[conversationId]);
+  const messages = initial.rows.map(row => ({direction:row.direction,text:row.body}));
+  // Unverified/stale observations never trigger a provider call or a send.
+  if (verifiedConversationBoundary(input.messages,messages,{...UNCERTAIN_BOUNDARY,kind:"continue",evidence:"ongoing",confidence:1}).kind !== "continue")
+    return {boundary:UNCERTAIN_BOUNDARY,applied:false,status:null};
+  const aiDecision = await classify(userId,input.externalThreadId,messages);
+  const client = await db.connect();
   let committed = false;
   try {
     await client.query("BEGIN");
-    // The same row lock is used by message sync, so a new message cannot be
-    // inserted between verifying the tail and changing this conversation.
     const conversation = await client.query<{
-      id: string; status: string; management_state: string; management_selected_at: Date | null
+      id:string;status:string;management_state:string;management_selected_at:Date|null
     }>(
       "SELECT id, status, management_state, management_selected_at FROM conversations WHERE user_id = $1 AND external_thread_id = $2 FOR UPDATE",
-      [userId, input.externalThreadId]
+      [userId,input.externalThreadId]
     );
     const row = conversation.rows[0];
-    if (!row) {
-      await client.query("COMMIT"); committed = true;
-      return { boundary: noBoundary, applied: false, status: null };
+    if (!row || row.id !== conversationId) {
+      await client.query("COMMIT");committed=true;
+      return {boundary:UNCERTAIN_BOUNDARY,applied:false,status:row?.status??null};
     }
-    const history = await client.query<{ direction: "incoming" | "outgoing"; body: string; external_message_id: string }>(
-      "SELECT direction, body, external_message_id FROM (SELECT direction, body, external_message_id, sent_at, id FROM conversation_messages "
-      + "WHERE conversation_id = $1 ORDER BY sent_at DESC, id DESC LIMIT 12) recent "
-      + "ORDER BY sent_at ASC, id ASC",
-      [row.id]
+    const history = await client.query<{direction:"incoming"|"outgoing";body:string;external_message_id:string}>(
+      historyQuery,[row.id]
     );
-    const persisted = history.rows.map(m => ({ direction: m.direction, text: m.body }));
-    const boundary = verifiedConversationBoundary(input.messages, persisted);
+    const current = history.rows.map(entry=>({direction:entry.direction,text:entry.body}));
+    // Exact full message tail must remain unchanged during model inference.
+    const sameTail = JSON.stringify(current) === JSON.stringify(messages);
+    const boundary = sameTail ? verifiedConversationBoundary(input.messages,current,aiDecision) : UNCERTAIN_BOUNDARY;
     const transition = desiredBoundaryTransition(boundary);
-    const handoff = handoffProvenance(boundary, history.rows.at(-1));
+    const handoff = handoffProvenance(boundary,history.rows.at(-1));
     const canApply = Boolean(transition && row.management_state === "ai-managed"
-      && row.management_selected_at && ["active", "waiting-for-them"].includes(row.status));
+      && row.management_selected_at && ["active","waiting-for-them"].includes(row.status));
     if (!canApply || !transition || (transition.status === "moved-off-tinder" && !handoff)) {
-      await client.query("COMMIT"); committed = true;
-      return { boundary, applied: false, status: row.status };
+      await client.query("COMMIT");committed=true;
+      return {boundary,applied:false,status:row.status};
     }
-    const update = await client.query<{ status: string }>(
-      "UPDATE conversations SET status = $3, management_state = $4, "
-      + "management_selected_at = CASE WHEN $4 = 'ai-managed' THEN management_selected_at ELSE NULL END, "
-      + "handoff_platform = CASE WHEN $3 = 'moved-off-tinder' THEN $5 ELSE handoff_platform END, "
-      + "handoff_source_external_message_id = CASE WHEN $3 = 'moved-off-tinder' THEN $6 ELSE handoff_source_external_message_id END, "
-      + "updated_at = now() WHERE user_id = $1 AND id = $2 "
-      + "AND management_state = 'ai-managed' AND management_selected_at IS NOT NULL "
-      + "AND status IN ('active', 'waiting-for-them') "
-      + "AND (status <> $3 OR management_state <> $4) RETURNING status",
-      [userId, row.id, transition.status, transition.managementState,
-        handoff?.platform ?? null,
-        handoff?.sourceExternalMessageId ?? null]
+    const update = await client.query<{status:string}>(
+      "UPDATE conversations SET status = $3, management_state = $4, " +
+      "management_selected_at = CASE WHEN $4 = 'ai-managed' THEN management_selected_at ELSE NULL END, " +
+      "handoff_platform = CASE WHEN $3 = 'moved-off-tinder' THEN $5 ELSE handoff_platform END, " +
+      "handoff_source_external_message_id = CASE WHEN $3 = 'moved-off-tinder' THEN $6 ELSE handoff_source_external_message_id END, " +
+      "updated_at = now() WHERE user_id = $1 AND id = $2 " +
+      "AND management_state = 'ai-managed' AND management_selected_at IS NOT NULL " +
+      "AND status IN ('active', 'waiting-for-them') " +
+      "AND (status <> $3 OR management_state <> $4) RETURNING status",
+      [userId,row.id,transition.status,transition.managementState,handoff?.platform??null,
+        handoff?.sourceExternalMessageId??null]
     );
-    await client.query("COMMIT"); committed = true;
-    return { boundary, applied: Boolean(update.rowCount), status: update.rows[0]?.status ?? row.status };
+    await client.query("COMMIT");committed=true;
+    return {boundary,applied:Boolean(update.rowCount),status:update.rows[0]?.status??row.status};
   } catch (error) {
     if (!committed) await client.query("ROLLBACK");
     throw error;
