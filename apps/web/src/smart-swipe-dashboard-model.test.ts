@@ -12,6 +12,7 @@ test("ledger counts are validated before the UI treats them as available", () =>
   assert.equal(remainingSmartSwipeAttempts(summary, 5), 2);
   assert.equal(remainingSmartSwipeAttempts(summary, 2), 0);
   assert.equal(remainingSmartSwipeAttempts(summary, Number.NaN), null);
+  assert.equal(remainingSmartSwipeAttempts(summary, null), null, "unlimited has no remaining quota");
 });
 
 test("history distinguishes reserved, uncertain and UI-observed attempts", () => {
