@@ -8,6 +8,9 @@ test("attempt claiming is idempotent, quota-bound, and refuses uncertain prior a
   assert.equal(canClaimAttempt(0, 10, true, false), "unresolved");
   assert.equal(canClaimAttempt(0, 10, false, true), "duplicate");
   assert.equal(canClaimAttempt(-1, 10, false, false), "invalid");
+  assert.equal(canClaimAttempt(5000, null, false, false), "ready", "TNND no longer caps daily Right Likes");
+  assert.equal(canClaimAttempt(5000, null, true, false), "unresolved");
+  assert.equal(canClaimAttempt(5000, null, false, true), "duplicate");
   assert.equal(UUID_PATTERN.test("00000000-0000-4000-8000-000000000123"), true);
   assert.equal(UUID_PATTERN.test("not-uuid"), false);
 });
