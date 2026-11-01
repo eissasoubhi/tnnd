@@ -1148,7 +1148,7 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
       ok?: boolean; reason?: string; status?: string; enabled?: boolean;
       nextActivity?: string | null; executionAvailable?: boolean; armed?: boolean;
       remainingSessions?: number; attemptsToday?: number | null;
-      remainingAttempts?: number | null; attemptsToday?: number | null; uiObservedToday?: number | null;
+      remainingAttempts?: number | null; uiObservedToday?: number | null;
       unresolvedOnServer?: number | null; lastResult?: string | null;
       schedule?: string; session?: { active: boolean; remainingMs: number } | null;
       controls?: { status?: string; likeControls?: number };
