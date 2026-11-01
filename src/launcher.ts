@@ -85,17 +85,18 @@ function renderDailyCounters(counters: DailyCounter[] | undefined): void {
     const max = raw?.max;
     const validDay = typeof raw?.dayKey === "string" &&
       /^\d{4}-\d{2}-\d{2}$/.test(raw.dayKey);
+    const numericLimit = typeof max === "number" && Number.isSafeInteger(max) && max > 0;
+    const unlimitedLikes = id === "swipe-attempts" && max === null;
     const validCount = typeof used === "number" && Number.isSafeInteger(used) &&
-      used >= 0 && typeof max === "number" && Number.isSafeInteger(max) &&
-      max > 0 && validDay;
+      used >= 0 && validDay && (numericLimit || unlimitedLikes);
     const row = document.createElement("li");
     const label = document.createElement("span");
     label.textContent = labels[id];
     const numbers = document.createElement("strong");
     numbers.className = "limit-count";
     if (validCount) {
-      numbers.textContent = used + " / " + max;
-      if (used >= max) {
+      numbers.textContent = unlimitedLikes ? used + " / ∞" : used + " / " + max;
+      if (numericLimit && used >= (max as number)) {
         row.dataset.reached = "true";
         numbers.textContent += " ✓";
         numbers.title = "Limite atteinte";
