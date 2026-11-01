@@ -31,7 +31,7 @@ assert.equal(scheduleSmartSwipeSession(cfg, {...fresh, startedSessions: 1}, now,
 assert.equal(scheduleSmartSwipeSession(cfg, {...fresh, rightSwipesReserved: 1}, now, tz).reason, "unresolved_attempt");
 assert.equal(scheduleSmartSwipeSession(cfg, {...fresh, dayKey: "2026-10-15"}, now, tz).reason, "stale_day");
 assert.equal(scheduleSmartSwipeSession({...cfg, enabled: false}, fresh, now, tz).action, "disabled");
-assert.equal(scheduleSmartSwipeSession({...cfg, maxRightSwipesPerDay: 2}, {...fresh, rightSwipesConfirmed: 2}, now, tz).reason, "daily_cap");
+assert.equal(scheduleSmartSwipeSession(cfg, {...fresh, rightSwipesConfirmed: 50_000}, now, tz).reason, "slot_available");
 assert.equal(scheduleSmartSwipeSession(cfg, {...fresh, lastSessionSlotIndex: 99}, now, tz).reason, "invalid_slot_state");
 const restored = recoverPausedSwipeSession(progress, nextTime + 10000, nextTime + 60*60*1000);
 assert.equal(restored.session.runningSinceMs, null);

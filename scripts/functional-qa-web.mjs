@@ -266,7 +266,7 @@ async function main() {
       Boolean);
     await waitFor(cdp, 'document.querySelector("#smart-swipe-ledger-status")?.textContent?.includes("Action required")');
     await step(cdp, "Smart Swipe shows server-backed attempt counts and uncertainty",
-      'document.querySelector("#smart-swipe-ledger-totals")?.textContent?.includes("2 / 5") && document.querySelector("#smart-swipe-ledger-history")?.textContent?.includes("Tinder acceptance unverified") && document.querySelector("#smart-swipe-ledger-history")?.textContent?.includes("Uncertain")', Boolean);
+      'document.querySelector("#smart-swipe-ledger-totals")?.textContent?.includes("Right Like attempts today: 2") && document.querySelector("#smart-swipe-ledger-totals")?.textContent?.includes("Unlimited") && document.querySelector("#smart-swipe-ledger-history")?.textContent?.includes("Tinder acceptance unverified") && document.querySelector("#smart-swipe-ledger-history")?.textContent?.includes("Uncertain")', Boolean);
     await step(cdp, "A synced fixture conversation opens with real messages",
       'document.querySelector("#conversation-detail")?.textContent?.includes("Hi! How are you?")',
       Boolean);

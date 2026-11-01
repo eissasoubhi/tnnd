@@ -81,9 +81,14 @@ assert.equal(beginSmartSwipeSession(cfg, progress, now + 480_000 + 3*MIN_SESSION
 assert.equal(rolloverSmartSwipeDay(progress, Date.parse("2026-10-16T09:00:00Z"), tz).startedSessions, 0);
 assert.equal(rolloverSmartSwipeDay({ ...progress, rightSwipesReserved: 1 }, Date.parse("2026-10-16T09:00:00Z"), tz), null);
 
-const capped = { ...progress, rightSwipesConfirmed: cfg.maxRightSwipesPerDay };
-assert.equal(beginSmartSwipeSession(cfg, capped, now + 3600_000, tz, () => 0), null);
-assert.equal(planSmartRightSwipe(cfg, capped, now + 3600_000, tz, options), "daily-cap");
+// A high confirmed count does not create a TNND daily-cap gate.
+const highCount = { ...emptySmartSwipeDay(tinderAccountDayKey(now,tz)),
+  rightSwipesConfirmed: 20_000 };
+const unlimited = beginSmartSwipeSession(cfg, highCount, now, tz, () => 0);
+assert.ok(unlimited, "Daily Right Likes are unlimited within TNND");
+assert.equal(planSmartRightSwipe(cfg, unlimited, now, tz, options), "ready");
+assert.equal(planSmartRightSwipe(cfg, progress, now + 3600_000, tz, options), "no-session");
+assert.equal(cfg.maxRightSwipesPerDay, null);
 console.log("Smart Auto Swipe scheduling policy checks passed (pure logic, no Tinder actions).");
 
 const preClickPending = { ...emptySmartSwipeDay("2026-10-15"),

@@ -36,7 +36,7 @@ export function watcherSwitchSafety(value: unknown, nowMs = Date.now()): {
  * before Stop must always be repeated AFTER durable disarm.
  */
 export function manualSwipeReleaseSafe(
-  settings: { maxRightSwipesPerDay: number; timeZone: string },
+  settings: { maxRightSwipesPerDay: number | null; timeZone: string },
   serverSummary: unknown, localProgress: unknown, nowMs = Date.now()
 ): boolean {
   const quota = verifiedDailyQuota(settings, serverSummary, nowMs);

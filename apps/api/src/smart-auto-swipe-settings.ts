@@ -9,7 +9,8 @@ export interface SmartSwipeSettings {
   sessionDurationMaxSeconds: number;
   swipeDelayMinSeconds: number;
   swipeDelayMaxSeconds: number;
-  maxRightSwipesPerDay: number;
+  /** No app-defined daily Right Like cap; null means unlimited. */
+  maxRightSwipesPerDay: null;
   priority: SwipeActivity[];
   pauseSwipeDuringActiveConversation: boolean;
   maxActiveChatSecondsPerConversationPerDay: number | null;
@@ -22,7 +23,7 @@ export const DEFAULT_SMART_SWIPE: Readonly<SmartSwipeSettings> = {
   sessionDurationMaxSeconds: 600,
   swipeDelayMinSeconds: 2,
   swipeDelayMaxSeconds: 5,
-  maxRightSwipesPerDay: 50,
+  maxRightSwipesPerDay: null,
   priority: ["swipe", "new-match", "active-chat"],
   pauseSwipeDuringActiveConversation: true,
   maxActiveChatSecondsPerConversationPerDay: null,
@@ -55,7 +56,10 @@ export function validateSmartSwipeSettings(value: unknown):
   if (typeof v.swipeDelayMinSeconds === "number" &&
       typeof v.swipeDelayMaxSeconds === "number" &&
       v.swipeDelayMinSeconds > v.swipeDelayMaxSeconds) errors.push("swipeDelayRange");
-  if (!safeInt(v.maxRightSwipesPerDay, 1000)) errors.push("maxRightSwipesPerDay");
+  // Older clients can still submit a previously configured number. Ignore it
+  // rather than restoring a TNND daily Like cap; reject malformed inputs.
+  if (v.maxRightSwipesPerDay !== null && !safeInt(v.maxRightSwipesPerDay, 1000))
+    errors.push("maxRightSwipesPerDay");
   if (!Array.isArray(v.priority) || v.priority.length !== 3 ||
       new Set(v.priority).size !== 3 ||
       !v.priority.every(x => typeof x === "string" && activities.includes(x as SwipeActivity)))
@@ -71,7 +75,7 @@ export function validateSmartSwipeSettings(value: unknown):
     catch { errors.push("timeZone"); }
   }
   if (errors.length) return { ok: false, errors };
-  return { ok: true, settings: v as unknown as SmartSwipeSettings };
+  return { ok: true, settings: { ...v, maxRightSwipesPerDay: null } as unknown as SmartSwipeSettings };
 }
 
 export interface SmartSwipeSettingsResponse {
@@ -92,7 +96,11 @@ export async function getSmartSwipeSettings(userId: string): Promise<SmartSwipeS
   );
   const row = result.rows[0];
   if (!row) return { settings: defaultSmartSwipeSettings(), updatedAt: null, ...nonOperational };
-  const valid = validateSmartSwipeSettings(row.settings_json);
+  // Legacy saved limits must not silently keep restricting Right Likes.
+  const normalized = row.settings_json && typeof row.settings_json === "object" && !Array.isArray(row.settings_json)
+    ? { ...(row.settings_json as Record<string, unknown>), maxRightSwipesPerDay: null }
+    : row.settings_json;
+  const valid = validateSmartSwipeSettings(normalized);
   if (!valid.ok) throw new Error("invalid_persisted_smart_swipe_settings");
   return { settings: valid.settings, updatedAt: row.updated_at.toISOString(), ...nonOperational };
 }
@@ -100,7 +108,7 @@ export async function getSmartSwipeSettings(userId: string): Promise<SmartSwipeS
 export async function putSmartSwipeSettings(
   userId: string, settings: SmartSwipeSettings
 ): Promise<SmartSwipeSettingsResponse> {
-  const valid = validateSmartSwipeSettings(settings);
+  const valid = validateSmartSwipeSettings({ ...settings, maxRightSwipesPerDay: null });
   if (!valid.ok) throw new Error("invalid_smart_swipe_settings");
   const query = "INSERT INTO user_smart_auto_swipe_settings (user_id, settings_json) " +
     "VALUES ($1, $2::jsonb) ON CONFLICT (user_id) DO UPDATE SET " +

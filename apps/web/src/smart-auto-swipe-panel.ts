@@ -1,5 +1,5 @@
 import { readSession } from "./auth-client";
-import { parseSmartSwipeHistory, parseSmartSwipeSummary, remainingSmartSwipeAttempts, smartSwipeLedgerError, describeSwipeOutcomeReason } from "./smart-swipe-dashboard-model";
+import { parseSmartSwipeHistory, parseSmartSwipeSummary, smartSwipeLedgerError, describeSwipeOutcomeReason } from "./smart-swipe-dashboard-model";
 
 type Activity = "swipe" | "new-match" | "active-chat";
 interface Settings {
@@ -9,7 +9,7 @@ interface Settings {
   sessionDurationMaxSeconds: number;
   swipeDelayMinSeconds: number;
   swipeDelayMaxSeconds: number;
-  maxRightSwipesPerDay: number;
+  maxRightSwipesPerDay: null;
   priority: Activity[];
   pauseSwipeDuringActiveConversation: boolean;
   maxActiveChatSecondsPerConversationPerDay: number | null;
@@ -55,7 +55,7 @@ panel.innerHTML = [
   '<label><input id="smart-swipe-enabled" type="checkbox"> Request automatic scheduling</label>',
   '<div class="dating-goal-editor"><h3>Daily sessions</h3><div class="preferences-grid">',
   '<label>Sessions per day<input id="smart-swipe-sessions" type="number" min="1" max="24" step="1" required></label>',
-  '<label>Right Likes per day<input id="smart-swipe-likes" type="number" min="1" max="1000" step="1" required></label>',
+  '<p class="subtle">Right Likes per day: Unlimited in TNND. Tinder limits still apply, and uncertain attempts pause automatic Likes.</p>',
   '<label>Session duration min (minutes)<input id="smart-swipe-minutes-min" type="number" min="1" max="1440" step="1" required></label>',
   '<label>Session duration max (minutes)<input id="smart-swipe-minutes-max" type="number" min="1" max="1440" step="1" required></label>',
   '<label>Delay min between Likes (seconds)<input id="smart-swipe-delay-min" type="number" min="1" max="3600" step="1" required></label>',
@@ -146,11 +146,10 @@ async function refreshActivity(): Promise<void> {
       const summary = summaryResult.data;
       // Surface the actual attempt outcomes immediately when Likes are blocked.
       if (summary.unresolvedAttempts > 0) ledgerDetails.open = true;
-      const remaining = remainingSmartSwipeAttempts(summary, settings.maxRightSwipesPerDay);
       const totals = [
         ["Account day", summary.dayKey + " (" + settings.timeZone + ")"],
-        ["Attempt slots used", String(summary.attemptsToday) + " / " + settings.maxRightSwipesPerDay],
-        ["Attempt slots remaining", remaining === null ? "Unavailable" : String(remaining)],
+        ["Right Like attempts today", String(summary.attemptsToday)],
+        ["TNND daily Right Like limit", "Unlimited"],
         ["Card transitions observed", String(summary.uiObservedToday)],
         ["Unresolved across days", String(summary.unresolvedAttempts)]
       ];
@@ -299,7 +298,6 @@ function number(id: string): number { return Number(input(id).value); }
 function fill(settings: Settings): void {
   input("smart-swipe-enabled").checked = settings.enabled;
   input("smart-swipe-sessions").value = String(settings.sessionsPerDay);
-  input("smart-swipe-likes").value = String(settings.maxRightSwipesPerDay);
   input("smart-swipe-minutes-min").value = String(settings.sessionDurationMinSeconds / 60);
   input("smart-swipe-minutes-max").value = String(settings.sessionDurationMaxSeconds / 60);
   input("smart-swipe-delay-min").value = String(settings.swipeDelayMinSeconds);
@@ -332,7 +330,7 @@ function values(): Settings {
     sessionDurationMaxSeconds: max * 60,
     swipeDelayMinSeconds: delayMin,
     swipeDelayMaxSeconds: delayMax,
-    maxRightSwipesPerDay: number("smart-swipe-likes"),
+    maxRightSwipesPerDay: null,
     priority: [...priorities],
     pauseSwipeDuringActiveConversation: input("smart-swipe-pause-chat").checked,
     maxActiveChatSecondsPerConversationPerDay:

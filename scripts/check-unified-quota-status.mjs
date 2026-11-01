@@ -27,6 +27,10 @@ assert.equal(verifiedDailyQuota(settings, {
   dayKey: "2026-10-21", attemptsToday: 0
 }, afterParisMidnight)?.reached, false);
 console.log("Unified daily Swipe quota status contract passed; no Tinder interaction.");
+const noCap = {...settings, maxRightSwipesPerDay: null};
+assert.deepEqual(verifiedDailyQuota(noCap, {
+  dayKey:"2026-10-20", attemptsToday:20_000
+}, time), {dayKey:"2026-10-20",used:20_000,limit:null,reached:false});
 
 const fullSettings = { ...settings, sessionsPerDay: 3 };
 const local = {
@@ -105,4 +109,10 @@ const wrongDay = reachedUnifiedLimits(fullSettings,
 assert.deepEqual(wrongDay.counters.map(x => [x.used, x.max, x.reached]), [
   [null, 100, false], [null, 3, false]
 ], "Previous-day counters must not look current");
+const unbounded = reachedUnifiedLimits({...fullSettings,maxRightSwipesPerDay:null},summary,local,time);
+assert.deepEqual(unbounded.reached.map(limit=>limit.id),["swipe-sessions"]);
+assert.deepEqual(unbounded.counters.map(limit=>[limit.used,limit.max,limit.reached]),[
+  [100,null,false],[3,3,true]
+]);
+assert.equal(unbounded.safeToReleaseSwipe,false,"No obsolete daily-cap handoff");
 console.log("Always-visible exact 2-counter quota statuses validated.");

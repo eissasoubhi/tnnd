@@ -29,7 +29,7 @@ export type UnifiedLimitSnapshot = {
 };
 
 export function reachedUnifiedLimits(
-  settings: { maxRightSwipesPerDay: number; sessionsPerDay: number; timeZone: string },
+  settings: { maxRightSwipesPerDay: number | null; sessionsPerDay: number; timeZone: string },
   serverSummary: unknown,
   localProgress: unknown,
   nowMs: number
@@ -39,8 +39,8 @@ export function reachedUnifiedLimits(
   let dayKey: string | null = null;
   try { dayKey = tinderAccountDayKey(nowMs, settings.timeZone); }
   catch { /* Invalid timezone means missing evidence, not zero. */ }
-  const positive = (value: number): number | null =>
-    Number.isSafeInteger(value) && value > 0 ? value : null;
+  const positive = (value: number | null): number | null =>
+    value !== null && Number.isSafeInteger(value) && value > 0 ? value : null;
   const validLocal = dayKey !== null && validSmartSwipeProgress(localProgress) &&
     localProgress.dayKey === dayKey;
   const usedSessions = validLocal ? localProgress.startedSessions : null;
@@ -54,7 +54,7 @@ export function reachedUnifiedLimits(
       reached: usedSessions !== null && maxSessions !== null && usedSessions >= maxSessions }
   ];
   if (!quota) return { reached, counters, swipeQuota: null, safeToReleaseSwipe: false };
-  if (quota.reached) {
+  if (quota.reached && quota.limit !== null) {
     reached.push({
       id: "swipe-attempts",
       label: "Tentatives de Like (TNND)",

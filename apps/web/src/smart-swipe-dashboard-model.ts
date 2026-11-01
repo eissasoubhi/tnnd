@@ -65,8 +65,8 @@ export function parseSmartSwipeHistory(value: unknown): SmartSwipeAttempt[] | nu
   return parsed;
 }
 
-export function remainingSmartSwipeAttempts(summary: SmartSwipeAttemptSummary, cap: number): number | null {
-  if (!Number.isSafeInteger(cap) || cap < 1) return null;
+export function remainingSmartSwipeAttempts(summary: SmartSwipeAttemptSummary, cap: number | null): number | null {
+  if (cap === null || !Number.isSafeInteger(cap) || cap < 1) return null;
   return Math.max(0, cap - summary.attemptsToday);
 }
 

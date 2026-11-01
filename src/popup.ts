@@ -1199,8 +1199,8 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
       "Status: " + statusText,
       "Last attempt: " + (result.lastResult ?? "none recorded"),
       "Sessions left: " + known(result.remainingSessions),
-      "Like attempt slots left: " + known(result.remainingAttempts) +
-        (hasUnsafeLedger ? " (not usable until review)" : ""),
+      "Right Like attempts today: " + known(result.attemptsToday) + " (no TNND daily cap)" +
+        (hasUnsafeLedger ? " (blocked until review)" : ""),
       "Card transitions observed: " + known(result.uiObservedToday),
       "Unresolved: " + known(result.unresolvedOnServer),
       "Session remaining: " + sessionRemaining,

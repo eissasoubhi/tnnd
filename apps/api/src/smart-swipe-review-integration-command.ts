@@ -41,7 +41,7 @@ async function main(): Promise<void> {
     ]);
     await putSmartSwipeSettings(userId, {
       ...defaultSmartSwipeSettings(), enabled: true, timeZone: "Europe/Paris",
-      maxRightSwipesPerDay: 2
+      maxRightSwipesPerDay: null
     });
     const claim = await claimSmartSwipeAttempt(userId, attemptId, deviceId);
     assert.equal(claim.ok, true);
@@ -87,10 +87,14 @@ async function main(): Promise<void> {
     assert.equal((await claimSmartSwipeAttempt(userId, nextAttempt, deviceId)).ok, true);
     assert.equal((await resolveSmartSwipeAttempt(userId, nextAttempt, deviceId,
       "ui_observed", "new_card_visually_observed")).ok, true);
-    expectClaimDenied(await claimSmartSwipeAttempt(userId, randomUUID(), deviceId), "daily_cap");
+    // Two recorded attempts are NOT an app-defined daily Like cap.
+    const thirdAttempt = randomUUID();
+    assert.equal((await claimSmartSwipeAttempt(userId, thirdAttempt, deviceId)).ok, true);
+    assert.equal((await resolveSmartSwipeAttempt(userId, thirdAttempt, deviceId,
+      "ui_observed", "new_card_visually_observed")).ok, true);
     const final = await readSmartSwipeAttemptSummary(userId);
-    assert.equal(final.attemptsToday, 2);
-    assert.equal(final.uiObservedToday, 1);
+    assert.equal(final.attemptsToday, 3);
+    assert.equal(final.uiObservedToday, 2);
     assert.equal(final.unresolvedAttempts, 0);
     // A provably blocked pre-click action is preserved in history but must
     // NOT freeze future attempts. Unknown-after-click still requires review.
@@ -99,7 +103,7 @@ async function main(): Promise<void> {
     ]);
     await putSmartSwipeSettings(noClickUserId, {
       ...defaultSmartSwipeSettings(), enabled: true, timeZone: "Europe/Paris",
-      maxRightSwipesPerDay: 2
+      maxRightSwipesPerDay: null
     });
     const noClickAttempt = randomUUID();
     assert.equal((await claimSmartSwipeAttempt(noClickUserId, noClickAttempt, deviceId)).ok, true);

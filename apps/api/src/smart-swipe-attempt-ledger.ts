@@ -51,13 +51,13 @@ export function accountDayKey(nowMs: number, timeZone: string): string {
 }
 
 export function canClaimAttempt(
-  count: number, cap: number, hasUnresolved: boolean, duplicateId: boolean
+  count: number, cap: number | null, hasUnresolved: boolean, duplicateId: boolean
 ): "ready" | "duplicate" | "unresolved" | "daily_cap" | "invalid" {
   if (duplicateId) return "duplicate";
   if (!Number.isSafeInteger(count) || count < 0 ||
-      !Number.isSafeInteger(cap) || cap < 1) return "invalid";
+      (cap !== null && (!Number.isSafeInteger(cap) || cap < 1))) return "invalid";
   if (hasUnresolved) return "unresolved";
-  if (count >= cap) return "daily_cap";
+  if (cap !== null && count >= cap) return "daily_cap";
   return "ready";
 }
 
