@@ -105,8 +105,9 @@ function renderDailyCounters(counters: DailyCounter[] | undefined): void {
     } else {
       unavailable = true;
       numbers.textContent = "— / " +
-        (typeof max === "number" && Number.isSafeInteger(max) && max > 0
-          ? max : "—");
+        (unlimitedLikes ? "∞" :
+          (typeof max === "number" && Number.isSafeInteger(max) && max > 0
+            ? max : "—"));
     }
     row.append(label, numbers);
     limitsList.append(row);
