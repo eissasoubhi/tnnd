@@ -1148,7 +1148,7 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
       ok?: boolean; reason?: string; status?: string; enabled?: boolean;
       nextActivity?: string | null; executionAvailable?: boolean; armed?: boolean;
       remainingSessions?: number; attemptsToday?: number | null;
-      remainingAttempts?: number | null; uiObservedToday?: number | null;
+      remainingAttempts?: number | null; attemptsToday?: number | null; uiObservedToday?: number | null;
       unresolvedOnServer?: number | null; lastResult?: string | null;
       schedule?: string; session?: { active: boolean; remainingMs: number } | null;
       controls?: { status?: string; likeControls?: number };
@@ -1199,8 +1199,8 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
       "Status: " + statusText,
       "Last attempt: " + (result.lastResult ?? "none recorded"),
       "Sessions left: " + known(result.remainingSessions),
-      "Like attempt slots left: " + known(result.remainingAttempts) +
-        (hasUnsafeLedger ? " (not usable until review)" : ""),
+      "Right Like attempts today: " + known(result.attemptsToday) + " (no TNND daily cap)" +
+        (hasUnsafeLedger ? " (blocked until review)" : ""),
       "Card transitions observed: " + known(result.uiObservedToday),
       "Unresolved: " + known(result.unresolvedOnServer),
       "Session remaining: " + sessionRemaining,
