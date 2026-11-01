@@ -40,7 +40,7 @@ export function reachedUnifiedLimits(
   try { dayKey = tinderAccountDayKey(nowMs, settings.timeZone); }
   catch { /* Invalid timezone means missing evidence, not zero. */ }
   const positive = (value: number | null): number | null =>
-    Number.isSafeInteger(value) && value > 0 ? value : null;
+    value !== null && Number.isSafeInteger(value) && value > 0 ? value : null;
   const validLocal = dayKey !== null && validSmartSwipeProgress(localProgress) &&
     localProgress.dayKey === dayKey;
   const usedSessions = validLocal ? localProgress.startedSessions : null;
@@ -54,7 +54,7 @@ export function reachedUnifiedLimits(
       reached: usedSessions !== null && maxSessions !== null && usedSessions >= maxSessions }
   ];
   if (!quota) return { reached, counters, swipeQuota: null, safeToReleaseSwipe: false };
-  if (quota.reached) {
+  if (quota.reached && quota.limit !== null) {
     reached.push({
       id: "swipe-attempts",
       label: "Tentatives de Like (TNND)",
