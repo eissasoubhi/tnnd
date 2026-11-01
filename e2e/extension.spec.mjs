@@ -18,7 +18,7 @@ const settings = {
   enabled: true, sessionsPerDay: 1,
   sessionDurationMinSeconds: 300, sessionDurationMaxSeconds: 300,
   swipeDelayMinSeconds: 2, swipeDelayMaxSeconds: 2,
-  maxRightSwipesPerDay: 2,
+  maxRightSwipesPerDay: null,
   priority: ["swipe", "new-match", "active-chat"],
   pauseSwipeDuringActiveConversation: true,
   maxActiveChatSecondsPerConversationPerDay: null,
@@ -241,7 +241,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(simple.locator("#reachedLimits")).toBeVisible();
       await expect(simple.locator("#reachedLimits h2")).toHaveText("Quotas du jour");
       await expect(simple.locator("#reachedLimitsList li")).toHaveCount(2);
-      await expect(simple.locator("#reachedLimitsList")).toContainText("0 / 2");
+      await expect(simple.locator("#reachedLimitsList")).toContainText("0 / ∞");
       await expect(simple.locator("#reachedLimitsList")).toContainText("0 / 1");
       await expect(simple.locator("#toggleAutomation")).toHaveText("Démarrer");
       // Rejected Start must never turn the only control into a dead button.
@@ -266,7 +266,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
       await expect(simple.locator("#feedback")).toContainText("swipe_quota_unavailable");
       await expect(simple.locator("#reachedLimits")).toBeVisible();
-      await expect(simple.locator("#reachedLimitsList")).toContainText("— / 2");
+      await expect(simple.locator("#reachedLimitsList")).toContainText("— / ∞");
       expect((await storage())["tnnd.globalExistingRunner.v2"]?.enabled).not.toBe(true);
       failingPaths.delete("/api/v1/automation/smart-swipe/attempts/summary");
       // One old uncertain attempt blocks Swipe, but does not take down the
@@ -291,7 +291,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await simple.reload();
       await expect(simple.locator("#engineStatus")).toContainText("Conversations");
       await expect(simple.locator("#feedback")).toContainText("Swipe en attente");
-      await expect(simple.locator("#reachedLimitsList")).toContainText("0 / 2");
+      await expect(simple.locator("#reachedLimitsList")).toContainText("0 / ∞");
       await simple.locator("#toggleAutomation").click();
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
       expect((await storage())["tnnd.globalExistingRunner.v2"].enabled).toBe(false);
@@ -304,82 +304,17 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(simple.locator("#toggleAutomation")).toHaveText("Arrêter");
       expect((await storage())[`tnnd.smartSwipeLiveArm.v1:${userId}`].armed).toBe(true);
       expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
-      // The old launcher reported Active merely because the worker was
-      // armed. Full server quota must instead show a paused state, without
-      // deleting attempts or disabling the one safe Stop control.
-      ledger = { ...ledger, attemptsToday: settings.maxRightSwipesPerDay,
-        uiObservedToday: settings.maxRightSwipesPerDay - 1 };
-      const claimCountAtCap = requests.filter(x =>
-        x.path === "/api/v1/automation/smart-swipe/attempts/claim").length;
+      // Daily Like counts are informational only, even past the old cap.
+      ledger = { ...ledger, attemptsToday: 200, uiObservedToday: 199 };
       await simple.reload();
-      await expect(simple.locator("#engineStatus")).toContainText("Quota Swipe atteint");
-      await expect(simple.locator("#feedback")).toContainText("Quota quotidien de Swipe atteint");
-      await expect(simple.locator("#reachedLimits")).toBeVisible();
-      await expect(simple.locator("#reachedLimitsList")).toContainText("Tentatives de Like (TNND)");
-      await expect(simple.locator("#reachedLimitsList")).toContainText("2 / 2");
-      await expect(simple.locator("#reachedLimitsList")).toContainText("Sessions Auto Swipe");
-      await expect(simple.locator("#reachedLimitsList li")).toHaveCount(2);
-      await expect(simple.locator("button")).toHaveCount(8);
-       await expect(simple.locator(".mode-button")).toHaveCount(3);
+      await expect(simple.locator("#engineStatus")).toContainText("Auto Swipe");
+      await expect(simple.locator("#reachedLimitsList")).toContainText("200 / ∞");
+      await expect(simple.locator("#reachedLimitsList")).toContainText("1 / 1");
+      await expect(simple.locator("#toggleAutomation")).toHaveText("Arrêter");
       await expect(simple.locator("#reachedLimitsNote")).toContainText("sans preuve d'acceptation Tinder");
-      await expect(simple.locator("#toggleAutomation")).toHaveText("Arrêter");
-      expect(requests.filter(x =>
-        x.path === "/api/v1/automation/smart-swipe/attempts/claim").length)
-        .toBe(claimCountAtCap);
       expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
       await simple.locator("#toggleAutomation").click();
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
-      await simple.reload();
-      await expect(simple.locator("#reachedLimitsList")).toContainText("2 / 2");
-      // Starting with a *verified* full quota must not re-arm the Like
-      // executor. It may start only the next lower ranked watcher whose
-      // independent automatic replies permission is already enabled.
-      settings.priority = ["swipe", "active-chat", "new-match"];
-      const beforeFallbackClaims = requests.filter(x =>
-        x.path === "/api/v1/automation/smart-swipe/attempts/claim").length;
-      // Production regression: Web says Swipe enabled but the *extension*
-      // has not been separately permitted to automatically reply.
-      const workerForPermission = context.serviceWorkers()[0] || await context.waitForEvent("serviceworker");
-      await workerForPermission.evaluate(() =>
-        chrome.storage.local.set({ "tnnd.config": { automation: { enabled: false } } }));
-      await simple.locator("#toggleAutomation").click();
-      await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
-      await expect(simple.locator("#feedback")).toContainText("désactivée dans les paramètres locaux");
-      await expect(simple.locator("#reachedLimitsList")).toContainText("2 / 2");
-      await expect(simple.locator("#webSettingsLink"))
-        .toHaveAttribute("href", `chrome-extension://${extensionId}/options.html`);
-      await expect(simple.locator("#toggleAutomation")).toBeEnabled();
-      expect((await storage())["tnnd.globalExistingRunner.v2"]?.enabled).not.toBe(true);
-      expect((await storage())[`tnnd.smartSwipeLiveArm.v1:${userId}`]?.armed).not.toBe(true);
-      expect(requests.filter(x => x.path === "/api/v1/automation/smart-swipe/attempts/claim").length)
-        .toBe(beforeFallbackClaims);
-      // Only an EXPLICIT extension-local change grants watcher permission.
-      await workerForPermission.evaluate(() =>
-        chrome.storage.local.set({ "tnnd.config": { automation: { enabled: true } } }));
-      await simple.locator("#toggleAutomation").click();
-      await expect(simple.locator("#engineStatus")).toContainText("Nouveaux matchs");
-      await expect(simple.locator("#feedback")).toContainText("Phase 1");
-      expect((await storage())["tnnd.globalExistingRunner.v2"]).toMatchObject({
-        enabled: true, mode: "watcher", autoOpenersEnabled: true,
-        preferUnstartedMatches: true
-      });
-      await expect(simple.locator("#toggleAutomation")).toHaveText("Arrêter");
-      expect((await storage())[`tnnd.smartSwipeLiveArm.v1:${userId}`]?.armed).not.toBe(true);
-      expect((await storage())["tnnd.globalExistingRunner.v2"]).toMatchObject({
-        enabled: true, mode: "watcher", autoOpenersEnabled: true,
-        preferUnstartedMatches: true
-      });
-      await simple.reload();
-      await expect(simple.locator("#feedback")).toContainText("Quota Swipe atteint");
-      await expect(simple.locator("#reachedLimitsList")).toContainText("2 / 2");
-      await expect(simple.locator("#reachedLimits")).toBeVisible();
-      expect(requests.filter(x =>
-        x.path === "/api/v1/automation/smart-swipe/attempts/claim").length).toBe(beforeFallbackClaims);
-      expect(ledger.attemptsToday).toBe(settings.maxRightSwipesPerDay);
-      expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
-      await simple.locator("#toggleAutomation").click();
-      await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
-      expect((await storage())["tnnd.globalExistingRunner.v2"].enabled).toBe(false);
       ledger = { ...ledger, attemptsToday: 0, uiObservedToday: 0 };
       settings.priority = ["swipe", "new-match", "active-chat"];
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
@@ -535,60 +470,36 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     await tinder.goto("https://tinder.com/app/recs");
   });
 
-  test("already armed Swipe stops on full cap and hands off to matches-first watcher without a new click", async () => {
-    test.setTimeout(120_000); // Chrome MV3 alarms can be clamped on CI
+  test("high recorded daily Like count does not block an armed Swipe or force an obsolete handoff", async () => {
     apiAvailable = true;
     failingPaths.clear();
-    ledger = { attemptsToday: 0, uiObservedToday: 0, unresolvedAttempts: 0 };
+    ledger = { attemptsToday: 200, uiObservedToday: 199, unresolvedAttempts: 0 };
     settings.enabled = true;
     settings.priority = ["swipe", "new-match", "active-chat"];
     await tinder.goto("https://tinder.com/app/recs");
     const launcher = await context.newPage();
     try {
       await launcher.goto(`chrome-extension://${extensionId}/launcher.html`);
-      await expect(launcher.locator("#engineStatus")).toContainText("Arrêté");
+      await expect(launcher.locator("#reachedLimitsList")).toContainText("200 / ∞");
       await launcher.locator("#toggleAutomation").click();
       await expect(launcher.locator("#engineStatus")).toContainText("Auto Swipe");
-      const originalProgress = (await storage())[`tnnd.smartSwipeDailyProgress.v1:${userId}`];
-      expect(originalProgress?.rightSwipesReserved).toBe(0);
-      const priorClaims = requests.filter(x =>
-        x.path === "/api/v1/automation/smart-swipe/attempts/claim").length;
-      ledger = { attemptsToday: 2, uiObservedToday: 1, unresolvedAttempts: 0 };
-      const worker = context.serviceWorkers()[0] || await context.waitForEvent("serviceworker");
-      // Force only the already registered quota alarm, never call a fake
-      // shortcut that bypasses production ownership/ledger guards.
-      await worker.evaluate(() =>
-        chrome.alarms.create("tnnd.unifiedLauncher.quotaHandoff", { when: Date.now() + 1_500 }));
-      await expect.poll(async () => {
-        const raw = await storage();
-        return { arm: raw[`tnnd.smartSwipeLiveArm.v1:${userId}`]?.armed,
-          watcher: raw["tnnd.globalExistingRunner.v2"]?.enabled,
-          matchesFirst: raw["tnnd.globalExistingRunner.v2"]?.preferUnstartedMatches };
-      }, { timeout: 75_000 }).toEqual({ arm: false, watcher: true, matchesFirst: true });
       await launcher.reload();
-      await expect(launcher.locator("#engineStatus")).toContainText("Nouveaux matchs");
-      await expect(launcher.locator("#feedback")).toContainText("Phase 1");
-      await expect(launcher.locator("#reachedLimitsList")).toContainText("2 / 2");
-      expect((await storage())["tnnd.globalExistingRunner.v2"]).toMatchObject({
-        enabled: true, mode: "watcher", autoOpenersEnabled: true,
-        preferUnstartedMatches: true
-      });
-      expect(requests.filter(x => x.path === "/api/v1/automation/smart-swipe/attempts/claim").length)
-        .toBe(priorClaims);
+      await expect(launcher.locator("#engineStatus")).toContainText("Auto Swipe");
+      await expect(launcher.locator("#reachedLimitsList")).toContainText("200 / ∞");
+      expect((await storage())["tnnd.globalExistingRunner.v2"]?.enabled).not.toBe(true);
       expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
       await launcher.locator("#toggleAutomation").click();
       await expect(launcher.locator("#engineStatus")).toContainText("Arrêté");
-      expect((await storage())["tnnd.globalExistingRunner.v2"].enabled).toBe(false);
     } finally {
       await launcher.close();
       ledger = { attemptsToday: 0, uiObservedToday: 0, unresolvedAttempts: 0 };
     }
   });
 
-  test("server quota and unavailable ledger fail closed without a Like", async () => {
+  test("unlimited daily Like tally displays actual counts; unavailable ledger still fails closed", async () => {
     ledger = { attemptsToday: 2, uiObservedToday: 0, unresolvedAttempts: 0 };
     await popup.locator("#refreshSmartSwipeRuntime").click();
-    await expect(popup.locator("#smartSwipeRuntimeSummary")).toContainText("Like attempt slots left: 0");
+    await expect(popup.locator("#smartSwipeRuntimeSummary")).toContainText("Right Like attempts today: 2 (no TNND daily cap)");
     apiAvailable = false;
     await popup.locator("#refreshSmartSwipeRuntime").click();
     await expect(popup.locator("#smartSwipeRuntimeSummary")).toContainText("Start disabled");
