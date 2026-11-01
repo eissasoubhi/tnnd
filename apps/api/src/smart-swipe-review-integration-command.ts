@@ -41,7 +41,7 @@ async function main(): Promise<void> {
     ]);
     await putSmartSwipeSettings(userId, {
       ...defaultSmartSwipeSettings(), enabled: true, timeZone: "Europe/Paris",
-      maxRightSwipesPerDay: 2
+      maxRightSwipesPerDay: null
     });
     const claim = await claimSmartSwipeAttempt(userId, attemptId, deviceId);
     assert.equal(claim.ok, true);
@@ -99,7 +99,7 @@ async function main(): Promise<void> {
     ]);
     await putSmartSwipeSettings(noClickUserId, {
       ...defaultSmartSwipeSettings(), enabled: true, timeZone: "Europe/Paris",
-      maxRightSwipesPerDay: 2
+      maxRightSwipesPerDay: null
     });
     const noClickAttempt = randomUUID();
     assert.equal((await claimSmartSwipeAttempt(noClickUserId, noClickAttempt, deviceId)).ok, true);
