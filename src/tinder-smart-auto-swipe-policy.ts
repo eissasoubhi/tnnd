@@ -10,7 +10,8 @@ export interface SmartAutoSwipeConfig {
   sessionDurationMaxSeconds: number;
   swipeDelayMinSeconds: number;
   swipeDelayMaxSeconds: number;
-  maxRightSwipesPerDay: number;
+  /** Legacy setting retained for compatibility; TNND applies no daily Like cap. */
+  maxRightSwipesPerDay: null;
   priority: readonly ManagedTinderActivity[];
   pauseSwipeDuringActiveConversation: boolean;
   /** Null is unlimited. Per conversation, not a global chat quota. */
@@ -24,7 +25,7 @@ export const DEFAULT_SMART_AUTO_SWIPE_CONFIG: Readonly<SmartAutoSwipeConfig> = {
   sessionDurationMaxSeconds: 600,
   swipeDelayMinSeconds: 2,
   swipeDelayMaxSeconds: 5,
-  maxRightSwipesPerDay: 50,
+  maxRightSwipesPerDay: null,
   priority: ["swipe", "new-match", "active-chat"],
   pauseSwipeDuringActiveConversation: true,
   maxActiveChatSecondsPerConversationPerDay: null
@@ -45,7 +46,7 @@ export function validateSmartAutoSwipeConfig(config: SmartAutoSwipeConfig): stri
   if (!POSITIVE_SAFE_INTEGER(config.swipeDelayMinSeconds)) errors.push("swipeDelayMinSeconds");
   if (!POSITIVE_SAFE_INTEGER(config.swipeDelayMaxSeconds)) errors.push("swipeDelayMaxSeconds");
   if (config.swipeDelayMinSeconds > config.swipeDelayMaxSeconds) errors.push("swipeDelayRange");
-  if (!POSITIVE_SAFE_INTEGER(config.maxRightSwipesPerDay)) errors.push("maxRightSwipesPerDay");
+  if (config.maxRightSwipesPerDay !== null) errors.push("maxRightSwipesPerDay");
   if (!Array.isArray(config.priority) || config.priority.length !== 3 ||
       new Set(config.priority).size !== 3 || !config.priority.every(v => ACTIVITIES.includes(v)))
     errors.push("priority");
@@ -164,7 +165,6 @@ export function beginSmartSwipeSession(
       progress.dayKey !== tinderAccountDayKey(nowMs, timeZone) ||
       progress.session !== null || progress.rightSwipesReserved > 0 ||
       progress.startedSessions >= config.sessionsPerDay ||
-      progress.rightSwipesConfirmed >= config.maxRightSwipesPerDay ||
       (progress.lastSessionEndedAtMs !== null &&
         nowMs - progress.lastSessionEndedAtMs < MIN_SESSION_BREAK_MS)) return null;
   const durationSeconds = sampleInclusiveInteger(
@@ -218,8 +218,6 @@ export function planSmartRightSwipe(
   if (options.mandatoryStop) return "mandatory-stop";
   if (config.pauseSwipeDuringActiveConversation && options.activeConversationInProgress) return "paused-for-chat";
   if (progress.dayKey !== tinderAccountDayKey(nowMs, timeZone)) return "stale-day";
-  if (progress.rightSwipesConfirmed + progress.rightSwipesReserved >= config.maxRightSwipesPerDay)
-    return "daily-cap";
   if (progress.rightSwipesReserved > 0) return "unresolved-attempt";
   const session = progress.session;
   if (!session) return "no-session";
