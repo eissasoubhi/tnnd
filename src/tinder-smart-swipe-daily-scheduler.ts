@@ -51,7 +51,6 @@ export function scheduleSmartSwipeSession(
   const result = (action: SessionScheduleDecision["action"], reason: string, remaining: number | null = null): SessionScheduleDecision =>
     ({ action, reason, currentSlot: slot, nextLocalMinute: next, remainingSessionMs: remaining });
   if (progress.rightSwipesReserved > 0) return result("blocked", "unresolved_attempt");
-  if (progress.rightSwipesConfirmed >= config.maxRightSwipesPerDay) return result("blocked", "daily_cap");
   if (progress.session) {
     const remaining = Math.max(0, progress.session.durationMs - smartSwipeElapsedMs(progress.session, nowMs));
     return remaining === 0 ? result("end", "session_duration_reached", 0)
