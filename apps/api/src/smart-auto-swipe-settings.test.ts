@@ -9,6 +9,7 @@ test("smart swipe defaults are automatic-only scheduling, disabled until user co
   assert.equal(defaults.enabled, false);
   // Saved preferences do not imply an operational Like executor.
   assert.equal(defaults.maxActiveChatSecondsPerConversationPerDay, null);
+  assert.equal(defaults.maxRightSwipesPerDay, null);
   assert.deepEqual(defaults.priority, ["swipe", "new-match", "active-chat"]);
   assert.deepEqual(validateSmartSwipeSettings(defaults), { ok: true, settings: defaults });
   assert.notEqual(defaults.priority, DEFAULT_SMART_SWIPE.priority);
@@ -25,6 +26,8 @@ test("smart swipe persisted settings reject invalid quotas, priorities and unkno
     { ...good, maxActiveChatSecondsPerConversationPerDay: -1 },
     { ...good, maxRightSwipesPerDay: 1001 }
   ]) assert.equal(validateSmartSwipeSettings(item).ok, false);
+  assert.deepEqual(validateSmartSwipeSettings({ ...good, maxRightSwipesPerDay: 50 }),
+    { ok: true, settings: good }, "legacy saved caps are discarded");
   assert.equal(validateSmartSwipeSettings({
     ...good, maxActiveChatSecondsPerConversationPerDay: 1800,
     priority: ["active-chat", "swipe", "new-match"], timeZone: "Europe/Paris"
