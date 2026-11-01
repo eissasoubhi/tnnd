@@ -56,7 +56,10 @@ export function validateSmartSwipeSettings(value: unknown):
   if (typeof v.swipeDelayMinSeconds === "number" &&
       typeof v.swipeDelayMaxSeconds === "number" &&
       v.swipeDelayMinSeconds > v.swipeDelayMaxSeconds) errors.push("swipeDelayRange");
-  if (v.maxRightSwipesPerDay !== null) errors.push("maxRightSwipesPerDay");
+  // Older clients can still submit a previously configured number. Ignore it
+  // rather than restoring a TNND daily Like cap; reject malformed inputs.
+  if (v.maxRightSwipesPerDay !== null && !safeInt(v.maxRightSwipesPerDay, 1000))
+    errors.push("maxRightSwipesPerDay");
   if (!Array.isArray(v.priority) || v.priority.length !== 3 ||
       new Set(v.priority).size !== 3 ||
       !v.priority.every(x => typeof x === "string" && activities.includes(x as SwipeActivity)))
@@ -72,7 +75,7 @@ export function validateSmartSwipeSettings(value: unknown):
     catch { errors.push("timeZone"); }
   }
   if (errors.length) return { ok: false, errors };
-  return { ok: true, settings: v as unknown as SmartSwipeSettings };
+  return { ok: true, settings: { ...v, maxRightSwipesPerDay: null } as unknown as SmartSwipeSettings };
 }
 
 export interface SmartSwipeSettingsResponse {
