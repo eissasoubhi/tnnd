@@ -9,6 +9,7 @@ import { loadAiProviderSettings } from "./ai-provider-settings-service.js";
 import { listConversationFacts } from "./conversation-fact-service.js";
 import { getConversation } from "./conversation-service.js";
 import { getConversationSummary } from "./conversation-summary-service.js";
+import { prepareFullConversationHistory } from "./conversation-full-history.js";
 import { loadGeminiConversationPayload } from "./effective-conversation-context-service.js";
 import {
   callGeminiConversationProvider,
@@ -140,11 +141,19 @@ export async function generateConversationReply(
   const generate = savedProvider
     ? createGeminiConversationProvider(savedProvider)
     : provider;
+  const fullHistory = await withGenerationStage("full-history", () =>
+    prepareFullConversationHistory(conversation.messages, normalizedMessage, savedProvider ??
+      (process.env.GEMINI_API_KEY ? {
+        apiKey: process.env.GEMINI_API_KEY,
+        model: process.env.GEMINI_MODEL ?? "gemini-2.5-flash"
+      } : null))
+  );
   const generated = await withGenerationStage("provider", () => generate({
     context: effectiveContext,
     latestMessage: normalizedMessage,
     topics,
     ...(generationProfile.userProfile ? { userProfile: generationProfile.userProfile } : {}),
+    fullConversationContext: fullHistory.context,
     ...(conversationSummary ? { conversationSummary: conversationSummary.summary } : {}),
     ...(recentMessages.length ? { recentMessages } : {}),
     ...(conversationFacts.length ? { conversationFacts } : {}),

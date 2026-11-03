@@ -1,6 +1,7 @@
 import { loadGenerationProfile } from "./generation-user-profile-context.js";
 import { findConversationByExternalThreadId } from "./conversation-thread-lookup-service.js";
 import { getConversation } from "./conversation-service.js";
+import { prepareFullConversationHistory } from "./conversation-full-history.js";
 import { getConversationMatchProfile } from "./match-profile-service.js";
 import { matchProfileTopicGuidance } from "./match-profile-topic-hooks.js";
 import { missingPersonalLocationDetail, personalLocationAnswerPolicy } from "./personal-location-policy.js";
@@ -198,6 +199,24 @@ export async function generateExtensionSuggestions(
   const flowLookup = request.purpose !== "opener" && request.threadKey
     ? await findConversationByExternalThreadId(userId, request.threadKey) : null;
   const storedConversation = flowLookup ? await getConversation(userId, flowLookup.id) : null;
+  // The extension may only see a virtualized slice of Tinder's DOM. For
+  // automatic replies, never pretend it is the entire synchronized history.
+  if (request.purpose === "auto" && request.threadKey && !storedConversation)
+    throw new Error("conversation_history_unavailable");
+  if (request.purpose === "auto" && storedConversation) {
+    const serverLatest = storedConversation.messages.at(-1);
+    const localLatest = observedMessages.at(-1);
+    const normalize = (text: string) =>
+      text.normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+    if (!serverLatest || !localLatest || serverLatest.direction !== "incoming" ||
+        localLatest.direction !== "incoming" ||
+        normalize(serverLatest.text) !== normalize(localLatest.text))
+      throw new Error("conversation_history_not_synchronized");
+  }
+  const fullHistory = storedConversation && request.purpose !== "opener"
+    ? await prepareFullConversationHistory(storedConversation.messages,
+        observedMessages.at(-1)?.text ?? "",settings)
+    : null;
   const stageOrder = configWithoutIdentity.conversationFlowOrder === "work-first"
     ? ["occupation", "location", "interests"] as const
     : configWithoutIdentity.conversationFlowOrder === "interests-first"
@@ -277,7 +296,10 @@ export async function generateExtensionSuggestions(
       ? "Write ONE opening Tinder turn with 2 or 3 short lines separated by newline characters inside one JSON array string. The lines will be sent as separate Tinder bubbles, NOT alternative messages. The FIRST line must be ONLY a short greeting (Salut, Hello, Hi, or Salut cv?); the next one or two lines should be natural short follow-ups without repeating the greeting. No previous messages exist. Do not invent profile facts, feelings, compliments or reactions (for example claiming their profile made the sender smile). Only the match name/age explicitly shown in the conversation context are verified. No profile photo, bio or appearance is verified. A neutral greeting and one natural question are better than fake personalization."
       : "Use the recent conversation flow and avoid abrupt topic changes. When a VERIFIED long-gap RE-ENTRY instruction above applies, send the short greeting/check-in first and wait for the match before returning to an older non-urgent question. Otherwise answer the latest incoming message normally.",
     "If context is incomplete, stay generic rather than inventing details. Never claim an unverified reaction to a match profile.",
-    `Conversation context:\n${request.context.slice(-9000)}`,
+    fullHistory
+      ? `Full authenticated conversation context (${fullHistory.messageCount} messages, ${fullHistory.mode}, ${fullHistory.segmentCount} segments). Analyze ALL historical subjects, confirmed answers, corrections and old connections before replying:\n${fullHistory.context}`
+      : "",
+    `Current visible Tinder conversation context (may omit previously unloaded messages):\n${request.context}`,
     `Return only a valid JSON array containing exactly ${request.count} distinct message string${request.count === 1 ? "" : "s"}. No markdown, explanation or labels.`
   ].filter(Boolean).join("\n\n");
 

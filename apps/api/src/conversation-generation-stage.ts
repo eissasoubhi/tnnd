@@ -4,7 +4,7 @@
  */
 export const generationStages = [
   "conversation", "profile", "summary", "facts", "effective-context",
-  "supplemental", "memories", "provider-settings", "provider", "memory-usage"
+  "supplemental", "memories", "provider-settings", "full-history", "provider", "memory-usage"
 ] as const;
 export type GenerationStage = typeof generationStages[number];
 
