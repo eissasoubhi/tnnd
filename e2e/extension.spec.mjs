@@ -180,7 +180,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     try {
       await worker.evaluate(() => chrome.storage.local.remove("tnnd.backendSession"));
       await launcher.goto(`chrome-extension://${extensionId}/launcher.html`);
-      await expect(launcher.locator("button")).toHaveCount(8);
+      await expect(launcher.locator("button")).toHaveCount(6);
        await expect(launcher.locator(".mode-button")).toHaveCount(3);
       await launcher.locator("#toggleAutomation").click();
       await expect(launcher.locator("#engineStatus")).toContainText("Arrêté");
@@ -227,7 +227,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await simple.goto(`chrome-extension://${extensionId}/launcher.html`);
       expect(await simple.evaluate(() => chrome.runtime.getManifest().action.default_popup))
         .toBe("launcher.html");
-      await expect(simple.locator("button")).toHaveCount(8);
+      await expect(simple.locator("button")).toHaveCount(6);
        await expect(simple.locator(".mode-button")).toHaveCount(3);
       const installedInfo = JSON.parse(await readFile(resolve("dist/BUILD-INFO.json"), "utf8"));
       const currentCommit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
