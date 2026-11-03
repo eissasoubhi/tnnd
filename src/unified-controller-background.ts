@@ -81,7 +81,10 @@ async function status(): Promise<Record<string, unknown>> {
   // attempt cap is useful information when the engine is stopped.
   const limitSnapshot = await readReachedLimits();
   const quota = limitSnapshot?.swipeQuota ?? null;
-  const quotaReached = owner.mode === "swipe" && !owner.conflict && quota?.reached === true;
+  const sessionLimitReached = limitSnapshot?.safeToReleaseSwipe === true &&
+    limitSnapshot.reached.some(limit => limit.id === "swipe-sessions");
+  const quotaReached = owner.mode === "swipe" && !owner.conflict &&
+    (quota?.reached === true || sessionLimitReached);
   // Expose only verified, bounded operational state, not chat text or match
   // identifiers. Status is read-only and never triggers a Gemini request.
   const watcherRaw = (await chrome.storage.local.get(WATCHER_KEY))[WATCHER_KEY] as
@@ -120,15 +123,17 @@ async function status(): Promise<Record<string, unknown>> {
     watcherInfo,
     reason: owner.conflict ? "Plusieurs moteurs déjà actifs. Clique Arrêter pour les désarmer." :
       quotaReached
-        ? "Quota quotidien de Swipe atteint (" + quota!.used + "/" + quota!.limit +
-          "). Aucun nouveau Like possible aujourd'hui. Arrête puis redémarre pour choisir une autre activité autorisée."
+        ? sessionLimitReached && quota?.reached !== true
+          ? "Sessions Swipe du jour terminées. Bascule automatique vers Matches si les journaux sont résolus."
+          : "Quota quotidien de Swipe atteint (" + quota!.used + "/" + quota!.limit +
+            "). Aucun nouveau Like possible aujourd'hui. Arrête puis redémarre pour choisir une autre activité autorisée."
         :
       owner.running && !store?.enabled
         ? "Un ancien moteur est actif. Arrêter permet de reprendre le contrôle."
         : owner.running && store?.enabled &&
             (store.mode === owner.mode || (store.mode === "new-match" && owner.mode === "active-chat")) &&
             store.pausedSwipeReason
-          ? store.pausedSwipeReason === "daily_cap"
+          ? (store.pausedSwipeReason === "daily_cap" || store.pausedSwipeReason === "session_cap")
             ? (owner.mode === "new-match"
                 ? "Quota Swipe atteint. Phase 1 : nouveaux matchs ; ensuite conversations en attente."
                 : "Quota Swipe atteint. Phase 2 : réponses aux conversations en attente.")
@@ -251,10 +256,18 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
       if (!summaryResponse.ok) return { ok: false, reason: "swipe_quota_unavailable" };
       const quota = verifiedDailyQuota(settings, await summaryResponse.json(), Date.now());
       if (!quota) return { ok: false, reason: "swipe_quota_unavailable" };
-      if (quota.reached) {
+      // Right Likes have no daily limit. The completed-session cap is
+      // independently enforced by the local scheduler. Only transition away
+      // when the final session is finished AND both ledgers are settled.
+      const sessionLimits = quota.reached ? null : await readReachedLimits();
+      const exhaustedSessions = sessionLimits?.safeToReleaseSwipe === true &&
+        sessionLimits.reached.some(limit => limit.id === "swipe-sessions");
+      const capReason = quota.reached ? "daily_cap" :
+        exhaustedSessions ? "session_cap" : null;
+      if (capReason) {
         if (requestedMode === "swipe") return { ok: false, reason:
-          "Quota Swipe atteint pour aujourd'hui. Choisis Matches ou Chat si autorisé." };
-        const next = fallbackAfterBlockedSwipe(settings, "daily_cap", config.automation.enabled);
+          "Limite Swipe atteinte pour aujourd'hui. Choisis Matches ou Chat si autorisé." };
+        const next = fallbackAfterBlockedSwipe(settings, capReason, config.automation.enabled);
         if (!next) return {
           ok: false,
           reason: !config.automation.enabled
@@ -266,7 +279,7 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
           return { ok: false, reason: "Mode concurrent détecté après vérification du quota." };
         if (epoch !== commandEpoch) return { ok: false, reason: "Démarrage annulé par Stop." };
         selected = "new-match";
-        pausedSwipeReason = "daily_cap";
+        pausedSwipeReason = capReason;
       }
     }
     if (selected === "swipe") {
@@ -376,6 +389,8 @@ async function handoffOnReachedCap(): Promise<void> {
       await chrome.alarms.clear(CAP_ALARM);
       return;
     }
+    const capReason = check.reached.some(limit => limit.id === "swipe-attempts")
+      ? "daily_cap" : "session_cap";
     const watcher = await startExistingRunner(false, "watcher", true, true);
     if (!watcher.enabled || watcher.mode !== "watcher" || !watcher.autoOpenersEnabled)
       throw new Error("watcher_start_unconfirmed");
@@ -385,7 +400,7 @@ async function handoffOnReachedCap(): Promise<void> {
     }
     await chrome.storage.local.set({ [MASTER]: {
       enabled: true, mode: "new-match", userId: session.user.id,
-      pausedSwipeReason: "daily_cap", startedAt: Date.now()
+      pausedSwipeReason: capReason, startedAt: Date.now()
     } });
     await chrome.alarms.clear(CAP_ALARM);
   } catch {
