@@ -1,6 +1,6 @@
 import {
   validateSmartAutoSwipeConfig, type SmartAutoSwipeConfig
-} from "./tinder-smart-auto-swipe-policy";
+} from "./tinder-smart-auto-swipe-policy.ts";
 
 /** Validate API compatibility without quietly authorizing missing priorities,
  * invalid consent, missing time zone or changed session / swipe constraints.
