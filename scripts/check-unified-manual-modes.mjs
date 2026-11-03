@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { explainLauncherStartRefusal } from "../src/unified-launcher-failure.ts";
+import { parseUnifiedWebSettings, explainUnifiedWebSettingsErrors } from "../src/unified-web-settings.ts";
+import { DEFAULT_SMART_AUTO_SWIPE_CONFIG } from "../src/tinder-smart-auto-swipe-policy.ts";
 import {
   manualActivity, manualSwipeReleaseSafe, watcherSwitchSafety
 } from "../src/unified-manual-mode-policy.ts";
@@ -27,6 +29,55 @@ test("manual Swipe shows actionable, accurate ledger guidance rather than an opa
   assert.match(section, /guidance.reviewAttempts/);
   assert.match(section, /#smart-swipe-activity/);
   assert.match(section, /Examiner les tentatives dans TNND Web/);
+});
+
+test("legacy daily Right Likes cap no longer blocks Swipe, Chat, Matches or counter display", async () => {
+  const raw = {
+    ...DEFAULT_SMART_AUTO_SWIPE_CONFIG,
+    enabled: true,
+    maxRightSwipesPerDay: 500,
+    timeZone: "Europe/Paris"
+  };
+  const parsed = parseUnifiedWebSettings({ settings: raw });
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.legacyDailyLikeCap, true);
+  assert.equal(parsed.settings.maxRightSwipesPerDay, null);
+  assert.equal(raw.maxRightSwipesPerDay, 500, "original API payload remains unmodified");
+  for (const mode of ["swipe", "new-match", "active-chat"]) {
+    assert.ok(parsed.settings.priority.includes(mode));
+  }
+  assert.deepEqual(parseUnifiedWebSettings({ settings: {
+    ...raw, maxRightSwipesPerDay: null
+  } }), { ok: true, settings: { ...raw, maxRightSwipesPerDay: null }, legacyDailyLikeCap: false });
+  const worker = await readFile(new URL("../src/unified-controller-background.ts", import.meta.url),"utf8");
+  assert.equal((worker.match(/parseUnifiedWebSettings\(await .*Response\.json\(\)\)/g) ?? []).length, 2);
+  assert.match(worker,/parseUnifiedWebSettings\(await response\.json\(\)\)/);
+  assert.doesNotMatch(worker,/Corrige les priorités avant de démarrer/);
+});
+
+test("compatibility never hides invalid priorities, consent, missing timezone or wrong limits",()=>{
+  const original = { ...DEFAULT_SMART_AUTO_SWIPE_CONFIG, enabled:true,
+    maxRightSwipesPerDay: 500, timeZone:"Europe/Paris" };
+  const bad = [
+    [{ ...original, priority:["swipe", "swipe", "active-chat"] },"priority"],
+    [{ ...original, priority:["swipe","new-match"] },"priority"],
+    [{ ...original, sessionsPerDay: 0 },"sessionsPerDay"],
+    [{ ...original, enabled:"true" },"enabled"],
+    [{ ...original, timeZone:"Unknown/Nowhere" },"timeZone"],
+    [{ ...original, maxRightSwipesPerDay: 1001 },"maxRightSwipesPerDay"],
+    [{ ...original, maxRightSwipesPerDay: "500" },"maxRightSwipesPerDay"],
+    [{ ...original, maxRightSwipesPerDay: undefined },"maxRightSwipesPerDay"]
+  ];
+  for(const [settings, field] of bad) {
+    const result = parseUnifiedWebSettings({ settings });
+    assert.equal(result.ok, false, field);
+    assert.ok(result.errors.includes(field), field + " was not validated");
+  }
+  assert.deepEqual(parseUnifiedWebSettings({}),{ok:false, errors:["settings_missing"]});
+  assert.deepEqual(parseUnifiedWebSettings(null),{ok:false, errors:["server_response"]});
+  assert.match(explainUnifiedWebSettingsErrors(["priority"] ),/ordre des activités Swipe/);
+  assert.match(explainUnifiedWebSettingsErrors(["maxRightSwipesPerDay"] ),/ancien plafond quotidien/);
+  assert.doesNotMatch(explainUnifiedWebSettingsErrors(["timeZone"] ),/Corrige les priorités/);
 });
 
 test("manual launcher accepts only the three explicit activity IDs", () => {
