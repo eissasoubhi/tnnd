@@ -33,7 +33,7 @@ test("reads every message, in order, including old answered questions",async()=>
 
 test("large conversations re-read ALL chunks by AI, never only last N messages",async()=>{
   const messages=Array.from({length:650},(_,i)=>message(i,
-    i===7?"J'ai déjà dit que j'habite Paris":i===500?"Le sujet cinéma revient":"Une conversation historique très détaillée #"+i+" ".repeat(18)));
+    i===7?"J'ai déjà dit que j'habite Paris":i===500?"Le sujet cinéma revient":"Une conversation historique très détaillée #"+i+" ".repeat(220)));
   const visited=new Set<number>();
   let calls=0;
   const review:HistoryReviewer=async(evidence,credentials)=>{
@@ -53,7 +53,7 @@ test("large conversations re-read ALL chunks by AI, never only last N messages",
   assert.equal(visited.size,messages.length);
   for(let i=1;i<=messages.length;i++)assert.ok(visited.has(i),"missing historical message "+i);
   assert.match(result.context,/COMPLETE HISTORY REVIEW/);
-  assert.match(result.context,/ALL historical/i);
+  assert.match(result.context,/EVERY persisted chat message/i);
 });
 
 test("long history cannot degrade silently if the provider is missing or uncertain",async()=>{
