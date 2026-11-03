@@ -6,7 +6,7 @@ import {
   reconcileExistingIndex, markThreadChecked, observeUnreadThreads
 } from "../src/tinder-existing-thread-index.ts";
 import {
-  nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus, newlyVisibleUnread
+  nextWatchedReply, watcherReplyPriority, pendingWatchedReplies, watcherDisplayStatus, newlyVisibleUnread
 } from "../src/tinder-reply-watcher.ts";
 import {
   followConversationAfterSignal, shouldKeepConversationInFocus
@@ -53,17 +53,36 @@ test("new incoming synced version requeues exactly that thread once",()=>{
   queue=markThreadChecked(queue,"a");
   assert.equal(nextWatchedReply(queue),null);
 });
-test("visible unread is higher priority even while backend latest is outgoing",()=>{
+test("fresh verified incoming takes precedence over an outgoing unread hint",()=>{
   let queue=reconcileExistingIndex(null,"one",[
     source("a","incoming"),source("b","outgoing")
   ],base);
   queue=observeUnreadThreads(queue,["b"],"2026-10-14T19:01:00Z");
-  assert.equal(nextWatchedReply(queue),"b");
+  assert.equal(nextWatchedReply(queue),"a","a confirmed unanswered incoming message wins over stale outgoing hint");
+  queue=markThreadChecked(queue,"a","2026-10-14T19:02:00Z");
+  assert.equal(nextWatchedReply(queue),"b","still inspect unread outgoing when confirmed incoming was handled");
   queue=markThreadChecked(queue,"b","2026-10-14T19:02:00Z");
-  assert.equal(nextWatchedReply(queue),"a");
   queue=observeUnreadThreads(queue,["b"],"2026-10-14T19:02:30Z");
-  assert.equal(nextWatchedReply(queue),"a","a lingering badge cannot requeue during cooldown");
+  assert.equal(nextWatchedReply(queue),null,"a lingering badge cannot requeue during cooldown");
 });
+test("priority is deterministic: fresh unanswered before stale badges, rechecks last",()=>{
+  let work=reconcileExistingIndex(null,"owner",[
+    source("a-answered","outgoing"),
+    source("z-new","incoming"),
+    source("y-new","incoming")
+  ],"2026-10-14T19:00:00Z");
+  work=observeUnreadThreads(work,["a-answered"],"2026-10-14T19:01:00Z");
+  assert.equal(nextWatchedReply(work),"z-new","fresh incoming beats unread on an outgoing message");
+  work=observeUnreadThreads(work,["y-new"],"2026-10-14T19:01:10Z");
+  assert.equal(nextWatchedReply(work),"y-new","unread + verified incoming has highest priority");
+  work=markThreadChecked(work,"y-new","2026-10-14T19:01:20Z");
+  assert.equal(nextWatchedReply(work),"z-new","remaining fresh incoming precedes stale badge");
+  work=markThreadChecked(work,"z-new","2026-10-14T19:01:30Z");
+  assert.equal(nextWatchedReply(work),"a-answered");
+  assert.equal(watcherReplyPriority(work.threads.find(t=>t.ref==="a-answered")),2);
+  assert.equal(watcherReplyPriority(work.threads.find(t=>t.ref==="y-new")),1);
+});
+
 test("account isolation, disabled or unauthorized refs cannot leak into watcher",()=>{
   const one=reconcileExistingIndex(null,"one",[source("a","incoming")]);
   assert.equal(nextWatchedReply(one),"a");
