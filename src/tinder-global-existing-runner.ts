@@ -66,6 +66,8 @@ interface GlobalExistingRunnerState {
   phase: RunnerPhase;
   dwellSeconds: number;
   phaseDetail: string;
+  /** Real cadence deadline provided by Tinder content script; no ETA while Gemini runs. */
+  nextReplyAt: string | null;
   currentLabel: string | null;
   eligibleCount: number;
   visitedCount: number;
@@ -87,7 +89,7 @@ interface GlobalExistingRunnerState {
 const initial = (): GlobalExistingRunnerState => ({
   enabled: false, mode: "runner", pendingReplies: 0, autoOpenersEnabled: false, preferUnstartedMatches: false, manualActivity: null,
   matchPhase: "idle", matchPhaseStartedAt: null, lastMatchScanAt: null, lastIncomingAt: null, watchedMatches: null, visibleUnreadRefs: [], watcherStatus: "stopped", userId: null, tabId: null, tabMode: null, pausedOnStop: false,
-  phase: "stopped", dwellSeconds: DEFAULT_CADENCE, phaseDetail: "Runner stopped.", currentLabel: null,
+  phase: "stopped", dwellSeconds: DEFAULT_CADENCE, phaseDetail: "Runner stopped.", nextReplyAt: null, currentLabel: null,
   eligibleCount: 0, visitedCount: 0, sentCount: 0, skippedCount: 0, errorCount: 0,
   lastRef: null, activeConversationRef: null, activeConversationUntil: null, conversationActivities: [], attentionCapSeconds: DEFAULT_ATTENTION_CAP_SECONDS, cursorRef: null, startedAt: null, lastActionAt: null, lastVisitAt: null,
   lastError: null, activity: []
@@ -121,7 +123,7 @@ function activity(state: GlobalExistingRunnerState, phase: RunnerPhase, detail: 
   const at = new Date().toISOString();
   // Keep only bounded operational metadata, never messages, prompts or tokens.
   const recent = [...state.activity, { at, phase, detail: detail.slice(0, 240), conversation: ref ? (state.currentLabel ?? `Thread ${ref.slice(0, 8)}`) : null }].slice(-LOG_LIMIT);
-  return { ...state, phase, phaseDetail: detail.slice(0, 240), lastActionAt: at, activity: recent,
+  return { ...state, phase, phaseDetail: detail.slice(0, 240), nextReplyAt: null, lastActionAt: at, activity: recent,
     ...(phase === "error" ? { lastError: detail, errorCount: state.errorCount + 1 } : {}),
     ...(phase === "sent" ? { sentCount: state.sentCount + 1 } : {}),
     ...(phase === "skipped" ? { skippedCount: state.skippedCount + 1 } : {})
@@ -134,6 +136,8 @@ async function load(): Promise<GlobalExistingRunnerState> {
     ...initial(), ...value,
     activity: Array.isArray(value.activity) ? value.activity.slice(-LOG_LIMIT) : [],
     mode: value.mode === "watcher" ? "watcher" : "runner",
+    nextReplyAt: value.phase === "waiting" && typeof value.nextReplyAt === "string" &&
+      Number.isFinite(Date.parse(value.nextReplyAt)) ? value.nextReplyAt : null,
     activeConversationRef: typeof value.activeConversationRef === "string" ? value.activeConversationRef : null,
     activeConversationUntil: typeof value.activeConversationUntil === "string" ? value.activeConversationUntil : null,
     conversationActivities: normalizeConversationActivities(value.conversationActivities),
@@ -765,7 +769,7 @@ async function stop(reason = "Runner stopped. Tinder tab kept open."): Promise<G
   await chrome.alarms.clear(ALARM);
   return next;
 }
-async function contentEvent(sender: chrome.runtime.MessageSender, message: { phase?: unknown; detail?: unknown; ref?: unknown }): Promise<void> {
+async function contentEvent(sender: chrome.runtime.MessageSender, message: { phase?: unknown; detail?: unknown; ref?: unknown; nextReplyAt?: unknown }): Promise<void> {
   const state = await load();
   if (!state.enabled || typeof sender.tab?.id !== "number" || sender.tab.id !== state.tabId) return;
   const senderRef = tinderRefFromUrl(sender.url);
@@ -774,8 +778,17 @@ async function contentEvent(sender: chrome.runtime.MessageSender, message: { pha
     || !["incoming", "waiting", "generating", "sending", "sent", "skipped", "error"].includes(message.phase)) return;
   const phase = message.phase as RunnerPhase;
   const detail = typeof message.detail === "string" ? message.detail.slice(0, 240) : phase;
+  // Only accept a plausible deadline from an actual waiting event on the
+  // same authorized Tinder tab/thread. Ignore malformed or stale dates.
+  const now = Date.now();
+  const due = phase === "waiting" && typeof message.nextReplyAt === "string"
+    ? Date.parse(message.nextReplyAt) : NaN;
+  const nextReplyAt = Number.isFinite(due) && due >= now - 5000 &&
+    due <= now + 60 * 60_000 ? new Date(due).toISOString() : null;
   // Ignore duplicate status events, especially periodic "no incoming" scans.
-  if (state.phase === phase && state.phaseDetail === detail && phase !== "sent" && phase !== "incoming") return;
+  if (state.phase === phase && state.phaseDetail === detail &&
+      state.nextReplyAt === nextReplyAt &&
+      phase !== "sent" && phase !== "incoming") return;
   // Reject late navigation events from an older chat tab.
   const fresh = await load();
   if (!fresh.enabled || fresh.lastRef !== senderRef || fresh.tabId !== sender.tab.id) return;
@@ -783,10 +796,13 @@ async function contentEvent(sender: chrome.runtime.MessageSender, message: { pha
   // only observed incoming or confirmed outgoing events affect activity scores.
   const focus = fresh.mode === "watcher" && (phase === "incoming" || phase === "sent")
     ? followConversationAfterSignal(fresh, senderRef, phase) : {};
-  await save(activity({
-    ...fresh, ...focus,
-    ...(phase === "incoming" ? { lastIncomingAt: new Date().toISOString() } : {})
-  }, phase, detail, senderRef));
+  await save({
+    ...activity({
+      ...fresh, ...focus,
+      ...(phase === "incoming" ? { lastIncomingAt: new Date().toISOString() } : {})
+    }, phase, detail, senderRef),
+    nextReplyAt
+  });
 }
 chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === ALARM) void tick();
@@ -800,7 +816,7 @@ chrome.runtime.onStartup.addListener(() => {
 });
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (!message || typeof message !== "object") return false;
-  const input = message as { type?: unknown; phase?: unknown; detail?: unknown; ref?: unknown; refs?: unknown; conversationRef?: unknown; firstName?: unknown; enablePreviouslyDisabled?: unknown; cadenceSeconds?: unknown; userId?: unknown; capSeconds?: unknown };
+  const input = message as { type?: unknown; phase?: unknown; detail?: unknown; nextReplyAt?: unknown; ref?: unknown; refs?: unknown; conversationRef?: unknown; firstName?: unknown; enablePreviouslyDisabled?: unknown; cadenceSeconds?: unknown; userId?: unknown; capSeconds?: unknown };
   if (input.type === "TNND_EXISTING_RUNNER_TAB_PAUSED") {
     const statePromise = load();
     void statePromise.then(state => sendResponse({
