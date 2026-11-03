@@ -2,6 +2,7 @@ import { explainLauncherStartRefusal } from "./unified-launcher-failure";
 import {
   DEFAULT_TNND_WEB_ORIGIN, pickTnndWebTab, tnndWebSection, tnndWebTabUrl
 } from "./tnnd-web-tab-navigation";
+import { chatReplyCountdownLabel } from "./chat-reply-countdown";
 import {
   buildTinderPageDiagnosticArchive, saveTinderPageDiagnosticArchive,
   screenshotDataUrlBytes, type TinderPageDiagnosticSnapshot
@@ -16,7 +17,7 @@ type ReachedLimit = { id: "swipe-attempts" | "swipe-sessions"; label: string;
 type DailyCounter = { id: ReachedLimit["id"]; label: string;
   used: number | null; max: number | null; dayKey: string | null; reached: boolean };
 type WatcherInfo = { phase: string; detail: string; pendingReplies: number | null;
-  eligibleCount: number | null; lastActionAt: string | null };
+  eligibleCount: number | null; lastActionAt: string | null; nextReplyAt?: string | null };
 type Status = { ok: boolean; running?: boolean; mode?: CurrentMode; manualMode?: CurrentMode; reason?: string;
   quotaPaused?: boolean; reachedLimits?: ReachedLimit[]; limitCounters?: DailyCounter[];
   watcherInfo?: WatcherInfo | null };
@@ -28,6 +29,7 @@ const modeButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".mo
 const modeActions = Array.from(document.querySelectorAll<HTMLButtonElement>(".mode-action"));
 
 const chatInfo = document.getElementById("chatInfo") as HTMLElement;
+const chatCountdown = document.getElementById("chatCountdown") as HTMLElement;
 const chatPending = document.getElementById("chatPending") as HTMLElement;
 const matchesInfo = document.getElementById("matchesInfo") as HTMLElement;
 const panels: Record<Exclude<CurrentMode,null>, HTMLElement> = {
@@ -153,6 +155,15 @@ function updateButtons(): void {
     button.dataset.running = String(running && activeMode === button.dataset.activity);
 }
 
+function renderChatCountdown(): void {
+  const chatActive = lastStatus.ok && running && activeMode === "active-chat";
+  const info = chatActive ? lastStatus.watcherInfo : null;
+  chatCountdown.textContent = chatReplyCountdownLabel({
+    active: Boolean(chatActive && info),
+    phase: info?.phase ?? null,
+    nextReplyAt: info?.nextReplyAt ?? null
+  });
+}
 function render(value: Status, detail = ""): void {
   lastStatus = value;
   if (Array.isArray(value.limitCounters)) renderDailyCounters(value.limitCounters);
@@ -187,6 +198,7 @@ function render(value: Status, detail = ""): void {
     webSettingsLink.href = DEFAULT_TNND_WEB_ORIGIN + "/#workspace-settings-section";
     webSettingsLink.textContent = "Configuration dans TNND Web";
   }
+  renderChatCountdown();
   updateButtons();
 }
 async function send(type: Command, mode?: Exclude<CurrentMode, null>): Promise<Status> {
@@ -401,5 +413,12 @@ exportTinderDiagnostic.addEventListener("click", () => void exportActiveTinderPa
 renderDailyCounters([]);
 void showBuildVersion();
 void refresh();
+// The popup can remain open during an in-flight reply. The 1-second timer is
+// display-only; background status remains the single source of truth.
+window.setInterval(renderChatCountdown, 1000);
+window.setInterval(() => {
+  if (!busy && (selectedMode === "active-chat" || activeMode === "active-chat"))
+    void refresh();
+}, 10000);
 
 export {};
