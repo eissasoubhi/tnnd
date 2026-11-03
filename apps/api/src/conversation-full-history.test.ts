@@ -26,7 +26,8 @@ test("reads every message, in order, including old answered questions",async()=>
   assert.equal(parsed[0].text,"Tu aimes le cinéma ?");
   assert.equal(parsed[1].text,"Oui, les films de SF.");
   assert.equal(parsed.at(-1).text,"On va voir un film ?");
-  assert.equal(parsed[0].verifiedSentAt,undefined);
+  assert.equal(parsed[1].verifiedSentAt,undefined);
+  assert.ok(parsed[0].verifiedSentAt);
   assert.ok(parsed[3].verifiedSentAt);
   assert.match(reviewed.context,/already answered/i);
 });
