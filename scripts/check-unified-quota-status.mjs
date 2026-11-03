@@ -78,8 +78,11 @@ assert.equal(reachedUnifiedLimits(fullSettings, summary,
   { ...local, dayKey: "2026-10-19" }, time).safeToReleaseSwipe, false,
   "Yesterday's local progress cannot authorize today's handoff");
 assert.equal(reachedUnifiedLimits(fullSettings,
-  { ...summary, attemptsToday: 99 }, local, time).safeToReleaseSwipe, false,
-  "Below-cap Swipe cannot be moved by the daily-cap handoff");
+  { ...summary, attemptsToday: 99 }, { ...local, startedSessions: 2 }, time).safeToReleaseSwipe, false,
+  "Below both Swipe limits, an automatic handoff is forbidden");
+assert.equal(reachedUnifiedLimits(fullSettings,
+  { ...summary, attemptsToday: 99 }, local, time).safeToReleaseSwipe, true,
+  "Exhausted sessions can hand off below the daily Like quota");
 console.log("Account-day auto-handoff eligibility fails closed for pending/unknown Likes.");
 
 assert.deepEqual(full.counters, [
