@@ -40,18 +40,23 @@ same attempt automatically and never convert an unknown result to confirmed.
 
 1. Explicitly enable scheduling in TNND Web if disabled, then Save.
 2. With one Discovery tab and other Tinder automation runners stopped, use the
-   extension popup's **Start automatic swiping**. This is a separate deliberate
+   extension popup's **Démarrer Auto** (or the explicit manual Swipe action). This is a deliberate
    user action; changing Web preferences or reviewing a row must not trigger it.
 3. The extension requires an authenticated account-day count proof before it
    can discard *one matching local reserved counter* (only the local pending
    counter, **not** the PostgreSQL attempt row or quota slot). The proof includes
    all server-verified `not_clicked` attempts in its accounting without treating
-   them as successful Likes or as reviewed UNKNOWN. The same strict single
-   local-reservation / single reviewed UNKNOWN matching still applies. It then
-   requests account/device-specific reauthorization. Corrupt, cross-device,
-   missing, conflicting or unavailable proofs refuse Start. Do not reset local
-   storage manually to bypass this check.
-4. Inspect `Refresh swipe status` and `Today and recent attempts`. Stop
+   them as successful Likes or as reviewed UNKNOWN. With a pending local
+   reservation, the strict single local-reservation / single reviewed UNKNOWN
+   condition still applies. When all server attempts are resolved, missed
+   local UI-observed writes (even more than one) are restored from the
+   account-day ledger without creating or confirming any Likes. Without a
+   pending reservation, fully settled server evidence can also repair the
+   local UI-observed counter. Local-ahead counters, unresolved attempts,
+   conflicting or unavailable proofs still refuse Start. It then requests
+   account/device-specific reauthorization. Do not reset local storage
+   manually to bypass this check.
+4. Inspect the popup's daily counters and TNND Web's recent attempts. Stop
    immediately if another unverified outcome or modal appears; confirm no
    duplicate action after extension/service-worker restart.
 5. Release is still blocked until the Swipe/Matches/Chats coordination and
