@@ -485,14 +485,17 @@ const lastWatchedIncomingEvidence = new Map<string, string>();
 let lastExistingRunnerEventKey = "";
 let lastExistingRunnerEventAt = 0;
 /** Telemetry contains only operational metadata, never Tinder message text. */
-function reportExistingRunner(phase: "incoming" | "waiting" | "generating" | "sending" | "sent" | "skipped" | "error", detail: string): void {
+function reportExistingRunner(phase: "incoming" | "waiting" | "generating" | "sending" | "sent" | "skipped" | "error", detail: string, nextReplyAt: string | null = null): void {
   const ref = currentConversationRef();
   if (!ref || !hasLiveExtensionContext()) return;
-  const key = `${ref}:${phase}:${detail}`;
+  const key = `${ref}:${phase}:${detail}:${nextReplyAt ?? ""}`;
   if (phase !== "sent" && phase !== "incoming" && lastExistingRunnerEventKey === key && Date.now() - lastExistingRunnerEventAt < 45_000) return;
   lastExistingRunnerEventKey = key;
   lastExistingRunnerEventAt = Date.now();
-  void sendRuntimeMessage({ type: "TNND_EXISTING_RUNNER_EVENT", ref, phase, detail }).catch(() => undefined);
+  void sendRuntimeMessage({
+    type: "TNND_EXISTING_RUNNER_EVENT", ref, phase, detail,
+    ...(phase === "waiting" && nextReplyAt ? { nextReplyAt } : {})
+  }).catch(() => undefined);
 }
 
 function boundaryDescription(boundary: ConversationBoundary): string {
@@ -640,7 +643,8 @@ async function scan(): Promise<void> {
 
     const delaySeconds = randomCadenceSeconds(config.automation);
     console.info(`TNND queued an automatic reply in ${delaySeconds.toFixed(1)}s.`);
-    reportExistingRunner("waiting", `Unanswered incoming message found (old or new) · replying after ${Math.ceil(delaySeconds)}s.`);
+    const nextReplyAt = new Date(Date.now() + Math.ceil(delaySeconds * 1000)).toISOString();
+    reportExistingRunner("waiting", `Unanswered incoming message found (old or new) · replying after ${Math.ceil(delaySeconds)}s.`, nextReplyAt);
     await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
     if (!hasLiveExtensionContext()) return;
 
