@@ -148,7 +148,7 @@ test("launcher controls and worker route all manual commands through verified ex
   assert.match(html, /aria-selected="false"/);
   assert.match(launcher, /TNND_UNIFIED_SELECT_MODE/);
   assert.match(launcher, /button.addEventListener\("keydown"/);
-  assert.match(launcher, /requestMode\(mode\)/);
+  assert.match(launcher, /requestMode\(selectedMode\)/);
   assert.match(html, /role="tabpanel"/);
   assert.match(launcher, /setAttribute\("aria-selected"/);
   assert.match(worker, /launcher_only/);
