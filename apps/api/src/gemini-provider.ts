@@ -38,6 +38,8 @@ export interface GeminiGenerationInput {
   personalMemories?: GeminiPersonalMemoryContext[];
   topics?: GeminiTopicContext;
   conversationSummary?: string;
+  /** All persisted turns verbatim, or Gemini's complete-segment review for huge histories. */
+  fullConversationContext?: string;
   recentMessages?: GeminiRecentMessageContext[];
   conversationFacts?: GeminiConversationFactContext[];
   matchProfile?: GenerationMatchProfileContext;
@@ -131,6 +133,12 @@ export function createGeminiConversationProvider(credentials?: { apiKey: string;
   }
   if (input.userProfile?.topicEngine?.avoidedTopics?.length) {
     promptParts.push("The user prefers not to proactively raise these subjects. Do not suggest, steer toward, or invent related anecdotes. If the other person directly asks about one, respond normally and respectfully without abruptly refusing or changing subject.");
+  }
+  if (input.fullConversationContext?.trim()) {
+    promptParts.push(
+      "Full authenticated conversation memory is provided next. Review all of it BEFORE drafting a reply, connecting relevant old topics and checking whether questions were already answered. Never repeat answered questions or invent forgotten details.",
+      input.fullConversationContext
+    );
   }
   if (input.conversationSummary?.trim()) {
     promptParts.push(
