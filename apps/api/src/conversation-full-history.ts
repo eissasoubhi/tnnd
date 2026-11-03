@@ -51,7 +51,12 @@ function validReview(raw: unknown): Review | null {
     if (!Array.isArray(values) || values.length > 40 ||
       !values.every(s => typeof s === "string" && s.length <= 500)) return null;
   }
-  return obj as Review;
+  return {
+    recap: obj.recap,
+    alreadyAnswered: obj.alreadyAnswered as string[],
+    pendingQuestions: obj.pendingQuestions as string[],
+    relevantOldTopics: obj.relevantOldTopics as string[]
+  };
 }
 function fullTranscript(messages: readonly FullHistoryMessage[]): string {
   return JSON.stringify(messages.map((message, index) => ({
