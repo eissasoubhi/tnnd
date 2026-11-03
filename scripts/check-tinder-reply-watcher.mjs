@@ -67,20 +67,20 @@ test("fresh verified incoming takes precedence over an outgoing unread hint",()=
 });
 test("priority is deterministic: fresh unanswered before stale badges, rechecks last",()=>{
   let work=reconcileExistingIndex(null,"owner",[
-    source("a-answered","outgoing"),
-    source("z-new","incoming"),
-    source("y-new","incoming")
+    source("outgoing","outgoing"),
+    source("a-new","incoming"),
+    source("z-new","incoming")
   ],"2026-10-14T19:00:00Z");
-  work=observeUnreadThreads(work,["a-answered"],"2026-10-14T19:01:00Z");
-  assert.equal(nextWatchedReply(work),"z-new","fresh incoming beats unread on an outgoing message");
-  work=observeUnreadThreads(work,["y-new"],"2026-10-14T19:01:10Z");
-  assert.equal(nextWatchedReply(work),"y-new","unread + verified incoming has highest priority");
-  work=markThreadChecked(work,"y-new","2026-10-14T19:01:20Z");
-  assert.equal(nextWatchedReply(work),"z-new","remaining fresh incoming precedes stale badge");
-  work=markThreadChecked(work,"z-new","2026-10-14T19:01:30Z");
-  assert.equal(nextWatchedReply(work),"a-answered");
-  assert.equal(watcherReplyPriority(work.threads.find(t=>t.ref==="a-answered")),2);
-  assert.equal(watcherReplyPriority(work.threads.find(t=>t.ref==="y-new")),1);
+  work=observeUnreadThreads(work,["outgoing"],"2026-10-14T19:01:00Z");
+  assert.equal(nextWatchedReply(work),"a-new","oldest queued fresh incoming comes first");
+  work=observeUnreadThreads(work,["z-new"],"2026-10-14T19:01:10Z");
+  assert.equal(nextWatchedReply(work),"z-new","unread + verified incoming has highest priority");
+  work=markThreadChecked(work,"z-new","2026-10-14T19:01:20Z");
+  assert.equal(nextWatchedReply(work),"a-new","remaining fresh incoming precedes stale badge");
+  work=markThreadChecked(work,"a-new","2026-10-14T19:01:30Z");
+  assert.equal(nextWatchedReply(work),"outgoing");
+  assert.equal(watcherReplyPriority(work.threads.find(t=>t.ref==="outgoing")),2);
+  assert.equal(watcherReplyPriority(work.threads.find(t=>t.ref==="z-new")),1);
 });
 
 test("account isolation, disabled or unauthorized refs cannot leak into watcher",()=>{
