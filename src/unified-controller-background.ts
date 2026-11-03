@@ -1,7 +1,7 @@
 import { getBackendSession, getConfig } from "./storage";
 import { initialUnifiedActivity, fallbackAfterBlockedSwipe } from "./unified-activity-policy";
-import { validateSmartAutoSwipeConfig, type SmartAutoSwipeConfig,
-  type ManagedTinderActivity } from "./tinder-smart-auto-swipe-policy";
+import { type SmartAutoSwipeConfig, type ManagedTinderActivity } from "./tinder-smart-auto-swipe-policy";
+import { parseUnifiedWebSettings, explainUnifiedWebSettingsErrors } from "./unified-web-settings";
 import { startUnifiedSwipe, stopUnifiedSwipe } from "./tinder-smart-swipe-automation-background";
 import { startExistingRunner, stopUnifiedExistingRunner } from "./tinder-global-existing-runner";
 import { readNewMatchState, stopUnifiedNewMatchRunner } from "./tinder-new-match-background";
@@ -57,11 +57,9 @@ async function readReachedLimits(): Promise<UnifiedLimitSnapshot | null> {
       fetch(API + "/api/v1/automation/smart-swipe/attempts/summary", { headers, cache: "no-store" })
     ]);
     if (!settingsResponse.ok) return null;
-    const settingsBody = await settingsResponse.json() as {
-      settings?: SmartAutoSwipeConfig & { timeZone: string }
-    };
-    const settings = settingsBody.settings;
-    if (!settings || validateSmartAutoSwipeConfig(settings).length) return null;
+    const parsed = parseUnifiedWebSettings(await settingsResponse.json());
+    if (!parsed.ok) return null;
+    const settings = parsed.settings;
     const key = "tnnd.smartSwipeDailyProgress.v1:" + session.user.id;
     const storedProgress = (await chrome.storage.local.get(key))[key];
     // Keep visible configured maxima and local sessions when the remote
@@ -195,10 +193,10 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
       headers: { authorization: "Bearer " + session.token }, cache: "no-store"
     });
     if (!response.ok) return { ok: false, reason: "Impossible de lire les priorités TNND Web." };
-    const data = await response.json() as { settings?: SmartAutoSwipeConfig & { timeZone: string } };
-    const settings = data.settings;
-    if (!settings || validateSmartAutoSwipeConfig(settings).length)
-      return { ok: false, reason: "Configuration Web invalide. Corrige les priorités avant de démarrer." };
+    const parsed = parseUnifiedWebSettings(await response.json());
+    if (!parsed.ok)
+      return { ok: false, reason: explainUnifiedWebSettingsErrors(parsed.errors) };
+    const settings = parsed.settings;
     if (!settings.enabled)
       return { ok: false, reason: "Active l'automatisation dans les paramètres TNND Web." };
     const tabs = (await chrome.tabs.query({
@@ -347,12 +345,10 @@ async function handoffOnReachedCap(): Promise<void> {
       headers: { authorization: "Bearer " + session.token }, cache: "no-store"
     });
     if (!settingsResponse.ok) return;
-    const settingsBody = await settingsResponse.json() as {
-      settings?: SmartAutoSwipeConfig & { timeZone: string }
-    };
-    const settings = settingsBody.settings;
-    if (!settings?.enabled || validateSmartAutoSwipeConfig(settings).length ||
-        !settings.priority.includes("new-match")) return;
+    const parsed = parseUnifiedWebSettings(await settingsResponse.json());
+    if (!parsed.ok) return;
+    const settings = parsed.settings;
+    if (!settings.enabled || !settings.priority.includes("new-match")) return;
     const check = await readReachedLimits();
     if (!check?.safeToReleaseSwipe) return;
     // Do not switch the user away from their own active/other Tinder tab.
