@@ -46,6 +46,7 @@ function validReview(raw: unknown): Review | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
   if (typeof obj.recap !== "string" || !obj.recap.trim() || obj.recap.length > 6000) return null;
+  if (JSON.stringify(obj).length > 7000) return null;
   for (const field of ["alreadyAnswered", "pendingQuestions", "relevantOldTopics"]) {
     const values = obj[field];
     if (!Array.isArray(values) || values.length > 40 ||
@@ -133,15 +134,21 @@ export async function prepareFullConversationHistory(
   const reviews: string[] = [];
   // Don't fire a long conversation's model calls all at once. Every message
   // is still reviewed on EVERY reply; no cached/dropped historical segments.
-  for (let index = 0; index < chunks.length; index++) {
-    const reviewed = await review({
-      segment: index + 1,
-      of: chunks.length,
-      latestIncomingText: latestIncomingText.slice(0, 1000),
-      chronologicalMessages: JSON.parse(chunks[index]!)
-    }, credentials);
-    if (!reviewed) throw new Error("conversation_history_review_unavailable");
-    reviews.push(JSON.stringify({ segment: index + 1, ...reviewed }));
+  // Run at most three segments at a time, preserving chronological output
+  // order. Every segment is reviewed on each reply, without unbounded bursts.
+  for (let start = 0; start < chunks.length; start += 3) {
+    const batch = await Promise.all(chunks.slice(start,start + 3).map(async (chunk, offset) => {
+      const index = start + offset;
+      const reviewed = await review({
+        segment: index + 1,
+        of: chunks.length,
+        latestIncomingText: latestIncomingText.slice(0, 1000),
+        chronologicalMessages: JSON.parse(chunk)
+      }, credentials);
+      if (!reviewed) throw new Error("conversation_history_review_unavailable");
+      return JSON.stringify({ segment: index + 1, ...reviewed });
+    }));
+    reviews.push(...batch);
   }
   let combined = reviews.join("\n");
   // If a chat is extremely long, recursively review all earlier reviews,
