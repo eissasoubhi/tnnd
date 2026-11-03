@@ -41,7 +41,7 @@
     .mode-meta { display: grid; gap: 6px; padding: 10px 11px; background: #f0f5ef; border-radius: 11px; }
     .mode-meta p { margin: 0; font-size: 12px; line-height: 1.45; }
     #chatCountdown { font-variant-numeric: tabular-nums; font-weight: 700; color: #234b3d; }
-    #reachedLimits { padding: 11px 12px; border: 1px solid #cfded3; background: #f0f5ef; border-radius: 11px; }
+    #reachedLimits { margin-top: 2px; padding: 11px 12px; border: 1px solid #cfded3; background: #f0f5ef; border-radius: 11px; }
     #reachedLimits[data-has-reached="true"] { border-color: #d9c5a1; background: #faf4e6; }
     #reachedLimits h2 { margin: 0 0 7px; font-size: 13px; font-weight: 700; }
     #reachedLimits ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
@@ -63,7 +63,7 @@
     </header>
     <p id="diagnosticFeedback" role="status" aria-live="polite" hidden></p>
     <div id="engineStatus" data-state="busy" role="status">Vérification…</div>
-    <button type="button" id="toggleAutomation" disabled>Démarrer</button>
+    <button type="button" id="toggleAutomation" disabled>Démarrer Auto</button>
     <div class="mode-selector" role="tablist" aria-label="Activités TNND">
       <button type="button" class="mode-button" id="tabSwipe" role="tab" data-activity="swipe" aria-controls="panelSwipe" aria-selected="true" tabindex="0">Swipe</button>
       <button type="button" class="mode-button" id="tabMatches" role="tab" data-activity="new-match" aria-controls="panelMatches" aria-selected="false" tabindex="-1">Matches</button>
@@ -71,9 +71,24 @@
     </div>
     <section id="panelSwipe" class="mode-panel" role="tabpanel" aria-labelledby="tabSwipe">
       <h2>Smart Auto Swipe</h2>
-      <p class="mode-summary">Découvrir les profils selon tes limites TNND. Ne démarre jamais sans action explicite.</p>
-      <button type="button" class="mode-action" id="swipeAction" data-activity="swipe" disabled>Démarrer Swipe</button>
-      <section id="reachedLimits" aria-label="Compteurs quotidiens Swipe">
+      <p class="mode-summary">Découvrir les profils dans le respect des limites TNND. Sélectionne ce mode puis active-le explicitement.</p>
+    </section>
+    <section id="panelMatches" class="mode-panel" role="tabpanel" aria-labelledby="tabMatches" hidden>
+      <h2>Nouveaux matchs</h2>
+      <p class="mode-summary">Vérifie les nouveaux matchs et tente un premier message uniquement lorsque les autorisations le permettent.</p>
+      <div class="mode-meta"><p id="matchesInfo" class="mode-note">Aucune activité Matches confirmée.</p></div>
+    </section>
+    <section id="panelChat" class="mode-panel" role="tabpanel" aria-labelledby="tabChat" hidden>
+      <h2>Conversations</h2>
+      <p class="mode-summary">Répond aux messages sans réponse après vérification. Les délais et refus sont indiqués ci-dessous.</p>
+      <div class="mode-meta">
+        <p id="chatInfo" class="mode-note">Aucune activité Chat confirmée.</p>
+        <p id="chatCountdown" class="mode-note" role="timer" aria-live="off">Prochaine réponse : mode Chat inactif</p>
+        <p id="chatPending" class="mode-note">Conversations en attente : —</p>
+      </div>
+    </section>
+    <button type="button" class="mode-action" id="manualModeAction" disabled aria-label="Activer le mode Swipe manuellement">Activer Swipe</button>
+    <section id="reachedLimits" aria-label="Compteurs quotidiens Swipe">
         <h2>Quotas du jour</h2>
         <ul id="reachedLimitsList">
           <li><span>Tentatives de Like (TNND)</span><strong class="limit-count">— / —</strong></li>
@@ -81,24 +96,11 @@
         </ul>
         <p class="limit-note" id="reachedLimitsNote">Chargement des compteurs…</p>
       </section>
-    </section>
-    <section id="panelMatches" class="mode-panel" role="tabpanel" aria-labelledby="tabMatches" hidden>
-      <h2>Nouveaux matchs</h2>
-      <p class="mode-summary">Vérifie les nouveaux matchs et tente un premier message uniquement lorsque les autorisations le permettent.</p>
-      <button type="button" class="mode-action" id="matchesAction" data-activity="new-match" disabled>Démarrer Matches</button>
-      <div class="mode-meta"><p id="matchesInfo" class="mode-note">Aucune activité Matches confirmée.</p></div>
-    </section>
-    <section id="panelChat" class="mode-panel" role="tabpanel" aria-labelledby="tabChat" hidden>
-      <h2>Conversations</h2>
-      <p class="mode-summary">Répond aux messages sans réponse après vérification. Les délais et refus sont indiqués ci-dessous.</p>
-      <button type="button" class="mode-action" id="chatAction" data-activity="active-chat" disabled>Démarrer Chat</button>
-      <div class="mode-meta">
-        <p id="chatInfo" class="mode-note">Aucune activité Chat confirmée.</p>
-        <p id="chatCountdown" class="mode-note" role="timer" aria-live="off">Prochaine réponse : mode Chat inactif</p>
-        <p id="chatPending" class="mode-note">Conversations en attente : —</p>
-      </div>
-    </section>
     <p id="feedback" role="status" aria-live="polite"></p>
+    <details id="reconciliationDiagnostic" hidden>
+      <summary>Détails des compteurs locaux et serveur</summary>
+      <p class="mode-note" id="reconciliationCounts"></p>
+    </details>
     <footer><a id="webSettingsLink" href="http://127.0.0.1:5173/#workspace-settings-section" target="_blank" rel="noopener noreferrer" title="Réutilise l’onglet TNND Web déjà ouvert pour conserver la connexion">Configuration dans TNND Web</a><div id="version" class="build-version">Version en cours de vérification…</div></footer>
   </main>
   <script src="assets/launcher.js"></script>
