@@ -273,9 +273,11 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
       const result = await startUnifiedSwipe();
       if (result.ok !== true || result.armed !== true) {
         const reason = typeof result.reason === "string" ? result.reason : "swipe_start_unknown";
+        const reconciliationCounts = typeof result.reconciliationCounts === "string"
+          ? result.reconciliationCounts.slice(0, 500) : undefined;
         const next = fallbackAfterBlockedSwipe(settings, reason, config.automation.enabled);
-        if (requestedMode) return { ok: false, reason };
-        if (!next) return { ok: false, reason };
+        if (requestedMode) return { ok: false, reason, reconciliationCounts };
+        if (!next) return { ok: false, reason, reconciliationCounts };
         // A refusal due to an unresolved old Like is NOT permission to
         // start a different engine if Swipe was armed concurrently.
         const currentOwners = await owners();
