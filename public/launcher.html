@@ -40,6 +40,7 @@
     .mode-note { margin: 0; font-size: 12px; line-height: 1.5; color: #496458; overflow-wrap: anywhere; }
     .mode-meta { display: grid; gap: 6px; padding: 10px 11px; background: #f0f5ef; border-radius: 11px; }
     .mode-meta p { margin: 0; font-size: 12px; line-height: 1.45; }
+    #chatCountdown { font-variant-numeric: tabular-nums; font-weight: 700; color: #234b3d; }
     #reachedLimits { padding: 11px 12px; border: 1px solid #cfded3; background: #f0f5ef; border-radius: 11px; }
     #reachedLimits[data-has-reached="true"] { border-color: #d9c5a1; background: #faf4e6; }
     #reachedLimits h2 { margin: 0 0 7px; font-size: 13px; font-weight: 700; }
@@ -93,6 +94,7 @@
       <button type="button" class="mode-action" id="chatAction" data-activity="active-chat" disabled>Démarrer Chat</button>
       <div class="mode-meta">
         <p id="chatInfo" class="mode-note">Aucune activité Chat confirmée.</p>
+        <p id="chatCountdown" class="mode-note" role="timer" aria-live="off">Prochaine réponse : mode Chat inactif</p>
         <p id="chatPending" class="mode-note">Conversations en attente : —</p>
       </div>
     </section>

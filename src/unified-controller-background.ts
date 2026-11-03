@@ -89,6 +89,7 @@ async function status(): Promise<Record<string, unknown>> {
   const watcherRaw = (await chrome.storage.local.get(WATCHER_KEY))[WATCHER_KEY] as
     { enabled?: boolean; mode?: string; phase?: string; phaseDetail?: string;
       pendingReplies?: number; eligibleCount?: number; lastActionAt?: string;
+      nextReplyAt?: string | null;
       errorCount?: number; manualActivity?: string } | undefined;
   const watcherInfo = owner.running &&
     (owner.mode === "active-chat" || owner.mode === "new-match") &&
@@ -100,7 +101,10 @@ async function status(): Promise<Record<string, unknown>> {
           ? watcherRaw.pendingReplies : null,
         eligibleCount: Number.isSafeInteger(watcherRaw.eligibleCount) && watcherRaw.eligibleCount! >= 0
           ? watcherRaw.eligibleCount : null,
-        lastActionAt: typeof watcherRaw.lastActionAt === "string" ? watcherRaw.lastActionAt : null
+        lastActionAt: typeof watcherRaw.lastActionAt === "string" ? watcherRaw.lastActionAt : null,
+        nextReplyAt: owner.mode === "active-chat" && watcherRaw.phase === "waiting" &&
+          typeof watcherRaw.nextReplyAt === "string" && Number.isFinite(Date.parse(watcherRaw.nextReplyAt))
+          ? watcherRaw.nextReplyAt : null
       } : null;
   // Extension reloads may restore a previously armed Swipe without firing
   // onStartup; recreate the periodic cap guard on its next status check.
