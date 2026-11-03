@@ -40,7 +40,7 @@ export function parseUnifiedWebSettings(payload: unknown): UnifiedWebSettingsRes
   }
   return errors.length
     ? { ok: false, errors }
-    : { ok: true, settings: candidate as UnifiedWebSettings, legacyDailyLikeCap };
+    : { ok: true, settings: candidate as unknown as UnifiedWebSettings, legacyDailyLikeCap };
 }
 
 const labels: Readonly<Record<string,string>> = {
