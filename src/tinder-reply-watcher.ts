@@ -21,10 +21,26 @@ function actionableWatcherCandidate(entry: IndexedThread): boolean {
   return Number.isFinite(queued) && Number.isFinite(checked) &&
     queued - checked >= RECHECK_IDLE_MS;
 }
+/** Prioritize factual evidence of a fresh incoming unanswered turn.
+ * No semantic regex/AI guess or pseudo-random ordering is needed here.
+ * A stale outgoing row with an unread badge is a useful CHECK, but must
+ * not outrank a verified newer incoming version. Rechecks go last.
+ * These hints never authorize a send; live Tinder and backend gates do.
+ */
+export function watcherReplyPriority(entry: IndexedThread): number {
+  const newIncoming = entry.lastMessageDirection === "incoming" &&
+    entry.serverMessageAt !== null &&
+    entry.serverMessageAt !== entry.checkedMessageAt;
+  if (newIncoming && entry.unreadAt !== null) return 4;
+  if (newIncoming) return 3;
+  if (entry.unreadAt !== null) return 2;
+  return 1; // Previously checked incoming chat awaiting safe re-verification.
+}
+
 export function nextWatchedReply(state: ExistingThreadIndex): string | null {
   const pending = state.threads.filter(actionableWatcherCandidate);
   pending.sort((a,b) =>
-    Number(b.unreadAt !== null) - Number(a.unreadAt !== null)
+    watcherReplyPriority(b) - watcherReplyPriority(a)
     || (a.queuedAt ?? "").localeCompare(b.queuedAt ?? "")
     || a.ref.localeCompare(b.ref)
   );
