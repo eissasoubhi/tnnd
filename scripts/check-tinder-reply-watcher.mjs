@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { presentWatcherStatus } from "../src/tinder-watcher-popup-status.ts";
+import { chatReplyCountdownLabel } from "../src/chat-reply-countdown.ts";
 import {
   reconcileExistingIndex, markThreadChecked, observeUnreadThreads
 } from "../src/tinder-existing-thread-index.ts";
@@ -34,6 +35,34 @@ test("watcher does not sweep answered or unknown threads on initial launch",()=>
   ],"2026-10-14T19:04:10Z");
   assert.equal(nextWatchedReply(retried),"new-reply","revisit still-incoming chat after brief cooldown; send gate retains deduplication");
 });
+test("Chat countdown is tied to observed next reply wait, not a fabricated delivery ETA",async()=>{
+  const now=Date.parse("2026-11-03T09:00:00.000Z");
+  const due="2026-11-03T09:01:04.000Z";
+  assert.equal(chatReplyCountdownLabel({active:true,phase:"waiting",nextReplyAt:due},now),
+    "Prochaine réponse : 1:04");
+  assert.equal(chatReplyCountdownLabel({active:true,phase:"waiting",nextReplyAt:due},now+64000),
+    "Délai écoulé · vérification de la réponse en cours");
+  assert.match(chatReplyCountdownLabel({active:true,phase:"generating",nextReplyAt:due},now),/durée inconnue/);
+  assert.match(chatReplyCountdownLabel({active:true,phase:"sending",nextReplyAt:due},now),/confirmation en attente/);
+  assert.match(chatReplyCountdownLabel({active:true,phase:"waiting",nextReplyAt:null},now),/aucun envoi planifié/);
+  assert.match(chatReplyCountdownLabel({active:false,phase:"waiting",nextReplyAt:due},now),/mode Chat inactif/);
+  assert.match(chatReplyCountdownLabel({active:true,phase:"waiting",nextReplyAt:"not-a-date"},now),/indisponible/);
+  assert.match(chatReplyCountdownLabel({active:true,phase:"waiting",nextReplyAt:new Date(now+7200000).toISOString()},now),/indisponible/);
+  const read=p=>readFile(new URL("../"+p,import.meta.url),"utf8");
+  const [html,launcher,content,runner,controller]=await Promise.all([
+    "public/launcher.html","src/launcher.ts","src/content.ts",
+    "src/tinder-global-existing-runner.ts","src/unified-controller-background.ts"
+  ].map(read));
+  assert.match(html,/id="chatCountdown"/);
+  assert.match(html,/role="timer" aria-live="off"/);
+  assert.match(launcher,/window\.setInterval\(renderChatCountdown, 1000\)/);
+  assert.match(launcher,/nextReplyAt: info\?\.nextReplyAt/);
+  assert.match(content,/const nextReplyAt = new Date\(Date\.now\(\) \+ Math\.ceil\(delaySeconds \* 1000\)\)/);
+  assert.match(runner,/nextReplyAt: null, lastActionAt/);
+  assert.match(runner,/message\.nextReplyAt/);
+  assert.match(controller,/nextReplyAt: owner\.mode === "active-chat"/);
+});
+
 test("content scan does not starve or drop a busy in-flight reply observation",async()=>{
   const source=await readFile(new URL("../src/content.ts",import.meta.url),"utf8");
   assert.match(source,/Math\.min\(900, 3000 - \(now - scanScheduledAt\)\)/);
