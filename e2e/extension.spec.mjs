@@ -477,7 +477,10 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     settings.sessionsPerDay = 2;
     apiAvailable = true;
     failingPaths.clear();
-    ledger = { attemptsToday: 200, uiObservedToday: 199, unresolvedAttempts: 0 };
+    // Every synthetic attempt must be classified before rearming. A 200/199
+    // ledger with no reviewed UNKNOWN or verified no-click is incomplete and
+    // correctly fails closed; that would not test the unlimited-Likes rule.
+    ledger = { attemptsToday: 200, uiObservedToday: 200, unresolvedAttempts: 0 };
     settings.enabled = true;
     settings.priority = ["swipe", "new-match", "active-chat"];
     await tinder.goto("https://tinder.com/app/recs");
