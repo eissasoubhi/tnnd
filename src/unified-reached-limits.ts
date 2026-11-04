@@ -24,7 +24,7 @@ export type UnifiedLimitSnapshot = {
   counters: UnifiedDailyCounter[];
   reached: ReachedUnifiedLimit[];
   swipeQuota: DailyQuotaEvidence | null;
-  /** No unknown Like remains locally or in the durable server journal. */
+  /** Exhausted Swipe can hand off only after local and server claims are settled. */
   safeToReleaseSwipe: boolean;
 };
 
@@ -78,7 +78,10 @@ export function reachedUnifiedLimits(
     });
   }
   const server = serverSummary as { unresolvedAttempts?: unknown };
-  const safeToReleaseSwipe = quota.reached &&
+  const finishedSessionCap = validLocal && maxSessions !== null &&
+    usedSessions !== null && usedSessions >= maxSessions &&
+    localProgress.session === null;
+  const safeToReleaseSwipe = (quota.reached || finishedSessionCap) &&
     Number.isSafeInteger(server.unresolvedAttempts) &&
     server.unresolvedAttempts === 0 &&
     validSmartSwipeProgress(localProgress) &&

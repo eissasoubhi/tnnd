@@ -65,11 +65,36 @@ if (recovered.ok) {
 }
 assert.equal(missedLocalWrite.rightSwipesConfirmed, 0, "original state remains immutable");
 
-// Refuse larger gaps, local-ahead counters, multiple pending reservations,
-// cross-day evidence, and extra server attempts not fully accounted for.
+// Reconcile even multiple missed UI-observed writes after worker crashes.
+const largerCrashWindow = {
+  ...evidence, attempts: 5, uiObserved: 4, reviewedUnknown: 1
+};
+const multiRecovered = reconcileReviewedLocalSwipeAttempt(
+  { ...initial, rightSwipesConfirmed: 0 }, largerCrashWindow
+);
+assert.equal(multiRecovered.ok, true);
+if (multiRecovered.ok) {
+  assert.equal(multiRecovered.progress.rightSwipesConfirmed, 4);
+  assert.equal(multiRecovered.progress.rightSwipesReserved, 0);
+  assert.equal(multiRecovered.progress.startedSessions, initial.startedSessions);
+}
+const noPending = { ...initial, rightSwipesConfirmed: 0, rightSwipesReserved: 0 };
+const restored = reconcileReviewedLocalSwipeAttempt(noPending, {
+  ...largerCrashWindow, attempts: 4, reviewedUnknown: 0
+});
+assert.equal(restored.ok, true);
+if (restored.ok) {
+  assert.equal(restored.changed, true);
+  assert.equal(restored.progress.rightSwipesConfirmed, 4);
+  assert.equal(restored.progress.rightSwipesReserved, 0);
+}
+assert.equal(reconcileReviewedLocalSwipeAttempt(restored.progress, {
+  ...largerCrashWindow, attempts: 4, reviewedUnknown: 0
+}).changed, false, "repeated reconciliation is idempotent");
+
+// Refuse local-ahead counters, multiple pending reservations, unresolved
+// server attempts, cross-day evidence and incomplete server classifications.
 for (const [local, remote, expectedReason] of [
-  [{ ...initial, rightSwipesConfirmed: 0 },
-    { ...evidence, attempts: 3, uiObserved: 2 }, "local_observed_count_mismatch"],
   [{ ...initial, rightSwipesConfirmed: 2 }, evidence, "local_observed_count_mismatch"],
   [{ ...initial, rightSwipesReserved: 2 }, evidence, "reservation_count_mismatch"],
   [{ ...initial, dayKey: "2026-10-17" }, evidence, "reservation_day_mismatch"],
@@ -94,6 +119,16 @@ for(const bad of [
 assert.equal(reconcileReviewedLocalSwipeAttempt(
   { ...initial, rightSwipesReserved: 2 }, evidence).ok, false);
 assert.equal(parseDayReconciliationProof({ ...evidence, attempts: -1 }, dayKey), null);
+assert.equal(reconcileReviewedLocalSwipeAttempt({ ...initial, rightSwipesReserved: 0 },
+  { ...evidence, unresolvedAcrossDays: 1 }).ok, false,
+  "unresolved server claim must prevent even a reservation-free rearm");
+assert.equal(reconcileReviewedLocalSwipeAttempt({ ...initial, rightSwipesReserved: 0 },
+  { ...evidence, attempts: 3 }).ok, false,
+  "incomplete server statuses must not be treated as permission");
+assert.equal(reconcileReviewedLocalSwipeAttempt({ ...initial, rightSwipesReserved: 0 },
+  { ...evidence, uiObserved: 0, attempts: 1 }).ok, false,
+  "local evidence ahead of server cannot be discarded");
+
 const runner = readFileSync(new URL("../src/tinder-smart-swipe-automation-background.ts", import.meta.url), "utf8");
 const proofAt = runner.indexOf("parseDayReconciliationProof(");
 const rearmAt = runner.indexOf('"/api/v1/automation/smart-swipe/attempts/rearm"');

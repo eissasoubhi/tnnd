@@ -222,7 +222,7 @@ async function run() {
     for (const mode of ["swipe", "new-match", "active-chat"]) {
       await cdp.evaluate('document.querySelector("#feedback").textContent=""');
       await cdp.evaluate('Array.from(document.querySelectorAll(".mode-button")).find(x=>x.dataset.activity===' + JSON.stringify(mode) + ').click()');
-      await cdp.evaluate('Array.from(document.querySelectorAll(".mode-action")).find(x=>x.dataset.activity===' + JSON.stringify(mode) + ').click()');
+      await cdp.evaluate('document.querySelector("#manualModeAction").click()');
       await waitFor(cdp, 'document.querySelector("#feedback")?.textContent?.includes("connectée")');
       await check(cdp, "Signed-out manual " + mode + " shows actionable connection guidance",
         'document.querySelector("#webSettingsLink")?.getAttribute("href")',

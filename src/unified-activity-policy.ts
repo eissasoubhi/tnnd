@@ -55,7 +55,8 @@ export function fallbackAfterBlockedSwipe(
 ): Extract<ManagedTinderActivity, "active-chat" | "new-match"> | null {
   // A verifiably exhausted account-day cap is another safe reason to move
   // to independent, authorized work. It NEVER permits additional Likes.
-  if (!(isPausableSwipeLedgerReason(reason) || reason === "daily_cap") ||
+  if (!(isPausableSwipeLedgerReason(reason) || reason === "daily_cap" ||
+        reason === "session_cap") ||
       !automaticRepliesEnabled ||
       !config.enabled || validateSmartAutoSwipeConfig(config).length) return null;
   const swipeIndex = config.priority.indexOf("swipe");

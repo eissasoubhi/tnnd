@@ -180,7 +180,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     try {
       await worker.evaluate(() => chrome.storage.local.remove("tnnd.backendSession"));
       await launcher.goto(`chrome-extension://${extensionId}/launcher.html`);
-      await expect(launcher.locator("button")).toHaveCount(8);
+      await expect(launcher.locator("button")).toHaveCount(6);
        await expect(launcher.locator(".mode-button")).toHaveCount(3);
       await launcher.locator("#toggleAutomation").click();
       await expect(launcher.locator("#engineStatus")).toContainText("Arrêté");
@@ -209,7 +209,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
         await connection.close();
       }
       await launcher.reload();
-      await expect(launcher.locator("#toggleAutomation")).toHaveText("Démarrer");
+      await expect(launcher.locator("#toggleAutomation")).toHaveText("Démarrer Auto");
       await expect(launcher.locator("#webSettingsLink")).toHaveAttribute(
         "href", "http://127.0.0.1:5173/#workspace-settings-section");
       expect(requests.filter(item => item.path.endsWith("/attempts/claim")).length)
@@ -227,7 +227,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await simple.goto(`chrome-extension://${extensionId}/launcher.html`);
       expect(await simple.evaluate(() => chrome.runtime.getManifest().action.default_popup))
         .toBe("launcher.html");
-      await expect(simple.locator("button")).toHaveCount(8);
+      await expect(simple.locator("button")).toHaveCount(6);
        await expect(simple.locator(".mode-button")).toHaveCount(3);
       const installedInfo = JSON.parse(await readFile(resolve("dist/BUILD-INFO.json"), "utf8"));
       const currentCommit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
@@ -243,7 +243,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(simple.locator("#reachedLimitsList li")).toHaveCount(2);
       await expect(simple.locator("#reachedLimitsList")).toContainText("0 / ∞");
       await expect(simple.locator("#reachedLimitsList")).toContainText("0 / 1");
-      await expect(simple.locator("#toggleAutomation")).toHaveText("Démarrer");
+      await expect(simple.locator("#toggleAutomation")).toHaveText("Démarrer Auto");
       // Rejected Start must never turn the only control into a dead button.
       settings.enabled = false;
       await simple.locator("#toggleAutomation").click();
@@ -470,10 +470,17 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     await tinder.goto("https://tinder.com/app/recs");
   });
 
-  test("high recorded daily Like count does not block an armed Swipe or force an obsolete handoff", async () => {
+  test("high recorded daily Like count does not block Swipe while session capacity remains", async () => {
+    // Earlier serial tests have consumed a daily Swipe session. Keep the
+    // session quota available so this test isolates the unlimited-Likes rule,
+    // rather than accidentally exercising the intentional session-cap handoff.
+    settings.sessionsPerDay = 2;
     apiAvailable = true;
     failingPaths.clear();
-    ledger = { attemptsToday: 200, uiObservedToday: 199, unresolvedAttempts: 0 };
+    // Every synthetic attempt must be classified before rearming. A 200/199
+    // ledger with no reviewed UNKNOWN or verified no-click is incomplete and
+    // correctly fails closed; that would not test the unlimited-Likes rule.
+    ledger = { attemptsToday: 200, uiObservedToday: 200, unresolvedAttempts: 0 };
     settings.enabled = true;
     settings.priority = ["swipe", "new-match", "active-chat"];
     await tinder.goto("https://tinder.com/app/recs");
@@ -492,6 +499,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(launcher.locator("#engineStatus")).toContainText("Arrêté");
     } finally {
       await launcher.close();
+      settings.sessionsPerDay = 1;
       ledger = { attemptsToday: 0, uiObservedToday: 0, unresolvedAttempts: 0 };
     }
   });

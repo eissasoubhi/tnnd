@@ -131,13 +131,24 @@ test("launcher controls and worker route all manual commands through verified ex
     "src/tinder-global-existing-runner.ts", "src/background.ts", "src/content.ts"
   ].map(read));
   assert.match(html, /id="toggleAutomation"/);
+  assert.equal((html.match(/class="mode-action"/g) ?? []).length, 1,
+    "only one manual action belongs below the three information tabs");
+  assert.match(html, /id="manualModeAction"/);
+  assert.ok(html.indexOf('id="reachedLimits"') > html.indexOf('id="panelChat"'),
+    "daily counters remain visible in Matches and Chat, not hidden in Swipe");
+  assert.match(html, /id="reconciliationDiagnostic"/);
+  assert.match(launcher, /reconciliationCounts\.textContent/);
+  assert.match(launcher, /manualModeAction\.addEventListener/);
+  assert.match(launcher, /"Démarrer Auto"/);
+  assert.match(worker, /reconciliationCounts \}/,
+    "the unified worker retains refusal diagnostics");
   for (const mode of ["swipe", "new-match", "active-chat"]) {
     assert.match(html, new RegExp('data-activity="' + mode + '"'));
   }
   assert.match(html, /aria-selected="false"/);
   assert.match(launcher, /TNND_UNIFIED_SELECT_MODE/);
   assert.match(launcher, /button.addEventListener\("keydown"/);
-  assert.match(launcher, /requestMode\(mode\)/);
+  assert.match(launcher, /requestMode\(selectedMode\)/);
   assert.match(html, /role="tabpanel"/);
   assert.match(launcher, /setAttribute\("aria-selected"/);
   assert.match(worker, /launcher_only/);

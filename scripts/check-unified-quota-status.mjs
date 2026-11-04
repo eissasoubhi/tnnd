@@ -78,8 +78,11 @@ assert.equal(reachedUnifiedLimits(fullSettings, summary,
   { ...local, dayKey: "2026-10-19" }, time).safeToReleaseSwipe, false,
   "Yesterday's local progress cannot authorize today's handoff");
 assert.equal(reachedUnifiedLimits(fullSettings,
-  { ...summary, attemptsToday: 99 }, local, time).safeToReleaseSwipe, false,
-  "Below-cap Swipe cannot be moved by the daily-cap handoff");
+  { ...summary, attemptsToday: 99 }, { ...local, startedSessions: 2 }, time).safeToReleaseSwipe, false,
+  "Below both Swipe limits, an automatic handoff is forbidden");
+assert.equal(reachedUnifiedLimits(fullSettings,
+  { ...summary, attemptsToday: 99 }, local, time).safeToReleaseSwipe, true,
+  "Exhausted sessions can hand off below the daily Like quota");
 console.log("Account-day auto-handoff eligibility fails closed for pending/unknown Likes.");
 
 assert.deepEqual(full.counters, [
@@ -114,5 +117,21 @@ assert.deepEqual(unbounded.reached.map(limit=>limit.id),["swipe-sessions"]);
 assert.deepEqual(unbounded.counters.map(limit=>[limit.used,limit.max,limit.reached]),[
   [100,null,false],[3,3,true]
 ]);
-assert.equal(unbounded.safeToReleaseSwipe,false,"No obsolete daily-cap handoff");
+assert.equal(unbounded.safeToReleaseSwipe,true,
+  "finished Swipe sessions can hand off even when daily Likes are unlimited");
+const stillRunning = reachedUnifiedLimits(
+  { ...fullSettings, maxRightSwipesPerDay: null }, summary,
+  { ...local, session: { durationMs: 300_000, activeElapsedMs: 60_000,
+    runningSinceMs: time, nextRightSwipeNotBeforeMs: null } }, time
+);
+assert.deepEqual(stillRunning.reached.map(x => x.id), ["swipe-sessions"],
+  "session count may be exhausted while last session still works");
+assert.equal(stillRunning.safeToReleaseSwipe, false,
+  "never cut off the last Swipe session as soon as it starts");
+assert.equal(reachedUnifiedLimits({ ...fullSettings, maxRightSwipesPerDay:null },
+  { ...summary, unresolvedAttempts: 1 }, local, time).safeToReleaseSwipe,false,
+  "session-based handoff also requires zero server unresolved attempts");
+assert.equal(reachedUnifiedLimits({ ...fullSettings, maxRightSwipesPerDay:null },
+  summary, { ...local, rightSwipesReserved: 1 }, time).safeToReleaseSwipe,false,
+  "session-based handoff cannot bypass local uncertain attempts");
 console.log("Always-visible exact 2-counter quota statuses validated.");

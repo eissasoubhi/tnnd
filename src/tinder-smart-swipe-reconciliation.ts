@@ -44,40 +44,36 @@ export function reconcileReviewedLocalSwipeAttempt(
   if (proof.unresolvedAcrossDays !== 0) {
     return { ok: false, reason: "server_attempt_unresolved" };
   }
-  // A stop/service-worker crash between the durable server resolution and
-  // the local Chrome storage write may leave the local UI-observed count ONE
-  // behind PostgreSQL. That is not evidence of an extra Like: the server
-  // already owns a UI transition record. Reconcile only the exact historical
-  // one-observed/one-reviewed-UNKNOWN shape after a deliberate manual review.
+  // Rebuild only UI-observed bookkeeping from the authenticated, account/day
+  // server ledger. After a worker crash, more than ONE acknowledged UI
+  // transition may be absent locally. An arbitrary one-transition ceiling is
+  // not evidence of safety; a fully resolved ledger is. These are observed
+  // card transitions, NOT proof Tinder accepted the Likes.
   //
-  // All historical attempt slots stay spent on the server. This changes only
-  // the local bookkeeping and never repeats or confirms a Tinder Like.
-  if (progress.rightSwipesReserved === 0) {
-    return { ok: true, changed: false, progress };
-  }
+  // Never retry an attempt, roll back a local observation, alter daily
+  // sessions or credit consumed server attempt slots.
   if (progress.dayKey !== proof.dayKey)
     return { ok: false, reason: "reservation_day_mismatch" };
-  if (progress.rightSwipesReserved !== 1 || proof.reviewedUnknown !== 1)
+  if (progress.rightSwipesReserved > 1 ||
+      (progress.rightSwipesReserved === 1 && proof.reviewedUnknown !== 1))
     return { ok: false, reason: "reservation_count_mismatch" };
-  // Require a complete server picture, including resolved not_clicked rows.
-  // Their quota slots remain consumed; they NEVER count as UI transitions or
-  // reviewed UNKNOWNs and cannot release a local reservation on their own.
+  // Even a locally unreserved day must not rearm while any server attempt is
+  // unresolved or missing a known final classification.
   if (proof.attempts !== proof.uiObserved + proof.reviewedUnknown + proof.notClicked)
     return { ok: false, reason: "server_attempts_not_fully_resolved" };
-  // The only tolerated drift is precisely ONE UI-observed resolution that
-  // the old worker failed to commit locally. Never decrease local counters.
-  const observedDrift = proof.uiObserved - progress.rightSwipesConfirmed;
-  if (observedDrift < 0 || observedDrift > 1)
+  if (progress.rightSwipesConfirmed > proof.uiObserved)
     return { ok: false, reason: "local_observed_count_mismatch" };
   if (progress.rightSwipesConfirmed + progress.rightSwipesReserved > proof.attempts)
     return { ok: false, reason: "local_attempt_count_exceeds_server" };
+  const changed = progress.rightSwipesReserved !== 0 ||
+    progress.rightSwipesConfirmed !== proof.uiObserved;
   return {
-    ok: true, changed: true,
-    progress: {
+    ok: true, changed,
+    progress: changed ? {
       ...progress,
-      rightSwipesConfirmed: proof.uiObserved, // UI-observed only; NOT Tinder server receipt
+      rightSwipesConfirmed: proof.uiObserved,
       rightSwipesReserved: 0
-    }
+    } : progress
   };
 }
 

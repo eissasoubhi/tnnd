@@ -19,6 +19,7 @@ type DailyCounter = { id: ReachedLimit["id"]; label: string;
 type WatcherInfo = { phase: string; detail: string; pendingReplies: number | null;
   eligibleCount: number | null; lastActionAt: string | null; nextReplyAt?: string | null };
 type Status = { ok: boolean; running?: boolean; mode?: CurrentMode; manualMode?: CurrentMode; reason?: string;
+  reconciliationCounts?: string;
   quotaPaused?: boolean; reachedLimits?: ReachedLimit[]; limitCounters?: DailyCounter[];
   watcherInfo?: WatcherInfo | null };
 type Command = "TNND_UNIFIED_STATUS" | "TNND_UNIFIED_START" | "TNND_UNIFIED_STOP" | "TNND_UNIFIED_SELECT_MODE";
@@ -26,7 +27,9 @@ const exportTinderDiagnostic = document.getElementById("exportTinderDiagnostic")
 const diagnosticFeedback = document.getElementById("diagnosticFeedback") as HTMLElement;
 const toggle = document.getElementById("toggleAutomation") as HTMLButtonElement;
 const modeButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".mode-button"));
-const modeActions = Array.from(document.querySelectorAll<HTMLButtonElement>(".mode-action"));
+const manualModeAction = document.getElementById("manualModeAction") as HTMLButtonElement;
+const reconciliationDiagnostic = document.getElementById("reconciliationDiagnostic") as HTMLDetailsElement;
+const reconciliationCounts = document.getElementById("reconciliationCounts") as HTMLElement;
 
 const chatInfo = document.getElementById("chatInfo") as HTMLElement;
 const chatCountdown = document.getElementById("chatCountdown") as HTMLElement;
@@ -137,20 +140,19 @@ function selectTab(mode: Exclude<CurrentMode, null>, focus = false): void {
     if (chosen && focus) button.focus();
   }
   for (const [id, panel] of Object.entries(panels)) panel.hidden = id !== mode;
+  updateButtons();
 }
 
 function updateButtons(): void {
-  toggle.textContent = running ? "Arrêter" : "Démarrer";
+  toggle.textContent = running ? "Arrêter" : "Démarrer Auto";
   toggle.dataset.mode = running ? "stop" : "start";
   toggle.disabled = busy || !lastStatus.ok;
-  for (const button of modeActions) {
-    const mode = button.dataset.activity as Exclude<CurrentMode, null>;
-    const current = running && activeMode === mode;
-    button.textContent = current ? "Arrêter " + modeLabels[mode] :
-      running ? "Passer à " + modeLabels[mode] : "Démarrer " + modeLabels[mode];
-    button.dataset.mode = current ? "stop" : "start";
-    button.disabled = busy || !lastStatus.ok;
-  }
+  const current = running && activeMode === selectedMode;
+  manualModeAction.textContent = current ? "Mode " + modeLabels[selectedMode] + " actif" :
+    running ? "Passer à " + modeLabels[selectedMode] : "Activer " + modeLabels[selectedMode];
+  manualModeAction.setAttribute("aria-label", manualModeAction.textContent +
+    (running ? "" : " manuellement"));
+  manualModeAction.disabled = busy || !lastStatus.ok || current;
   for (const button of modeButtons)
     button.dataset.running = String(running && activeMode === button.dataset.activity);
 }
@@ -203,7 +205,10 @@ function render(value: Status, detail = ""): void {
 }
 async function send(type: Command, mode?: Exclude<CurrentMode, null>): Promise<Status> {
   const response = await chrome.runtime.sendMessage({ type, ...(mode ? { mode } : {}) }) as Status | undefined;
-  if (!response || response.ok !== true) return { ok: false, reason: response?.reason ?? "service_worker_unavailable" };
+  if (!response || response.ok !== true) return {
+    ok: false, reason: response?.reason ?? "service_worker_unavailable",
+    reconciliationCounts: response?.reconciliationCounts
+  };
   return response;
 }
 async function refresh(): Promise<void> {
@@ -235,8 +240,14 @@ for (const button of modeButtons) {
   });
 }
 
-function applyFailure(reason: string | undefined, isStop = false, isAutomatic = false): void {
+function applyFailure(
+  reason: string | undefined, isStop = false, isAutomatic = false,
+  counts?: string
+): void {
   const guidance = explainLauncherStartRefusal(reason);
+  reconciliationCounts.textContent = !isStop && typeof counts === "string" ? counts : "";
+  reconciliationDiagnostic.hidden = !reconciliationCounts.textContent;
+  reconciliationDiagnostic.open = false;
   feedback.textContent = isStop
     ? "Arrêt non confirmé : " + (reason ?? "commande non confirmée")
     : guidance.reviewAttempts || guidance.connectAccount || guidance.extensionSettings
@@ -266,6 +277,8 @@ function requestMode(mode: Exclude<CurrentMode, null> | null): void {
   statusEl.dataset.state = "busy";
   statusEl.textContent = stopping ? "Arrêt en cours…" : "Bascule vers " + modeLabels[mode!] + "…";
   feedback.textContent = "Vérification des autorisations et opérations en cours…";
+  reconciliationDiagnostic.hidden = true;
+  reconciliationCounts.textContent = "";
   updateButtons();
   void (async () => {
     try {
@@ -273,7 +286,7 @@ function requestMode(mode: Exclude<CurrentMode, null> | null): void {
       if (ticket !== requestVersion) return;
       await refresh(); // Read actual ownership, never show optimistic success.
       if (!result.ok) {
-        applyFailure(result.reason, stopping);
+        applyFailure(result.reason, stopping, false, result.reconciliationCounts);
       } else {
         feedback.textContent = stopping
           ? "Arrêt confirmé. Aucun historique supprimé."
@@ -290,11 +303,7 @@ function requestMode(mode: Exclude<CurrentMode, null> | null): void {
     }
   })();
 }
-for (const button of modeActions)
-  button.addEventListener("click", () => {
-    const mode = button.dataset.activity as Exclude<CurrentMode,null>;
-    if (mode in modeLabels) requestMode(mode);
-  });
+manualModeAction.addEventListener("click", () => requestMode(selectedMode));
 toggle.addEventListener("click", () => {
   if (busy) return;
   const stopping = running;
@@ -303,13 +312,15 @@ toggle.addEventListener("click", () => {
   statusEl.dataset.state = "busy";
   statusEl.textContent = stopping ? "Arrêt en cours…" : "Démarrage automatique…";
   feedback.textContent = "Vérification des priorités et autorisations TNND…";
+  reconciliationDiagnostic.hidden = true;
+  reconciliationCounts.textContent = "";
   updateButtons();
   void (async () => {
     try {
       const outcome = await send(stopping ? "TNND_UNIFIED_STOP" : "TNND_UNIFIED_START");
       if (ticket !== requestVersion) return;
       await refresh();
-      if (!outcome.ok) applyFailure(outcome.reason, stopping, true);
+      if (!outcome.ok) applyFailure(outcome.reason, stopping, true, outcome.reconciliationCounts);
       else feedback.textContent = stopping
         ? "Arrêt confirmé. Aucun historique supprimé."
           : (outcome.reason ?? "Démarrage confirmé selon les priorités TNND Web.");
