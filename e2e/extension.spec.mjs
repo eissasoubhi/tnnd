@@ -470,7 +470,11 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     await tinder.goto("https://tinder.com/app/recs");
   });
 
-  test("high recorded daily Like count does not block an armed Swipe or force an obsolete handoff", async () => {
+  test("high recorded daily Like count does not block Swipe while session capacity remains", async () => {
+    // Earlier serial tests have consumed a daily Swipe session. Keep the
+    // session quota available so this test isolates the unlimited-Likes rule,
+    // rather than accidentally exercising the intentional session-cap handoff.
+    settings.sessionsPerDay = 2;
     apiAvailable = true;
     failingPaths.clear();
     ledger = { attemptsToday: 200, uiObservedToday: 199, unresolvedAttempts: 0 };
@@ -492,6 +496,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(launcher.locator("#engineStatus")).toContainText("Arrêté");
     } finally {
       await launcher.close();
+      settings.sessionsPerDay = 1;
       ledger = { attemptsToday: 0, uiObservedToday: 0, unresolvedAttempts: 0 };
     }
   });
