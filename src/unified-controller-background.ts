@@ -76,8 +76,6 @@ async function status(): Promise<Record<string, unknown>> {
       handoffBlock?: string | null; manualMode?: ManagedTinderActivity | null } | undefined;
   // Counters remain visible through Start and Stop; they do not cap Swipe.
   const limitSnapshot = await readReachedLimits();
-  const quota = limitSnapshot?.swipeQuota ?? null;
-  const quotaReached = false; // Continuous Swipe has no TNND quota to pause on.
   // Expose only verified, bounded operational state, not chat text or match
   // identifiers. Status is read-only and never triggers a Gemini request.
   const watcherRaw = (await chrome.storage.local.get(WATCHER_KEY))[WATCHER_KEY] as
@@ -105,17 +103,11 @@ async function status(): Promise<Record<string, unknown>> {
     ok: true, running: owner.running, mode: owner.mode,
     manualMode: owner.running && !owner.conflict && store?.enabled && store.manualMode === owner.mode
       ? store.manualMode : null,
-    quotaPaused: quotaReached, quota: quotaReached ? quota : null,
+    quotaPaused: false, quota: null,
     reachedLimits: limitSnapshot?.reached ?? [],
     limitCounters: limitSnapshot?.counters ?? [],
     watcherInfo,
     reason: owner.conflict ? "Plusieurs moteurs déjà actifs. Clique Arrêter pour les désarmer." :
-      quotaReached
-        ? sessionLimitReached && quota?.reached !== true
-          ? "Sessions Swipe du jour terminées. Bascule automatique vers Matches si les journaux sont résolus."
-          : "Quota quotidien de Swipe atteint (" + quota!.used + "/" + quota!.limit +
-            "). Aucun nouveau Like possible aujourd'hui. Arrête puis redémarre pour choisir une autre activité autorisée."
-        :
       owner.running && !store?.enabled
         ? "Un ancien moteur est actif. Arrêter permet de reprendre le contrôle."
         : owner.running && store?.enabled &&
