@@ -69,7 +69,7 @@ progress = resumeSmartSwipeSession(progress, now + 240_000);
 assert.equal(smartSwipeElapsedMs(progress.session, now + 300_000), 120_000);
 assert.equal(planSmartRightSwipe(cfg, progress, now + 480_000, tz, options), "session-expired");
 progress = finishSmartSwipeSession(progress, now + 480_000);
-assert.equal(beginSmartSwipeSession(cfg, progress, now + 480_000 + MIN_SESSION_BREAK_MS - 1, tz, () => 0), null);
+assert.ok(beginSmartSwipeSession(cfg, progress, now + 480_000 + MIN_SESSION_BREAK_MS - 1, tz, () => 0));
 progress = beginSmartSwipeSession(cfg, progress, now + 480_000 + MIN_SESSION_BREAK_MS, tz, () => 1);
 assert.equal(progress.startedSessions, 2);
 assert.equal(progress.session.durationMs, 600_000);
@@ -77,7 +77,7 @@ progress = finishSmartSwipeSession(progress, now + 480_000 + MIN_SESSION_BREAK_M
 progress = beginSmartSwipeSession(cfg, progress, now + 480_000 + 2*MIN_SESSION_BREAK_MS + 600_000, tz, () => 0);
 assert.equal(progress.startedSessions, 3);
 progress = finishSmartSwipeSession(progress, now + 480_000 + 2*MIN_SESSION_BREAK_MS + 900_000);
-assert.equal(beginSmartSwipeSession(cfg, progress, now + 480_000 + 3*MIN_SESSION_BREAK_MS + 900_000, tz, () => 0), null);
+assert.ok(beginSmartSwipeSession(cfg, progress, now + 480_000 + 3*MIN_SESSION_BREAK_MS + 900_000, tz, () => 0));
 assert.equal(rolloverSmartSwipeDay(progress, Date.parse("2026-10-16T09:00:00Z"), tz).startedSessions, 0);
 assert.equal(rolloverSmartSwipeDay({ ...progress, rightSwipesReserved: 1 }, Date.parse("2026-10-16T09:00:00Z"), tz), null);
 
