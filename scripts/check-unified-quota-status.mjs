@@ -42,8 +42,7 @@ const summary = { dayKey: "2026-10-20", attemptsToday: 100,
   uiObservedToday: 99, unresolvedAttempts: 0 };
 const full = reachedUnifiedLimits(fullSettings, summary, local, time);
 assert.deepEqual(full.reached, [
-  { id: "swipe-attempts", label: "Tentatives de Like (TNND)", used: 100, max: 100, dayKey: "2026-10-20" },
-  { id: "swipe-sessions", label: "Sessions Auto Swipe", used: 3, max: 3, dayKey: "2026-10-20" }
+  { id: "swipe-attempts", label: "Tentatives de Like (TNND)", used: 100, max: 100, dayKey: "2026-10-20" }
 ]);
 const incomplete = reachedUnifiedLimits(fullSettings,
   { dayKey: "2026-10-20", attemptsToday: 99 }, { ...local, startedSessions: 1 }, time);
@@ -60,7 +59,7 @@ assert.deepEqual(reachedUnifiedLimits(fullSettings, summary,
   { ...local, startedSessions: "3" }, time).reached.map(row => row.id), ["swipe-attempts"],
   "Malformed session counters cannot be trusted");
 assert.deepEqual(reachedUnifiedLimits(fullSettings, summary,
-  { ...local, startedSessions: 4 }, time).reached.map(row => row.used), [100, 4],
+  { ...local, startedSessions: 4 }, time).reached.map(row => row.used), [100],
   "Use exact observed value rather than silently clamping an overage");
 console.log("Exact reached Swipe attempt/session counters verified without Tinder.");
 
@@ -81,51 +80,51 @@ assert.equal(reachedUnifiedLimits(fullSettings,
   { ...summary, attemptsToday: 99 }, { ...local, startedSessions: 2 }, time).safeToReleaseSwipe, false,
   "Below both Swipe limits, an automatic handoff is forbidden");
 assert.equal(reachedUnifiedLimits(fullSettings,
-  { ...summary, attemptsToday: 99 }, local, time).safeToReleaseSwipe, true,
-  "Exhausted sessions can hand off below the daily Like quota");
+  { ...summary, attemptsToday: 99 }, local, time).safeToReleaseSwipe, false,
+  "No automatic handoff simply because old session count reached its limit");
 console.log("Account-day auto-handoff eligibility fails closed for pending/unknown Likes.");
 
 assert.deepEqual(full.counters, [
   { id: "swipe-attempts", label: "Tentatives de Like (TNND)", used: 100,
     max: 100, dayKey: "2026-10-20", reached: true },
   { id: "swipe-sessions", label: "Sessions Auto Swipe", used: 3,
-    max: 3, dayKey: "2026-10-20", reached: true }
+    max: null, dayKey: "2026-10-20", reached: false }
 ], "Reached daily counters must always have their exact counts");
 const available = reachedUnifiedLimits(fullSettings, {
   dayKey: "2026-10-20", attemptsToday: 47, uiObservedToday: 45,
   unresolvedAttempts: 0
 }, { ...local, startedSessions: 1 }, time);
 assert.deepEqual(available.counters.map(x => [x.used, x.max, x.reached]), [
-  [47, 100, false], [1, 3, false]
+  [47, 100, false], [1, null, false]
 ], "Daily counters remain displayed even below the limit");
 const missingServer = reachedUnifiedLimits(fullSettings, null, local, time);
 assert.deepEqual(missingServer.counters.map(x => [x.used, x.max, x.reached]), [
-  [null, 100, false], [3, 3, true]
+  [null, 100, false], [3, null, false]
 ], "Offline remote journal cannot remove independently verified local sessions");
 const missingLocal = reachedUnifiedLimits(fullSettings, summary, undefined, time);
 assert.deepEqual(missingLocal.counters.map(x => [x.used, x.max, x.reached]), [
-  [100, 100, true], [null, 3, false]
+  [100, 100, true], [null, null, false]
 ], "Unknown local progress must not be presented as 0 started sessions");
 const wrongDay = reachedUnifiedLimits(fullSettings,
   { ...summary, dayKey: "2026-10-19" },
   { ...local, dayKey: "2026-10-19" }, time);
 assert.deepEqual(wrongDay.counters.map(x => [x.used, x.max, x.reached]), [
-  [null, 100, false], [null, 3, false]
+  [null, 100, false], [null, null, false]
 ], "Previous-day counters must not look current");
 const unbounded = reachedUnifiedLimits({...fullSettings,maxRightSwipesPerDay:null},summary,local,time);
-assert.deepEqual(unbounded.reached.map(limit=>limit.id),["swipe-sessions"]);
+assert.deepEqual(unbounded.reached, []);
 assert.deepEqual(unbounded.counters.map(limit=>[limit.used,limit.max,limit.reached]),[
-  [100,null,false],[3,3,true]
+  [100,null,false],[3,null,false]
 ]);
-assert.equal(unbounded.safeToReleaseSwipe,true,
-  "finished Swipe sessions can hand off even when daily Likes are unlimited");
+assert.equal(unbounded.safeToReleaseSwipe,false,
+  "unlimited Swipe has no quota-based automatic handoff");
 const stillRunning = reachedUnifiedLimits(
   { ...fullSettings, maxRightSwipesPerDay: null }, summary,
   { ...local, session: { durationMs: 300_000, activeElapsedMs: 60_000,
     runningSinceMs: time, nextRightSwipeNotBeforeMs: null } }, time
 );
-assert.deepEqual(stillRunning.reached.map(x => x.id), ["swipe-sessions"],
-  "session count may be exhausted while last session still works");
+assert.deepEqual(stillRunning.reached, [],
+  "session counts are informational during uninterrupted Swipe");
 assert.equal(stillRunning.safeToReleaseSwipe, false,
   "never cut off the last Swipe session as soon as it starts");
 assert.equal(reachedUnifiedLimits({ ...fullSettings, maxRightSwipesPerDay:null },
