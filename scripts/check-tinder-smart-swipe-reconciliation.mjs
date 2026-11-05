@@ -92,10 +92,24 @@ assert.equal(reconcileReviewedLocalSwipeAttempt(restored.progress, {
   ...largerCrashWindow, attempts: 4, reviewedUnknown: 0
 }).changed, false, "repeated reconciliation is idempotent");
 
-// Refuse local-ahead counters, multiple pending reservations, unresolved
+// Previously blocked on 2026-11-02: local 460 UI + one pending while
+// server classified 459 UI and one manually reviewed UNKNOWN out of 460.
+// Normalize bookkeeping without erasing the attempt or authorizing a retry.
+const historic = reconcileReviewedLocalSwipeAttempt({
+  ...initial, dayKey, rightSwipesConfirmed: 460, rightSwipesReserved: 1
+}, { ...evidence, attempts: 460, uiObserved: 459, reviewedUnknown: 1 });
+assert.equal(historic.ok, true, "reviewed unknown must repair a one-count local overcount");
+if (historic.ok) {
+  assert.equal(historic.progress.rightSwipesConfirmed, 459);
+  assert.equal(historic.progress.rightSwipesReserved, 0);
+  assert.equal(historic.progress.startedSessions, initial.startedSessions);
+}
+
+// Refuse local-ahead counters without a matching reviewed reservation, multiple
+// pending reservations, unresolved
 // server attempts, cross-day evidence and incomplete server classifications.
 for (const [local, remote, expectedReason] of [
-  [{ ...initial, rightSwipesConfirmed: 2 }, evidence, "local_observed_count_mismatch"],
+  [{ ...initial, rightSwipesConfirmed: 3 }, evidence, "local_observed_count_mismatch"],
   [{ ...initial, rightSwipesReserved: 2 }, evidence, "reservation_count_mismatch"],
   [{ ...initial, dayKey: "2026-10-17" }, evidence, "reservation_day_mismatch"],
   [initial, { ...evidence, attempts: 3 }, "server_attempts_not_fully_resolved"],

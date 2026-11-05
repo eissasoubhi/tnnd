@@ -52,15 +52,12 @@ panel.innerHTML = [
   '<button id="smart-swipe-ledger-refresh" type="button" class="secondary">Refresh activity</button>',
   '</section>',
   '<form id="smart-swipe-form" class="preferences-grid">',
-  '<label><input id="smart-swipe-enabled" type="checkbox"> Request automatic scheduling</label>',
-  '<div class="dating-goal-editor"><h3>Daily sessions</h3><div class="preferences-grid">',
-  '<label>Sessions per day<input id="smart-swipe-sessions" type="number" min="1" max="24" step="1" required></label>',
-  '<p class="subtle">Right Likes per day: Unlimited in TNND. Tinder limits still apply, and uncertain attempts pause automatic Likes.</p>',
-  '<label>Session duration min (minutes)<input id="smart-swipe-minutes-min" type="number" min="1" max="1440" step="1" required></label>',
-  '<label>Session duration max (minutes)<input id="smart-swipe-minutes-max" type="number" min="1" max="1440" step="1" required></label>',
+  '<label><input id="smart-swipe-enabled" type="checkbox"> Authorize Smart Auto Swipe</label>',
+  '<div class="dating-goal-editor"><h3>Continuous Swipe</h3><div class="preferences-grid">',
+  '<p class="subtle">No TNND daily Like or session limit. Swipe keeps running after an explicit Start in the extension. Tinder availability and unresolved actions still require verification.</p>',
   '<label>Delay min between Likes (seconds)<input id="smart-swipe-delay-min" type="number" min="1" max="3600" step="1" required></label>',
   '<label>Delay max between Likes (seconds)<input id="smart-swipe-delay-max" type="number" min="1" max="3600" step="1" required></label>',
-  '</div><p class="subtle">One session duration is selected between min and max for each session. Each delay is selected between its limits.</p></div>',
+  '</div><p class="subtle">Only the delay between attempts is configurable. No daily schedule, session expiry or forced break.</p></div>',
   '<div class="dating-goal-editor"><h3>Activity priority</h3>',
   '<p class="subtle">Higher priority work runs first when eligible. Active work is never interrupted mid-send.</p>',
   '<div id="smart-swipe-priority" role="group" aria-label="Activity priority"></div>',
@@ -72,9 +69,8 @@ panel.innerHTML = [
   '<label id="smart-swipe-chat-time-wrap" hidden>Minutes per conversation per day',
   '<input id="smart-swipe-chat-time" type="number" min="1" max="1440" step="1" value="30"></label>',
   '<p class="subtle">Only active handling time counts, across all visits to one chat.</p></div>',
-  '<label><input id="smart-swipe-pause-chat" type="checkbox"> Pause swiping during an active conversation</label>',
   '<div class="preferences-save-bar"><div class="preferences-save-message">',
-  '<strong>Save scheduling preferences</strong>',
+  '<strong>Save automation preferences</strong>',
   '<p class="subtle">Saving never sends a Like or starts Tinder automation.</p>',
   '<p id="smart-swipe-feedback" class="subtle" role="status" aria-live="polite"></p>',
   '</div><button id="smart-swipe-save" type="submit">Save settings</button></div>',
@@ -297,12 +293,8 @@ function input(id: string): HTMLInputElement { return get<HTMLInputElement>(id);
 function number(id: string): number { return Number(input(id).value); }
 function fill(settings: Settings): void {
   input("smart-swipe-enabled").checked = settings.enabled;
-  input("smart-swipe-sessions").value = String(settings.sessionsPerDay);
-  input("smart-swipe-minutes-min").value = String(settings.sessionDurationMinSeconds / 60);
-  input("smart-swipe-minutes-max").value = String(settings.sessionDurationMaxSeconds / 60);
   input("smart-swipe-delay-min").value = String(settings.swipeDelayMinSeconds);
   input("smart-swipe-delay-max").value = String(settings.swipeDelayMaxSeconds);
-  input("smart-swipe-pause-chat").checked = settings.pauseSwipeDuringActiveConversation;
   chatMode.value = settings.maxActiveChatSecondsPerConversationPerDay === null ? "unlimited" : "limited";
   input("smart-swipe-chat-time").value = String((settings.maxActiveChatSecondsPerConversationPerDay ?? 1800) / 60);
   chatWrap.hidden = chatMode.value !== "limited";
@@ -314,25 +306,23 @@ chatMode.addEventListener("change", () => {
 });
 
 function values(): Settings {
-  const min = number("smart-swipe-minutes-min");
-  const max = number("smart-swipe-minutes-max");
   const delayMin = number("smart-swipe-delay-min");
   const delayMax = number("smart-swipe-delay-max");
-  if (!Number.isInteger(min) || !Number.isInteger(max) || min > max)
-    throw new Error("Session duration: minimum cannot exceed maximum.");
   if (!Number.isInteger(delayMin) || !Number.isInteger(delayMax) || delayMin > delayMax)
     throw new Error("Delay: minimum cannot exceed maximum.");
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   return {
     enabled: input("smart-swipe-enabled").checked,
-    sessionsPerDay: number("smart-swipe-sessions"),
-    sessionDurationMinSeconds: min * 60,
-    sessionDurationMaxSeconds: max * 60,
+    // Persist legacy fields unchanged for API compatibility; the runner does
+    // not use them to limit or expire Swipe.
+    sessionsPerDay: loadedSettings?.sessionsPerDay ?? 3,
+    sessionDurationMinSeconds: loadedSettings?.sessionDurationMinSeconds ?? 300,
+    sessionDurationMaxSeconds: loadedSettings?.sessionDurationMaxSeconds ?? 600,
     swipeDelayMinSeconds: delayMin,
     swipeDelayMaxSeconds: delayMax,
     maxRightSwipesPerDay: null,
     priority: [...priorities],
-    pauseSwipeDuringActiveConversation: input("smart-swipe-pause-chat").checked,
+    pauseSwipeDuringActiveConversation: false,
     maxActiveChatSecondsPerConversationPerDay:
       chatMode.value === "unlimited" ? null : number("smart-swipe-chat-time") * 60,
     timeZone
@@ -352,7 +342,7 @@ async function refresh(): Promise<void> {
     status.textContent = "Sign-in required";
     return;
   }
-  notice.textContent = "Loading scheduling preferences…";
+  notice.textContent = "Loading automation preferences…";
   status.textContent = "Loading";
   save.disabled = true;
   try {

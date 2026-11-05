@@ -163,10 +163,7 @@ export function beginSmartSwipeSession(
 ): SmartSwipeDailyProgress | null {
   if (!config.enabled || validateSmartAutoSwipeConfig(config).length ||
       progress.dayKey !== tinderAccountDayKey(nowMs, timeZone) ||
-      progress.session !== null || progress.rightSwipesReserved > 0 ||
-      progress.startedSessions >= config.sessionsPerDay ||
-      (progress.lastSessionEndedAtMs !== null &&
-        nowMs - progress.lastSessionEndedAtMs < MIN_SESSION_BREAK_MS)) return null;
+      progress.session !== null || progress.rightSwipesReserved > 0) return null;
   const durationSeconds = sampleInclusiveInteger(
     config.sessionDurationMinSeconds, config.sessionDurationMaxSeconds, random
   );
@@ -192,8 +189,7 @@ export function pauseSmartSwipeSession(progress: SmartSwipeDailyProgress, nowMs:
 }
 
 export function resumeSmartSwipeSession(progress: SmartSwipeDailyProgress, nowMs: number): SmartSwipeDailyProgress {
-  if (!progress.session || progress.session.runningSinceMs !== null ||
-      progress.session.activeElapsedMs >= progress.session.durationMs) return progress;
+  if (!progress.session || progress.session.runningSinceMs !== null) return progress;
   return { ...progress, session: { ...progress.session, runningSinceMs: nowMs } };
 }
 
@@ -221,7 +217,6 @@ export function planSmartRightSwipe(
   if (progress.rightSwipesReserved > 0) return "unresolved-attempt";
   const session = progress.session;
   if (!session) return "no-session";
-  if (smartSwipeElapsedMs(session, nowMs) >= session.durationMs) return "session-expired";
   if (session.runningSinceMs === null) return "session-paused";
   if (session.nextRightSwipeNotBeforeMs !== null && nowMs < session.nextRightSwipeNotBeforeMs)
     return "swipe-delay";

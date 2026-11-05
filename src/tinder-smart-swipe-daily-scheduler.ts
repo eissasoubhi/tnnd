@@ -1,6 +1,5 @@
 import {
-  beginSmartSwipeSession, finishSmartSwipeSession, MIN_SESSION_BREAK_MS,
-  smartSwipeElapsedMs, tinderAccountDayKey, validateSmartAutoSwipeConfig,
+  beginSmartSwipeSession, tinderAccountDayKey, validateSmartAutoSwipeConfig,
   type SmartAutoSwipeConfig, type SmartSwipeDailyProgress
 } from "./tinder-smart-auto-swipe-policy.ts";
 
@@ -51,27 +50,13 @@ export function scheduleSmartSwipeSession(
   const result = (action: SessionScheduleDecision["action"], reason: string, remaining: number | null = null): SessionScheduleDecision =>
     ({ action, reason, currentSlot: slot, nextLocalMinute: next, remainingSessionMs: remaining });
   if (progress.rightSwipesReserved > 0) return result("blocked", "unresolved_attempt");
-  if (progress.session) {
-    const remaining = Math.max(0, progress.session.durationMs - smartSwipeElapsedMs(progress.session, nowMs));
-    return remaining === 0 ? result("end", "session_duration_reached", 0)
-      : result("running", progress.session.runningSinceMs === null ? "session_paused" : "session_active", remaining);
-  }
-  if (progress.startedSessions >= config.sessionsPerDay) return result("blocked", "sessions_limit");
-  if (progress.lastSessionSlotIndex !== undefined) {
-    if (!Number.isInteger(progress.lastSessionSlotIndex) || progress.lastSessionSlotIndex < 0 ||
-        progress.lastSessionSlotIndex >= config.sessionsPerDay)
-      return result("blocked", "invalid_slot_state");
-    if (progress.lastSessionSlotIndex >= slot) return result("wait", "slot_consumed");
-  } else if (progress.startedSessions > 0) {
-    // An upgraded installation may have used sessions without recording the slot.
-    // Do not invent a new slot or accidentally start a duplicate.
-    return result("blocked", "slot_history_unknown");
-  }
-  if (progress.lastSessionEndedAtMs !== null &&
-      (nowMs < progress.lastSessionEndedAtMs ||
-       nowMs - progress.lastSessionEndedAtMs < MIN_SESSION_BREAK_MS))
-    return result("wait", "minimum_session_break");
-  return result("due", "slot_available");
+  // Continuous Swipe: legacy session slots, per-day counts, duration and
+  // mandatory breaks are informational only. An explicit Start keeps Swipe
+  // available until Stop, a real Tinder guard, or an unresolved attempt.
+  if (progress.session)
+    return result("running", progress.session.runningSinceMs === null ?
+      "session_paused" : "session_active");
+  return result("due", "continuous_swipe");
 }
 
 export function beginScheduledSwipeSession(
@@ -88,8 +73,8 @@ export function beginScheduledSwipeSession(
 export function closeExpiredScheduledSwipeSession(
   config: SmartAutoSwipeConfig, progress: ScheduledSwipeProgress, nowMs: number, timeZone: string
 ): ScheduledSwipeProgress {
-  return scheduleSmartSwipeSession(config, progress, nowMs, timeZone).action === "end"
-    ? finishSmartSwipeSession(progress, nowMs) : progress;
+  // Kept for old callers. Continuous mode never expires a healthy session.
+  return progress;
 }
 
 /** On MV3 worker restart, freeze elapsed time rather than counting hours of idle time.

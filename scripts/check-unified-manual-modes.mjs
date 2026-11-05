@@ -50,7 +50,7 @@ test("legacy daily Right Likes cap no longer blocks Swipe, Chat, Matches or coun
     ...raw, maxRightSwipesPerDay: null
   } }), { ok: true, settings: { ...raw, maxRightSwipesPerDay: null }, legacyDailyLikeCap: false });
   const worker = await readFile(new URL("../src/unified-controller-background.ts", import.meta.url),"utf8");
-  assert.equal((worker.match(/parseUnifiedWebSettings\(await .*Response\.json\(\)\)/g) ?? []).length, 2);
+  assert.equal((worker.match(/parseUnifiedWebSettings\(await .*Response\.json\(\)\)/g) ?? []).length, 1);
   assert.match(worker,/parseUnifiedWebSettings\(await response\.json\(\)\)/);
   assert.doesNotMatch(worker,/Corrige les priorités avant de démarrer/);
 });
@@ -156,9 +156,9 @@ test("launcher controls and worker route all manual commands through verified ex
   assert.match(worker, /watcherSwitchSafety\(watcher\)/);
   assert.match(worker, /await stopEverything\(\)/);
   assert.match(worker, /safeSwipeHandoff\(session, settings\)/);
-  assert.match(worker, /if \(requestedMode === "swipe"\) return/);
+  assert.match(worker, /const result = await startUnifiedSwipe\(\)/);
   assert.match(worker, /manualMode: requestedMode/);
-  assert.match(worker, /!master\.userId \|\| master\.manualMode/);
+  assert.doesNotMatch(worker, /handoffOnReachedCap/);
   assert.match(watcher, /manualActivity === "new-match"/);
   assert.match(watcher, /state\.manualActivity !== "active-chat"/);
   assert.match(watcher, /manualActivity: null/);

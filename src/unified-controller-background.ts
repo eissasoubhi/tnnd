@@ -5,7 +5,6 @@ import { parseUnifiedWebSettings, explainUnifiedWebSettingsErrors } from "./unif
 import { startUnifiedSwipe, stopUnifiedSwipe } from "./tinder-smart-swipe-automation-background";
 import { startExistingRunner, stopUnifiedExistingRunner } from "./tinder-global-existing-runner";
 import { readNewMatchState, stopUnifiedNewMatchRunner } from "./tinder-new-match-background";
-import { verifiedDailyQuota } from "./unified-quota-status";
 import { reachedUnifiedLimits, type UnifiedLimitSnapshot } from "./unified-reached-limits";
 import { manualActivity, manualSwipeReleaseSafe, watcherSwitchSafety } from "./unified-manual-mode-policy";
 
@@ -13,8 +12,6 @@ const API = "http://127.0.0.1:4000";
 const MASTER = "tnnd.unifiedLauncher.v1";
 const SWIPE_ARM = "tnnd.smartSwipeLiveArm.v1:";
 const WATCHER_KEY = "tnnd.globalExistingRunner.v2";
-const CAP_ALARM = "tnnd.unifiedLauncher.quotaHandoff";
-let handoffBusy = false;
 let commandEpoch = 0;
 let working = false;
 
@@ -77,14 +74,8 @@ async function status(): Promise<Record<string, unknown>> {
   const store = (await chrome.storage.local.get(MASTER))[MASTER] as
     { enabled?: boolean; mode?: ManagedTinderActivity; pausedSwipeReason?: string | null;
       handoffBlock?: string | null; manualMode?: ManagedTinderActivity | null } | undefined;
-  // Quotas remain visible even when Start was REFUSED: an exhausted Swipe
-  // attempt cap is useful information when the engine is stopped.
+  // Counters remain visible through Start and Stop; they do not cap Swipe.
   const limitSnapshot = await readReachedLimits();
-  const quota = limitSnapshot?.swipeQuota ?? null;
-  const sessionLimitReached = limitSnapshot?.safeToReleaseSwipe === true &&
-    limitSnapshot.reached.some(limit => limit.id === "swipe-sessions");
-  const quotaReached = owner.mode === "swipe" && !owner.conflict &&
-    (quota?.reached === true || sessionLimitReached);
   // Expose only verified, bounded operational state, not chat text or match
   // identifiers. Status is read-only and never triggers a Gemini request.
   const watcherRaw = (await chrome.storage.local.get(WATCHER_KEY))[WATCHER_KEY] as
@@ -107,27 +98,16 @@ async function status(): Promise<Record<string, unknown>> {
           typeof watcherRaw.nextReplyAt === "string" && Number.isFinite(Date.parse(watcherRaw.nextReplyAt))
           ? watcherRaw.nextReplyAt : null
       } : null;
-  // Extension reloads may restore a previously armed Swipe without firing
-  // onStartup; recreate the periodic cap guard on its next status check.
-  if (owner.mode === "swipe" && !owner.conflict && store?.enabled &&
-      !(await chrome.alarms.get(CAP_ALARM)))
-    await chrome.alarms.create(CAP_ALARM, { periodInMinutes: 1 });
   // Never report active based solely on a stale master flag.
   return {
     ok: true, running: owner.running, mode: owner.mode,
     manualMode: owner.running && !owner.conflict && store?.enabled && store.manualMode === owner.mode
       ? store.manualMode : null,
-    quotaPaused: quotaReached, quota: quotaReached ? quota : null,
+    quotaPaused: false, quota: null,
     reachedLimits: limitSnapshot?.reached ?? [],
     limitCounters: limitSnapshot?.counters ?? [],
     watcherInfo,
     reason: owner.conflict ? "Plusieurs moteurs déjà actifs. Clique Arrêter pour les désarmer." :
-      quotaReached
-        ? sessionLimitReached && quota?.reached !== true
-          ? "Sessions Swipe du jour terminées. Bascule automatique vers Matches si les journaux sont résolus."
-          : "Quota quotidien de Swipe atteint (" + quota!.used + "/" + quota!.limit +
-            "). Aucun nouveau Like possible aujourd'hui. Arrête puis redémarre pour choisir une autre activité autorisée."
-        :
       owner.running && !store?.enabled
         ? "Un ancien moteur est actif. Arrêter permet de reprendre le contrôle."
         : owner.running && store?.enabled &&
@@ -152,7 +132,6 @@ async function stopEverything(): Promise<{ ok: boolean; reason?: string }> {
   const rejected = results.some(r => r.status === "rejected" ||
     (r.status === "fulfilled" && r.value && "ok" in r.value && r.value.ok !== true));
   if (rejected) return { ok: false, reason: "Arrêt partiel : vérifie les moteurs actifs. Aucun journal n'a été supprimé." };
-  await chrome.alarms.clear(CAP_ALARM);
   await chrome.storage.local.set({ [MASTER]: { enabled: false, mode: null, stoppedAt: Date.now() } });
   return { ok: true };
 }
@@ -181,7 +160,7 @@ async function safeSwipeHandoff(
   } catch { return false; }
 }
 async function start(epoch: number, requestedMode: ManagedTinderActivity | null = null): Promise<Record<string, unknown>> {
-  if (working || handoffBusy) return { ok: false, reason: "Transition déjà en cours." };
+  if (working) return { ok: false, reason: "Transition déjà en cours." };
   working = true;
   try {
     const before = await owners();
@@ -246,43 +225,6 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
     if (epoch !== commandEpoch) return { ok: false, reason: "Démarrage annulé par Stop." };
     let pausedSwipeReason: string | null = null;
     if (selected === "swipe") {
-      // Before arming any Like executor, compare this account's authoritative
-      // quota to the current calendar day in its configured timezone.
-      // An unreachable/stale summary is UNKNOWN, not permission for Likes or
-      // a switch that could overlap an in-flight Like from another client.
-      const summaryResponse = await fetch(API + "/api/v1/automation/smart-swipe/attempts/summary", {
-        headers: { authorization: "Bearer " + session.token }, cache: "no-store"
-      });
-      if (!summaryResponse.ok) return { ok: false, reason: "swipe_quota_unavailable" };
-      const quota = verifiedDailyQuota(settings, await summaryResponse.json(), Date.now());
-      if (!quota) return { ok: false, reason: "swipe_quota_unavailable" };
-      // Right Likes have no daily limit. The completed-session cap is
-      // independently enforced by the local scheduler. Only transition away
-      // when the final session is finished AND both ledgers are settled.
-      const sessionLimits = quota.reached ? null : await readReachedLimits();
-      const exhaustedSessions = sessionLimits?.safeToReleaseSwipe === true &&
-        sessionLimits.reached.some(limit => limit.id === "swipe-sessions");
-      const capReason = quota.reached ? "daily_cap" :
-        exhaustedSessions ? "session_cap" : null;
-      if (capReason) {
-        if (requestedMode === "swipe") return { ok: false, reason:
-          "Limite Swipe atteinte pour aujourd'hui. Choisis Matches ou Chat si autorisé." };
-        const next = fallbackAfterBlockedSwipe(settings, capReason, config.automation.enabled);
-        if (!next) return {
-          ok: false,
-          reason: !config.automation.enabled
-            ? "daily_cap_auto_replies_disabled"
-            : "daily_cap_no_lower_priority_activity"
-        };
-        const currentOwners = await owners();
-        if (currentOwners.running || currentOwners.conflict)
-          return { ok: false, reason: "Mode concurrent détecté après vérification du quota." };
-        if (epoch !== commandEpoch) return { ok: false, reason: "Démarrage annulé par Stop." };
-        selected = "new-match";
-        pausedSwipeReason = capReason;
-      }
-    }
-    if (selected === "swipe") {
       const result = await startUnifiedSwipe();
       if (result.ok !== true || result.armed !== true) {
         const reason = typeof result.reason === "string" ? result.reason : "swipe_start_unknown";
@@ -319,8 +261,6 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
       enabled: true, mode: selected, userId: session.user.id, startedAt: Date.now(),
       pausedSwipeReason, manualMode: requestedMode
     } });
-    if (selected === "swipe") await chrome.alarms.create(CAP_ALARM, { periodInMinutes: 1 });
-    else await chrome.alarms.clear(CAP_ALARM);
     return {
       ok: true, running: true, mode: selected, manualMode: requestedMode,
       reason: pausedSwipeReason === "daily_cap"
@@ -335,103 +275,6 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
     working = false;
   }
 }
-/** A verified daily cap may exhaust *during* an already armed Swipe
- * session. Handoff is a real serialized STOP before any watcher Start.
- * No periodic auto-rearm and no retries of uncertain Likes.
- */
-async function handoffOnReachedCap(): Promise<void> {
-  if (handoffBusy || working) return;
-  handoffBusy = true;
-  const epoch = commandEpoch;
-  try {
-    const master = (await chrome.storage.local.get(MASTER))[MASTER] as
-      { enabled?: boolean; mode?: ManagedTinderActivity; userId?: string;
-        manualMode?: ManagedTinderActivity | null } | undefined;
-    if (!master?.enabled || master.mode !== "swipe" || !master.userId || master.manualMode) {
-      await chrome.alarms.clear(CAP_ALARM);
-      return;
-    }
-    const owner = await owners();
-    if (!owner.running || owner.conflict || owner.mode !== "swipe") return;
-    const session = await getBackendSession();
-    const config = await getConfig();
-    if (!session || session.user.id !== master.userId || !config.automation.enabled) return;
-    const settingsResponse = await fetch(API + "/api/v1/automation/smart-swipe", {
-      headers: { authorization: "Bearer " + session.token }, cache: "no-store"
-    });
-    if (!settingsResponse.ok) return;
-    const parsed = parseUnifiedWebSettings(await settingsResponse.json());
-    if (!parsed.ok) return;
-    const settings = parsed.settings;
-    if (!settings.enabled || !settings.priority.includes("new-match")) return;
-    const check = await readReachedLimits();
-    if (!check?.safeToReleaseSwipe) return;
-    // Do not switch the user away from their own active/other Tinder tab.
-    const tabs = (await chrome.tabs.query({
-      url: ["https://tinder.com/*", "https://www.tinder.com/*"]
-    })).filter(isTinderTab);
-    if (tabs.length !== 1 || !tabs[0].id) return;
-    if (epoch !== commandEpoch || (await owners()).mode !== "swipe") return;
-
-    const disarmed = await stopUnifiedSwipe();
-    if (disarmed.ok !== true || disarmed.armed !== false) return;
-    // STOP has already put up the durable latch. Recheck local and server
-    // reservations after it; a claim could have raced the first cap check.
-    const second = await readReachedLimits();
-    const stoppedOwner = await owners();
-    const masterAfter = (await chrome.storage.local.get(MASTER))[MASTER] as
-      { enabled?: boolean; mode?: string; userId?: string } | undefined;
-    if (epoch !== commandEpoch || !masterAfter?.enabled ||
-        masterAfter.mode !== "swipe" || masterAfter.userId !== session.user.id) return;
-    if (!second?.safeToReleaseSwipe || stoppedOwner.running || stoppedOwner.conflict) {
-      await chrome.storage.local.set({ [MASTER]: { enabled: false, mode: null,
-        handoffBlock: "Swipe arrêté après quota ; tentative en cours ou état incertain. Vérifie les tentatives avant de relancer." } });
-      await chrome.alarms.clear(CAP_ALARM);
-      return;
-    }
-    const capReason = check.reached.some(limit => limit.id === "swipe-attempts")
-      ? "daily_cap" : "session_cap";
-    const watcher = await startExistingRunner(false, "watcher", true, true);
-    if (!watcher.enabled || watcher.mode !== "watcher" || !watcher.autoOpenersEnabled)
-      throw new Error("watcher_start_unconfirmed");
-    if (epoch !== commandEpoch) {
-      await stopEverything();
-      return;
-    }
-    await chrome.storage.local.set({ [MASTER]: {
-      enabled: true, mode: "new-match", userId: session.user.id,
-      pausedSwipeReason: capReason, startedAt: Date.now()
-    } });
-    await chrome.alarms.clear(CAP_ALARM);
-  } catch {
-    // Stay disarmed if the handoff fails. Never silently re-arm an exhausted
-    // or unresolved Swipe, and never run competing owners.
-    if (epoch === commandEpoch && !(await owners()).running) {
-      await chrome.storage.local.set({ [MASTER]: { enabled: false, mode: null,
-        handoffBlock: "Quota Swipe atteint ; reprise automatique des matchs indisponible. Vérifie Tinder et les autorisations." } }).catch(() => undefined);
-      await chrome.alarms.clear(CAP_ALARM).catch(() => undefined);
-    }
-  } finally { handoffBusy = false; }
-}
-chrome.alarms.onAlarm.addListener(alarm => {
-  if (alarm.name === CAP_ALARM) void handoffOnReachedCap();
-});
-chrome.runtime.onStartup.addListener(() => {
-  void (async () => {
-    const master = (await chrome.storage.local.get(MASTER))[MASTER] as
-      { enabled?: boolean; mode?: string } | undefined;
-    if (master?.enabled && master.mode === "swipe")
-      await chrome.alarms.create(CAP_ALARM, { periodInMinutes: 1 });
-  })().catch(() => undefined);
-});
-chrome.runtime.onInstalled.addListener(() => {
-  void (async () => {
-    const master = (await chrome.storage.local.get(MASTER))[MASTER] as
-      { enabled?: boolean; mode?: string } | undefined;
-    if (master?.enabled && master.mode === "swipe")
-      await chrome.alarms.create(CAP_ALARM, { periodInMinutes: 1 });
-  })().catch(() => undefined);
-});
 chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
   if (!message || typeof message !== "object") return false;
   const type = (message as { type?: unknown }).type;

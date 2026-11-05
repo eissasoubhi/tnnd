@@ -91,7 +91,7 @@ function renderDailyCounters(counters: DailyCounter[] | undefined): void {
     const validDay = typeof raw?.dayKey === "string" &&
       /^\d{4}-\d{2}-\d{2}$/.test(raw.dayKey);
     const numericLimit = typeof max === "number" && Number.isSafeInteger(max) && max > 0;
-    const unlimitedLikes = id === "swipe-attempts" && max === null;
+    const unlimitedLikes = max === null;
     const validCount = typeof used === "number" && Number.isSafeInteger(used) &&
       used >= 0 && validDay && (numericLimit || unlimitedLikes);
     const row = document.createElement("li");
