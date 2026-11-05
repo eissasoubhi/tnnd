@@ -61,9 +61,17 @@ export function reconcileReviewedLocalSwipeAttempt(
   // unresolved or missing a known final classification.
   if (proof.attempts !== proof.uiObserved + proof.reviewedUnknown + proof.notClicked)
     return { ok: false, reason: "server_attempts_not_fully_resolved" };
-  if (progress.rightSwipesConfirmed > proof.uiObserved)
+  // Older interrupted workers sometimes persisted a card transition locally
+  // that the server later classified as the ONE manually reviewed UNKNOWN.
+  // The screenshot-shaped case (local 460 + pending 1, server 459 UI +
+  // reviewed UNKNOWN 1) is safe to normalize: the server is authoritative
+  // about bookkeeping, and we never repeat, relabel or send that attempt.
+  const localAhead = Math.max(0, progress.rightSwipesConfirmed - proof.uiObserved);
+  if (localAhead > 0 &&
+      (progress.rightSwipesReserved !== 1 || localAhead !== proof.reviewedUnknown))
     return { ok: false, reason: "local_observed_count_mismatch" };
-  if (progress.rightSwipesConfirmed + progress.rightSwipesReserved > proof.attempts)
+  if (progress.rightSwipesConfirmed + progress.rightSwipesReserved >
+      proof.attempts + localAhead)
     return { ok: false, reason: "local_attempt_count_exceeds_server" };
   const changed = progress.rightSwipesReserved !== 0 ||
     progress.rightSwipesConfirmed !== proof.uiObserved;
