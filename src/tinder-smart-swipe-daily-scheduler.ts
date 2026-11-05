@@ -1,6 +1,5 @@
 import {
-  beginSmartSwipeSession, finishSmartSwipeSession, MIN_SESSION_BREAK_MS,
-  smartSwipeElapsedMs, tinderAccountDayKey, validateSmartAutoSwipeConfig,
+  beginSmartSwipeSession, tinderAccountDayKey, validateSmartAutoSwipeConfig,
   type SmartAutoSwipeConfig, type SmartSwipeDailyProgress
 } from "./tinder-smart-auto-swipe-policy.ts";
 
