@@ -1147,10 +1147,10 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
     }) as {
       ok?: boolean; reason?: string; status?: string; enabled?: boolean;
       nextActivity?: string | null; executionAvailable?: boolean; armed?: boolean;
-      remainingSessions?: number; attemptsToday?: number | null;
+      remainingSessions?: number | null; attemptsToday?: number | null;
       remainingAttempts?: number | null; uiObservedToday?: number | null;
       unresolvedOnServer?: number | null; lastResult?: string | null;
-      schedule?: string; session?: { active: boolean; remainingMs: number } | null;
+      schedule?: string; session?: { active: boolean; remainingMs: number | null } | null;
       controls?: { status?: string; likeControls?: number };
       progress?: { startedSessions?: number; rightSwipesConfirmed?: number; rightSwipesReserved?: number };
     };
@@ -1179,10 +1179,12 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
       typeof value === "number" ? String(value) : "unknown";
     const hasUnsafeLedger = view.needsReview || view.ledgerUnavailable;
     const sessionRemaining = result.session
-      ? Math.ceil(result.session.remainingMs / 1000) + " sec" +
-        (view.phase === "stopped" ? " (not running while stopped)"
-          : view.phase === "blocked" ? " (paused for review)"
-            : result.session.active ? "" : " (paused)")
+      ? result.session.remainingMs === null
+        ? "Continuous" + (result.session.active ? "" : " (temporarily paused)")
+        : Math.ceil(result.session.remainingMs / 1000) + " sec" +
+          (view.phase === "stopped" ? " (not running while stopped)"
+            : view.phase === "blocked" ? " (paused for review)"
+              : result.session.active ? "" : " (paused)")
       : "not in session";
     const statusText = view.phase === "stopped"
       ? "STOPPED: extension disarmed; no new automatic Likes. " +
@@ -1198,7 +1200,7 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
       "Automation: " + view.phase,
       "Status: " + statusText,
       "Last attempt: " + (result.lastResult ?? "none recorded"),
-      "Sessions left: " + known(result.remainingSessions),
+      "Sessions left: Unlimited (continuous Swipe)",
       "Right Like attempts today: " + known(result.attemptsToday) + " (no TNND daily cap)" +
         (hasUnsafeLedger ? " (blocked until review)" : ""),
       "Card transitions observed: " + known(result.uiObservedToday),
