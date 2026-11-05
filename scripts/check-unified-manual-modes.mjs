@@ -156,9 +156,9 @@ test("launcher controls and worker route all manual commands through verified ex
   assert.match(worker, /watcherSwitchSafety\(watcher\)/);
   assert.match(worker, /await stopEverything\(\)/);
   assert.match(worker, /safeSwipeHandoff\(session, settings\)/);
-  assert.match(worker, /if \(requestedMode === "swipe"\) return/);
+  assert.match(worker, /const result = await startUnifiedSwipe\(\)/);
   assert.match(worker, /manualMode: requestedMode/);
-  assert.match(worker, /!master\.userId \|\| master\.manualMode/);
+  assert.doesNotMatch(worker, /handoffOnReachedCap/);
   assert.match(watcher, /manualActivity === "new-match"/);
   assert.match(watcher, /state\.manualActivity !== "active-chat"/);
   assert.match(watcher, /manualActivity: null/);
