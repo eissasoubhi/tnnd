@@ -309,7 +309,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await simple.reload();
       await expect(simple.locator("#engineStatus")).toContainText("Auto Swipe");
       await expect(simple.locator("#reachedLimitsList")).toContainText("200 / ∞");
-      await expect(simple.locator("#reachedLimitsList")).toContainText("0 / 1"); // Session counter is informational, never a quota.
+      await expect(simple.locator("#reachedLimitsList")).toContainText("0 / ∞"); // Session counter is informational, never a quota.
       await expect(simple.locator("#toggleAutomation")).toHaveText("Arrêter");
       await expect(simple.locator("#reachedLimitsNote")).toContainText("sans preuve d'acceptation Tinder");
       expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
