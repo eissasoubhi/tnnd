@@ -239,10 +239,10 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       expect(await simple.evaluate(() => chrome.runtime.getManifest().version)).toBe(installedVersion);
       await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
       await expect(simple.locator("#reachedLimits")).toBeVisible();
-      await expect(simple.locator("#reachedLimits h2")).toHaveText("Quotas du jour");
+      await expect(simple.locator("#reachedLimits h2")).toHaveText("Activité du jour");
       await expect(simple.locator("#reachedLimitsList li")).toHaveCount(2);
       await expect(simple.locator("#reachedLimitsList")).toContainText("0 / ∞");
-      await expect(simple.locator("#reachedLimitsList")).toContainText("0 / 1");
+      await expect(simple.locator("#reachedLimitsList")).toContainText("0 / ∞");
       await expect(simple.locator("#toggleAutomation")).toHaveText("Démarrer Auto");
       // Rejected Start must never turn the only control into a dead button.
       settings.enabled = false;
@@ -259,15 +259,15 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(simple.locator("#feedback")).toContainText("Démarrage refusé");
       expect((await storage())["tnnd.globalExistingRunner.v2"]?.enabled).not.toBe(true);
       failingPaths.delete("/api/v1/automation/smart-swipe/attempts/reconciliation");
-      // Missing authoritative quota evidence must fail CLOSED; it is neither
-      // proof of remaining Likes nor permission to hand off ambiguously.
+      // Read-only daily totals can be missing while the authenticated
+      // reconciliation proof and atomic server Like claim remain available.
       failingPaths.add("/api/v1/automation/smart-swipe/attempts/summary");
       await simple.locator("#toggleAutomation").click();
-      await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
-      await expect(simple.locator("#feedback")).toContainText("swipe_quota_unavailable");
-      await expect(simple.locator("#reachedLimits")).toBeVisible();
+      await expect(simple.locator("#engineStatus")).toContainText("Auto Swipe");
       await expect(simple.locator("#reachedLimitsList")).toContainText("— / ∞");
       expect((await storage())["tnnd.globalExistingRunner.v2"]?.enabled).not.toBe(true);
+      await simple.locator("#toggleAutomation").click();
+      await expect(simple.locator("#engineStatus")).toContainText("Arrêté");
       failingPaths.delete("/api/v1/automation/smart-swipe/attempts/summary");
       // One old uncertain attempt blocks Swipe, but does not take down the
       // independently permitted conversations watcher. It must NEVER retry
@@ -309,7 +309,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await simple.reload();
       await expect(simple.locator("#engineStatus")).toContainText("Auto Swipe");
       await expect(simple.locator("#reachedLimitsList")).toContainText("200 / ∞");
-      await expect(simple.locator("#reachedLimitsList")).toContainText("0 / 1"); // Armed, not yet a scheduled session.
+      await expect(simple.locator("#reachedLimitsList")).toContainText("0 / 1"); // Session counter is informational, never a quota.
       await expect(simple.locator("#toggleAutomation")).toHaveText("Arrêter");
       await expect(simple.locator("#reachedLimitsNote")).toContainText("sans preuve d'acceptation Tinder");
       expect(await tinder.evaluate(() => window.fixtureLikeClicks || 0)).toBe(0);
