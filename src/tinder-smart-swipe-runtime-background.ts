@@ -91,17 +91,14 @@ async function inspectSmartSwipeStatus(): Promise<Record<string, unknown>> {
     ok: true, enabled: true, armed, executionAvailable: false,
     status: decision.swipeStatus, nextActivity: decision.activity,
     lastResult: resultState ?? null,
-    remainingSessions: Math.max(0, settings.sessionsPerDay - result.progress.startedSessions),
+    remainingSessions: null, // Continuous Swipe has no session quota.
     attemptsToday: serverAttempts?.attemptsToday ?? null,
     uiObservedToday: serverAttempts?.uiObservedToday ?? null,
     unresolvedOnServer: serverAttempts?.unresolvedAttempts ?? null,
     remainingAttempts: null, // Unlimited TNND daily Right Likes; count still reported above.
     session: result.progress.session ? {
       active: result.progress.session.runningSinceMs !== null,
-      remainingMs: Math.max(0, result.progress.session.durationMs -
-        (result.progress.session.activeElapsedMs +
-         (result.progress.session.runningSinceMs === null ? 0 :
-          Math.max(0, now - result.progress.session.runningSinceMs))))
+      remainingMs: null // Legacy session duration does not expire Swipe.
     } : null,
     schedule: scheduleSmartSwipeSession(settings, result.progress, now, settings.timeZone).reason,
     controls: {
