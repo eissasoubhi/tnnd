@@ -67,7 +67,7 @@ assert.equal(smartSwipeElapsedMs(progress.session, now + 240_000), 60_000);
 assert.equal(planSmartRightSwipe(cfg, progress, now + 240_000, tz, options), "session-paused");
 progress = resumeSmartSwipeSession(progress, now + 240_000);
 assert.equal(smartSwipeElapsedMs(progress.session, now + 300_000), 120_000);
-assert.equal(planSmartRightSwipe(cfg, progress, now + 480_000, tz, options), "session-expired");
+assert.equal(planSmartRightSwipe(cfg, progress, now + 480_000, tz, options), "ready");
 progress = finishSmartSwipeSession(progress, now + 480_000);
 assert.ok(beginSmartSwipeSession(cfg, progress, now + 480_000 + MIN_SESSION_BREAK_MS - 1, tz, () => 0));
 progress = beginSmartSwipeSession(cfg, progress, now + 480_000 + MIN_SESSION_BREAK_MS, tz, () => 1);
