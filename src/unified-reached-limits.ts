@@ -44,7 +44,9 @@ export function reachedUnifiedLimits(
   const validLocal = dayKey !== null && validSmartSwipeProgress(localProgress) &&
     localProgress.dayKey === dayKey;
   const usedSessions = validLocal ? localProgress.startedSessions : null;
-  const maxSessions = positive(settings.sessionsPerDay);
+  // The former sessions-per-day limit is now a legacy preference only.
+  // Sessions are a read-only counter, never a reason to pause Swipe.
+  const maxSessions: number | null = null;
   const counters: UnifiedDailyCounter[] = [
     { id: "swipe-attempts", label: "Tentatives de Like (TNND)",
       used: quota?.used ?? null, max: positive(settings.maxRightSwipesPerDay),
@@ -63,25 +65,9 @@ export function reachedUnifiedLimits(
       dayKey: quota.dayKey
     });
   }
-  // Browser session quota is separate from server Like claims. Only a valid
-  // same-day local progress record can prove that limit is reached.
-  if (Number.isSafeInteger(settings.sessionsPerDay) && settings.sessionsPerDay > 0 &&
-      validSmartSwipeProgress(localProgress) &&
-      localProgress.dayKey === quota.dayKey &&
-      localProgress.startedSessions >= settings.sessionsPerDay) {
-    reached.push({
-      id: "swipe-sessions",
-      label: "Sessions Auto Swipe",
-      used: localProgress.startedSessions,
-      max: settings.sessionsPerDay,
-      dayKey: quota.dayKey
-    });
-  }
+  // No app-defined Swipe session limit or automatic session-cap handoff.
   const server = serverSummary as { unresolvedAttempts?: unknown };
-  const finishedSessionCap = validLocal && maxSessions !== null &&
-    usedSessions !== null && usedSessions >= maxSessions &&
-    localProgress.session === null;
-  const safeToReleaseSwipe = (quota.reached || finishedSessionCap) &&
+  const safeToReleaseSwipe = quota.reached &&
     Number.isSafeInteger(server.unresolvedAttempts) &&
     server.unresolvedAttempts === 0 &&
     validSmartSwipeProgress(localProgress) &&
