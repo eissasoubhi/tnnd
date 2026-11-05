@@ -54,7 +54,7 @@ test("when last new-match opener is durably claimed, release match-first priorit
     ["match-new-1"]), false, "Offscreen matches are not proof of current safe availability");
   assert.equal(hasUnattemptedVisibleMatches(["!invalid"], [], ["!invalid"], []), false);
 });
-test("quota-triggered match-first watcher drains only eligible first messages before ordinary queued chats", async () => {
+test("manually selected Matches watcher drains eligible first messages before pending chats without interrupting Swipe", async () => {
   const runner = await readFile(new URL("../src/tinder-global-existing-runner.ts", import.meta.url), "utf8");
   const unified = await readFile(new URL("../src/unified-controller-background.ts", import.meta.url), "utf8");
   assert.match(runner, /preferUnstartedMatches: mode === "watcher" && autoOpenersEnabled && preferUnstartedMatches/);
@@ -72,9 +72,10 @@ test("quota-triggered match-first watcher drains only eligible first messages be
     const line = runner.slice(at, runner.indexOf("\n", at));
     assert.match(line, /true\);/, "Completed Matches phase must advance to waiting chats");
   }
-  assert.match(unified, /await stopUnifiedSwipe\(\)/);
-  assert.match(unified, /const second = await readReachedLimits\(\)/);
-  assert.match(unified, /startExistingRunner\(false, "watcher", true, true\)/);
+  assert.doesNotMatch(unified, /handoffOnReachedCap/);
+  assert.doesNotMatch(unified, /quotaHandoff/);
+  assert.match(unified, /safeSwipeHandoff\(session, settings\)/);
+  assert.match(unified, /startExistingRunner\(false, "watcher", selected === "new-match"/);
   assert.match(unified, /epoch !== commandEpoch/);
 });
 
