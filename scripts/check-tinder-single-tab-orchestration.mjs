@@ -32,8 +32,10 @@ test("Tinder-first inventory includes unsynced old messages without unread badge
     "Do not repeatedly reopen an unchanged unsynced chat right after inspecting it");
   const due = reconcileExistingIndex(rescanned, "user-A",
     [{ ref: "known-001", lastMessageAt: at, lastMessageDirection: "incoming" }], later);
-  assert.equal(nextWatchedReply(due), "AmiraThread03",
-    "Periodic recheck prevents forever abandoning unsynced chats");
+  assert.equal(nextWatchedReply(due), "otherThread9",
+    "Never starve an unsynced conversation that has not been inspected even once");
+  assert.equal(nextWatchedReply(markThreadChecked(due, "otherThread9", later)),
+    "AmiraThread03", "Periodic recheck also revisits previously inspected Tinder-only chats");
 });
 
 test("Tinder sources win over a large DB inventory without inventing approvals", () => {
