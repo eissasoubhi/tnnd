@@ -3,7 +3,9 @@ import { initialUnifiedActivity, fallbackAfterBlockedSwipe } from "./unified-act
 import { type SmartAutoSwipeConfig, type ManagedTinderActivity } from "./tinder-smart-auto-swipe-policy";
 import { parseUnifiedWebSettings, explainUnifiedWebSettingsErrors } from "./unified-web-settings";
 import { startUnifiedSwipe, stopUnifiedSwipe } from "./tinder-smart-swipe-automation-background";
-import { startExistingRunner, stopUnifiedExistingRunner } from "./tinder-global-existing-runner";
+import { startExistingRunner, stopUnifiedExistingRunner, readUnifiedPendingReplies } from "./tinder-global-existing-runner";
+import { waitForTinderContentBridge } from "./tinder-tab-connection";
+import { nextSingleTabRotation, INBOX_SCAN_INTERVAL_MS } from "./tinder-single-tab-rotation";
 import { readNewMatchState, stopUnifiedNewMatchRunner } from "./tinder-new-match-background";
 import { reachedUnifiedLimits, type UnifiedLimitSnapshot } from "./unified-reached-limits";
 import { manualActivity, manualSwipeReleaseSafe, watcherSwitchSafety } from "./unified-manual-mode-policy";
@@ -12,6 +14,53 @@ const API = "http://127.0.0.1:4000";
 const MASTER = "tnnd.unifiedLauncher.v1";
 const SWIPE_ARM = "tnnd.smartSwipeLiveArm.v1:";
 const WATCHER_KEY = "tnnd.globalExistingRunner.v2";
+const ROTATION_ALARM = "tnnd.unifiedLauncher.singleTabRotation";
+const ROTATION_PERIOD_MINUTES = 0.5;
+interface AutoRotationState {
+  enabled: true;
+  autoCycle: true;
+  userId: string;
+  tabId: number;
+  mode: ManagedTinderActivity;
+  startedAt: number;
+  watcherStartedAt: number | null;
+  lastInboxVisitAt: number;
+  pendingReplies: number | null;
+  manualMode: null;
+  handoffBlock?: string | null;
+}
+let rotationBusy = false;
+async function ensureRotationAlarm(): Promise<void> {
+  if (!(await chrome.alarms.get(ROTATION_ALARM)))
+    await chrome.alarms.create(ROTATION_ALARM, { periodInMinutes: ROTATION_PERIOD_MINUTES });
+}
+async function activeAutoState(): Promise<AutoRotationState | null> {
+  const value = (await chrome.storage.local.get(MASTER))[MASTER] as Partial<AutoRotationState> | undefined;
+  return value?.enabled === true && value.autoCycle === true &&
+    typeof value.userId === "string" && typeof value.tabId === "number" &&
+    typeof value.startedAt === "number" && typeof value.lastInboxVisitAt === "number"
+    ? value as AutoRotationState : null;
+}
+/** Exactly one existing Tinder tab; never open a second logged-in session.
+ * Route changes are full navigations only after the prior runner is disarmed.
+ * Do not infer success from a URL request: verify route and content bridge.
+ */
+async function navigateOneTab(tabId: number, path: "/app/recs" | "/app/messages"): Promise<void> {
+  const tabs = (await chrome.tabs.query({
+    url: ["https://tinder.com/*", "https://www.tinder.com/*"]
+  })).filter(isTinderTab);
+  if (tabs.length !== 1 || tabs[0].id !== tabId)
+    throw new Error("single_tinder_tab_changed");
+  const url = new URL(tabs[0].url ?? "");
+  if (url.pathname.replace(/\\/+$/, "") !== path) {
+    await chrome.tabs.update(tabId, { url: url.origin + path });
+  }
+  await waitForTinderContentBridge(tabId);
+  const confirmed = await chrome.tabs.get(tabId);
+  if (!isTinderTab(confirmed) ||
+      new URL(confirmed.url ?? "").pathname.replace(/\\/+$/, "") !== path)
+    throw new Error("single_tinder_navigation_unconfirmed");
+}
 let commandEpoch = 0;
 let working = false;
 
