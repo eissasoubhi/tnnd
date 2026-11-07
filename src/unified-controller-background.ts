@@ -429,7 +429,10 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
       }
     }
     if (selected !== "swipe") {
-      if (automatic && !before.running) {
+      if (automatic && !before.running && !pausedSwipeReason) {
+        // A blocked/uncertain Swipe fallback must NOT reload the Tinder route.
+        // Preserve the legacy fail-closed watcher handoff without touching
+        // any potentially in-flight Like.
         // One existing tab; never create a competing Tinder session.
         await navigateOneTab(tabs[0].id, "/app/messages");
       }
