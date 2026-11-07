@@ -847,7 +847,8 @@ async function stop(reason = "Runner stopped. Tinder tab kept open."): Promise<G
   // Do not close a reused or newly created tab; it belongs to the user after
   // taking over the sole Tinder session. Never force logout by opening another.
   const next = activity({ ...state, enabled: false, autoOpenersEnabled: false, preferUnstartedMatches: false, manualActivity: null,
-    matchPhase: "idle", matchPhaseStartedAt: null, userId: null, pendingReplies: 0, watchedMatches: null, activeConversationRef: null, activeConversationUntil: null, pausedOnStop: state.tabId !== null }, "stopped", reason);
+    matchPhase: "idle", matchPhaseStartedAt: null, userId: null, pendingReplies: 0, watchedMatches: null, activeConversationRef: null, activeConversationUntil: null,
+    awaitingChatRef: null, awaitingChatSince: null, pausedOnStop: state.tabId !== null }, "stopped", reason);
   await save(next);
   await chrome.alarms.clear(ALARM);
   return next;
@@ -879,9 +880,20 @@ async function contentEvent(sender: chrome.runtime.MessageSender, message: { pha
   // only observed incoming or confirmed outgoing events affect activity scores.
   const focus = fresh.mode === "watcher" && (phase === "incoming" || phase === "sent")
     ? followConversationAfterSignal(fresh, senderRef, phase) : {};
+  // ONLY a definitive content-script outcome acknowledges a checked visit.
+  // The "incoming" notification or a future scheduled reply is not success.
+  // Skipped/error still need a later recheck if a real incoming turn exists.
+  const outcome = ["sent", "skipped", "error"].includes(phase);
+  const completedVisit = outcome && fresh.awaitingChatRef === senderRef;
+  if (completedVisit && fresh.userId) {
+    const index = await readWorkIndex(fresh.userId);
+    if (index && index.threads.some(entry => entry.ref === senderRef))
+      await saveWorkIndex(markThreadChecked(index, senderRef));
+  }
   await save({
     ...activity({
       ...fresh, ...focus,
+      ...(completedVisit ? { awaitingChatRef: null, awaitingChatSince: null } : {}),
       ...(phase === "incoming" ? { lastIncomingAt: new Date().toISOString() } : {})
     }, phase, detail, senderRef),
     nextReplyAt
