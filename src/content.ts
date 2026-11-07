@@ -1294,6 +1294,47 @@ function scheduleScan(): void {
   }, delay);
 }
 
+/** Explicit catch-up trigger after the watcher confirms opening a Tinder
+ * conversation. A DOM MutationObserver event is not reliable evidence that
+ * the *new* thread has been inspected: it may have fired before the watcher
+ * stored its new lastRef, so its report was rejected as belonging to the
+ * previously selected thread. Re-run after SPA settling, without awaiting the
+ * model response in this Chrome message handler.
+ *
+ * This opens NO tabs, accesses NO private Tinder API and DOES NOT bypass the
+ * verified incoming-message, consent or one-shot send checks in scan().
+ */
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (!message || typeof message !== "object" ||
+      (message as { type?: unknown }).type !== "TNND_EXISTING_SCAN_OPENED_THREAD") return false;
+  const ref = (message as { ref?: unknown }).ref;
+  if (sender.id !== chrome.runtime.id || !hasLiveExtensionContext() ||
+      typeof ref !== "string" || !/^[a-zA-Z0-9_-]{3,512}$/.test(ref) ||
+      currentConversationRef() !== ref) {
+    sendResponse({ ok: false, reason: "tinder_thread_not_confirmed" });
+    return false;
+  }
+  // The status is just a read-only preliminary diagnostic; scan() still
+  // independently verifies everything before it can generate or send.
+  const inspection = adapter.inspectUnanswered();
+  const diagnostic = adapter.diagnose();
+  const delay = Math.max(80, spaNavigationSettlesAt - Date.now() + 100);
+  window.setTimeout(() => {
+    if (!hasLiveExtensionContext() || currentConversationRef() !== ref) return;
+    // Distinguish an explicit backlog check from a future Tinder event.
+    // scan() owns busy/rescanRequestedWhileBusy, so concurrent AI work is safe.
+    void scan();
+  }, delay);
+  sendResponse({
+    ok: true, status: inspection.status,
+    composerFound: diagnostic.composerFound,
+    incoming: diagnostic.directionCounts.them,
+    outgoing: diagnostic.directionCounts.me,
+    unknown: diagnostic.directionCounts.unknown
+  });
+  return false;
+});
+
 // Executed only after the background worker claims a durable account/device
 // attempt. Content reports only outcome codes, never private Tinder card data.
 chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
