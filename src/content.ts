@@ -596,6 +596,7 @@ async function scan(): Promise<void> {
     // API against a verified persisted message tail; NEVER local keyword regex.
     // Unknown/unavailable classifications do not authorize an automatic send.
     let boundary: ConversationBoundary;
+    reportExistingRunner("generating", "Vérification IA de la conversation non répondue et de son historique…");
     try {
       const decision = await syncObservedConversationBoundary(conversationRef,visible);
       boundary = decision.boundary as ConversationBoundary;
@@ -653,9 +654,16 @@ async function scan(): Promise<void> {
       reportExistingRunner("skipped", "Chat changed while waiting; this reply was not sent.");
       return;
     }
-    if (currentConversationRef() !== conversationRef || !await existingRepliesAllowedByMode() || !await backendAllowsAutomaticReply(conversationRef)) return;
+    if (currentConversationRef() !== conversationRef || !await existingRepliesAllowedByMode() ||
+        !await backendAllowsAutomaticReply(conversationRef)) {
+      reportExistingRunner("skipped", "Conversation ou autorisation modifiée pendant l'attente : aucune réponse envoyée.");
+      return;
+    }
     const stillEnabled = await getChatAutomationEnabled(currentSnapshot.threadKey);
-    if (stillEnabled !== true) return;
+    if (stillEnabled !== true) {
+      reportExistingRunner("skipped", "Réponses automatiques désactivées pour ce chat pendant l'attente.");
+      return;
+    }
 
     const recheckMessages = adapter.readVisibleMessages().map(message => ({
       direction: message.direction === "them" ? "incoming" as const : "outgoing" as const,
@@ -683,8 +691,14 @@ async function scan(): Promise<void> {
     if (currentConversationRef() !== conversationRef
       || tinderThreadKeyFromPath(location.pathname) !== currentSnapshot.threadKey
       || !await existingRepliesAllowedByMode()
-      || !await backendAllowsAutomaticReply(conversationRef) || await autoReplyPausedAfterGlobalStop(conversationRef)) return;
-    if (await getChatAutomationEnabled(currentSnapshot.threadKey) !== true) return;
+      || !await backendAllowsAutomaticReply(conversationRef) || await autoReplyPausedAfterGlobalStop(conversationRef)) {
+      reportExistingRunner("skipped", "Conversation, compte ou autorisation modifiés après génération : envoi annulé.");
+      return;
+    }
+    if (await getChatAutomationEnabled(currentSnapshot.threadKey) !== true) {
+      reportExistingRunner("skipped", "Chat désactivé après génération : envoi annulé.");
+      return;
+    }
     // A match may have sent a newer message or the user may have replied
     // while Gemini generated; never send an obsolete answer.
     const finalSnapshot = adapter.read();
@@ -720,7 +734,10 @@ async function scan(): Promise<void> {
     const freshState = await getState();
     if (!freshState || freshState.dailyCount >= config.automation.maxAutoRepliesPerDay
       || freshState.processed[finalSnapshot.latestIncomingKey]
-      || (finalSnapshot.legacyIncomingKey && freshState.processed[finalSnapshot.legacyIncomingKey])) return;
+      || (finalSnapshot.legacyIncomingKey && freshState.processed[finalSnapshot.legacyIncomingKey])) {
+      reportExistingRunner("skipped", "Envoi annulé : limite de réponses, état indisponible ou dernier message déjà traité.");
+      return;
+    }
     // Durable one-shot send claim BEFORE touching Tinder. A failed/uncertain
     // click must never be automatically retried on an ancient unanswered chat.
     freshState.processed[finalSnapshot.latestIncomingKey] = Date.now();
