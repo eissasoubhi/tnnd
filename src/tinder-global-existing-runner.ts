@@ -83,6 +83,9 @@ interface GlobalExistingRunnerState {
   startedAt: string | null;
   lastActionAt: string | null;
   lastVisitAt: string | null;
+  /** Pending opened Tinder chat, not yet evaluated by the reply engine. */
+  awaitingChatRef: string | null;
+  awaitingChatSince: string | null;
   lastError: string | null;
   activity: RunnerActivity[];
 }
@@ -92,6 +95,7 @@ const initial = (): GlobalExistingRunnerState => ({
   phase: "stopped", dwellSeconds: DEFAULT_CADENCE, phaseDetail: "Runner stopped.", nextReplyAt: null, currentLabel: null,
   eligibleCount: 0, visitedCount: 0, sentCount: 0, skippedCount: 0, errorCount: 0,
   lastRef: null, activeConversationRef: null, activeConversationUntil: null, conversationActivities: [], attentionCapSeconds: DEFAULT_ATTENTION_CAP_SECONDS, cursorRef: null, startedAt: null, lastActionAt: null, lastVisitAt: null,
+  awaitingChatRef: null, awaitingChatSince: null,
   lastError: null, activity: []
 });
 let busy = false;
@@ -139,6 +143,10 @@ async function load(): Promise<GlobalExistingRunnerState> {
     nextReplyAt: value.phase === "waiting" && typeof value.nextReplyAt === "string" &&
       Number.isFinite(Date.parse(value.nextReplyAt)) ? value.nextReplyAt : null,
     activeConversationRef: typeof value.activeConversationRef === "string" ? value.activeConversationRef : null,
+    awaitingChatRef: typeof value.awaitingChatRef === "string" &&
+      /^[a-zA-Z0-9_-]{3,512}$/.test(value.awaitingChatRef) ? value.awaitingChatRef : null,
+    awaitingChatSince: typeof value.awaitingChatSince === "string" &&
+      Number.isFinite(Date.parse(value.awaitingChatSince)) ? value.awaitingChatSince : null,
     activeConversationUntil: typeof value.activeConversationUntil === "string" ? value.activeConversationUntil : null,
     conversationActivities: normalizeConversationActivities(value.conversationActivities),
     attentionCapSeconds: await getAttentionCapSeconds(value.userId ?? null),
@@ -503,6 +511,31 @@ async function tick(): Promise<void> {
   try {
     const state = await load();
     if (!state.enabled) return;
+    // Opening a Tinder chat is not completing its reply. Keep the tab on the
+    // same thread while content script checks the transcript, permissions,
+    // AI decision and send confirmation.
+    if (state.mode === "watcher" && state.awaitingChatRef && state.awaitingChatSince) {
+      const age = Date.now() - Date.parse(state.awaitingChatSince);
+      const config = await getConfig();
+      const leaseMs = (Math.min(3600, Math.max(0,
+        Number(config.automation.replyDelayMaxSeconds) || 60)) + 180) * 1000;
+      const replyInProgress = ["generating", "sending"].includes(state.phase) ||
+        (state.phase === "waiting" && state.nextReplyAt !== null);
+      if (replyInProgress && age >= leaseMs) {
+        // A potentially irreversible action has no confirmed result.
+        await save(activity({ ...state, enabled: false, pausedOnStop: true },
+          "error", "Réponse en cours non confirmée. Vérifie Tinder avant de reprendre. Pas de nouvel envoi."));
+        await chrome.alarms.clear(ALARM);
+        return;
+      }
+      if (replyInProgress || age < 30_000) return;
+      const stored = await readWorkIndex(state.userId ?? "");
+      if (stored && stored.threads.some(entry => entry.ref === state.awaitingChatRef))
+        await saveWorkIndex(markThreadChecked(stored, state.awaitingChatRef));
+      await save(activity({ ...state, awaitingChatRef: null, awaitingChatSince: null },
+        "skipped", "Analyse non confirmée après 30 s : aucune réponse validée, nouvelle vérification programmée.", state.awaitingChatRef));
+      return;
+    }
     if (isStalledOpening(state.phase, state.lastActionAt)) {
       // Chrome can suspend the worker between a navigation and its response.
       // Do not leave an old Opening chat state running for minutes.
@@ -664,8 +697,9 @@ async function tick(): Promise<void> {
     }
     const latest = await load();
     if (!latest.enabled) return;
-    const checked = markThreadChecked(queued, nextRef);
-    await saveWorkIndex(checked);
+    // Opened is not answered. The content-script outcome acknowledges this
+    // thread later; the queue must remain pending during AI processing.
+    const checked = queued;
     const name = typeof result.identity?.firstName === "string" &&
       /^[\p{L}][\p{L}\p{M}\p{N} ._'’\-]{1,79}$/u.test(result.identity.firstName)
       ? result.identity.firstName : null;
@@ -673,12 +707,14 @@ async function tick(): Promise<void> {
     // Merely opening an old conversation is not proof that the match is online.
     // A cold thread gets only a short observation window.
     await save(activity({ ...latest, pendingReplies: pendingWatchedReplies(checked), lastRef: nextRef,
+      awaitingChatRef: nextRef, awaitingChatSince: new Date().toISOString(),
       ...(latest.mode === "watcher" ? followConversationAfterSignal(latest, nextRef, "opened") : {}),
       cursorRef: nextRef, currentLabel: displayedLabel, visitedCount: latest.visitedCount + 1,
       lastVisitAt: new Date().toISOString() }, "waiting",
       `Opened ${displayedLabel}. Listening for incoming replies.`, nextRef));
     // Reply sending remains solely in Tinder content script, guarded by both
     // server management and per-chat settings. Runner never calls Send.
+    // A visit without a confirmed outcome is NOT counted as completed.
   } catch (error) {
     const latest = await load();
     if (latest.enabled) {
