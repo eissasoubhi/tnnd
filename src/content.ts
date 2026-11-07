@@ -547,7 +547,8 @@ async function scan(): Promise<void> {
         "no-incoming": "No incoming message found in the visible chat.",
         "unanswered": "Last incoming message could not be read safely; no reply sent."
       }[inspection.status] ?? "Cannot identify an unanswered message.";
-      reportExistingRunner(inspection.status === "unrecognized-direction" ? "skipped" : "waiting", explanation);
+      const terminalInspection = ["already-replied", "no-incoming", "unrecognized-direction"].includes(inspection.status);
+      reportExistingRunner(terminalInspection ? "skipped" : "waiting", explanation);
       return;
     }
     const conversationRef = currentConversationRef();
