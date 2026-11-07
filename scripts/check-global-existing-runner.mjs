@@ -58,7 +58,7 @@ test("operational runner states are persisted and reported without Tinder messag
  const html = await readFile(new URL("../public/popup.html", import.meta.url), "utf8");
  const bridge = await readFile(new URL("../src/web-diagnostic-bridge.ts", import.meta.url), "utf8");
  const panel = await readFile(new URL("../apps/web/src/conversation-management-panel.ts", import.meta.url), "utf8");
- assert.match(runner, /LOG_LIMIT = 16/);
+ assert.match(runner, /LOG_LIMIT = 50/);
  assert.match(runner, /lastActionAt/);
  assert.match(runner, /visitedCount/);
  assert.match(runner, /sentCount/);

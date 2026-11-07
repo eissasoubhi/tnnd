@@ -17,7 +17,7 @@ test("all extension views load the shared Neo Bento stylesheet after their local
 });
 
 test("extension build copies the shared stylesheet into dist", () => {
-  assert.ok(read("scripts/build.mjs").includes('"popup.html", "launcher.html", "connect.html", "neo-bento.css"'));
+  assert.ok(read("scripts/build.mjs").includes('"popup.html", "launcher.html", "chat-journal.html", "connect.html", "neo-bento.css"'));
   assert.ok(read("public/launcher.html").includes('href="neo-bento.css"'));
 });
 
@@ -89,7 +89,7 @@ test("toolbar launcher keeps global Stop, three accessible tabs and one manual m
   const launcher = read("public/launcher.html");
   const controller = read("src/launcher.ts");
   assert.equal(manifest.action.default_popup, "launcher.html");
-  assert.equal(launcher.split("<button ").length - 1, 6);
+  assert.equal(launcher.split("<button ").length - 1, 7);
   for (const mode of ["swipe", "new-match", "active-chat"]) {
     assert.match(launcher, new RegExp('data-activity="' + mode + '"'));
   }
@@ -107,7 +107,7 @@ test("missing extension session still uses credential page, without credentials 
   const connectPage = read("public/connect.html");
   const handler = read("src/launcher.ts");
   const auth = read("src/connect.ts");
-  assert.equal(launcher.split("<button ").length - 1, 6);
+  assert.equal(launcher.split("<button ").length - 1, 7);
   for (const mode of ["swipe", "new-match", "active-chat"]) {
     assert.match(launcher, new RegExp('data-activity="' + mode + '"'));
   }

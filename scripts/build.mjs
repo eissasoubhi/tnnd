@@ -8,7 +8,7 @@ const root = process.cwd();
 const outDir = resolve(root, "dist");
 await rm(outDir, { recursive: true, force: true });
 await mkdir(resolve(outDir, "assets"), { recursive: true });
-for (const file of ["manifest.json", "options.html", "preview.html", "popup.html", "launcher.html", "connect.html", "neo-bento.css"]) await cp(resolve(root, `public/${file}`), resolve(outDir, file));
+for (const file of ["manifest.json", "options.html", "preview.html", "popup.html", "launcher.html", "chat-journal.html", "connect.html", "neo-bento.css"]) await cp(resolve(root, `public/${file}`), resolve(outDir, file));
 
 // Create build provenance on EVERY local/Docker/CI build, not only in a
 // later GitHub Actions upload step. A missing Git commit is an error: do not
@@ -61,6 +61,7 @@ const entries = [
   ["web-ui-audit-content", "src/web-ui-audit-content.ts"],
   ["popup", "src/popup.ts"],
   ["launcher", "src/launcher.ts"],
+  ["chat-journal", "src/chat-journal.ts"],
   ["connect", "src/connect.ts"]
 ];
 const builds = entries.map(([name, entry]) => build({
