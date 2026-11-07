@@ -439,7 +439,10 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
       // The established watcher performs BOTH authorized chat/match tasks.
       // Swipe's original quota/uncertain attempts remain untouched; no Likes.
       if (epoch !== commandEpoch) return { ok: false, reason: "Démarrage annulé par Stop." };
-      const openers = automatic ? settings.priority.includes("new-match") : selected === "new-match";
+      // A failed Swipe with a non-reconciled Like remains in the legacy
+      // Chat-only fallback: do not silently arm first-message sends.
+      const openers = automatic && !pausedSwipeReason
+        ? settings.priority.includes("new-match") : selected === "new-match";
       const result = await startExistingRunner(false, "watcher", openers,
         !automatic && selected === "new-match", requestedMode === "new-match" || requestedMode === "active-chat" ? requestedMode : null);
       if (!result.enabled || result.mode !== "watcher")
