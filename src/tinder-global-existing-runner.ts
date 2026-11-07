@@ -86,6 +86,8 @@ interface GlobalExistingRunnerState {
   /** Pending opened Tinder chat, not yet evaluated by the reply engine. */
   awaitingChatRef: string | null;
   awaitingChatSince: string | null;
+  /** Number of explicit scans requested for this opened thread. */
+  awaitingChatScanAttempts: number;
   lastError: string | null;
   activity: RunnerActivity[];
 }
@@ -95,7 +97,7 @@ const initial = (): GlobalExistingRunnerState => ({
   phase: "stopped", dwellSeconds: DEFAULT_CADENCE, phaseDetail: "Runner stopped.", nextReplyAt: null, currentLabel: null,
   eligibleCount: 0, visitedCount: 0, sentCount: 0, skippedCount: 0, errorCount: 0,
   lastRef: null, activeConversationRef: null, activeConversationUntil: null, conversationActivities: [], attentionCapSeconds: DEFAULT_ATTENTION_CAP_SECONDS, cursorRef: null, startedAt: null, lastActionAt: null, lastVisitAt: null,
-  awaitingChatRef: null, awaitingChatSince: null,
+  awaitingChatRef: null, awaitingChatSince: null, awaitingChatScanAttempts: 0,
   lastError: null, activity: []
 });
 let busy = false;
@@ -147,6 +149,9 @@ async function load(): Promise<GlobalExistingRunnerState> {
       /^[a-zA-Z0-9_-]{3,512}$/.test(value.awaitingChatRef) ? value.awaitingChatRef : null,
     awaitingChatSince: typeof value.awaitingChatSince === "string" &&
       Number.isFinite(Date.parse(value.awaitingChatSince)) ? value.awaitingChatSince : null,
+    awaitingChatScanAttempts: Number.isSafeInteger(value.awaitingChatScanAttempts ?? -1) &&
+      (value.awaitingChatScanAttempts ?? 0) >= 0 &&
+      (value.awaitingChatScanAttempts ?? 0) <= 2 ? value.awaitingChatScanAttempts! : 0,
     activeConversationUntil: typeof value.activeConversationUntil === "string" ? value.activeConversationUntil : null,
     conversationActivities: normalizeConversationActivities(value.conversationActivities),
     attentionCapSeconds: await getAttentionCapSeconds(value.userId ?? null),
@@ -505,6 +510,29 @@ async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void>
     !stillPending);
 }
 
+/** Only a read-only inspection request. Generation and Sending stay inside
+ * the content script's existing verified permission & one-shot claim flow.
+ */
+async function requestOpenedChatScan(
+  tabId: number, ref: string
+): Promise<{ ok: boolean; status?: string; incoming?: number; outgoing?: number;
+  unknown?: number; reason?: string }> {
+  try {
+    const result = await chrome.tabs.sendMessage(tabId, {
+      type: "TNND_EXISTING_SCAN_OPENED_THREAD", ref
+    }) as { ok?: unknown; status?: unknown; incoming?: unknown; outgoing?: unknown;
+      unknown?: unknown; reason?: unknown } | undefined;
+    return result?.ok === true
+      ? { ok: true, status: typeof result.status === "string" ? result.status : "indisponible",
+          incoming: typeof result.incoming === "number" ? result.incoming : undefined,
+          outgoing: typeof result.outgoing === "number" ? result.outgoing : undefined,
+          unknown: typeof result.unknown === "number" ? result.unknown : undefined }
+      : { ok: false, reason: typeof result?.reason === "string" ? result.reason : "scan_non_confirmé" };
+  } catch (error) {
+    return { ok: false, reason: isMissingTinderReceiver(error)
+      ? "extension_non_chargée_sur_Tinder" : "scan_communication_indisponible" };
+  }
+}
 async function tick(): Promise<void> {
   if (busy) return;
   busy = true;
@@ -529,11 +557,32 @@ async function tick(): Promise<void> {
         return;
       }
       if (replyInProgress || age < 30_000) return;
+      // If nothing came back at all, the former observer-only approach
+      // silently abandoned OLD unanswered conversations. Probe this very
+      // thread a second time, instead of treating it as answered.
+      if (state.awaitingChatScanAttempts < 2 && state.tabId !== null) {
+        const tab = await chrome.tabs.get(state.tabId).catch(() => null);
+        if (!tab || tinderRefFromUrl(tab.url) !== state.awaitingChatRef) {
+          await save(activity({ ...state, enabled: false, pausedOnStop: true }, "error",
+            "Conversation Tinder modifiée pendant l'analyse. Aucun envoi automatique autorisé."));
+          await chrome.alarms.clear(ALARM);
+          return;
+        }
+        const probe = await requestOpenedChatScan(state.tabId, state.awaitingChatRef);
+        await save(activity({
+          ...state, awaitingChatScanAttempts: 2,
+          awaitingChatSince: new Date().toISOString()
+        }, probe.ok ? "checking" : "error",
+          probe.ok ? `Nouvelle analyse du message déjà reçu (statut Tinder : ${probe.status}).`
+            : `Impossible d'analyser le chat ouvert : ${probe.reason}. Vérification différée.`,
+          state.awaitingChatRef));
+        return;
+      }
       const stored = await readWorkIndex(state.userId ?? "");
       if (stored && stored.threads.some(entry => entry.ref === state.awaitingChatRef))
         await saveWorkIndex(markThreadChecked(stored, state.awaitingChatRef));
       await save(activity({ ...state, awaitingChatRef: null, awaitingChatSince: null },
-        "skipped", "Analyse non confirmée après 30 s : aucune réponse validée, nouvelle vérification programmée.", state.awaitingChatRef));
+        "skipped", "Aucun résultat du moteur Chat après deux scans explicites. Message toujours à vérifier ; aucune réponse confirmée.", state.awaitingChatRef));
       return;
     }
     if (isStalledOpening(state.phase, state.lastActionAt)) {
@@ -708,10 +757,28 @@ async function tick(): Promise<void> {
     // A cold thread gets only a short observation window.
     await save(activity({ ...latest, pendingReplies: pendingWatchedReplies(checked), lastRef: nextRef,
       awaitingChatRef: nextRef, awaitingChatSince: new Date().toISOString(),
+      awaitingChatScanAttempts: 0,
       ...(latest.mode === "watcher" ? followConversationAfterSignal(latest, nextRef, "opened") : {}),
       cursorRef: nextRef, currentLabel: displayedLabel, visitedCount: latest.visitedCount + 1,
       lastVisitAt: new Date().toISOString() }, "waiting",
-      `Opened ${displayedLabel}. Listening for incoming replies.`, nextRef));
+      `Opened ${displayedLabel}. Checking existing unanswered messages (including old ones).`, nextRef));
+    // Trigger an explicit scan AFTER the latest lastRef/awaitingChatRef is
+    // persisted. Earlier DOM-triggered scans were sometimes reported before
+    // the watcher knew which chat it had opened; their events were discarded.
+    const probe = await requestOpenedChatScan(tabId, nextRef);
+    const inFlight = await load();
+    if (inFlight.enabled && inFlight.awaitingChatRef === nextRef &&
+        inFlight.tabId === tabId && inFlight.startedAt === latest.startedAt &&
+        inFlight.phase === "waiting" &&
+        inFlight.phaseDetail.startsWith("Opened ")) {
+      // A fast content event may already have reached the worker. Do not
+      // overwrite an AI decision or a Send state with this probe's metadata.
+      await save(activity({ ...inFlight, awaitingChatScanAttempts: 1 },
+        probe.ok ? "checking" : "error",
+        probe.ok
+          ? `Dernier message Tinder analysé à l'ouverture : ${probe.status}. ${probe.incoming ?? "?"} reçu(s), ${probe.outgoing ?? "?"} envoyé(s), ${probe.unknown ?? "?"} direction(s) inconnue(s). Vérification IA en cours.`
+          : `Scan immédiat impossible : ${probe.reason}. Nouvel essai prévu sans attendre un nouveau message.`, nextRef));
+    }
     // Reply sending remains solely in Tinder content script, guarded by both
     // server management and per-chat settings. Runner never calls Send.
     // A visit without a confirmed outcome is NOT counted as completed.
@@ -848,7 +915,7 @@ async function stop(reason = "Runner stopped. Tinder tab kept open."): Promise<G
   // taking over the sole Tinder session. Never force logout by opening another.
   const next = activity({ ...state, enabled: false, autoOpenersEnabled: false, preferUnstartedMatches: false, manualActivity: null,
     matchPhase: "idle", matchPhaseStartedAt: null, userId: null, pendingReplies: 0, watchedMatches: null, activeConversationRef: null, activeConversationUntil: null,
-    awaitingChatRef: null, awaitingChatSince: null, pausedOnStop: state.tabId !== null }, "stopped", reason);
+    awaitingChatRef: null, awaitingChatSince: null, awaitingChatScanAttempts: 0, pausedOnStop: state.tabId !== null }, "stopped", reason);
   await save(next);
   await chrome.alarms.clear(ALARM);
   return next;
@@ -893,7 +960,7 @@ async function contentEvent(sender: chrome.runtime.MessageSender, message: { pha
   await save({
     ...activity({
       ...fresh, ...focus,
-      ...(completedVisit ? { awaitingChatRef: null, awaitingChatSince: null } : {}),
+      ...(completedVisit ? { awaitingChatRef: null, awaitingChatSince: null, awaitingChatScanAttempts: 0 } : {}),
       ...(phase === "incoming" ? { lastIncomingAt: new Date().toISOString() } : {})
     }, phase, detail, senderRef),
     nextReplyAt

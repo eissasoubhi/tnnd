@@ -173,6 +173,37 @@ test("watcher keeps bounded observed unread list after worker restart",async()=>
  assert.match(runner,/chrome\.runtime\.onStartup\.addListener/);
 });
 
+test("opening a Tinder thread explicitly scans its EXISTING messages without waiting for a new incoming event", async () => {
+  const [runner, content] = await Promise.all([
+    "src/tinder-global-existing-runner.ts", "src/content.ts"
+  ].map(path => readFile(new URL("../" + path, import.meta.url), "utf8")));
+  const opened = runner.slice(runner.indexOf("const displayedLabel = name ?? label;"),
+    runner.indexOf("  } catch (error) {", runner.indexOf("const displayedLabel = name ?? label;")));
+  assert.match(opened, /await save\(activity\(/,
+    "the watcher must persist the new lastRef first to accept content reports");
+  assert.match(opened, /const probe = await requestOpenedChatScan\(tabId, nextRef\)/,
+    "opening a chat must explicitly trigger inspection of old messages");
+  assert.ok(opened.indexOf("const probe = await requestOpenedChatScan") >
+    opened.indexOf("Opened ${displayedLabel}"),
+    "content reports must not race ahead of the persisted lastRef");
+  assert.match(runner, /TNND_EXISTING_SCAN_OPENED_THREAD/);
+  assert.match(runner, /awaitingChatScanAttempts < 2/);
+  assert.match(runner, /Aucun résultat du moteur Chat après deux scans explicites/);
+  const handler = content.slice(content.indexOf('type?: unknown }).type !== "TNND_EXISTING_SCAN_OPENED_THREAD"') - 300,
+    content.indexOf("// Executed only after the background worker claims"));
+  assert.match(handler, /currentConversationRef\(\) !== ref/);
+  assert.match(handler, /adapter\.inspectUnanswered\(\)/);
+  assert.match(handler, /spaNavigationSettlesAt - Date\.now\(\)/);
+  assert.match(handler, /void scan\(\)/);
+  assert.match(content, /Unanswered incoming message found \(old or new\)/);
+  assert.match(content, /backendAllowsAutomaticReply\(conversationRef\)/);
+  assert.match(content, /freshState\.processed\[finalSnapshot\.latestIncomingKey\]/);
+  // Negative Tinder status closes an already replied thread; a still-loading
+  // transcript receives a distinct waiting reason, never an invented Send.
+  assert.match(content, /"already-replied", "no-incoming", "unrecognized-direction"/);
+  assert.match(content, /Tinder chat composer not ready/);
+});
+
 test("opening an old incoming chat does not acknowledge the reply before content confirms an outcome", async () => {
   const runner = await readFile(new URL("../src/tinder-global-existing-runner.ts", import.meta.url), "utf8");
   const opening = runner.slice(runner.indexOf('const result = await withSpaNavigationTimeout('),
@@ -243,7 +274,7 @@ test("watcher extends focus after distinct incoming/sent events, not an old proc
   assert.match(runner,/followConversationAfterSignal\(next, activeRef, "opened"\)/);
   assert.match(runner,/phase === "incoming" \|\| phase === "sent"/);
   assert.match(content,/lastWatchedIncomingEvidence\.get\(conversationRef\) !== incomingEvidence/);
-  assert.match(content,/reportExistingRunner\("incoming", "New reply in the current conversation\."\)/);
+  assert.match(content,/reportExistingRunner\("incoming", "Message entrant sans réponse détecté dans la conversation ouverte \(ancien ou nouveau\)\."\)/);
   assert.match(content,/phase !== "sent" && phase !== "incoming"/);
   const watcherPopupStatus = await readFile(new URL("../src/tinder-watcher-popup-status.ts", import.meta.url), "utf8");
   assert.match(watcherPopupStatus,/Following current conversation/);

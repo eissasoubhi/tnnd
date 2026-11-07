@@ -83,6 +83,13 @@ const fakeMatches = `<!doctype html><html><head><title>Fictional Matches fixture
 <nav aria-label="Matches"><a class="matchListItem" href="/app/messages/fixture-a">Fixture A</a>
 <a class="matchListItem" href="/app/messages/fixture-b">Fixture B</a></nav>
 </body></html>`;
+const fakeOldUnanswered = `<!doctype html><html><head><title>Fictional old incoming message</title>
+<style>body{font:14px sans-serif}.chat{width:640px}textarea{width:480px;height:40px}.msg{width:240px;padding:12px}.msg--received{background:#eee}.chat-bubble-send{background:#dfbecb}</style></head><body>
+<div class="chat"><ol aria-label="Messages">
+<li><div role="article"><div class="msg chat-bubble-send"><span class="text">Salut</span></div></div></li>
+<li><div role="article"><div class="msg msg--received"><span class="text">Coucou</span></div></div></li>
+</ol><form><textarea aria-label="Type a message" placeholder="Type a message"></textarea>
+<button type="submit" aria-label="Send message">Send</button></form></div></body></html>`;
 
 let context, profile, extensionId, tinder, popup;
 async function launch() {
@@ -103,6 +110,8 @@ async function launch() {
       // previously concealed the broken one-tab orchestrator redirect.
       if (url.pathname === "/app/messages")
         return route.fulfill({ status: 404, contentType: "text/html", body: "Tinder 404: Messages requires native SPA navigation" });
+      if (url.pathname === "/app/messages/fixture-old-incoming")
+        return route.fulfill({ status: 200, contentType: "text/html", body: fakeOldUnanswered });
       return route.fulfill({ status: 200, contentType: "text/html",
         body: url.pathname === "/app/matches" ? fakeMatches : fakeTinder });
     }
@@ -231,6 +240,29 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await worker.evaluate(({ key, before }) =>
         before === undefined ? chrome.storage.local.remove(key) :
           chrome.storage.local.set({ [key]: before }), { key, before });
+    }
+  });
+
+  test("explicit backlog scan recognizes an OLD incoming Tinder message without waiting for a new event", async () => {
+    try {
+      await tinder.goto("https://tinder.com/app/messages/fixture-old-incoming");
+      const reply = await popup.evaluate(async () => {
+        const tabs = await chrome.tabs.query({
+          url: ["https://tinder.com/*", "https://www.tinder.com/*"]
+        });
+        return chrome.tabs.sendMessage(tabs[0].id, {
+          type: "TNND_EXISTING_SCAN_OPENED_THREAD", ref: "fixture-old-incoming"
+        });
+      });
+      expect(reply).toMatchObject({
+        ok: true, status: "unanswered",
+        composerFound: true, incoming: 1, outgoing: 1, unknown: 0
+      });
+      // Read-only scan does not itself click Send, invent backend permission,
+      // or open another Tinder tab, even though the message is old.
+      expect((await context.pages()).filter(page => page.url().startsWith("https://tinder.com"))).toHaveLength(1);
+    } finally {
+      await tinder.goto("https://tinder.com/app/recs");
     }
   });
 
