@@ -25,7 +25,7 @@ export interface ExistingThreadIndex {
  */
 export const RECHECK_IDLE_MS = 2 * 60_000;
 export const UNREAD_HINT_COOLDOWN_MS = 60_000;
-const LIMIT = 200;
+const LIMIT = 500;
 const goodRef = (ref: string) => Boolean(ref && ref.length <= 512 && !ref.includes("/"));
 export function reconcileExistingIndex(
   previous: ExistingThreadIndex | null,
@@ -107,7 +107,13 @@ export function observeTinderInbox(
       });
     }
   }
-  return { ...state, threads: [...threads.values()].slice(0, LIMIT), updatedAt: at };
+  // Prioritize the actually observed Tinder inventory when the backend has
+  // more records than can fit in the bounded index. No invisible DB row may
+  // silently evict a currently visible unsynced Tinder conversation.
+  const order = [...new Set(refs.filter(goodRef)), ...threads.keys()];
+  const selected = [...new Set(order)].map(ref => threads.get(ref))
+    .filter((entry): entry is IndexedThread => entry !== undefined).slice(0, LIMIT);
+  return { ...state, threads: selected, updatedAt: at };
 }
 
 export function markThreadChecked(
