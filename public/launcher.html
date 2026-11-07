@@ -40,6 +40,10 @@
     .mode-note { margin: 0; font-size: 12px; line-height: 1.5; color: #496458; overflow-wrap: anywhere; }
     .mode-meta { display: grid; gap: 6px; padding: 10px 11px; background: #f0f5ef; border-radius: 11px; }
     .mode-meta p { margin: 0; font-size: 12px; line-height: 1.45; }
+    .chat-panel-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    #openChatJournal { min-height: 36px; padding: 6px 11px; border: 1px solid #bdd1c3; border-radius: 10px; background: #eef5ed; color: #234b3d; font: inherit; font-size: 12px; font-weight: 750; cursor: pointer; white-space: nowrap; }
+    #openChatJournal:hover { background: #d9efcc; }
+    #openChatJournal:focus-visible { outline: 3px solid #8070dc; outline-offset: 2px; }
     #chatCountdown { font-variant-numeric: tabular-nums; font-weight: 700; color: #234b3d; }
     #reachedLimits { margin-top: 2px; padding: 11px 12px; border: 1px solid #cfded3; background: #f0f5ef; border-radius: 11px; }
     #reachedLimits[data-has-reached="true"] { border-color: #d9c5a1; background: #faf4e6; }
@@ -81,7 +85,9 @@
       <div class="mode-meta"><p id="matchesInfo" class="mode-note">Aucune activité Matches confirmée.</p></div>
     </section>
     <section id="panelChat" class="mode-panel" role="tabpanel" aria-labelledby="tabChat" hidden>
-      <h2>Conversations</h2>
+      <div class="chat-panel-title"><h2>Conversations</h2>
+        <button type="button" id="openChatJournal" aria-label="Ouvrir le journal d'activité Chat dans un nouvel onglet" title="Journal Chat · ouvrir un onglet">Journal ↗</button>
+      </div>
       <p class="mode-summary">Répond aux messages sans réponse après vérification. Les délais et refus sont indiqués ci-dessous.</p>
       <div class="mode-meta">
         <p id="chatInfo" class="mode-note">Aucune activité Chat confirmée.</p>
