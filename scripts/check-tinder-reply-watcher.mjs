@@ -173,6 +173,37 @@ test("watcher keeps bounded observed unread list after worker restart",async()=>
  assert.match(runner,/chrome\.runtime\.onStartup\.addListener/);
 });
 
+test("opening an old incoming chat does not acknowledge the reply before content confirms an outcome", async () => {
+  const runner = await readFile(new URL("../src/tinder-global-existing-runner.ts", import.meta.url), "utf8");
+  const opening = runner.slice(runner.indexOf('const result = await withSpaNavigationTimeout('),
+    runner.indexOf('  } catch (error) {', runner.indexOf('const result = await withSpaNavigationTimeout(')));
+  assert.match(opening, /awaitingChatRef: nextRef/);
+  assert.match(opening, /awaitingChatSince: new Date\(\)\.toISOString\(\)/);
+  assert.doesNotMatch(opening, /markThreadChecked\(queued, nextRef\)/,
+    "a successful navigation is NOT a confirmed reply or completed inspection");
+  const event = runner.slice(runner.indexOf("async function contentEvent("),
+    runner.indexOf("chrome.alarms.onAlarm.addListener(", runner.indexOf("async function contentEvent(")));
+  assert.match(event, /completedVisit = outcome && fresh\.awaitingChatRef === senderRef/);
+  assert.match(event, /\["sent", "skipped", "error"\]\.includes\(phase\)/);
+  assert.match(event, /await saveWorkIndex\(markThreadChecked\(index, senderRef\)\)/);
+  assert.match(event, /awaitingChatRef: null, awaitingChatSince: null/);
+  const tick = runner.slice(runner.indexOf("async function tick(): Promise<void> {"),
+    runner.indexOf("const dwellSeconds = await getCadenceSeconds();", runner.indexOf("async function tick(): Promise<void> {")));
+  assert.match(tick, /if \(replyInProgress \|\| age < 30_000\) return/);
+  assert.match(tick, /enabled: false, pausedOnStop: true/,
+    "ambiguous send after lease expiry must fail closed");
+  const pending = reconcileExistingIndex(null, "user", [
+    source("amiraOldMessage", "incoming"), source("oumaOldMessage", "incoming")
+  ], base);
+  assert.equal(pendingWatchedReplies(pending), 2);
+  assert.equal(nextWatchedReply(pending), "amiraOldMessage");
+  // Merely visiting Amira must not call markThreadChecked: Ouma cannot steal
+  // the Tinder tab while Amira's scheduled AI reply is still being prepared.
+  assert.equal(pendingWatchedReplies(pending), 2);
+  assert.equal(nextWatchedReply(markThreadChecked(pending, "amiraOldMessage")), "oumaOldMessage",
+    "only a terminal outcome can let the watcher move on");
+});
+
 test("watcher keeps an active chat only while its measured attention window lasts",()=>{
   const at=Date.parse("2026-10-14T20:00:00Z");
   let work=reconcileExistingIndex(null,"user",[
