@@ -571,7 +571,7 @@ async function scan(): Promise<void> {
       if (lastWatchedIncomingEvidence.size > 100) {
         lastWatchedIncomingEvidence.delete(lastWatchedIncomingEvidence.keys().next().value!);
       }
-      reportExistingRunner("incoming", "New reply in the current conversation.");
+      reportExistingRunner("incoming", "Message entrant sans réponse détecté dans la conversation ouverte (ancien ou nouveau).");
     }
     if (!await existingRepliesAllowedByMode()) {
       reportExistingRunner("skipped", "Manual Matches mode selected; existing-chat reply deferred.");
