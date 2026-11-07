@@ -17,7 +17,7 @@ test("all extension views load the shared Neo Bento stylesheet after their local
 });
 
 test("extension build copies the shared stylesheet into dist", () => {
-  assert.ok(read("scripts/build.mjs").includes('"popup.html", "launcher.html", "connect.html", "neo-bento.css"'));
+  assert.ok(read("scripts/build.mjs").includes('"popup.html", "launcher.html", "chat-journal.html", "connect.html", "neo-bento.css"'));
   assert.ok(read("public/launcher.html").includes('href="neo-bento.css"'));
 });
 
