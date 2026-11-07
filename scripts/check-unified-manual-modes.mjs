@@ -50,7 +50,7 @@ test("legacy daily Right Likes cap no longer blocks Swipe, Chat, Matches or coun
     ...raw, maxRightSwipesPerDay: null
   } }), { ok: true, settings: { ...raw, maxRightSwipesPerDay: null }, legacyDailyLikeCap: false });
   const worker = await readFile(new URL("../src/unified-controller-background.ts", import.meta.url),"utf8");
-  assert.equal((worker.match(/parseUnifiedWebSettings\(await .*Response\.json\(\)\)/g) ?? []).length, 1);
+  assert.equal((worker.match(/parseUnifiedWebSettings\(await .*Response\.json\(\)\)/g) ?? []).length, 2);
   assert.match(worker,/parseUnifiedWebSettings\(await response\.json\(\)\)/);
   assert.doesNotMatch(worker,/Corrige les priorités avant de démarrer/);
 });

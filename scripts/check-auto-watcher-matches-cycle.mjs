@@ -75,7 +75,8 @@ test("manually selected Matches watcher drains eligible first messages before pe
   assert.doesNotMatch(unified, /handoffOnReachedCap/);
   assert.doesNotMatch(unified, /quotaHandoff/);
   assert.match(unified, /safeSwipeHandoff\(session, settings\)/);
-  assert.match(unified, /startExistingRunner\(false, "watcher", selected === "new-match"/);
+  assert.match(unified, /startExistingRunner\(false, "watcher", openers/);
+  assert.match(unified, /const openers = automatic/);
   assert.match(unified, /epoch !== commandEpoch/);
 });
 

@@ -4,7 +4,7 @@ import { waitForTinderContentBridge, isMissingTinderReceiver, describeTinderBrid
 import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import { partitionExistingChatPermissions } from "./tinder-existing-chat-settings-policy";
 import { eligibleExistingThreadRefs } from "./tinder-global-existing-policy";
-import { reconcileExistingIndex, markThreadChecked, observeUnreadThreads, nextIndexedExistingThread, isExistingThreadIndex, type ExistingThreadIndex } from "./tinder-existing-thread-index";
+import { reconcileExistingIndex, markThreadChecked, observeUnreadThreads, observeTinderInbox, nextIndexedExistingThread, isExistingThreadIndex, type ExistingThreadIndex } from "./tinder-existing-thread-index";
 import { nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus, newlyVisibleUnread } from "./tinder-reply-watcher";
 import { followConversationAfterSignal, shouldKeepConversationInFocus, normalizeConversationActivities, type ConversationActivity } from "./tinder-conversation-activity";
 import { DEFAULT_ATTENTION_CAP_SECONDS, normalizeAttentionCapSeconds, validAttentionCapSeconds } from "./tinder-attention-cap";
@@ -202,6 +202,41 @@ async function save(state: GlobalExistingRunnerState): Promise<GlobalExistingRun
   });
   pendingStateWrite = write.then(() => undefined, () => undefined);
   return write;
+}
+/** Read-only pending work for the single-tab orchestrator. Includes OLD
+ * unanswered incoming turns from the durable index, not just new DOM badges.
+ * This never authorizes a Send: the watcher revalidates the opened thread,
+ * management settings and the send claim before taking any action.
+ */
+export async function readUnifiedPendingReplies(): Promise<number | null> {
+  try {
+    const session = await getBackendSession();
+    if (!session) return null;
+    const { refs, messageTimes, messageDirections } = await listEligible();
+    let pending = reconcileExistingIndex(await readWorkIndex(session.user.id), session.user.id,
+      refs.map(ref => ({
+        ref, lastMessageAt: messageTimes.get(ref) ?? null,
+        lastMessageDirection: messageDirections.get(ref) ?? null
+      })));
+    const tab = (await chrome.tabs.query({
+      url: ["https://tinder.com/*", "https://www.tinder.com/*"]
+    })).filter(tab => typeof tab.id === "number");
+    if (tab.length === 1 && tab[0].id) {
+      const snapshot = await chrome.tabs.sendMessage(tab[0].id, {
+        type: "TNND_WATCHER_READ_MESSAGES"
+      }).catch(() => null) as { ok?: boolean; refs?: unknown; unreadRefs?: unknown } | null;
+      if (snapshot?.ok && Array.isArray(snapshot.refs)) {
+        pending = observeTinderInbox(pending,
+          snapshot.refs.filter((v): v is string => typeof v === "string").slice(0, 500),
+          Array.isArray(snapshot.unreadRefs) ?
+            snapshot.unreadRefs.filter((v): v is string => typeof v === "string") : []);
+        await saveWorkIndex(pending);
+      }
+    }
+    return pendingWatchedReplies(pending);
+  } catch {
+    return null; // Unknown must never be reported as an empty inbox.
+  }
 }
 async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[]; labels: Map<string, string>; messageTimes: Map<string, string | null>; messageDirections: Map<string, "incoming" | "outgoing" | null> }> {
   const session = await getBackendSession();
@@ -520,6 +555,18 @@ async function tick(): Promise<void> {
       refs.map(ref => ({ ref, lastMessageAt: messageTimes.get(ref) ?? null, lastMessageDirection: messageDirections.get(ref) ?? null })));
     let queued = work;
     if (state.mode === "watcher" && state.tabId !== null) {
+      // Tinder is the primary discovery source: take EVERY visible Messages
+      // link, including unsynced rows without an unread badge. The database
+      // is used only for history/permissions and never filters this inventory.
+      const tinder = await chrome.tabs.sendMessage(state.tabId, {
+        type: "TNND_WATCHER_READ_MESSAGES"
+      }).catch(() => null) as { ok?: boolean; refs?: unknown; unreadRefs?: unknown } | null;
+      if (tinder?.ok && Array.isArray(tinder.refs)) {
+        queued = observeTinderInbox(queued,
+          tinder.refs.filter((v): v is string => typeof v === "string").slice(0, 500),
+          Array.isArray(tinder.unreadRefs) ?
+            tinder.unreadRefs.filter((v): v is string => typeof v === "string") : []);
+      }
       // Recover hints after a worker restart: do not depend on a changed
       // fingerprint or on an always-running content timer alone.
       try {
@@ -557,7 +604,7 @@ async function tick(): Promise<void> {
     const nextRef = state.mode === "watcher" ? nextWatchedReply(queued) : nextIndexedExistingThread(queued);
     if (!nextRef) {
       const detail = state.mode === "watcher"
-        ? `Watching ${refs.length} eligible chats. Waiting for incoming replies on Tinder.`
+        ? `Checking ${queued.threads.length} Tinder chats, including unsynced conversations. Waiting for unanswered messages.`
         : `All ${refs.length} indexed chats checked. Waiting for new unread events or changed server message timestamps.`;
       const latestWaiting = await load();
       if (latestWaiting.phase !== "waiting" || latestWaiting.phaseDetail !== detail ||

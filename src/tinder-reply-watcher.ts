@@ -13,6 +13,13 @@ import { RECHECK_IDLE_MS, type ExistingThreadIndex, type IndexedThread } from ".
 function actionableWatcherCandidate(entry: IndexedThread): boolean {
   if (entry.queuedAt === null) return false;
   if (entry.unreadAt !== null) return true;
+  // Tinder-only conversations must be inspected even if they do not have an
+  // unread badge and have never appeared in the database. No send is
+  // authorized here: Tinder content/backend permissions still decide.
+  if (entry.tinderSeenAt && entry.lastMessageDirection === null) {
+    if (!entry.lastCheckedAt) return true;
+    return Date.parse(entry.queuedAt) - Date.parse(entry.lastCheckedAt) >= 30 * 60_000;
+  }
   if (entry.lastMessageDirection !== "incoming" || entry.serverMessageAt === null) return false;
   if (entry.checkedMessageAt !== entry.serverMessageAt) return true;
   if (!entry.lastCheckedAt) return false;

@@ -11,6 +11,8 @@ export interface IndexedThread {
   lastCheckedAt: string | null;
   queuedAt: string | null;
   unreadAt: string | null;
+  /** Observed in Tinder's Messages sidebar even when absent from the DB. */
+  tinderSeenAt?: string | null;
 }
 export interface ExistingThreadIndex {
   schemaVersion: 1;
@@ -23,7 +25,7 @@ export interface ExistingThreadIndex {
  */
 export const RECHECK_IDLE_MS = 2 * 60_000;
 export const UNREAD_HINT_COOLDOWN_MS = 60_000;
-const LIMIT = 200;
+const LIMIT = 500;
 const goodRef = (ref: string) => Boolean(ref && ref.length <= 512 && !ref.includes("/"));
 export function reconcileExistingIndex(
   previous: ExistingThreadIndex | null,
@@ -55,12 +57,65 @@ export function reconcileExistingIndex(
       checkedMessageAt: old?.checkedMessageAt ?? null,
       lastCheckedAt: old?.lastCheckedAt ?? null,
       queuedAt: pending ? (old?.queuedAt ?? now) : null,
-      unreadAt: old?.unreadAt ?? null
+      unreadAt: old?.unreadAt ?? null,
+      tinderSeenAt: old?.tinderSeenAt ?? null
     });
     if (threads.length >= LIMIT) break;
   }
+  // Preserve Tinder-discovered threads missing from the backend. They are
+  // read-only review candidates until saved management permission exists.
+  for (const old of previousEntries.values()) {
+    if (threads.length >= LIMIT) break;
+    if (!old.tinderSeenAt || seen.has(old.ref) || !goodRef(old.ref)) continue;
+    seen.add(old.ref);
+    const overdue = !old.lastCheckedAt ||
+      Date.parse(now) - Date.parse(old.lastCheckedAt) >= 30 * 60_000;
+    threads.push({
+      ...old, queuedAt: overdue ? (old.queuedAt ?? now) : old.queuedAt
+    });
+  }
   return { schemaVersion: 1, userId, threads, updatedAt: now };
 }
+
+/** Read-only Tinder-first discovery: include ALL observed Messages sidebar
+ * links, not only unread badges or refs already in TNND's DB.
+ * No send permission, conversation status or direction is inferred.
+ */
+export function observeTinderInbox(
+  state: ExistingThreadIndex, refs: readonly string[],
+  unreadRefs: readonly string[], at = new Date().toISOString()
+): ExistingThreadIndex {
+  const threads = new Map(state.threads.map(entry => [entry.ref, entry]));
+  const unread = new Set(unreadRefs.filter(goodRef));
+  const seen = new Set<string>();
+  for (const ref of refs) {
+    if (!goodRef(ref) || seen.has(ref)) continue;
+    seen.add(ref);
+    const old = threads.get(ref);
+    if (old) {
+      const recheck = old.lastMessageDirection === null &&
+        (!old.lastCheckedAt || Date.parse(at) - Date.parse(old.lastCheckedAt) >= 30 * 60_000);
+      threads.set(ref, { ...old, tinderSeenAt: at,
+        queuedAt: recheck ? (old.queuedAt ?? at) : old.queuedAt,
+        unreadAt: unread.has(ref) ? at : old.unreadAt });
+    } else {
+      threads.set(ref, {
+        ref, serverMessageAt: null, lastMessageDirection: null,
+        checkedMessageAt: null, lastCheckedAt: null,
+        queuedAt: at, unreadAt: unread.has(ref) ? at : null,
+        tinderSeenAt: at
+      });
+    }
+  }
+  // Prioritize the actually observed Tinder inventory when the backend has
+  // more records than can fit in the bounded index. No invisible DB row may
+  // silently evict a currently visible unsynced Tinder conversation.
+  const order = [...new Set(refs.filter(goodRef)), ...threads.keys()];
+  const selected = [...new Set(order)].map(ref => threads.get(ref))
+    .filter((entry): entry is IndexedThread => entry !== undefined).slice(0, LIMIT);
+  return { ...state, threads: selected, updatedAt: at };
+}
+
 export function markThreadChecked(
   state: ExistingThreadIndex, ref: string, at = new Date().toISOString()
 ): ExistingThreadIndex {

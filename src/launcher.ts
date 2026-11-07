@@ -19,6 +19,7 @@ type DailyCounter = { id: ReachedLimit["id"]; label: string;
 type WatcherInfo = { phase: string; detail: string; pendingReplies: number | null;
   eligibleCount: number | null; lastActionAt: string | null; nextReplyAt?: string | null };
 type Status = { ok: boolean; running?: boolean; mode?: CurrentMode; manualMode?: CurrentMode; reason?: string;
+  autoCycle?: boolean; pendingReplies?: number | null;
   reconciliationCounts?: string;
   quotaPaused?: boolean; reachedLimits?: ReachedLimit[]; limitCounters?: DailyCounter[];
   watcherInfo?: WatcherInfo | null };
@@ -177,7 +178,8 @@ function render(value: Status, detail = ""): void {
   statusEl.textContent = !value.ok ? "Connexion indisponible" :
     !running ? "Arrêté" :
     value.quotaPaused ? "En pause · Quota Swipe atteint" :
-    activeMode === "swipe" ? "Actif · Auto Swipe" :
+    activeMode === "swipe" ? "Actif · Auto Swipe" +
+      (value.autoCycle ? " · surveillance Chat/Matches" : "") :
     activeMode === "new-match" ? "Actif · Nouveaux matchs" : "Actif · Conversations";
   const info = value.watcherInfo;
   const verified = Boolean(running && info &&
@@ -187,13 +189,20 @@ function render(value: Status, detail = ""): void {
   const explanation = !verified ? "Aucune activité en cours pour ce mode." :
     (detailText || "État en cours de vérification.");
   chatInfo.textContent = activeMode === "active-chat" ? explanation :
-    "Mode Chat inactif. Active-le pour consulter l'état du traitement.";
-  chatPending.textContent = activeMode === "active-chat" && info &&
-    typeof info.pendingReplies === "number" ?
-      "Conversations en attente vérifiées : " + info.pendingReplies +
-      " · Étape : " + stage : "Conversations en attente : — (non vérifié)";
+    value.autoCycle ? "Chat surveillé : messages sans réponse, anciens et nouveaux, prioritaires sur Swipe." :
+      "Mode Chat inactif. Active-le pour consulter l'état du traitement.";
+  const pending = activeMode === "active-chat" && info &&
+    typeof info.pendingReplies === "number" ? info.pendingReplies :
+    value.autoCycle && typeof value.pendingReplies === "number" ? value.pendingReplies : null;
+  // Tinder-only rows have not yet been opened: a queued review is NOT proof
+  // that their last message is incoming. The opened thread must confirm this.
+  chatPending.textContent = pending === null
+    ? "Conversations à examiner : — (non vérifié)"
+    : "Conversations à examiner : " + pending +
+      (activeMode === "active-chat" ? " · Étape : " + stage : " · Dernier contrôle");
   matchesInfo.textContent = activeMode === "new-match" ? explanation :
-    "Mode Matches inactif. Les premiers messages restent soumis aux quotas.";
+    value.autoCycle ? "Matches inspectés dans le même onglet après les messages sans réponse, sans interrompre un envoi." :
+      "Mode Matches inactif. Les premiers messages restent soumis aux autorisations.";
   feedback.textContent = detail || (value.ok ? value.reason ?? "" :
     "Impossible de lire l'état du moteur. Recharge l'extension.");
   if (!detail) {
