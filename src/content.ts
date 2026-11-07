@@ -1200,6 +1200,26 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   sendResponse({ ok: true, refs: visibleTinderThreadRefs() });
   return false;
 });
+/** Tinder-first inbox: a verified read-only snapshot of the Messages sidebar.
+ * Includes conversations not yet synchronized to TNND's database and those
+ * without an unread badge. It neither authorizes a send nor invents a
+ * last-message direction. Lazy/offscreen items require later observation.
+ */
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (!message || typeof message !== "object" ||
+      (message as { type?: string }).type !== "TNND_WATCHER_READ_MESSAGES") return false;
+  if (sender.id !== chrome.runtime.id || !hasLiveExtensionContext() ||
+      detectVisibleTinderSidebarTab() !== "messages") {
+    sendResponse({ ok: false, error: "tinder_messages_sidebar_unavailable" });
+    return false;
+  }
+  const refs = visibleTinderMessageThreadRefs();
+  const visible = new Set(refs);
+  const unreadRefs = discoverUnreadThreadCandidates()
+    .map(entry => entry.conversationRef).filter(ref => visible.has(ref));
+  sendResponse({ ok: true, refs, unreadRefs });
+  return false;
+});
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (!message || typeof message !== "object"
     || (message as { type?: string }).type !== "TNND_WATCHER_READ_UNREAD") return false;
