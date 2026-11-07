@@ -41,24 +41,48 @@ async function activeAutoState(): Promise<AutoRotationState | null> {
     typeof value.startedAt === "number" && typeof value.lastInboxVisitAt === "number"
     ? value as AutoRotationState : null;
 }
-/** Exactly one existing Tinder tab; never open a second logged-in session.
- * Route changes are full navigations only after the prior runner is disarmed.
- * Do not infer success from a URL request: verify route and content bridge.
+/** Tinder only supports one live browser session and /app/messages alone is
+ * NOT a valid deep link (Tinder responds 404 on a hard reload). Switch to the
+ * actual Messages sidebar through Tinder's own SPA buttons while reusing the
+ * existing tab. The content bridge confirms the resulting rendered sidebar.
  */
-async function navigateOneTab(tabId: number, path: "/app/recs" | "/app/messages"): Promise<void> {
+async function navigateOneTab(tabId: number, target: "/app/recs" | "messages"): Promise<void> {
   const tabs = (await chrome.tabs.query({
     url: ["https://tinder.com/*", "https://www.tinder.com/*"]
   })).filter(isTinderTab);
   if (tabs.length !== 1 || tabs[0].id !== tabId)
     throw new Error("single_tinder_tab_changed");
   const url = new URL(tabs[0].url ?? "");
-  if (url.pathname.replace(/\/+$/, "") !== path) {
-    await chrome.tabs.update(tabId, { url: url.origin + path });
+  if (target === "messages") {
+    // A missing Messages button or incomplete sidebar is NOT permission to
+    // hard-navigate to /app/messages, open another tab, or guess a thread.
+    await waitForTinderContentBridge(tabId);
+    const ref = /^\\/app\\/messages\\/([a-zA-Z0-9_-]{3,512})$/.exec(url.pathname)?.[1] ?? null;
+    const result = await chrome.tabs.sendMessage(tabId, {
+      type: "TNND_WATCHER_SELECT_SIDEBAR", target: "messages", expectedRef: ref
+    }) as { ok?: boolean; sidebar?: string; error?: string } | undefined;
+    if (result?.ok !== true || result.sidebar !== "messages")
+      throw new Error("tinder_messages_sidebar_unavailable: " +
+        (result?.error ?? "not_confirmed"));
+    const inventory = await chrome.tabs.sendMessage(tabId, {
+      type: "TNND_WATCHER_READ_MESSAGES"
+    }) as { ok?: boolean; refs?: unknown } | undefined;
+    if (inventory?.ok !== true || !Array.isArray(inventory.refs))
+      throw new Error("tinder_messages_inventory_not_confirmed");
+    const verifiedTab = await chrome.tabs.get(tabId);
+    if (!isTinderTab(verifiedTab) ||
+        new URL(verifiedTab.url ?? "").pathname === "/app/messages")
+      throw new Error("tinder_messages_navigation_unconfirmed");
+    return;
   }
+  // /app/recs is the verified Tinder discovery route; unlike the nonexistent
+  // /app/messages shell it can be opened directly after the watcher stops.
+  if (url.pathname.replace(/\\/+$/, "") !== target)
+    await chrome.tabs.update(tabId, { url: url.origin + target });
   await waitForTinderContentBridge(tabId);
   const confirmed = await chrome.tabs.get(tabId);
   if (!isTinderTab(confirmed) ||
-      new URL(confirmed.url ?? "").pathname.replace(/\/+$/, "") !== path)
+      new URL(confirmed.url ?? "").pathname.replace(/\\/+$/, "") !== target)
     throw new Error("single_tinder_navigation_unconfirmed");
 }
 let commandEpoch = 0;
@@ -237,7 +261,7 @@ async function rotateSingleTinderTab(): Promise<void> {
       hadDisarmedOwner = true;
       if (!(await safeSwipeHandoff(session, parsed.settings)) || epoch !== commandEpoch)
         throw new Error("swipe_attempt_not_settled_after_disarm");
-      await navigateOneTab(master.tabId, "/app/messages");
+      await navigateOneTab(master.tabId, "messages");
       if (epoch !== commandEpoch || !(await activeAutoState())) return;
       const started = await startExistingRunner(false, "watcher", true, false, null);
       if (!started.enabled || started.mode !== "watcher")
@@ -437,7 +461,7 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
         // Preserve the legacy fail-closed watcher handoff without touching
         // any potentially in-flight Like.
         // One existing tab; never create a competing Tinder session.
-        await navigateOneTab(tabs[0].id, "/app/messages");
+        await navigateOneTab(tabs[0].id, "messages");
       }
       // The established watcher performs BOTH authorized chat/match tasks.
       // Swipe's original quota/uncertain attempts remain untouched; no Likes.
