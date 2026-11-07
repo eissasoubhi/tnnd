@@ -179,8 +179,9 @@ test("opening an old incoming chat does not acknowledge the reply before content
     runner.indexOf('  } catch (error) {', runner.indexOf('const result = await withSpaNavigationTimeout(')));
   assert.match(opening, /awaitingChatRef: nextRef/);
   assert.match(opening, /awaitingChatSince: new Date\(\)\.toISOString\(\)/);
-  assert.doesNotMatch(opening, /markThreadChecked\(queued, nextRef\)/,
-    "a successful navigation is NOT a confirmed reply or completed inspection");
+  assert.doesNotMatch(opening.slice(opening.indexOf("const checked = queued;")),
+    /markThreadChecked\(queued, nextRef\)/,
+    "a SUCCESSFUL navigation is not a reply; failed navigation may be deferred");
   const event = runner.slice(runner.indexOf("async function contentEvent("),
     runner.indexOf("chrome.alarms.onAlarm.addListener(", runner.indexOf("async function contentEvent(")));
   assert.match(event, /completedVisit = outcome && fresh\.awaitingChatRef === senderRef/);
