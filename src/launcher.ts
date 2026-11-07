@@ -32,6 +32,7 @@ const manualModeAction = document.getElementById("manualModeAction") as HTMLButt
 const reconciliationDiagnostic = document.getElementById("reconciliationDiagnostic") as HTMLDetailsElement;
 const reconciliationCounts = document.getElementById("reconciliationCounts") as HTMLElement;
 
+const openChatJournal = document.getElementById("openChatJournal") as HTMLButtonElement;
 const chatInfo = document.getElementById("chatInfo") as HTMLElement;
 const chatCountdown = document.getElementById("chatCountdown") as HTMLElement;
 const chatPending = document.getElementById("chatPending") as HTMLElement;
@@ -41,6 +42,14 @@ const panels: Record<Exclude<CurrentMode,null>, HTMLElement> = {
   "new-match": document.getElementById("panelMatches") as HTMLElement,
   "active-chat": document.getElementById("panelChat") as HTMLElement
 };
+// A dedicated extension page observes logs only; opening it never starts or
+// stops Swipe, Matches or Chat, and never creates a second Tinder tab.
+openChatJournal.addEventListener("click", () => {
+  openChatJournal.disabled = true;
+  void chrome.tabs.create({ url: chrome.runtime.getURL("chat-journal.html"), active: true })
+    .catch(() => { feedback.textContent = "Impossible d'ouvrir le journal Chat."; })
+    .finally(() => { openChatJournal.disabled = false; });
+});
 const modeLabels: Record<Exclude<CurrentMode, null>, string> = {
   swipe: "Swipe", "new-match": "Matches", "active-chat": "Chat"
 };
