@@ -98,7 +98,7 @@ export function observeTinderInbox(
       threads.set(ref, { ...old, tinderSeenAt: at,
         queuedAt: recheck ? (old.queuedAt ?? at) : old.queuedAt,
         unreadAt: unread.has(ref) ? at : old.unreadAt });
-    } else if (threads.size < LIMIT) {
+    } else {
       threads.set(ref, {
         ref, serverMessageAt: null, lastMessageDirection: null,
         checkedMessageAt: null, lastCheckedAt: null,
