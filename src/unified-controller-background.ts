@@ -374,7 +374,7 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
     let initialPending: number | null = null;
     if (automatic) {
       initialPending = await readUnifiedPendingReplies();
-      const onDiscovery = new URL(tabs[0].url!).pathname.replace(/\\/+$/, "") === "/app/recs";
+      const onDiscovery = new URL(tabs[0].url!).pathname.replace(/\/+$/, "") === "/app/recs";
       selected = initialPending !== null && initialPending > 0 ? "active-chat" :
         onDiscovery ? "swipe" : "active-chat";
     }
