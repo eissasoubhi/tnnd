@@ -178,13 +178,69 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     expect(requests.some(item => item.path === "/api/v1/automation/smart-swipe" && item.authorization)).toBe(true);
   });
 
+  test("compact Chat Journal button opens one read-only extension tab with live 50-event filtering", async () => {
+    const key = "tnnd.globalExistingRunner.v2";
+    const worker = context.serviceWorkers()[0] || await context.waitForEvent("serviceworker");
+    const before = (await storage())[key];
+    const now = new Date().toISOString();
+    const launcher = await context.newPage();
+    let journal;
+    try {
+      await worker.evaluate(({ key, now }) => chrome.storage.local.set({ [key]: {
+        enabled: true, mode: "watcher", phase: "skipped",
+        phaseDetail: "Analyse non confirmée après 30 s : aucune réponse validée",
+        currentLabel: "Qamar", pendingReplies: 2, lastActionAt: now,
+        activity: [
+          { at: now, phase: "loading", detail: "Opening Qamar", conversation: "Qamar" },
+          { at: now, phase: "skipped", detail: "Analyse non confirmée après 30 s", conversation: "Qamar" }
+        ]
+      } }), { key, now });
+      await launcher.goto(`chrome-extension://${extensionId}/launcher.html`);
+      await launcher.locator("#tabChat").click();
+      await expect(launcher.locator("#openChatJournal")).toBeVisible();
+      [journal] = await Promise.all([
+        context.waitForEvent("page"),
+        launcher.locator("#openChatJournal").click()
+      ]);
+      await journal.waitForLoadState();
+      await expect(journal).toHaveURL(`chrome-extension://${extensionId}/chat-journal.html`);
+      await expect(journal.locator("#currentConversation")).toHaveText("Qamar");
+      await expect(journal.locator("#pendingCount")).toHaveText("2");
+      await expect(journal.locator("#journalList .entry")).toHaveCount(2);
+      await expect(journal.locator("#diagnosis")).toBeVisible();
+      await journal.locator('[data-filter="problems"]').click();
+      await expect(journal.locator("#journalList .entry")).toHaveCount(1);
+      await expect(journal.locator("#journalList")).toContainText("Analyse non confirmée");
+      await worker.evaluate(({ key, now }) => chrome.storage.local.set({ [key]: {
+        enabled: true, mode: "watcher", phase: "sent", phaseDetail: "Tinder send action completed",
+        currentLabel: "Qamar", pendingReplies: 1, lastActionAt: now,
+        activity: [
+          { at: now, phase: "loading", detail: "Opening Qamar", conversation: "Qamar" },
+          { at: now, phase: "skipped", detail: "Analyse non confirmée après 30 s", conversation: "Qamar" },
+          { at: now, phase: "sent", detail: "Tinder send action completed", conversation: "Qamar" }
+        ]
+      } }), { key, now });
+      await journal.locator('[data-filter="sent"]').click();
+      await expect(journal.locator("#journalList .entry")).toHaveCount(1);
+      await expect(journal.locator("#journalList")).toContainText("Tinder send action completed");
+      await expect(journal.locator("#pendingCount")).toHaveText("1");
+      expect((await context.pages()).filter(page => page.url().startsWith("https://tinder.com"))).toHaveLength(1);
+    } finally {
+      await journal?.close();
+      await launcher.close();
+      await worker.evaluate(({ key, before }) =>
+        before === undefined ? chrome.storage.local.remove(key) :
+          chrome.storage.local.set({ [key]: before }), { key, before });
+    }
+  });
+
   test("extension logout from Chrome storage requires its own safe sign-in page without cluttering popup", async () => {
     const worker = context.serviceWorkers()[0] || await context.waitForEvent("serviceworker");
     const launcher = await context.newPage();
     try {
       await worker.evaluate(() => chrome.storage.local.remove("tnnd.backendSession"));
       await launcher.goto(`chrome-extension://${extensionId}/launcher.html`);
-      await expect(launcher.locator("button")).toHaveCount(6);
+      await expect(launcher.locator("button")).toHaveCount(7);
        await expect(launcher.locator(".mode-button")).toHaveCount(3);
       await launcher.locator("#toggleAutomation").click();
       await expect(launcher.locator("#engineStatus")).toContainText("Arrêté");
@@ -231,7 +287,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await simple.goto(`chrome-extension://${extensionId}/launcher.html`);
       expect(await simple.evaluate(() => chrome.runtime.getManifest().action.default_popup))
         .toBe("launcher.html");
-      await expect(simple.locator("button")).toHaveCount(6);
+      await expect(simple.locator("button")).toHaveCount(7);
        await expect(simple.locator(".mode-button")).toHaveCount(3);
       const installedInfo = JSON.parse(await readFile(resolve("dist/BUILD-INFO.json"), "utf8"));
       const currentCommit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
