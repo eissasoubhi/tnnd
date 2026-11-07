@@ -87,4 +87,14 @@ test("the Tinder inventory is read-only, with original authorization and unique-
   assert.match(coordinator, /safeSwipeHandoff\(session, parsed\.settings\)/);
   assert.match(background, /mayAutomaticallySendToTinder\(backend\)/);
   assert.doesNotMatch(coordinator, /chrome\.tabs\.create\(/);
+  assert.match(coordinator, /TNND_WATCHER_SELECT_SIDEBAR/,
+    "Messages navigation must use Tinder's own confirmed sidebar switch");
+  assert.match(coordinator, /TNND_WATCHER_READ_MESSAGES/,
+    "Only the actual rendered Tinder sidebar is a verified inbox");
+  assert.doesNotMatch(coordinator, /navigateOneTab\([^\n]*"\/app\/messages"\)/,
+    "Never hard-navigate to the 404 bare Messages route");
+  assert.match(coordinator, /tinder_messages_sidebar_unavailable/,
+    "A missing Tinder Messages UI must fail closed, not guess a URL");
+  assert.doesNotMatch(runner, /chrome\.tabs\.create\(\{\s*url: "https:\/\/tinder\.com\/app\/messages"/,
+    "Existing runner must not create an extra broken Tinder tab");
 });

@@ -99,6 +99,10 @@ async function launch() {
     if (url.protocol === "chrome-extension:") return route.continue();
     if ((url.hostname === "tinder.com" || url.hostname === "www.tinder.com") &&
       url.protocol === "https:") {
+      // Real Tinder rejects the bare Messages route. A fictional 200 here
+      // previously concealed the broken one-tab orchestrator redirect.
+      if (url.pathname === "/app/messages")
+        return route.fulfill({ status: 404, contentType: "text/html", body: "Tinder 404: Messages requires native SPA navigation" });
       return route.fulfill({ status: 200, contentType: "text/html",
         body: url.pathname === "/app/matches" ? fakeMatches : fakeTinder });
     }
@@ -337,6 +341,45 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     } finally {
       settings.priority = ["swipe", "new-match", "active-chat"];
       await simple.close();
+      await tinder.goto("https://tinder.com/app/recs");
+    }
+  });
+
+  test("Messages sidebar navigation stays in the ONE Tinder tab without requesting 404 /app/messages", async () => {
+    try {
+      await tinder.goto("https://tinder.com/app/recs");
+      await tinder.evaluate(() => {
+        const nav = document.createElement("nav");
+        nav.setAttribute("aria-label", "Tinder conversations");
+        const button = document.createElement("button");
+        button.textContent = "Messages";
+        button.addEventListener("click", () => {
+          const link = document.createElement("a");
+          link.className = "messageListItem";
+          link.href = "/app/messages/amira-fixture";
+          link.textContent = "Amira (unsynced, old incoming)";
+          nav.appendChild(link);
+        });
+        nav.appendChild(button);
+        document.body.appendChild(nav);
+      });
+      const response = await popup.evaluate(async () => {
+        const tabs = await chrome.tabs.query({
+          url: ["https://tinder.com/*", "https://www.tinder.com/*"]
+        });
+        return chrome.tabs.sendMessage(tabs[0].id, {
+          type: "TNND_WATCHER_SELECT_SIDEBAR", target: "messages", expectedRef: null
+        });
+      });
+      expect(response).toMatchObject({ ok: true, sidebar: "messages" });
+      const inventory = await popup.evaluate(async () => {
+        const [tab] = await chrome.tabs.query({ url: ["https://tinder.com/*"] });
+        return chrome.tabs.sendMessage(tab.id, { type: "TNND_WATCHER_READ_MESSAGES" });
+      });
+      expect(inventory).toMatchObject({ ok: true, refs: ["amira-fixture"] });
+      expect(new URL(tinder.url()).pathname).toBe("/app/recs");
+      expect((await context.pages()).filter(page => page.url().startsWith("https://tinder.com"))).toHaveLength(1);
+    } finally {
       await tinder.goto("https://tinder.com/app/recs");
     }
   });

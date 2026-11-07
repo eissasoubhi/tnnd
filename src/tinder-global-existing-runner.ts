@@ -297,9 +297,9 @@ async function findSingleTinderTab(): Promise<{ id: number; mode: "reused" | "cr
   const tinder = existing.filter(tab => typeof tab.id === "number");
   if (tinder.length > 1) throw new Error("Several Tinder tabs are open. Close the extras and start again; TNND won't close your tabs.");
   if (tinder.length === 1) return { id: tinder[0].id!, mode: "reused" };
-  const created = await chrome.tabs.create({ url: "https://tinder.com/app/messages", active: true });
-  if (!created.id) throw new Error("Could not open Tinder.");
-  return { id: created.id, mode: "created" };
+  // Tinder permits only one live web session. Do not create an extra tab,
+  // and never navigate to the invalid /app/messages deep-link.
+  throw new Error("Ouvre Tinder dans un seul onglet, puis relance TNND.");
 }
 async function assertRunnerTab(state: GlobalExistingRunnerState): Promise<number> {
   if (state.tabId === null) throw new Error("Tinder tab is not assigned.");

@@ -34,8 +34,8 @@ test("the runner reuses the sole existing Tinder tab and never closes user tabs"
  assert.match(runner, /tinder\.com\/\*/);
  assert.match(runner, /tinder\.length > 1/);
  assert.match(runner, /mode: "reused"/);
- assert.match(runner, /chrome\.tabs\.create\(/);
- assert.match(runner, /active: true/);
+ assert.doesNotMatch(runner, /chrome\.tabs\.create\(/, "Tinder watcher must reuse the one user-owned tab");
+ assert.match(runner, /Ouvre Tinder dans un seul onglet/, "No tab requires user action");
  assert.match(runner, /TNND_EXISTING_SPA_NAVIGATE/);
  assert.match(runner, /chrome\.tabs\.sendMessage\(/);
  assert.doesNotMatch(runner, /chrome\.tabs\.update\(tabId, \{ url:/);
