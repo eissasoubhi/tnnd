@@ -125,6 +125,8 @@ async function status(): Promise<Record<string, unknown>> {
       handoffBlock?: string | null; manualMode?: ManagedTinderActivity | null } | undefined;
   // Counters remain visible through Start and Stop; they do not cap Swipe.
   const limitSnapshot = await readReachedLimits();
+  const autoState = await activeAutoState();
+  if (autoState && owner.running && !owner.conflict) await ensureRotationAlarm();
   // Expose only verified, bounded operational state, not chat text or match
   // identifiers. Status is read-only and never triggers a Gemini request.
   const watcherRaw = (await chrome.storage.local.get(WATCHER_KEY))[WATCHER_KEY] as
@@ -156,9 +158,15 @@ async function status(): Promise<Record<string, unknown>> {
     reachedLimits: limitSnapshot?.reached ?? [],
     limitCounters: limitSnapshot?.counters ?? [],
     watcherInfo,
+    autoCycle: Boolean(autoState && owner.running && !owner.conflict),
+    pendingReplies: autoState?.pendingReplies ?? null,
     reason: owner.conflict ? "Plusieurs moteurs déjà actifs. Clique Arrêter pour les désarmer." :
       owner.running && !store?.enabled
         ? "Un ancien moteur est actif. Arrêter permet de reprendre le contrôle."
+        : autoState && owner.running
+          ? (owner.mode === "swipe"
+              ? "Un onglet · Swipe actif · Chat sans réponse prioritaire, Matches vérifiés régulièrement."
+              : "Un onglet · Chat et Matches actifs à tour de rôle · retour à Swipe après traitement.")
         : owner.running && store?.enabled &&
             (store.mode === owner.mode || (store.mode === "new-match" && owner.mode === "active-chat")) &&
             store.pausedSwipeReason
@@ -286,6 +294,7 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 async function stopEverything(): Promise<{ ok: boolean; reason?: string }> {
+  await chrome.alarms.clear(ROTATION_ALARM);
   // Immediate preemption of the Swipe claim guard; never await a backend API
   // before stopping. Each existing engine retains its own safe Stop semantics.
   const results = await Promise.allSettled([
@@ -322,7 +331,7 @@ async function safeSwipeHandoff(
   } catch { return false; }
 }
 async function start(epoch: number, requestedMode: ManagedTinderActivity | null = null): Promise<Record<string, unknown>> {
-  if (working) return { ok: false, reason: "Transition déjà en cours." };
+  if (working || rotationBusy) return { ok: false, reason: "Transition déjà en cours." };
   working = true;
   try {
     const before = await owners();
@@ -356,6 +365,19 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
       discoveryVisible: new URL(tabs[0].url!).pathname.replace(/\/+$/, "") === "/app/recs",
       automaticRepliesEnabled: config.automation.enabled
     });
+    // Automatic mode services the WHOLE unread backlog before new discovery.
+    // The server+persisted index recognizes old unanswered turns as well as
+    // newly received ones. Failed reads are unknown, never "0 pending".
+    const automatic = requestedMode === null && config.automation.enabled &&
+      settings.priority.includes("swipe") &&
+      settings.priority.includes("active-chat");
+    let initialPending: number | null = null;
+    if (automatic) {
+      initialPending = await readUnifiedPendingReplies();
+      const onDiscovery = new URL(tabs[0].url!).pathname.replace(/\\/+$/, "") === "/app/recs";
+      selected = initialPending !== null && initialPending > 0 ? "active-chat" :
+        onDiscovery ? "swipe" : "active-chat";
+    }
     if (!selected) return { ok: false, reason:
       "Aucune activité autorisée ici. Vérifie Tinder et les paramètres d'automatisation." };
     if (requestedMode && !settings.priority.includes(requestedMode))
@@ -407,11 +429,16 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
       }
     }
     if (selected !== "swipe") {
+      if (automatic && !before.running) {
+        // One existing tab; never create a competing Tinder session.
+        await navigateOneTab(tabs[0].id, "/app/messages");
+      }
       // The established watcher performs BOTH authorized chat/match tasks.
       // Swipe's original quota/uncertain attempts remain untouched; no Likes.
       if (epoch !== commandEpoch) return { ok: false, reason: "Démarrage annulé par Stop." };
-      const result = await startExistingRunner(false, "watcher", selected === "new-match",
-        selected === "new-match", requestedMode === "new-match" || requestedMode === "active-chat" ? requestedMode : null);
+      const openers = automatic ? settings.priority.includes("new-match") : selected === "new-match";
+      const result = await startExistingRunner(false, "watcher", openers,
+        !automatic && selected === "new-match", requestedMode === "new-match" || requestedMode === "active-chat" ? requestedMode : null);
       if (!result.enabled || result.mode !== "watcher")
         return { ok: false, reason: "Surveillance non confirmée." };
     }
@@ -419,13 +446,24 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
       await stopEverything();
       return { ok: false, reason: "Stop reçu pendant le démarrage." };
     }
+    const autoCycle = automatic && !pausedSwipeReason;
+    const startedAt = Date.now();
     await chrome.storage.local.set({ [MASTER]: {
-      enabled: true, mode: selected, userId: session.user.id, startedAt: Date.now(),
+      enabled: true, mode: selected, userId: session.user.id, startedAt,
+      ...(autoCycle ? {
+        autoCycle: true, tabId: tabs[0].id,
+        watcherStartedAt: selected === "swipe" ? null : startedAt,
+        lastInboxVisitAt: selected === "swipe" ? startedAt - INBOX_SCAN_INTERVAL_MS : startedAt,
+        pendingReplies: initialPending
+      } : {}),
       pausedSwipeReason, manualMode: requestedMode
     } });
+    if (autoCycle) await ensureRotationAlarm();
     return {
       ok: true, running: true, mode: selected, manualMode: requestedMode,
-      reason: pausedSwipeReason === "daily_cap"
+      reason: autoCycle
+        ? "Un seul onglet Tinder : anciens messages sans réponse prioritaires, puis Matches, puis Swipe."
+        : pausedSwipeReason === "daily_cap"
         ? "Quota Swipe atteint. Phase 1 : nouveaux matchs ; ensuite conversations en attente."
         : pausedSwipeReason
           ? "Swipe en attente (ancien Like non résolu). Surveillance des conversations et matchs autorisée."
