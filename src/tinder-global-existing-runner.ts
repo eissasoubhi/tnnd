@@ -149,7 +149,7 @@ async function load(): Promise<GlobalExistingRunnerState> {
       /^[a-zA-Z0-9_-]{3,512}$/.test(value.awaitingChatRef) ? value.awaitingChatRef : null,
     awaitingChatSince: typeof value.awaitingChatSince === "string" &&
       Number.isFinite(Date.parse(value.awaitingChatSince)) ? value.awaitingChatSince : null,
-    awaitingChatScanAttempts: Number.isSafeInteger(value.awaitingChatScanAttempts) &&
+    awaitingChatScanAttempts: Number.isSafeInteger(value.awaitingChatScanAttempts ?? -1) &&
       (value.awaitingChatScanAttempts ?? 0) >= 0 &&
       (value.awaitingChatScanAttempts ?? 0) <= 2 ? value.awaitingChatScanAttempts! : 0,
     activeConversationUntil: typeof value.activeConversationUntil === "string" ? value.activeConversationUntil : null,
