@@ -274,7 +274,7 @@ test("watcher extends focus after distinct incoming/sent events, not an old proc
   assert.match(runner,/followConversationAfterSignal\(next, activeRef, "opened"\)/);
   assert.match(runner,/phase === "incoming" \|\| phase === "sent"/);
   assert.match(content,/lastWatchedIncomingEvidence\.get\(conversationRef\) !== incomingEvidence/);
-  assert.match(content,/reportExistingRunner\("incoming", "New reply in the current conversation\."\)/);
+  assert.match(content,/reportExistingRunner\("incoming", "Message entrant sans réponse détecté dans la conversation ouverte \(ancien ou nouveau\)\."\)/);
   assert.match(content,/phase !== "sent" && phase !== "incoming"/);
   const watcherPopupStatus = await readFile(new URL("../src/tinder-watcher-popup-status.ts", import.meta.url), "utf8");
   assert.match(watcherPopupStatus,/Following current conversation/);
