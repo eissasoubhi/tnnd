@@ -376,7 +376,7 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
       initialPending = await readUnifiedPendingReplies();
       const onDiscovery = new URL(tabs[0].url!).pathname.replace(/\/+$/, "") === "/app/recs";
       selected = initialPending !== null && initialPending > 0 ? "active-chat" :
-        onDiscovery ? "swipe" : "active-chat";
+        onDiscovery ? "swipe" : selected ?? "active-chat";
     }
     if (!selected) return { ok: false, reason:
       "Aucune activité autorisée ici. Vérifie Tinder et les paramètres d'automatisation." };
@@ -429,7 +429,10 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
       }
     }
     if (selected !== "swipe") {
-      if (automatic && !before.running && !pausedSwipeReason) {
+      if (automatic && !before.running && !pausedSwipeReason &&
+          selected === "active-chat" && initialPending !== null && initialPending > 0) {
+        // Only navigate for VERIFIED pending backlog. Starting on Tinder Matches
+        // must preserve the initial Matches-first selection and its SPA route.
         // A blocked/uncertain Swipe fallback must NOT reload the Tinder route.
         // Preserve the legacy fail-closed watcher handoff without touching
         // any potentially in-flight Like.
@@ -443,8 +446,10 @@ async function start(epoch: number, requestedMode: ManagedTinderActivity | null 
       // Chat-only fallback: do not silently arm first-message sends.
       const openers = automatic && !pausedSwipeReason
         ? settings.priority.includes("new-match") : selected === "new-match";
+      const matchFirst = selected === "new-match" &&
+        (!automatic || initialPending === 0);
       const result = await startExistingRunner(false, "watcher", openers,
-        !automatic && selected === "new-match", requestedMode === "new-match" || requestedMode === "active-chat" ? requestedMode : null);
+        matchFirst, requestedMode === "new-match" || requestedMode === "active-chat" ? requestedMode : null);
       if (!result.enabled || result.mode !== "watcher")
         return { ok: false, reason: "Surveillance non confirmée." };
     }
