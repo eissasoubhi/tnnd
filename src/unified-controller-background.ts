@@ -57,7 +57,9 @@ async function navigateOneTab(tabId: number, target: "/app/recs" | "messages"): 
     // A missing Messages button or incomplete sidebar is NOT permission to
     // hard-navigate to /app/messages, open another tab, or guess a thread.
     await waitForTinderContentBridge(tabId);
-    const ref = /^\\/app\\/messages\\/([a-zA-Z0-9_-]{3,512})$/.exec(url.pathname)?.[1] ?? null;
+    const candidate = url.pathname.startsWith("/app/messages/")
+      ? url.pathname.slice("/app/messages/".length) : "";
+    const ref = /^[a-zA-Z0-9_-]{3,512}$/.test(candidate) ? candidate : null;
     const result = await chrome.tabs.sendMessage(tabId, {
       type: "TNND_WATCHER_SELECT_SIDEBAR", target: "messages", expectedRef: ref
     }) as { ok?: boolean; sidebar?: string; error?: string } | undefined;
@@ -77,12 +79,12 @@ async function navigateOneTab(tabId: number, target: "/app/recs" | "messages"): 
   }
   // /app/recs is the verified Tinder discovery route; unlike the nonexistent
   // /app/messages shell it can be opened directly after the watcher stops.
-  if (url.pathname.replace(/\\/+$/, "") !== target)
+  if (url.pathname !== target && url.pathname !== target + "/")
     await chrome.tabs.update(tabId, { url: url.origin + target });
   await waitForTinderContentBridge(tabId);
   const confirmed = await chrome.tabs.get(tabId);
   if (!isTinderTab(confirmed) ||
-      new URL(confirmed.url ?? "").pathname.replace(/\\/+$/, "") !== target)
+      ![target, target + "/"].includes(new URL(confirmed.url ?? "").pathname))
     throw new Error("single_tinder_navigation_unconfirmed");
 }
 let commandEpoch = 0;
