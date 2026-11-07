@@ -203,6 +203,26 @@ async function save(state: GlobalExistingRunnerState): Promise<GlobalExistingRun
   pendingStateWrite = write.then(() => undefined, () => undefined);
   return write;
 }
+/** Read-only pending work for the single-tab orchestrator. Includes OLD
+ * unanswered incoming turns from the durable index, not just new DOM badges.
+ * This never authorizes a Send: the watcher revalidates the opened thread,
+ * management settings and the send claim before taking any action.
+ */
+export async function readUnifiedPendingReplies(): Promise<number | null> {
+  try {
+    const session = await getBackendSession();
+    if (!session) return null;
+    const { refs, messageTimes, messageDirections } = await listEligible();
+    const pending = reconcileExistingIndex(await readWorkIndex(session.user.id), session.user.id,
+      refs.map(ref => ({
+        ref, lastMessageAt: messageTimes.get(ref) ?? null,
+        lastMessageDirection: messageDirections.get(ref) ?? null
+      })));
+    return pendingWatchedReplies(pending);
+  } catch {
+    return null; // Unknown must never be reported as an empty inbox.
+  }
+}
 async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[]; labels: Map<string, string>; messageTimes: Map<string, string | null>; messageDirections: Map<string, "incoming" | "outgoing" | null> }> {
   const session = await getBackendSession();
   if (!session) throw new Error("TNND account is not connected.");
