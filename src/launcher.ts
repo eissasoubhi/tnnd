@@ -194,9 +194,11 @@ function render(value: Status, detail = ""): void {
   const pending = activeMode === "active-chat" && info &&
     typeof info.pendingReplies === "number" ? info.pendingReplies :
     value.autoCycle && typeof value.pendingReplies === "number" ? value.pendingReplies : null;
+  // Tinder-only rows have not yet been opened: a queued review is NOT proof
+  // that their last message is incoming. The opened thread must confirm this.
   chatPending.textContent = pending === null
-    ? "Conversations sans réponse : — (non vérifié)"
-    : "Conversations sans réponse : " + pending +
+    ? "Conversations à examiner : — (non vérifié)"
+    : "Conversations à examiner : " + pending +
       (activeMode === "active-chat" ? " · Étape : " + stage : " · Dernier contrôle");
   matchesInfo.textContent = activeMode === "new-match" ? explanation :
     value.autoCycle ? "Matches inspectés dans le même onglet après les messages sans réponse, sans interrompre un envoi." :
