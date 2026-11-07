@@ -768,7 +768,11 @@ async function tick(): Promise<void> {
     const probe = await requestOpenedChatScan(tabId, nextRef);
     const inFlight = await load();
     if (inFlight.enabled && inFlight.awaitingChatRef === nextRef &&
-        inFlight.tabId === tabId && inFlight.startedAt === latest.startedAt) {
+        inFlight.tabId === tabId && inFlight.startedAt === latest.startedAt &&
+        inFlight.phase === "waiting" &&
+        inFlight.phaseDetail.startsWith("Opened ")) {
+      // A fast content event may already have reached the worker. Do not
+      // overwrite an AI decision or a Send state with this probe's metadata.
       await save(activity({ ...inFlight, awaitingChatScanAttempts: 1 },
         probe.ok ? "checking" : "error",
         probe.ok
