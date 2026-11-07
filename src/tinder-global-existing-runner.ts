@@ -25,7 +25,7 @@ async function getCadenceSeconds(): Promise<number> {
   return typeof stored === "number" && ALLOWED_CADENCES.some(n => n === stored) ? stored : DEFAULT_CADENCE;
 }
 const API = "http://127.0.0.1:4000";
-const LOG_LIMIT = 16;
+const LOG_LIMIT = 50;
 const WORK_INDEX_KEY = "tnnd.existingThreadWorkIndex.v1";
 const WATCHER_ATTEMPTS_KEY = "tnnd.watcherOpenerAttempted.v1";
 const ATTENTION_CAP_PREFIX = "tnnd.attention.capSeconds.v1:";
