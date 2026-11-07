@@ -52,13 +52,13 @@ async function navigateOneTab(tabId: number, path: "/app/recs" | "/app/messages"
   if (tabs.length !== 1 || tabs[0].id !== tabId)
     throw new Error("single_tinder_tab_changed");
   const url = new URL(tabs[0].url ?? "");
-  if (url.pathname.replace(/\\/+$/, "") !== path) {
+  if (url.pathname.replace(/\/+$/, "") !== path) {
     await chrome.tabs.update(tabId, { url: url.origin + path });
   }
   await waitForTinderContentBridge(tabId);
   const confirmed = await chrome.tabs.get(tabId);
   if (!isTinderTab(confirmed) ||
-      new URL(confirmed.url ?? "").pathname.replace(/\\/+$/, "") !== path)
+      new URL(confirmed.url ?? "").pathname.replace(/\/+$/, "") !== path)
     throw new Error("single_tinder_navigation_unconfirmed");
 }
 let commandEpoch = 0;
@@ -172,6 +172,119 @@ async function status(): Promise<Record<string, unknown>> {
             : store?.handoffBlock ?? ""
   };
 }
+/** Single-tab orchestrator: the watcher owns both old unanswered Chat and
+ * verified Matches. Only one live UI owner at once; no concurrent click/send.
+ * An unresolved Like or active chat always vetoes a navigation.
+ */
+async function rotateSingleTinderTab(): Promise<void> {
+  if (rotationBusy || working) return;
+  rotationBusy = true;
+  const epoch = commandEpoch;
+  let hadDisarmedOwner = false;
+  try {
+    const master = await activeAutoState();
+    if (!master) return;
+    const owner = await owners();
+    if (owner.conflict || !owner.running || !owner.mode) return;
+    const session = await getBackendSession();
+    if (!session || session.user.id !== master.userId) return;
+    const tabs = (await chrome.tabs.query({
+      url: ["https://tinder.com/*", "https://www.tinder.com/*"]
+    })).filter(isTinderTab);
+    if (tabs.length !== 1 || tabs[0].id !== master.tabId) return;
+    const config = await getConfig();
+    if (!config.automation.enabled) return; // Swipe-only mode remains available.
+    const pendingReplies = await readUnifiedPendingReplies();
+    const watcher = (await chrome.storage.local.get(WATCHER_KEY))[WATCHER_KEY] as {
+      enabled?: boolean; phase?: string; phaseDetail?: string;
+      matchPhase?: string; lastMatchScanAt?: string | null;
+      activeConversationRef?: string | null; activeConversationUntil?: string | null;
+    } | undefined;
+    const next = nextSingleTabRotation({
+      owner: owner.mode === "swipe" ? "swipe" : "watcher",
+      pendingReplies, lastInboxVisitAt: master.lastInboxVisitAt,
+      watcherStartedAt: master.watcherStartedAt,
+      lastMatchScanAt: watcher?.lastMatchScanAt ?? null,
+      matchPhase: watcher?.matchPhase ?? null,
+      watcherSafe: watcherSwitchSafety(watcher).allowed,
+      now: Date.now()
+    });
+    if (epoch !== commandEpoch || !(await activeAutoState())) return;
+    if (next === "wait") {
+      const still = await activeAutoState();
+      if (still && still.startedAt === master.startedAt)
+        await chrome.storage.local.set({ [MASTER]: { ...still, pendingReplies } });
+      return;
+    }
+    if (next === "inbox" && owner.mode === "swipe") {
+      const settingsResponse = await fetch(API + "/api/v1/automation/smart-swipe", {
+        headers: { authorization: "Bearer " + session.token }, cache: "no-store"
+      });
+      if (!settingsResponse.ok) return;
+      const parsed = parseUnifiedWebSettings(await settingsResponse.json());
+      if (!parsed.ok || !(await safeSwipeHandoff(session, parsed.settings))) return;
+      if (epoch !== commandEpoch) return;
+      const result = await stopUnifiedSwipe();
+      if (result.ok !== true || (await owners()).running) return;
+      hadDisarmedOwner = true;
+      if (!(await safeSwipeHandoff(session, parsed.settings)) || epoch !== commandEpoch)
+        throw new Error("swipe_attempt_not_settled_after_disarm");
+      await navigateOneTab(master.tabId, "/app/messages");
+      if (epoch !== commandEpoch || !(await activeAutoState())) return;
+      const started = await startExistingRunner(false, "watcher", true, false, null);
+      if (!started.enabled || started.mode !== "watcher")
+        throw new Error("watcher_start_not_confirmed");
+      if (epoch !== commandEpoch) { await stopUnifiedExistingRunner(); return; }
+      const still = await activeAutoState();
+      if (!still || still.startedAt !== master.startedAt) return;
+      await chrome.storage.local.set({ [MASTER]: {
+        ...still, mode: "active-chat", pendingReplies, watcherStartedAt: Date.now(),
+        lastInboxVisitAt: Date.now(), handoffBlock: null
+      } });
+      return;
+    }
+    if (next === "swipe" && owner.mode !== "swipe") {
+      if (!watcherSwitchSafety(watcher).allowed || epoch !== commandEpoch) return;
+      const stopped = await stopUnifiedExistingRunner();
+      if (stopped.enabled || (await owners()).running) return;
+      hadDisarmedOwner = true;
+      if (epoch !== commandEpoch) return;
+      await navigateOneTab(master.tabId, "/app/recs");
+      if (epoch !== commandEpoch || !(await activeAutoState())) return;
+      const swipe = await startUnifiedSwipe();
+      if (swipe.ok !== true || swipe.armed !== true)
+        throw new Error("swipe_resume_not_confirmed");
+      if (epoch !== commandEpoch) { await stopUnifiedSwipe(); return; }
+      const still = await activeAutoState();
+      if (!still || still.startedAt !== master.startedAt) return;
+      await chrome.storage.local.set({ [MASTER]: {
+        ...still, mode: "swipe", watcherStartedAt: null,
+        lastInboxVisitAt: Date.now(), pendingReplies: 0, handoffBlock: null
+      } });
+    }
+  } catch {
+    // A failed navigation after Stop is NOT evidence that the next engine ran.
+    // Do not retry uncertain Likes or re-enable a runner behind the user's back.
+    if (hadDisarmedOwner && epoch === commandEpoch) {
+      const still = await activeAutoState();
+      if (still) await chrome.storage.local.set({ [MASTER]: {
+        ...still, enabled: false,
+        handoffBlock: "Rotation interrompue : état Tinder non confirmé. Vérifie l'onglet puis relance."
+      } });
+      await chrome.alarms.clear(ROTATION_ALARM);
+    }
+  } finally {
+    rotationBusy = false;
+  }
+}
+
+chrome.alarms.onAlarm.addListener(alarm => {
+  if (alarm.name === ROTATION_ALARM) void rotateSingleTinderTab();
+});
+chrome.runtime.onStartup.addListener(() => {
+  void activeAutoState().then(master => master ? ensureRotationAlarm() : undefined);
+});
+
 async function stopEverything(): Promise<{ ok: boolean; reason?: string }> {
   // Immediate preemption of the Swipe claim guard; never await a backend API
   // before stopping. Each existing engine retains its own safe Stop semantics.
