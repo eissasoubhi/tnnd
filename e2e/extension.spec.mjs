@@ -239,7 +239,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
         journal.waitForEvent("download"),
         journal.locator("#downloadChatJournal").click()
       ]);
-      expect(download.suggestedFilename()).toMatch(/^tnnd-chat-journal-.*\\.json$/);
+      expect(download.suggestedFilename()).toMatch(/^tnnd-chat-journal-.*\.json$/);
       const exported = JSON.parse(await readFile(await download.path(), "utf8"));
       expect(exported).toMatchObject({
         format: "tnnd-chat-journal", schemaVersion: 1,
