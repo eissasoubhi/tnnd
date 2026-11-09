@@ -379,21 +379,23 @@ async function setArmed(arm: boolean, expectedStopEpoch: number): Promise<Record
   // The backend still holds EVERY original attempt unchanged as Reserved /
   // unknown; the old attempt ID is never reused or automatically retried.
   // A fresh (<5min) unresolved action still blocks Start and all other Likes.
-  const summaryResponse = await fetch(API + "/api/v1/automation/smart-swipe/attempts/summary", {
-    headers: { authorization: "Bearer " + session.token }, cache: "no-store"
-  });
-  if (!summaryResponse.ok) return { ok: false, reason: "server_attempt_summary_unavailable" };
-  const summary = await summaryResponse.json().catch(() => null) as {
-    dayKey?: unknown; unresolvedAttempts?: unknown; blockingUnresolvedAttempts?: unknown
-  } | null;
-  const staleOnly = summary?.blockingUnresolvedAttempts === 0 &&
-    typeof summary.unresolvedAttempts === "number" &&
-    Number.isSafeInteger(summary.unresolvedAttempts) && summary.unresolvedAttempts > 0 &&
-    summary.unresolvedAttempts === proof.unresolvedAcrossDays &&
-    summary.dayKey === tinderAccountDayKey(now, settings.timeZone);
-  const canDetach = !review.ok && staleOnly &&
-    (review.reason === "server_attempt_unresolved" ||
-     review.reason === "server_attempts_not_fully_resolved");
+  let canDetach = false;
+  if (!review.ok && (review.reason === "server_attempt_unresolved" ||
+                     review.reason === "server_attempts_not_fully_resolved")) {
+    // Only the repair path requires an extra authenticated summary. Healthy
+    // Start does not become dependent on unrelated read-only counters.
+    const response = await fetch(API + "/api/v1/automation/smart-swipe/attempts/summary", {
+      headers: { authorization: "Bearer " + session.token }, cache: "no-store"
+    }).catch(() => null);
+    const summary = response?.ok ? await response.json().catch(() => null) as {
+      dayKey?: unknown; unresolvedAttempts?: unknown; blockingUnresolvedAttempts?: unknown
+    } | null : null;
+    canDetach = summary?.blockingUnresolvedAttempts === 0 &&
+      typeof summary.unresolvedAttempts === "number" &&
+      Number.isSafeInteger(summary.unresolvedAttempts) && summary.unresolvedAttempts > 0 &&
+      summary.unresolvedAttempts === proof.unresolvedAcrossDays &&
+      summary.dayKey === tinderAccountDayKey(now, settings.timeZone);
+  }
   if (!review.ok && !canDetach) return {
     ok: false, reason: review.reason,
     reconciliationCounts: publicSwipeReconciliationCounts(initial, proof)
