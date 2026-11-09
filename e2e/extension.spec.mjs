@@ -233,6 +233,24 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       await expect(journal.locator("#journalList .entry")).toHaveCount(1);
       await expect(journal.locator("#journalList")).toContainText("Tinder send action completed");
       await expect(journal.locator("#pendingCount")).toHaveText("1");
+      // Export must use a fresh storage snapshot, not the visible "Envois"
+      // filter. Verify a real Blob download on unpacked Chrome MV3.
+      const [download] = await Promise.all([
+        journal.waitForEvent("download"),
+        journal.locator("#downloadChatJournal").click()
+      ]);
+      expect(download.suggestedFilename()).toMatch(/^tnnd-chat-journal-.*\\.json$/);
+      const exported = JSON.parse(await readFile(await download.path(), "utf8"));
+      expect(exported).toMatchObject({
+        format: "tnnd-chat-journal", schemaVersion: 1,
+        extensionVersion: "0.2.51",
+        state: { enabled: true, mode: "watcher", currentConversation: "Qamar",
+          pendingReplies: 1 }
+      });
+      expect(exported.events).toHaveLength(3);
+      expect(exported.events.map(event => event.phase)).toEqual(["loading", "skipped", "sent"]);
+      expect(JSON.stringify(exported)).not.toContain("fixture-only-token");
+      await expect(journal.locator("#downloadFeedback")).toContainText("3 événements");
       expect((await context.pages()).filter(page => page.url().startsWith("https://tinder.com"))).toHaveLength(1);
     } finally {
       await journal?.close();
