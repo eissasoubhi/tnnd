@@ -31,6 +31,11 @@
     button:focus-visible { outline: 3px solid #8472dc; outline-offset: 2px; }
     #refresh { background: #244d3d; border-color: #244d3d; color: #fff; }
     #refresh:hover { background: #32644f; }
+    #downloadChatJournal { background: #e4f1e4; border-color: #abcbb3; color: #244d3d; }
+    #downloadChatJournal:hover { background: #d2ebd5; }
+    #downloadChatJournal:disabled { opacity: .55; cursor: progress; }
+    #downloadFeedback { width: 100%; color: #496b57; font-size: 12px; }
+    #downloadFeedback:empty { display: none; }
     #journalList { list-style: none; padding: 0; margin: 0; display: grid; gap: 9px; }
     .entry { padding: 14px 15px; border: 1px solid #dce7df; border-radius: 13px; display: grid; grid-template-columns: 105px 1fr; gap: 14px; }
     .entry[data-tone="danger"] { border-color: #efd5d0; background: #fffaf9; }
@@ -81,9 +86,16 @@
         <button type="button" data-filter="sent" aria-pressed="false">Envois</button>
         <button type="button" id="refresh">Actualiser ↻</button>
       </div>
+      <div class="buttons">
+        <button type="button" id="downloadChatJournal" aria-label="Télécharger le journal complet du Chat au format JSON" title="Exporter toutes les activités, même si un filtre est actif">↓ Télécharger le journal (.json)</button>
+      </div>
+      <span id="downloadFeedback" role="status" aria-live="polite"></span>
+      <div hidden>
+      </div>
     </div>
     <ol id="journalList" aria-label="50 dernières activités du watcher"></ol>
     <p id="emptyMessage" class="empty" hidden>Aucun événement dans ce filtre.</p>
+    <p class="foot">Le téléchargement contient les 50 derniers événements (sans tenir compte du filtre affiché), les dates et l’état du moteur. Il peut contenir les noms affichés des conversations, mais aucun texte de message ni jeton de connexion. Vérifie le fichier avant de le partager.</p>
     <p class="foot">Les 50 derniers événements sont conservés localement par l’extension. Les horaires sont affichés selon ton navigateur. Le journal contient des états techniques et les noms affichés des conversations, mais pas le texte des messages. Une action « Envoyé » signifie que Tinder a accepté l’action de l’extension, pas que la livraison a été confirmée.</p>
   </main>
   <script src="assets/chat-journal.js"></script>
