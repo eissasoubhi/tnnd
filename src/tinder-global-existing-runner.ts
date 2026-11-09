@@ -923,10 +923,17 @@ async function stop(reason = "Runner stopped. Tinder tab kept open."): Promise<G
 async function contentEvent(sender: chrome.runtime.MessageSender, message: { phase?: unknown; detail?: unknown; ref?: unknown; nextReplyAt?: unknown }): Promise<void> {
   const state = await load();
   if (!state.enabled || typeof sender.tab?.id !== "number" || sender.tab.id !== state.tabId) return;
-  const senderRef = tinderRefFromUrl(sender.url);
-  if (!senderRef || state.lastRef !== senderRef || message.ref !== senderRef) return;
+  // On Tinder SPA navigation, Chrome's MessageSender.url can remain the
+  // document's INITIAL /app/recs URL while location.pathname is already the
+  // newly opened /app/messages/:ref. Treat the sender URL as an ORIGIN check
+  // only. Authorize the exact live tab route independently, never the stale
+  // document URL. Otherwise all incoming/generating/error telemetry vanishes.
+  const senderRef = typeof message.ref === "string" ? message.ref : null;
+  if (!senderRef || state.lastRef !== senderRef || !isTinderUrl(sender.url)) return;
+  const liveTab = await chrome.tabs.get(sender.tab.id).catch(() => null);
+  if (!liveTab || tinderRefFromUrl(liveTab.url) !== senderRef) return;
   if (typeof message.phase !== "string" || !PHASES.includes(message.phase as RunnerPhase)
-    || !["incoming", "waiting", "generating", "sending", "sent", "skipped", "error"].includes(message.phase)) return;
+    || !["checking", "incoming", "waiting", "generating", "sending", "sent", "skipped", "error"].includes(message.phase)) return;
   const phase = message.phase as RunnerPhase;
   const detail = typeof message.detail === "string" ? message.detail.slice(0, 240) : phase;
   // Only accept a plausible deadline from an actual waiting event on the
@@ -943,6 +950,8 @@ async function contentEvent(sender: chrome.runtime.MessageSender, message: { pha
   // Reject late navigation events from an older chat tab.
   const fresh = await load();
   if (!fresh.enabled || fresh.lastRef !== senderRef || fresh.tabId !== sender.tab.id) return;
+  const confirmedTab = await chrome.tabs.get(sender.tab.id).catch(() => null);
+  if (!confirmedTab || tinderRefFromUrl(confirmedTab.url) !== senderRef) return;
   // Generating/sending is protected by the existing in-flight operation lease;
   // only observed incoming or confirmed outgoing events affect activity scores.
   const focus = fresh.mode === "watcher" && (phase === "incoming" || phase === "sent")
