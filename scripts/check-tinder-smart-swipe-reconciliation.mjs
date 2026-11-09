@@ -149,9 +149,11 @@ const rearmAt = runner.indexOf('"/api/v1/automation/smart-swipe/attempts/rearm"'
 const armedAt = runner.indexOf("[key]: { armed: true");
 assert.ok(proofAt > 0 && rearmAt > proofAt && armedAt > rearmAt,
   "explicit Start must obtain and match account-day proof BEFORE rearming");
-assert.ok(runner.includes('if (!review.ok) return {') &&
-  runner.includes('ok: false, reason: review.reason,'),
-  "unmatched unknown reservations must fail closed");
+assert.ok(runner.includes('if (!review.ok && !canDetach) return {') &&
+  runner.includes('ok: false, reason: review.reason,') &&
+  runner.includes('summary?.blockingUnresolvedAttempts === 0') &&
+  runner.includes('STORAGE_STALE_RESERVATIONS'),
+  "unproven unknown actions still fail closed; only expired historical reservations may be archived without replay");
 const sanitized = publicSwipeReconciliationCounts(missedLocalWrite, evidence);
 assert.match(sanitized, /local UI transitions 0/);
 assert.match(sanitized, /server UI transitions 1/);

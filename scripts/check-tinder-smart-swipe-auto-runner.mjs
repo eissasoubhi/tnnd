@@ -45,6 +45,25 @@ for (const [input, phase, startDisabled] of [
   assert.equal(state.phase, phase, JSON.stringify(input));
   assert.equal(state.startDisabled, startDisabled, JSON.stringify(input));
 }
+// Historical unknown actions are audit evidence, not active 5-minute
+// in-flight clicks. They must not turn the Start button into a dead control.
+const stale = classifySwipePopupState({
+  enabled: true, armed: false, unresolvedOnServer: 1,
+  blockingUnresolvedOnServer: 0
+});
+assert.equal(stale.phase, "stopped");
+assert.equal(stale.startDisabled, false);
+assert.equal(stale.needsReview, false);
+const active = classifySwipePopupState({
+  enabled: true, armed: false, unresolvedOnServer: 1,
+  blockingUnresolvedOnServer: 1
+});
+assert.equal(active.startDisabled, true, "a fresh in-flight claim still needs to finish");
+const missing = classifySwipePopupState({
+  enabled: true, armed: false, unresolvedOnServer: 1,
+  blockingUnresolvedOnServer: null
+});
+assert.equal(missing.startDisabled, true, "unknown active count cannot be guessed as zero");
 assert.ok(popup.includes("classifySwipePopupState({"),
   "popup should distinguish stopped/blocked/armed through tested state logic");
 assert.ok(popup.includes("reply.armed !== armed"),

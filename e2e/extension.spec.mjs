@@ -243,7 +243,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
       const exported = JSON.parse(await readFile(await download.path(), "utf8"));
       expect(exported).toMatchObject({
         format: "tnnd-chat-journal", schemaVersion: 1,
-        extensionVersion: "0.2.51",
+        extensionVersion: await journal.evaluate(() => chrome.runtime.getManifest().version),
         state: { enabled: true, mode: "watcher", currentConversation: "Qamar",
           pendingReplies: 1 }
       });

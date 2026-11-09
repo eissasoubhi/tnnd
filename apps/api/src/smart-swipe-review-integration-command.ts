@@ -33,6 +33,7 @@ async function main(): Promise<void> {
   const pool = getPool();
   const userId = randomUUID();
   const noClickUserId = randomUUID();
+  const staleUserId = randomUUID();
   const deviceId = randomUUID();
   const attemptId = randomUUID();
   try {
@@ -129,9 +130,51 @@ async function main(): Promise<void> {
     assert.equal(noClickHistory.attempts[0]?.outcomeReason, "preflight_state_changed");
     assert.equal((await claimSmartSwipeAttempt(noClickUserId, randomUUID(), deviceId)).ok, true,
       "a subsequent distinct claim is permitted without deleting historical attempts");
-    console.log("Smart Swipe disposable DB review/gate/quota + pre-click no-action integration passed.");
+    // Reproduce 2026-11-07 Reserved still blocking on 2026-11-09.
+    // This is a NEW claim, not a retry of the old uncertain Like; old attempt
+    // remains visible in history with no invented Tinder acceptance.
+    await pool.query("INSERT INTO users(id,email,password_hash) VALUES($1,$2,$3)", [
+      staleUserId, "test+" + staleUserId + "@invalid.example", "test-only"
+    ]);
+    await putSmartSwipeSettings(staleUserId, {
+      ...defaultSmartSwipeSettings(), enabled: true, timeZone: "Europe/Paris",
+      maxRightSwipesPerDay: null
+    });
+    const oldReserved = randomUUID();
+    assert.equal((await claimSmartSwipeAttempt(staleUserId, oldReserved, deviceId)).ok, true);
+    expectClaimDenied(await claimSmartSwipeAttempt(staleUserId, randomUUID(), deviceId), "unresolved");
+    const initialSummary = await readSmartSwipeAttemptSummary(staleUserId);
+    assert.equal(initialSummary.unresolvedAttempts, 1);
+    assert.equal(initialSummary.blockingUnresolvedAttempts, 1);
+    await pool.query(
+      "UPDATE user_smart_swipe_attempts SET created_at=now()-interval '2 days' " +
+      "WHERE user_id=$1 AND attempt_id=$2", [staleUserId, oldReserved]
+    );
+    await pool.query(
+      "UPDATE user_smart_swipe_execution_lease SET expires_at=now()-interval '2 days' WHERE user_id=$1",
+      [staleUserId]
+    );
+    const staleSummary = await readSmartSwipeAttemptSummary(staleUserId);
+    assert.equal(staleSummary.unresolvedAttempts, 1, "old unknown must stay audited");
+    assert.equal(staleSummary.blockingUnresolvedAttempts, 0,
+      "expired claim is not a currently executing Like");
+    assert.equal((await authorizeSmartSwipeRearm(staleUserId, deviceId)).ok, true);
+    const freshId = randomUUID();
+    assert.equal((await claimSmartSwipeAttempt(staleUserId, freshId, deviceId)).ok, true,
+      "unlimited Swipe may continue with a FRESH attempt ID after stale reservation");
+    const oldEntry = (await readSmartSwipeAttemptHistory(staleUserId)).attempts
+      .find(entry => entry.attemptId === oldReserved);
+    assert.equal(oldEntry?.status, "reserved", "historical unknown is not relabeled");
+    const resumedSummary = await readSmartSwipeAttemptSummary(staleUserId);
+    assert.equal(resumedSummary.unresolvedAttempts, 2);
+    assert.equal(resumedSummary.blockingUnresolvedAttempts, 1);
+    expectClaimDenied(await claimSmartSwipeAttempt(staleUserId, randomUUID(), deviceId), "unresolved");
+    assert.equal(resumedSummary.blockingUnresolvedAttempts, 1,
+      "fresh in-flight Like is still protected against double click");
+    console.log("Smart Swipe disposable DB stale-Reserved resume and unique-claim tests passed.");
   } finally {
     await pool.query("DELETE FROM users WHERE id=$1", [noClickUserId]).catch(() => undefined);
+    await pool.query("DELETE FROM users WHERE id=$1", [staleUserId]).catch(() => undefined);
     await pool.query("DELETE FROM users WHERE id=$1", [userId]).catch(() => undefined);
     await closePool();
   }

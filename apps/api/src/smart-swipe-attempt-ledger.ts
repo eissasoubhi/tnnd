@@ -3,6 +3,11 @@ import { getSmartSwipeSettings } from "./smart-auto-swipe-settings.js";
 
 export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export const EXECUTION_LEASE_SECONDS = 120;
+/** Grace period exceeds the execution lease. Old Reserved attempts are
+ * retained with unknown outcome and their UUID is NEVER retried.
+ * Only RECENT claims can represent a live competing Tinder action.
+ */
+export const STALE_ATTEMPT_GRACE_SECONDS = 300;
 export type SmartSwipeAttemptStatus = "reserved" | "ui_observed" | "uncertain" | "not_clicked";
 // Whitelist ONLY non-identifying codes created by our executor. Never persist
 // arbitrary strings, page/profile content, private identifiers or error messages.
@@ -103,7 +108,7 @@ export async function claimSmartSwipeAttempt(
       return { ok: false, claimed: false, reason: "other_device_owns_account" };
     }
     const outstanding = await client.query(
-      "SELECT 1 FROM user_smart_swipe_attempts WHERE user_id = $1 AND (status='reserved' OR (status='uncertain' AND reviewed_at IS NULL)) LIMIT 1", [userId]);
+      "SELECT 1 FROM user_smart_swipe_attempts WHERE user_id = $1 AND (status='reserved' OR (status='uncertain' AND reviewed_at IS NULL)) AND created_at >= now() - ($2::text || ' seconds')::interval LIMIT 1", [userId, STALE_ATTEMPT_GRACE_SECONDS]);
     const totals = await client.query<{ used: string }>(
       "SELECT count(*)::text AS used FROM user_smart_swipe_attempts WHERE user_id = $1 AND day_key = $2", [userId, dayKey]);
     const count = Number(totals.rows[0]?.used ?? "0");
@@ -166,23 +171,26 @@ export async function resolveSmartSwipeAttempt(
 }
 
 export async function readSmartSwipeAttemptSummary(userId: string): Promise<{
-  dayKey: string; attemptsToday: number; uiObservedToday: number; unresolvedAttempts: number
+  dayKey: string; attemptsToday: number; uiObservedToday: number; unresolvedAttempts: number; blockingUnresolvedAttempts: number
 }> {
   const settings = (await getSmartSwipeSettings(userId)).settings;
   const dayKey = accountDayKey(Date.now(), settings.timeZone);
-  const result = await getPool().query<{ attempts_today: string; ui_today: string; unresolved: string }>(
+  const result = await getPool().query<{ attempts_today: string; ui_today: string; unresolved: string; blocking_unresolved: string }>(
     `SELECT count(*) FILTER (WHERE day_key = $2)::text AS attempts_today,
        count(*) FILTER (WHERE day_key = $2 AND status = 'ui_observed')::text AS ui_today,
-       count(*) FILTER (WHERE status='reserved' OR (status='uncertain' AND reviewed_at IS NULL))::text AS unresolved
+       count(*) FILTER (WHERE status='reserved' OR (status='uncertain' AND reviewed_at IS NULL))::text AS unresolved,
+       count(*) FILTER (WHERE (status='reserved' OR (status='uncertain' AND reviewed_at IS NULL))
+         AND created_at >= now() - ($3::text || ' seconds')::interval)::text AS blocking_unresolved
      FROM user_smart_swipe_attempts WHERE user_id = $1`,
-    [userId, dayKey]
+    [userId, dayKey, STALE_ATTEMPT_GRACE_SECONDS]
   );
   const row = result.rows[0];
   return {
     dayKey,
     attemptsToday: Number(row?.attempts_today ?? "0"),
     uiObservedToday: Number(row?.ui_today ?? "0"),
-    unresolvedAttempts: Number(row?.unresolved ?? "0")
+    unresolvedAttempts: Number(row?.unresolved ?? "0"),
+    blockingUnresolvedAttempts: Number(row?.blocking_unresolved ?? "0")
   };
 }
 
@@ -334,11 +342,12 @@ export async function authorizeSmartSwipeRearm(
     }
     const outstanding = await client.query(
       "SELECT 1 FROM user_smart_swipe_attempts WHERE user_id=$1 " +
-      "AND (status='reserved' OR (status='uncertain' AND reviewed_at IS NULL)) LIMIT 1",
-      [userId]
+      "AND (status='reserved' OR (status='uncertain' AND reviewed_at IS NULL)) " +
+      "AND created_at >= now() - ($2::text || ' seconds')::interval LIMIT 1",
+      [userId, STALE_ATTEMPT_GRACE_SECONDS]
     );
     if (outstanding.rows.length) {
-      await client.query("ROLLBACK"); return { ok: false, reason: "unresolved_attempt_requires_review" };
+      await client.query("ROLLBACK"); return { ok: false, reason: "active_attempt_must_finish" };
     }
     const occupied = await client.query<{ owner_device_id: string; expires_at: Date }>(
       "SELECT owner_device_id, expires_at FROM user_smart_swipe_execution_lease WHERE user_id=$1 FOR UPDATE",
