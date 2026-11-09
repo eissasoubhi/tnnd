@@ -1,6 +1,6 @@
 import { getBackendSession } from "./storage";
 import { readNewMatchState } from "./tinder-new-match-background";
-import { validateSmartAutoSwipeConfig, type SmartAutoSwipeConfig } from "./tinder-smart-auto-swipe-policy";
+import { validateSmartAutoSwipeConfig, emptySmartSwipeDay, tinderAccountDayKey, type SmartAutoSwipeConfig } from "./tinder-smart-auto-swipe-policy";
 import { planSwipeRuntime } from "./tinder-swipe-runtime-gates";
 import { scheduleSmartSwipeSession } from "./tinder-smart-swipe-daily-scheduler";
 import { readSmartSwipeProgress } from "./tinder-smart-swipe-progress-store";
@@ -53,7 +53,14 @@ async function inspectSmartSwipeStatus(): Promise<Record<string, unknown>> {
   const now = Date.now();
   const progressKey = PROGRESS_PREFIX + session.user.id;
   const stored = (await chrome.storage.local.get(progressKey))[progressKey];
-  const result = readSmartSwipeProgress(stored, now, settings.timeZone);
+  let result = readSmartSwipeProgress(stored, now, settings.timeZone);
+  if (!result.ok && result.reason === "unresolved-previous-day" &&
+      serverAttempts?.blockingUnresolvedAttempts === 0) {
+    // Read-only status preview. Clicking Start handles the actual audited
+    // rollover; merely opening this popup must never clear old evidence.
+    result = { ok: true, progress: emptySmartSwipeDay(
+      tinderAccountDayKey(now, settings.timeZone)), needsSave: false };
+  }
   if (!result.ok) return safeMessage(result.reason);
   if (result.needsSave) await chrome.storage.local.set({ [progressKey]: result.progress });
   if (!settings.enabled) return {
