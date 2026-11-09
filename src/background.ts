@@ -102,6 +102,7 @@ type TrustedContentRequest =
   | { type: "TNND_GET_EXISTING_REPLY_MODE_PERMISSION" }
   | { type: "TNND_GET_BACKEND_AUTO_SEND_PERMISSION"; conversationRef: string }
   | { type: "TNND_OBSERVE_CONVERSATION_BOUNDARY"; externalThreadId: string; messages: unknown }
+  | { type: "TNND_SYNC_SENT_TINDER_BUBBLE"; conversationRef: string; bubble: unknown }
   | { type: "TNND_GET_FIRST_MESSAGE_PERMISSION"; conversationRef: string }
   | { type: "TNND_GET_NEW_MATCH_SEND_PERMISSION"; conversationRef: string }
   | { type: "TNND_CLAIM_FIRST_MESSAGE"; conversationRef: string }
@@ -391,6 +392,34 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
       return { ok: true, applied: payload?.applied === true, boundary };
     })().then(sendResponse).catch(() =>
       sendResponse({ ok: false, error: "conversation_boundary_backend_unreachable" }));
+    return true;
+  }
+
+  if (message.type === "TNND_SYNC_SENT_TINDER_BUBBLE") {
+    // Sync occurs ONLY after a content-script send has completed; no Tinder
+    // interaction is initiated here and no retry of the UI action is possible.
+    void (async () => {
+      const ref = message.conversationRef;
+      const item = message.bubble as Record<string, unknown> | null;
+      if (typeof ref !== "string" || !ref.trim() || ref.includes("/") || ref.length > 512 ||
+          !item || typeof item !== "object" || Array.isArray(item) ||
+          item.direction !== "outgoing" || typeof item.text !== "string" ||
+          !item.text.trim() || item.text.length > 4000 ||
+          typeof item.externalMessageId !== "string" ||
+          !/^tnnd-opener-[a-zA-Z0-9_-]{1,120}$/.test(item.externalMessageId) ||
+          typeof item.sentAt !== "string" || !Number.isFinite(Date.parse(item.sentAt)))
+        return { ok: false, error: "invalid_sent_message_sync" };
+      if (!await currentAuthorizedTinderThread(sender, ref))
+        return { ok: false, error: "wrong_live_tinder_thread" };
+      // The original content operation has already sent this bubble. Only
+      // synchronize its durable evidence; never create a second Tinder send.
+      await syncConversationDelta(ref, [{
+        externalMessageId: item.externalMessageId, direction: "outgoing",
+        text: item.text, sentAt: item.sentAt
+      }], null);
+      return { ok: true };
+    })().then(sendResponse).catch(() =>
+      sendResponse({ ok: false, error: "sent_message_sync_unavailable" }));
     return true;
   }
 
