@@ -39,7 +39,7 @@ async function inspectSmartSwipeStatus(): Promise<Record<string, unknown>> {
   const resultState = (await chrome.storage.local.get("tnnd.smartSwipeLastResult.v1:" + session.user.id))
     ["tnnd.smartSwipeLastResult.v1:" + session.user.id] as string | undefined;
   let serverAttempts: {
-    attemptsToday: number; uiObservedToday: number; unresolvedAttempts: number
+    attemptsToday: number; uiObservedToday: number; unresolvedAttempts: number; blockingUnresolvedAttempts?: number
   } | null = null;
   try {
     const ledgerResponse = await fetch(API + "/api/v1/automation/smart-swipe/attempts/summary", {
@@ -95,6 +95,7 @@ async function inspectSmartSwipeStatus(): Promise<Record<string, unknown>> {
     attemptsToday: serverAttempts?.attemptsToday ?? null,
     uiObservedToday: serverAttempts?.uiObservedToday ?? null,
     unresolvedOnServer: serverAttempts?.unresolvedAttempts ?? null,
+    blockingUnresolvedOnServer: serverAttempts?.blockingUnresolvedAttempts ?? null,
     remainingAttempts: null, // Unlimited TNND daily Right Likes; count still reported above.
     session: result.progress.session ? {
       active: result.progress.session.runningSinceMs !== null,
