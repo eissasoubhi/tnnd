@@ -7,6 +7,9 @@ import "./tinder-global-new-match-runner";
 import "./tinder-smart-swipe-runtime-background";
 import "./tinder-smart-swipe-automation-background";
 import { newMatchSendPermission } from "./tinder-new-match-background";
+import {
+  validateBoundaryObservation, validateBoundaryBridgeDecision, safeBoundaryBridgeFailure
+} from "./tinder-conversation-boundary-bridge";
 import { currentAuthorizedTinderThread } from "./tinder-sender-route-guard";
 import "./tinder-global-existing-runner";
 import "./unified-controller-background";
@@ -98,6 +101,7 @@ type TrustedContentRequest =
   | { type: "TNND_GET_CHAT_AUTOMATION"; threadKey: string }
   | { type: "TNND_GET_EXISTING_REPLY_MODE_PERMISSION" }
   | { type: "TNND_GET_BACKEND_AUTO_SEND_PERMISSION"; conversationRef: string }
+  | { type: "TNND_OBSERVE_CONVERSATION_BOUNDARY"; externalThreadId: string; messages: unknown }
   | { type: "TNND_GET_FIRST_MESSAGE_PERMISSION"; conversationRef: string }
   | { type: "TNND_GET_NEW_MATCH_SEND_PERMISSION"; conversationRef: string }
   | { type: "TNND_CLAIM_FIRST_MESSAGE"; conversationRef: string }
@@ -344,6 +348,49 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
       return { ok: true, allowed: true };
     })().then(sendResponse).catch(() =>
       sendResponse({ ok: true, allowed: false, reason: "backend_permission_check_failed" }));
+    return true;
+  }
+
+  if (message.type === "TNND_OBSERVE_CONVERSATION_BOUNDARY") {
+    // IMPORTANT: Tinder's isolated content script is subject to the page's
+    // CORS policy. The service worker owns host permissions for 127.0.0.1.
+    // Never send an authenticated POST directly from the Tinder origin.
+    void (async () => {
+      const observed = validateBoundaryObservation(message.externalThreadId, message.messages);
+      if (!observed) return { ok: false, error: "invalid_conversation_boundary" };
+      if (!await currentAuthorizedTinderThread(sender, observed.externalThreadId))
+        return { ok: false, error: "wrong_live_tinder_thread" };
+      // This is a potentially state-changing classification (rest / handoff).
+      // It may only examine conversations already explicitly selected for AI.
+      const management = await loadTinderConversationManagement(observed.externalThreadId);
+      if (!mayAutomaticallySendToTinder(management))
+        return { ok: false, error: "ai_management_not_authorized" };
+      const session = await getBackendSession();
+      if (!session) return { ok: false, error: "invalid_or_expired_session" };
+      let response: Response;
+      try {
+        response = await fetch("http://127.0.0.1:4000/api/v1/conversations/observed-boundary", {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: "Bearer " + session.token },
+          body: JSON.stringify(observed),
+          signal: AbortSignal.timeout(18_000),
+          cache: "no-store"
+        });
+      } catch {
+        return { ok: false, error: "conversation_boundary_backend_unreachable" };
+      }
+      const payload = await response.json().catch(() => null) as {
+        error?: unknown; applied?: unknown; boundary?: unknown
+      } | null;
+      if (!response.ok)
+        return { ok: false, error: safeBoundaryBridgeFailure(payload?.error, response.status) };
+      const boundary = validateBoundaryBridgeDecision(payload?.boundary);
+      if (!boundary) return { ok: false, error: "invalid_conversation_boundary_response" };
+      // No Tinder action, no send, no raw messages, no provider credentials
+      // are ever included in the response or the activity journal.
+      return { ok: true, applied: payload?.applied === true, boundary };
+    })().then(sendResponse).catch(() =>
+      sendResponse({ ok: false, error: "conversation_boundary_backend_unreachable" }));
     return true;
   }
 
