@@ -168,7 +168,8 @@ async function main(): Promise<void> {
     const resumedSummary = await readSmartSwipeAttemptSummary(staleUserId);
     assert.equal(resumedSummary.unresolvedAttempts, 2);
     assert.equal(resumedSummary.blockingUnresolvedAttempts, 1);
-    expectClaimDenied(await claimSmartSwipeAttempt(staleUserId, randomUUID(), deviceId), "unresolved",
+    expectClaimDenied(await claimSmartSwipeAttempt(staleUserId, randomUUID(), deviceId), "unresolved");
+    assert.equal(resumedSummary.blockingUnresolvedAttempts, 1,
       "fresh in-flight Like is still protected against double click");
     console.log("Smart Swipe disposable DB stale-Reserved resume and unique-claim tests passed.");
   } finally {
