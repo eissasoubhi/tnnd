@@ -1,6 +1,6 @@
 {
   "name": "tnnd",
-  "version": "0.2.50",
+  "version": "0.2.51",
   "private": true,
   "type": "module",
   "scripts": {
@@ -62,7 +62,7 @@
     "test:swipe-runtime-gates": "node --experimental-strip-types scripts/check-tinder-swipe-runtime-gates.mjs",
     "test:unified-quota-status": "node --experimental-strip-types scripts/check-unified-quota-status.mjs",
     "test:single-tab-orchestrator": "node --experimental-strip-types --test scripts/check-tinder-single-tab-orchestration.mjs",
-    "test:chat-journal": "node --test scripts/check-chat-journal.mjs",
+    "test:chat-journal": "node --test scripts/check-chat-journal.mjs && node --experimental-strip-types --test scripts/check-chat-journal-export.mjs",
     "test:unified-manual-modes": "node --experimental-strip-types --test scripts/check-unified-manual-modes.mjs",
     "test:tnnd-web-tab-navigation": "node --experimental-strip-types --test scripts/check-tnnd-web-tab-navigation.mjs",
     "test:smart-swipe-progress-store": "node --experimental-strip-types scripts/check-tinder-smart-swipe-progress-store.mjs",
