@@ -631,10 +631,16 @@ const server = createServer(async (request, response) => {
       try {
         const result = await recordObservedConversationBoundary(session.user.id, input);
         sendJson(response, 200, result);
-      } catch {
-        // Gemini/provider/DB failure: fail closed; never expose raw chat or
-        // provider credentials, and never imply a "continue" authorization.
-        sendJson(response, 503, { error: "conversation_semantic_check_unavailable" });
+      } catch (error) {
+        // Safe machine-readable diagnostic; no provider body, prompts, chat
+        // text or credentials leave the API, and no failure authorizes Send.
+        const message = error instanceof Error ? error.message : "";
+        const safeCode = message === "boundary_provider_not_configured"
+          ? "conversation_ai_provider_not_configured"
+          : message === "boundary_classifier_unavailable"
+            ? "conversation_ai_provider_unavailable"
+            : "conversation_semantic_check_unavailable";
+        sendJson(response, 503, { error: safeCode });
       }
       return;
     }
