@@ -24,6 +24,10 @@ const STORAGE_ARM = "tnnd.smartSwipeLiveArm.v1:";
 const STORAGE_HEARTBEAT = "tnnd.smartSwipeHeartbeat.v1:";
 const STORAGE_DEVICE = "tnnd.smartSwipeDevice.v1:";
 const STORAGE_STATUS = "tnnd.smartSwipeLastResult.v1:";
+/** Non-destructive local audit of stale reservations detached at explicit Start.
+ * The durable server attempt still exists with UNKNOWN Tinder outcome.
+ */
+const STORAGE_STALE_RESERVATIONS = "tnnd.smartSwipeStaleReservations.v1:";
 // A Stop request preempts new actions immediately, even if a serialized Start
 // is waiting for an API response. The storage latch survives MV3 restarts.
 const STORAGE_STOP = "tnnd.smartSwipeStopRequested.v1";
@@ -370,13 +374,37 @@ async function setArmed(arm: boolean, expectedStopEpoch: number): Promise<Record
   const proof = parseDayReconciliationProof(await proofResponse.json(), initial.dayKey);
   if (!proof) return { ok: false, reason: "invalid_server_reconciliation" };
   const review = reconcileReviewedLocalSwipeAttempt(initial, proof);
-  if (!review.ok) return {
+  // Long-expired server reservations are NOT ongoing Like clicks. Only a
+  // new, explicit Start may detach their local progress from the new session.
+  // The backend still holds EVERY original attempt unchanged as Reserved /
+  // unknown; the old attempt ID is never reused or automatically retried.
+  // A fresh (<5min) unresolved action still blocks Start and all other Likes.
+  const summaryResponse = await fetch(API + "/api/v1/automation/smart-swipe/attempts/summary", {
+    headers: { authorization: "Bearer " + session.token }, cache: "no-store"
+  });
+  if (!summaryResponse.ok) return { ok: false, reason: "server_attempt_summary_unavailable" };
+  const summary = await summaryResponse.json().catch(() => null) as {
+    dayKey?: unknown; unresolvedAttempts?: unknown; blockingUnresolvedAttempts?: unknown
+  } | null;
+  const staleOnly = summary?.blockingUnresolvedAttempts === 0 &&
+    typeof summary.unresolvedAttempts === "number" &&
+    Number.isSafeInteger(summary.unresolvedAttempts) && summary.unresolvedAttempts > 0 &&
+    summary.unresolvedAttempts === proof.unresolvedAcrossDays &&
+    summary.dayKey === tinderAccountDayKey(now, settings.timeZone);
+  const canDetach = !review.ok && staleOnly &&
+    (review.reason === "server_attempt_unresolved" ||
+     review.reason === "server_attempts_not_fully_resolved");
+  if (!review.ok && !canDetach) return {
     ok: false, reason: review.reason,
-    // A rejected Start does not set armed. These counts help the operator
-    // diagnose old local writes without exposing account/profile identifiers.
     reconciliationCounts: publicSwipeReconciliationCounts(initial, proof)
   };
-  const read = readSmartSwipeProgress(review.progress, now, settings.timeZone);
+  const currentDay = tinderAccountDayKey(now, settings.timeZone);
+  const recovered = canDetach
+    ? initial.dayKey === currentDay
+      ? { ...initial, rightSwipesReserved: 0, rightSwipesConfirmed: proof.uiObserved }
+      : emptySmartSwipeDay(currentDay)
+    : review.progress;
+  const read = readSmartSwipeProgress(recovered, now, settings.timeZone);
   if (!read.ok) return { ok: false, reason: read.reason };
   let updatedProgress = read.progress;
   // Avoid counting offline time as active when restoring an old session.
@@ -394,11 +422,26 @@ async function setArmed(arm: boolean, expectedStopEpoch: number): Promise<Record
   );
   if (!rearm.ok) return { ok: false, reason: rearm.reason ?? "explicit_rearm_denied" };
   if (expectedStopEpoch !== stopEpoch) return { ok: false, reason: "stop_superseded_start" };
+  // Do not lose evidence of a local reservation merely because its former
+  // worker is no longer alive. Archive its counts before clearing the daily
+  // session progress; server ledger/history stays completely untouched.
+  const archivedKey = STORAGE_STALE_RESERVATIONS + session.user.id;
+  const archivedRaw = canDetach && initial.rightSwipesReserved > 0
+    ? (await chrome.storage.local.get(archivedKey))[archivedKey] : null;
+  const archivedEntries = Array.isArray(archivedRaw) ? archivedRaw.slice(-29) : [];
+  if (canDetach && initial.rightSwipesReserved > 0)
+    archivedEntries.push({
+      dayKey: initial.dayKey, reserved: initial.rightSwipesReserved,
+      uiObserved: initial.rightSwipesConfirmed, detachedAt: new Date().toISOString(),
+      reason: "stale_unknown_not_retried"
+    });
   await chrome.storage.local.set({
     [progressKey]: updatedProgress,
+    ...(canDetach && initial.rightSwipesReserved > 0 ? { [archivedKey]: archivedEntries } : {}),
     [key]: { armed: true, userId: session.user.id, tabId: tabs[0].id },
     [STORAGE_STOP]: false
   });
+  if (canDetach) await saveStatus(session.user.id, "stale_reserved_archived_no_retry");
   // Stop may have arrived while the storage write was in flight. Its queued
   // final disarm wins; never report a successful Start in that case.
   if (expectedStopEpoch !== stopEpoch) return { ok: false, reason: "stop_superseded_start" };
