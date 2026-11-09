@@ -15,6 +15,7 @@ import { bulkUpdateConversationManagement, isConversationManagementState, listCo
 import { handleOutgoingConfirmationRequest } from "./conversation-outgoing-confirmation-controller.js";
 import { clearConversationOverrides, getConversationOverrides, replaceConversationOverrides } from "./conversation-overrides-service.js";
 import { recordObservedConversationBoundary, validateObservedConversationBoundary } from "./conversation-boundary-service.js";
+import { publicObservedBoundaryFailure } from "./conversation-semantic-diagnostic.js";
 import { clearConversationTemporaryInstruction, getConversation, listConversations, searchConversationMessageContent, setConversationTemporaryInstruction, syncConversation, updateConversationStatus, updateConversationDisplayIdentity, type TemporaryInstructionScope } from "./conversation-service.js";
 import { isConversationStatus, validateConversationSyncRequest } from "./conversation-sync-contract.js";
 import { conversationSyncErrorResponse } from "./conversation-sync-error-response.js";
@@ -634,13 +635,7 @@ const server = createServer(async (request, response) => {
       } catch (error) {
         // Safe machine-readable diagnostic; no provider body, prompts, chat
         // text or credentials leave the API, and no failure authorizes Send.
-        const message = error instanceof Error ? error.message : "";
-        const safeCode = message === "boundary_provider_not_configured"
-          ? "conversation_ai_provider_not_configured"
-          : message === "boundary_classifier_unavailable"
-            ? "conversation_ai_provider_unavailable"
-            : "conversation_semantic_check_unavailable";
-        sendJson(response, 503, { error: safeCode });
+        sendJson(response, 503, { error: publicObservedBoundaryFailure(error) });
       }
       return;
     }
