@@ -102,7 +102,7 @@ async function inspectSmartSwipeStatus(): Promise<Record<string, unknown>> {
     attemptsToday: serverAttempts?.attemptsToday ?? null,
     uiObservedToday: serverAttempts?.uiObservedToday ?? null,
     unresolvedOnServer: serverAttempts?.unresolvedAttempts ?? null,
-    blockingUnresolvedOnServer: serverAttempts?.blockingUnresolvedAttempts ?? null,
+    blockingUnresolvedOnServer: serverAttempts?.blockingUnresolvedAttempts,
     remainingAttempts: null, // Unlimited TNND daily Right Likes; count still reported above.
     session: result.progress.session ? {
       active: result.progress.session.runningSinceMs !== null,
