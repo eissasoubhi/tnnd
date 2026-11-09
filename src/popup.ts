@@ -1149,7 +1149,8 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
       nextActivity?: string | null; executionAvailable?: boolean; armed?: boolean;
       remainingSessions?: number | null; attemptsToday?: number | null;
       remainingAttempts?: number | null; uiObservedToday?: number | null;
-      unresolvedOnServer?: number | null; lastResult?: string | null;
+      unresolvedOnServer?: number | null; blockingUnresolvedOnServer?: number | null;
+       lastResult?: string | null;
       schedule?: string; session?: { active: boolean; remainingMs: number | null } | null;
       controls?: { status?: string; likeControls?: number };
       progress?: { startedSessions?: number; rightSwipesConfirmed?: number; rightSwipesReserved?: number };
@@ -1168,7 +1169,8 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
     const view = classifySwipePopupState({
       enabled: result.enabled === true,
       armed: result.armed === true,
-      unresolvedOnServer: result.unresolvedOnServer
+      unresolvedOnServer: result.unresolvedOnServer,
+       blockingUnresolvedOnServer: result.blockingUnresolvedOnServer
     });
     if (start) start.disabled = view.startDisabled;
     if (view.phase === "disabled") {
@@ -1204,7 +1206,8 @@ async function refreshSmartSwipeRuntime(): Promise<void> {
       "Right Like attempts today: " + known(result.attemptsToday) + " (no TNND daily cap)" +
         (hasUnsafeLedger ? " (blocked until review)" : ""),
       "Card transitions observed: " + known(result.uiObservedToday),
-      "Unresolved: " + known(result.unresolvedOnServer),
+      "Historical unknown attempts (not retried): " + known(result.unresolvedOnServer),
+       "Potentially active claims: " + known(result.blockingUnresolvedOnServer),
       "Session remaining: " + sessionRemaining,
       "Priority: " + (view.phase === "armed" ? (result.nextActivity ?? "none") : "not running"),
       ...(view.needsReview ? ["Review: TNND Web → Settings → Smart Auto Swipe → Recent attempts"] : []),
