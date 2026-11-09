@@ -74,21 +74,26 @@ export async function syncObservedConversationBoundary(
   externalThreadId: string,
   messages: readonly { direction: "incoming" | "outgoing"; text: string }[]
 ): Promise<{ applied: boolean; boundary: { kind: string; platform: string | null } }> {
-  const session = await getBackendSession();
-  if (!session) throw new Error("TNND account is not connected.");
-  const response = await fetch(API_BASE + "/api/v1/conversations/observed-boundary", {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: "Bearer " + session.token },
-    body: JSON.stringify({ externalThreadId, messages: messages.slice(-12) })
-  });
-  const result = await response.json().catch(() => null) as
-    { applied?: boolean; boundary?: { kind?: string; platform?: string | null }; error?: string } | null;
-  if (!response.ok || !result?.boundary) {
-    throw new Error(result?.error ?? "Could not persist the conversation ending.");
+  // Chrome MV3 content scripts cannot use the extension's cross-origin host
+  // permissions: a fetch from https://tinder.com to localhost is subject to
+  // Tinder-origin CORS. Route the SAME authenticated request through TNND's
+  // service worker, which independently rechecks tab identity and AI consent.
+  const result = await chrome.runtime.sendMessage({
+    type: "TNND_OBSERVE_CONVERSATION_BOUNDARY",
+    externalThreadId, messages: messages.slice(-12)
+  }) as {
+    ok?: boolean; applied?: boolean;
+    boundary?: { kind: string; platform: string | null };
+    error?: string
+  } | undefined;
+  if (result?.ok !== true || !result.boundary) {
+    // The worker only returns a stable, allowlisted error code, never a
+    // backend exception or provider response with private information.
+    throw new Error(result?.error ?? "conversation_boundary_bridge_unavailable");
   }
   return {
     applied: result.applied === true,
-    boundary: { kind: result.boundary.kind ?? "continue", platform: result.boundary.platform ?? null }
+    boundary: { kind: result.boundary.kind, platform: result.boundary.platform }
   };
 }
 

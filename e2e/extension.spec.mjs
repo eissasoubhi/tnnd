@@ -51,6 +51,32 @@ const api = createServer(async (req, res) => {
   }
   if (path === "/api/v1/auth/session") return json(res, 200, { user: session.user });
   if (path === "/api/v1/profile") return json(res, 404, { error: "fixture_no_profile" });
+  if (path === "/api/v1/conversations/by-external-thread" &&
+      url.searchParams.get("externalThreadId") === "fixture-old-incoming")
+    return json(res, 200, { conversation: {
+      id: "fixture-conversation-id", externalThreadId: "fixture-old-incoming",
+      status: "active", managementState: "ai-managed", explicitlySelected: true
+    }});
+  if (path === "/api/v1/conversations/fixture-conversation-id")
+    return json(res, 200, { conversation: {
+      id: "fixture-conversation-id",
+      messages: [{ direction: "incoming", text: "Coucou" }],
+      matchScreening: { action: "continue" }
+    }});
+  if (path === "/api/v1/conversations/observed-boundary" && req.method === "POST") {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    if (input.externalThreadId !== "fixture-old-incoming" ||
+        input.messages?.at(-1)?.direction !== "incoming")
+      return json(res, 400, { error: "invalid_conversation_boundary" });
+    // Deliberately NO CORS response headers. Tinder-page fetch used to fail,
+    // but the host-authorized MV3 worker can call the same local API.
+    return json(res, 200, { applied: false, boundary: {
+      kind: "continue", platform: null, confidence: 0.99, evidence: "ongoing"
+    }});
+  }
+
   if (path === "/api/v1/automation/smart-swipe") return json(res, 200, { settings });
   if (path === "/api/v1/automation/smart-swipe/attempts/summary") return json(res, 200, {
     ...ledger, dayKey: new Date().toISOString().slice(0, 10)
@@ -327,6 +353,61 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     } finally {
       await worker.evaluate(({key,before}) => before === undefined
         ? chrome.storage.local.remove(key) : chrome.storage.local.set({[key]:before}), {key,before});
+      await tinder.goto("https://tinder.com/app/recs");
+    }
+  });
+
+  test("old incoming Tinder message reaches semantic API through MV3 worker despite absent Tinder CORS", async () => {
+    const stateKey = "tnnd.globalExistingRunner.v2";
+    const worker = context.serviceWorkers()[0] || await context.waitForEvent("serviceworker");
+    const stored = await storage();
+    const beforeState = stored[stateKey];
+    const beforeConfig = stored["tnnd.config"];
+    const firstRequest = requests.length;
+    try {
+      await tinder.goto("https://tinder.com/app/messages/fixture-old-incoming");
+      const tabId = await popup.evaluate(async () =>
+        (await chrome.tabs.query({url:"https://tinder.com/*"}))[0].id);
+      const now = new Date().toISOString();
+      await worker.evaluate(({stateKey,tabId,userId,now}) =>
+        chrome.storage.local.set({
+          [stateKey]: {
+            enabled:true,mode:"watcher",userId,tabId,startedAt:now,
+            lastRef:"fixture-old-incoming",awaitingChatRef:"fixture-old-incoming",
+            awaitingChatSince:now,phase:"waiting",currentLabel:"Fictional incoming",
+            activity:[]
+          },
+          "tnnd.config": { automation: {
+            enabled:true,maxFirstMessagesPerDay:5,
+            replyDelayMinSeconds:120,replyDelayMaxSeconds:120
+          }}
+        }), {stateKey,tabId,userId,now});
+      const inspect = await popup.evaluate(async () => {
+        const tab = (await chrome.tabs.query({url:"https://tinder.com/*"}))[0];
+        return chrome.tabs.sendMessage(tab.id, {
+          type:"TNND_EXISTING_SCAN_OPENED_THREAD",ref:"fixture-old-incoming"
+        });
+      });
+      expect(inspect).toMatchObject({ok:true,status:"unanswered",incoming:1});
+      await expect.poll(() => requests.slice(firstRequest)
+        .filter(item => item.path === "/api/v1/conversations/observed-boundary" &&
+          item.method === "POST" && item.authorization).length,
+        {timeout:15_000,intervals:[100,200,500]}).toBeGreaterThan(0);
+      const activity = (await storage())[stateKey]?.activity ?? [];
+      expect(activity.map(event => event.detail).join(" ")).not.toContain("Vérification sémantique impossible");
+      expect((await context.pages()).filter(page => page.url().startsWith("https://tinder.com"))).toHaveLength(1);
+      // Classification is not permission to send now. The fixture never
+      // confirms any real Tinder send and automation remains isolated.
+    } finally {
+      await worker.evaluate(({stateKey,beforeState,beforeConfig}) => {
+        const delta = {};
+        if (beforeState !== undefined) delta[stateKey] = beforeState;
+        if (beforeConfig !== undefined) delta["tnnd.config"] = beforeConfig;
+        return chrome.storage.local.set(delta).then(() => chrome.storage.local.remove([
+          ...(beforeState === undefined ? [stateKey] : []),
+          ...(beforeConfig === undefined ? ["tnnd.config"] : [])
+        ]));
+      }, {stateKey,beforeState,beforeConfig});
       await tinder.goto("https://tinder.com/app/recs");
     }
   });

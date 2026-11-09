@@ -21,7 +21,19 @@ const semanticReasons: Record<string,string> = {
   invalid_or_expired_session:
     "Session TNND Web expirée : reconnecte le compte TNND.",
   conversation_semantic_check_unavailable:
-    "Échec interne du contrôle sémantique TNND (API/BD/fournisseur). Consulte les logs du backend."
+    "Échec interne du contrôle sémantique TNND (API/BD/fournisseur). Consulte les logs du backend.",
+  conversation_boundary_backend_unreachable:
+    "Le service worker TNND ne peut pas joindre l'API locale (127.0.0.1:4000). Vérifie que le backend est démarré.",
+  conversation_boundary_bridge_unavailable:
+    "Pont de vérification IA indisponible. Recharge l'extension TNND et l'onglet Tinder.",
+  conversation_boundary_backend_rejected:
+    "L'API TNND a refusé la vérification sémantique. Vérifie la version du backend et son journal.",
+  invalid_conversation_boundary_response:
+    "L'API TNND a renvoyé une réponse sémantique invalide. Vérifie sa version.",
+  wrong_live_tinder_thread:
+    "La conversation Tinder a changé pendant la vérification IA.",
+  ai_management_not_authorized:
+    "La conversation n'est plus autorisée en gestion IA dans TNND Web."
 };
 export function explainBackendReplyDenial(code: unknown): string {
   return typeof code === "string" && Object.hasOwn(backendReasons, code)

@@ -120,7 +120,8 @@ test("opener burst is one pre-send claim, then each bubble is synchronized and g
   assert.match(code, /sameOpenerThreadUninterrupted\(adapter.readVisibleMessages\(\), openerParts\[index - 1\]\)/);
   assert.match(code, /await backendAllowsAutomaticReply\(conversationRef\)/);
   assert.match(code, /await getChatAutomationEnabled\(threadKey\)/);
-  assert.match(code, /await syncConversationDelta\(conversationRef, \[\{/);
+  assert.match(code, /type: "TNND_SYNC_SENT_TINDER_BUBBLE"/);
+  assert.match(code, /if \(!stored\?\.ok\) throw new Error\("sent_message_sync_unavailable"\)/);
   assert.match(code, /new Promise\(\(resolve\) => setTimeout\(resolve, gap \* 1000\)\)/);
   assert.match(code, /openerTypingDelaySeconds\(part, config.automation/);
   assert.doesNotMatch(code, /const gap = randomCadenceSeconds\(config.automation\)/);

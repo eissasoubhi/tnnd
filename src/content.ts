@@ -12,7 +12,7 @@ import { openerDelaySeconds, openerTypingDelaySeconds } from "./tinder-opener-ti
 import { naturalReplyBubbles } from "./tinder-reply-bubbles";
 import { type ConversationBoundary, type ConversationBoundaryMessage } from "./conversation-boundary-policy";
 import { automaticReplyHold, hasUnexpectedScriptMix, replyNeedsHumanReview } from "./conversation-reply-safety";
-import { syncConversationDelta, syncObservedConversationBoundary } from "./conversation-sync";
+import { syncObservedConversationBoundary } from "./conversation-sync";
 import { observeTinderRuntime } from "./tinder-runtime-observation";
 import { readCurrentTinderUiState } from "./tinder-runtime-state";
 import { isInboxReadableTinderState } from "./tinder-state-machine";
@@ -954,12 +954,16 @@ async function startFirstMessage(expectedThreadKey: string, mode: "individual" |
       try {
         // Distinct stable message keys: one opener quota claim per match,
         // but each actual Tinder bubble is synchronized as its own message.
-        await syncConversationDelta(conversationRef, [{
-          externalMessageId: `tnnd-opener-${attemptedAt}-${index + 1}`,
-          direction: "outgoing",
-          text: part,
-          sentAt: new Date().toISOString()
-        }], null);
+        const stored = await sendRuntimeMessage<{ok: boolean; error?: string}>({
+          type: "TNND_SYNC_SENT_TINDER_BUBBLE",
+          conversationRef,
+          bubble: {
+            externalMessageId: `tnnd-opener-${attemptedAt}-${index + 1}`,
+            direction: "outgoing", text: part,
+            sentAt: new Date().toISOString()
+          }
+        });
+        if (!stored?.ok) throw new Error("sent_message_sync_unavailable");
       } catch {
         return partial("Tinder accepted a send action but backend sync could not be confirmed.");
       }
