@@ -284,6 +284,53 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     }
   });
 
+  test("SPA old-message scanner delivers its actual scan event after Tinder history.pushState", async () => {
+    const key = "tnnd.globalExistingRunner.v2";
+    const worker = context.serviceWorkers()[0] || await context.waitForEvent("serviceworker");
+    const before = (await storage())[key];
+    try {
+      // The document starts at a DIFFERENT thread. Tinder's React router
+      // changes only history/location; Chrome MessageSender.url can remain the
+      // document's initial route, which previously dropped every event.
+      await tinder.goto("https://tinder.com/app/messages/fixture-old-incoming");
+      const tabId = await popup.evaluate(async () =>
+        (await chrome.tabs.query({ url: "https://tinder.com/*" }))[0].id);
+      const newRef = "fixture-after-spa";
+      await tinder.evaluate(newRef => {
+        history.pushState({}, "", "/app/messages/" + newRef);
+      }, newRef);
+      const now = new Date().toISOString();
+      await worker.evaluate(({key, tabId, newRef, userId, now}) =>
+        chrome.storage.local.set({ [key]: {
+          enabled: true, mode: "watcher", userId, tabId, startedAt: now,
+          lastRef: newRef, awaitingChatRef: newRef, awaitingChatSince: now,
+          currentLabel: "Fictional old inbox", phase: "waiting",
+          phaseDetail: "Opened fictional thread", activity: []
+        }}), {key, tabId, newRef, userId, now});
+      const probe = await popup.evaluate(async ref => {
+        const tab = (await chrome.tabs.query({ url: "https://tinder.com/*" }))[0];
+        return chrome.tabs.sendMessage(tab.id, {
+          type: "TNND_EXISTING_SCAN_OPENED_THREAD", ref
+        });
+      }, newRef);
+      expect(probe).toMatchObject({ ok: true, status: "unanswered", incoming: 1 });
+      await expect.poll(async () => {
+        const state = (await storage())[key];
+        return state?.activity?.map(event => event.detail) || [];
+      }, { timeout: 12_000 }).toContain(
+        "Moteur Chat : scan effectivement démarré ; lecture des paramètres d'automatisation."
+      );
+      // The old message can be examined, but the test must NOT send to real
+      // Tinder or pretend the backend gave consent to auto-reply.
+      expect((await context.pages()).filter(page =>
+        page.url().startsWith("https://tinder.com"))).toHaveLength(1);
+    } finally {
+      await worker.evaluate(({key,before}) => before === undefined
+        ? chrome.storage.local.remove(key) : chrome.storage.local.set({[key]:before}), {key,before});
+      await tinder.goto("https://tinder.com/app/recs");
+    }
+  });
+
   test("extension logout from Chrome storage requires its own safe sign-in page without cluttering popup", async () => {
     const worker = context.serviceWorkers()[0] || await context.waitForEvent("serviceworker");
     const launcher = await context.newPage();
