@@ -328,12 +328,22 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
     // Trust only the current Chrome tab route + main-frame + origin.
     void (async () => {
       if (!ref || !await currentAuthorizedTinderThread(sender, ref)) {
-        return { ok: true, allowed: false };
+        return { ok: true, allowed: false, reason: "wrong_live_tinder_thread" };
       }
       const backend = await loadTinderConversationManagement(ref);
-      return { ok: true, allowed: mayAutomaticallySendToTinder(backend)
-        && Boolean(backend.conversationId) && await matchScreeningAllowsSend(backend.conversationId!) };
-    })().then(sendResponse).catch(() => sendResponse({ ok: true, allowed: false }));
+      if (!backend.conversationId)
+        return { ok: true, allowed: false, reason: "conversation_not_synced" };
+      if (backend.management.state !== "ai-managed")
+        return { ok: true, allowed: false, reason: "ai_management_not_enabled" };
+      if (!backend.management.explicitlySelected)
+        return { ok: true, allowed: false, reason: "ai_management_not_selected" };
+      if (!mayAutomaticallySendToTinder(backend))
+        return { ok: true, allowed: false, reason: "conversation_status_blocks_automation" };
+      if (!await matchScreeningAllowsSend(backend.conversationId))
+        return { ok: true, allowed: false, reason: "match_screening_blocks_or_unavailable" };
+      return { ok: true, allowed: true };
+    })().then(sendResponse).catch(() =>
+      sendResponse({ ok: true, allowed: false, reason: "backend_permission_check_failed" }));
     return true;
   }
 
