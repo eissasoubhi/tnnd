@@ -1,3 +1,5 @@
+import { createJournalExport } from "./chat-journal-export";
+
 /** Dedicated read-only Chat log: no Tinder tab creation, no API calls,
  * no message text, no commands to Start/Stop or send.
  */
@@ -135,6 +137,43 @@ document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach(button => 
       item.setAttribute("aria-pressed", String(item === button)));
     render(latest);
   });
+});
+/** Always export the complete latest 50 events, irrespective of the UI
+ * filter, using a fresh storage read at click time (not a stale render).
+ * This performs no network request, page action, or write to TNND state.
+ */
+const downloadButton = $("downloadChatJournal") as HTMLButtonElement;
+downloadButton.addEventListener("click", () => {
+  if (downloadButton.disabled) return;
+  downloadButton.disabled = true;
+  const feedback = $("downloadFeedback");
+  feedback.textContent = "Préparation du fichier…";
+  void (async () => {
+    const raw = (await chrome.storage.local.get(KEY))[KEY] as unknown;
+    const version = chrome.runtime.getManifest().version;
+    const exported = createJournalExport(raw, version);
+    const blob = new Blob([JSON.stringify(exported, null, 2) + "\n"], {
+      type: "application/json;charset=utf-8"
+    });
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = "tnnd-chat-journal-" +
+      exported.exportedAt.replace(/[:.]/g, "-") + ".json";
+    link.hidden = true;
+    document.body.appendChild(link);
+    try {
+      link.click();
+      feedback.textContent = `Journal exporté : ${exported.events.length} événements, version ${version}.`;
+    } finally {
+      link.remove();
+      // Do not revoke synchronously: Chrome must have time to start the
+      // download after the user-initiated anchor click.
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 30_000);
+    }
+  })().catch(() => {
+    feedback.textContent = "Échec du téléchargement : vérifie les permissions Chrome et réessaie.";
+  }).finally(() => { downloadButton.disabled = false; });
 });
 $("refresh").addEventListener("click", () => void readLog());
 chrome.storage.onChanged.addListener((changes, area) => {
