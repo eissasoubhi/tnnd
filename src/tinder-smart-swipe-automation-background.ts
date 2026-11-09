@@ -401,11 +401,10 @@ async function setArmed(arm: boolean, expectedStopEpoch: number): Promise<Record
     reconciliationCounts: publicSwipeReconciliationCounts(initial, proof)
   };
   const currentDay = tinderAccountDayKey(now, settings.timeZone);
-  const recovered = canDetach
-    ? initial.dayKey === currentDay
+  const recovered = review.ok ? review.progress :
+    initial.dayKey === currentDay
       ? { ...initial, rightSwipesReserved: 0, rightSwipesConfirmed: proof.uiObserved }
-      : emptySmartSwipeDay(currentDay)
-    : review.progress;
+      : emptySmartSwipeDay(currentDay);
   const read = readSmartSwipeProgress(recovered, now, settings.timeZone);
   if (!read.ok) return { ok: false, reason: read.reason };
   let updatedProgress = read.progress;
