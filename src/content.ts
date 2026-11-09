@@ -485,7 +485,7 @@ const lastWatchedIncomingEvidence = new Map<string, string>();
 let lastExistingRunnerEventKey = "";
 let lastExistingRunnerEventAt = 0;
 /** Telemetry contains only operational metadata, never Tinder message text. */
-function reportExistingRunner(phase: "incoming" | "waiting" | "generating" | "sending" | "sent" | "skipped" | "error", detail: string, nextReplyAt: string | null = null): void {
+function reportExistingRunner(phase: "checking" | "incoming" | "waiting" | "generating" | "sending" | "sent" | "skipped" | "error", detail: string, nextReplyAt: string | null = null): void {
   const ref = currentConversationRef();
   if (!ref || !hasLiveExtensionContext()) return;
   const key = `${ref}:${phase}:${detail}:${nextReplyAt ?? ""}`;
@@ -525,8 +525,16 @@ async function scan(): Promise<void> {
   busy = true; // One scanner owns preflight, cadence, generation and send.
 
   try {
+    // This event is emitted by the REAL response scanner, not the preliminary
+    // read-only "unanswered" inspection. If absent from the journal, the scan
+    // never started or its event bridge was rejected.
+    reportExistingRunner("checking", "Moteur Chat : scan effectivement démarré ; lecture des paramètres d'automatisation.");
     const config = await getContentConfig();
-    if (!config || !contentRuntimeAlive) return;
+    if (!config || !contentRuntimeAlive) {
+      if (contentRuntimeAlive)
+        reportExistingRunner("error", "Moteur Chat : impossible de récupérer la configuration de l'extension.");
+      return;
+    }
     if (!config.automation.enabled) {
       reportExistingRunner("skipped", "Automatic replies disabled in extension Options.");
       return;
@@ -538,6 +546,10 @@ async function scan(): Promise<void> {
 
     const inspection = adapter.inspectUnanswered();
     const snapshot = inspection.snapshot;
+    if (inspection.status === "unanswered")
+      reportExistingRunner("checking", snapshot
+        ? "Moteur Chat : ancien message reconnu ET contexte extrait ; vérification des permissions puis IA."
+        : "Moteur Chat : message entrant détecté mais contexte non extrait ; génération impossible.");
     if (!snapshot) {
       const explanation = {
         "composer-missing": "Tinder chat composer not ready; waiting for chat to load.",
@@ -588,7 +600,10 @@ async function scan(): Promise<void> {
     }
 
     const state = await getState();
-    if (!state) return;
+    if (!state) {
+      reportExistingRunner("error", "Moteur Chat : état de l'automatisation indisponible.");
+      return;
+    }
     const visible = adapter.readVisibleMessages().map(message => ({
       direction: message.direction === "them" ? "incoming" as const : "outgoing" as const,
       text: message.text
