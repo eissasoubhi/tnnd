@@ -1,3 +1,4 @@
+import { explainBackendReplyDenial, explainSemanticCheckFailure } from "./chat-auto-reply-diagnostics";
 import { TinderDomAdapter } from "./tinder-adapter";
 import { observeSwipeDiscoveryControls } from "./tinder-swipe-discovery-evidence";
 import { executeReservedTinderRightLike } from "./tinder-swipe-live-action";
@@ -143,24 +144,13 @@ async function getContentConfig(): Promise<ContentConfig | null> {
 }
 
 type BackendReplyPermission = { allowed: boolean; reason: string | null };
-const backendPermissionReasons: Record<string, string> = {
-  wrong_live_tinder_thread: "La conversation Tinder a changé pendant le contrôle.",
-  conversation_not_synced: "Conversation absente de TNND Web : synchronise-la puis active sa gestion IA.",
-  ai_management_not_enabled: "Gestion IA non activée pour cette conversation dans TNND Web.",
-  ai_management_not_selected: "Conversation non sélectionnée explicitement pour la gestion IA dans TNND Web.",
-  conversation_status_blocks_automation: "Statut de conversation bloquant dans TNND Web (pause, action humaine ou archive).",
-  match_screening_blocks_or_unavailable: "Filtrage du match refusé ou données de filtrage indisponibles dans TNND Web.",
-  backend_permission_check_failed: "Impossible de vérifier les autorisations auprès du backend TNND."
-};
 async function backendAutomaticReplyPermission(conversationRef: string): Promise<BackendReplyPermission> {
   const response = await sendRuntimeMessage<{ ok: boolean; allowed?: boolean; reason?: string }>({
     type: "TNND_GET_BACKEND_AUTO_SEND_PERMISSION", conversationRef
   });
   if (response?.ok === true && response.allowed === true)
     return { allowed: true, reason: null };
-  const reason = response?.reason && Object.hasOwn(backendPermissionReasons, response.reason)
-    ? backendPermissionReasons[response.reason]
-    : "Autorisation IA non confirmée par TNND Web (connexion API ou configuration à vérifier).";
+  const reason = explainBackendReplyDenial(response?.reason);
   return { allowed: false, reason };
 }
 async function backendAllowsAutomaticReply(conversationRef: string): Promise<boolean> {
@@ -640,20 +630,7 @@ async function scan(): Promise<void> {
       // Surface only the server's stable, non-sensitive error codes. Never log
       // a provider response, the transcript, the API key or the AI prompt.
       const code = error instanceof Error ? error.message : "";
-      const reason: Record<string, string> = {
-        conversation_ai_provider_not_configured:
-          "Gemini non configuré dans TNND Web → AI provider. Enregistre le modèle et la clé API, puis teste la connexion.",
-        conversation_ai_provider_unavailable:
-          "Le Gemini configuré dans TNND Web ne répond pas. Utilise « Test connection » pour vérifier la clé, le modèle et les quotas.",
-        invalid_conversation_boundary:
-          "Historique visible non reconnu par l'API de vérification sémantique.",
-        invalid_or_expired_session:
-          "Session TNND Web expirée : reconnecte le compte TNND.",
-        conversation_semantic_check_unavailable:
-          "Échec interne du contrôle sémantique TNND (API/BD/fournisseur). Consulte les logs du backend."
-      };
-      reportExistingRunner("waiting", reason[code] ??
-        "Vérification sémantique impossible : contrôler la connexion TNND Web et les logs API.");
+      reportExistingRunner("waiting", explainSemanticCheckFailure(code));
       return;
     }
     if (boundary.kind === "unknown") {
