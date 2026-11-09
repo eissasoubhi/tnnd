@@ -15,6 +15,7 @@ import { bulkUpdateConversationManagement, isConversationManagementState, listCo
 import { handleOutgoingConfirmationRequest } from "./conversation-outgoing-confirmation-controller.js";
 import { clearConversationOverrides, getConversationOverrides, replaceConversationOverrides } from "./conversation-overrides-service.js";
 import { recordObservedConversationBoundary, validateObservedConversationBoundary } from "./conversation-boundary-service.js";
+import { publicObservedBoundaryFailure } from "./conversation-semantic-diagnostic.js";
 import { clearConversationTemporaryInstruction, getConversation, listConversations, searchConversationMessageContent, setConversationTemporaryInstruction, syncConversation, updateConversationStatus, updateConversationDisplayIdentity, type TemporaryInstructionScope } from "./conversation-service.js";
 import { isConversationStatus, validateConversationSyncRequest } from "./conversation-sync-contract.js";
 import { conversationSyncErrorResponse } from "./conversation-sync-error-response.js";
@@ -631,10 +632,10 @@ const server = createServer(async (request, response) => {
       try {
         const result = await recordObservedConversationBoundary(session.user.id, input);
         sendJson(response, 200, result);
-      } catch {
-        // Gemini/provider/DB failure: fail closed; never expose raw chat or
-        // provider credentials, and never imply a "continue" authorization.
-        sendJson(response, 503, { error: "conversation_semantic_check_unavailable" });
+      } catch (error) {
+        // Safe machine-readable diagnostic; no provider body, prompts, chat
+        // text or credentials leave the API, and no failure authorizes Send.
+        sendJson(response, 503, { error: publicObservedBoundaryFailure(error) });
       }
       return;
     }

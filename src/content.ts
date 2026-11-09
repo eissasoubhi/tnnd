@@ -1,3 +1,4 @@
+import { explainBackendReplyDenial, explainSemanticCheckFailure } from "./chat-auto-reply-diagnostics";
 import { TinderDomAdapter } from "./tinder-adapter";
 import { observeSwipeDiscoveryControls } from "./tinder-swipe-discovery-evidence";
 import { executeReservedTinderRightLike } from "./tinder-swipe-live-action";
@@ -142,11 +143,18 @@ async function getContentConfig(): Promise<ContentConfig | null> {
   return response.config;
 }
 
-async function backendAllowsAutomaticReply(conversationRef: string): Promise<boolean> {
-  const response = await sendRuntimeMessage<{ ok: boolean; allowed?: boolean }>({
+type BackendReplyPermission = { allowed: boolean; reason: string | null };
+async function backendAutomaticReplyPermission(conversationRef: string): Promise<BackendReplyPermission> {
+  const response = await sendRuntimeMessage<{ ok: boolean; allowed?: boolean; reason?: string }>({
     type: "TNND_GET_BACKEND_AUTO_SEND_PERMISSION", conversationRef
   });
-  return response?.ok === true && response.allowed === true;
+  if (response?.ok === true && response.allowed === true)
+    return { allowed: true, reason: null };
+  const reason = explainBackendReplyDenial(response?.reason);
+  return { allowed: false, reason };
+}
+async function backendAllowsAutomaticReply(conversationRef: string): Promise<boolean> {
+  return (await backendAutomaticReplyPermission(conversationRef)).allowed;
 }
 
 /** Manual Matches suppresses unsolicited existing-chat replies but does not
@@ -589,8 +597,10 @@ async function scan(): Promise<void> {
       reportExistingRunner("skipped", "Manual Matches mode selected; existing-chat reply deferred.");
       return;
     }
-    if (!await backendAllowsAutomaticReply(conversationRef)) {
-      reportExistingRunner("skipped", "AI management not authorized by TNND backend.");
+    const backendPermission = await backendAutomaticReplyPermission(conversationRef);
+    if (!backendPermission.allowed) {
+      reportExistingRunner("skipped", backendPermission.reason ??
+        "Autorisation IA non confirmée par TNND Web.");
       return;
     }
     const chatAutomationEnabled = await getChatAutomationEnabled(snapshot.threadKey);
@@ -616,8 +626,11 @@ async function scan(): Promise<void> {
     try {
       const decision = await syncObservedConversationBoundary(conversationRef,visible);
       boundary = decision.boundary as ConversationBoundary;
-    } catch {
-      reportExistingRunner("waiting","Semantic chat check unavailable; no automatic reply until verified.");
+    } catch (error) {
+      // Surface only the server's stable, non-sensitive error codes. Never log
+      // a provider response, the transcript, the API key or the AI prompt.
+      const code = error instanceof Error ? error.message : "";
+      reportExistingRunner("waiting", explainSemanticCheckFailure(code));
       return;
     }
     if (boundary.kind === "unknown") {
