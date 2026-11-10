@@ -67,6 +67,21 @@ export function verifiedConversationBoundary(
   return assessed;
 }
 
+/** Safe audit code only. Never export message bodies from the API or journal. */
+export function observedTailMismatch(
+  observed: readonly ConversationBoundaryMessage[],
+  persisted: readonly ConversationBoundaryMessage[]
+): "no_persisted_messages" | "latest_message_mismatch" | "previous_message_mismatch" | null {
+  if (!persisted.length) return "no_persisted_messages";
+  const same = (a: ConversationBoundaryMessage|undefined, b: ConversationBoundaryMessage|undefined) =>
+    Boolean(a && b && a.direction===b.direction &&
+      a.text.replace(/\s+/g," ").trim()===b.text.replace(/\s+/g," ").trim());
+  if (!same(persisted.at(-1),observed.at(-1))) return "latest_message_mismatch";
+  if (observed.length > 1 && !same(persisted.at(-2), observed.at(-2)))
+    return "previous_message_mismatch";
+  return null;
+}
+
 /** Never persist a platform without a stored, verified incoming source. */
 export function handoffProvenance(
   boundary: ConversationBoundary,
@@ -80,7 +95,7 @@ export function handoffProvenance(
 export async function recordObservedConversationBoundary(
   userId: string, input: ObservedConversationBoundary,
   classify: typeof classifyAuthenticatedBoundary = classifyAuthenticatedBoundary
-): Promise<{ boundary: StructuredBoundaryDecision; applied: boolean; status: string | null }> {
+): Promise<{ boundary: StructuredBoundaryDecision; applied: boolean; status: string | null; diagnostic?: string }> {
   // Never hold the conversation row lock while calling Gemini. Pre-read
   // persisted evidence, classify once, then re-verify under the lock.
   const db = getPool();
@@ -89,7 +104,7 @@ export async function recordObservedConversationBoundary(
     [userId,input.externalThreadId]
   );
   const conversationId = head.rows[0]?.id;
-  if (!conversationId) return {boundary:UNCERTAIN_BOUNDARY,applied:false,status:null};
+  if (!conversationId) return {boundary:UNCERTAIN_BOUNDARY,applied:false,status:null,diagnostic:"conversation_not_persisted"};
   const historyQuery =
     "SELECT direction, body, external_message_id FROM (SELECT direction, body, external_message_id, sent_at, id FROM conversation_messages " +
     "WHERE conversation_id = $1 ORDER BY sent_at DESC, id DESC LIMIT 12) recent ORDER BY sent_at ASC, id ASC";
@@ -97,7 +112,8 @@ export async function recordObservedConversationBoundary(
   const messages = initial.rows.map(row => ({direction:row.direction,text:row.body}));
   // Unverified/stale observations never trigger a provider call or a send.
   if (verifiedConversationBoundary(input.messages,messages,{...UNCERTAIN_BOUNDARY,kind:"continue",evidence:"ongoing",confidence:1}).kind !== "continue")
-    return {boundary:UNCERTAIN_BOUNDARY,applied:false,status:null};
+    return {boundary:UNCERTAIN_BOUNDARY,applied:false,status:null,
+      diagnostic: observedTailMismatch(input.messages,messages) ?? "unverified_observed_tail"};
   const aiDecision = await classify(userId,input.externalThreadId,messages);
   const client = await db.connect();
   let committed = false;
@@ -112,7 +128,8 @@ export async function recordObservedConversationBoundary(
     const row = conversation.rows[0];
     if (!row || row.id !== conversationId) {
       await client.query("COMMIT");committed=true;
-      return {boundary:UNCERTAIN_BOUNDARY,applied:false,status:row?.status??null};
+      return {boundary:UNCERTAIN_BOUNDARY,applied:false,status:row?.status??null,
+        diagnostic:"conversation_changed_during_classification"};
     }
     const history = await client.query<{direction:"incoming"|"outgoing";body:string;external_message_id:string}>(
       historyQuery,[row.id]
@@ -127,7 +144,10 @@ export async function recordObservedConversationBoundary(
       && row.management_selected_at && ["active","waiting-for-them"].includes(row.status));
     if (!canApply || !transition || (transition.status === "moved-off-tinder" && !handoff)) {
       await client.query("COMMIT");committed=true;
-      return {boundary,applied:false,status:row.status};
+      return {boundary,applied:false,status:row.status,
+        ...(boundary.kind === "unknown" ? {
+          diagnostic: sameTail ? "semantic_decision_uncertain" : "history_changed_during_classification"
+        } : {})};
     }
     const update = await client.query<{status:string}>(
       "UPDATE conversations SET status = $3, management_state = $4, " +
