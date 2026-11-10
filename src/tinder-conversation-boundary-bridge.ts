@@ -57,3 +57,15 @@ export function safeBoundaryBridgeFailure(raw: unknown, status: number): string 
           : "conversation_boundary_backend_rejected";
   }
 }
+
+/** The API emits only these codes when a classification is uncertain. */
+const diagnostics = new Set([
+  "conversation_not_persisted", "no_persisted_messages",
+  "latest_message_mismatch", "previous_message_mismatch",
+  "unverified_observed_tail", "semantic_decision_uncertain",
+  "history_changed_during_classification",
+  "conversation_changed_during_classification"
+]);
+export function safeSemanticDiagnostic(value: unknown): string | null {
+  return typeof value === "string" && diagnostics.has(value) ? value : null;
+}
