@@ -597,6 +597,44 @@ async function scan(): Promise<void> {
       reportExistingRunner("skipped", "Manual Matches mode selected; existing-chat reply deferred.");
       return;
     }
+    // TINDER FIRST: the open chat is the source of truth for OLD incoming
+    // messages. A DB row may exist with an outdated tail or be missing
+    // entirely. Await the worker's read-only, user-configured import BEFORE
+    // checking AI consent or semantic intent. A new chat remains paused and
+    // unmanaged until the user explicitly authorizes it in TNND Web.
+    const synced = await sendRuntimeMessage<{
+      ok?: boolean; importedMessages?: number; reason?: string
+    }>({
+      type: "TNND_IMPORT_OPENED_THREAD_OBSERVED",
+      ref: conversationRef, messagesOnly: true
+    });
+    if (currentConversationRef() !== conversationRef ||
+        adapter.read()?.latestIncomingKey !== snapshot.latestIncomingKey) {
+      reportExistingRunner("skipped",
+        "Conversation ou dernier message modifié pendant la synchronisation : aucune réponse envoyée.");
+      return;
+    }
+    if (!synced?.ok) {
+      const importReasons: Record<string,string> = {
+        auto_sync_opened_disabled: "Synchronisation automatique désactivée dans TNND Web → Tinder import settings.",
+        message_sync_disabled: "Import des messages désactivé dans TNND Web → Tinder import settings.",
+        no_recognized_messages: "Historique Tinder illisible : aucun message vérifiable à synchroniser.",
+        visible_messages_unavailable: "Messages Tinder indisponibles pendant la lecture de la conversation.",
+        tinder_thread_changed: "Conversation Tinder modifiée pendant la synchronisation.",
+        tinder_thread_or_preferences_changed: "Compte, conversation ou préférences d'import modifiés pendant la synchronisation.",
+        tnnd_account_not_connected: "Compte TNND Web non connecté.",
+        read_only_import_failed: "Échec de la synchronisation du chat dans TNND Web. Vérifie les logs de l'API."
+      };
+      const reason = synced?.reason && Object.hasOwn(importReasons,synced.reason)
+        ? importReasons[synced.reason]
+        : synced?.reason?.startsWith("filtered_out_")
+          ? "Conversation exclue des filtres d'import TNND Web."
+          : "Synchronisation du chat non confirmée : recharge TNND et vérifie la connexion API.";
+      reportExistingRunner("skipped",reason);
+      return;
+    }
+    reportExistingRunner("checking",
+      `Historique Tinder synchronisé en lecture seule : ${synced.importedMessages ?? "?"} message(s). Vérification des autorisations IA…`);
     const backendPermission = await backendAutomaticReplyPermission(conversationRef);
     if (!backendPermission.allowed) {
       reportExistingRunner("skipped", backendPermission.reason ??
