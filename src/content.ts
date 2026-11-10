@@ -605,7 +605,7 @@ async function scan(): Promise<void> {
       snapshot.context, adapter.diagnose().threadKeyHash
     ).slice(-12);
     const visibleTail = adapter.readVisibleMessages().slice(-keyed.length);
-    const normalize = (value: string): string => value.replace(/\\s+/g, " ").trim();
+    const normalize = (value: string): string => value.replace(/\s+/g, " ").trim();
     const verified = keyed.length > 0 && keyed.length === visibleTail.length &&
       keyed.every((item, index) => item.direction === visibleTail[index].direction &&
         normalize(item.text) === normalize(visibleTail[index].text)) &&
