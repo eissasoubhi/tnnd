@@ -7,6 +7,7 @@ import { DEFAULT_TINDER_IMPORT_SETTINGS, validateTinderImportSettings, shouldImp
 import type { TinderVisibleProfileSource } from "./tinder-match-profile-capture";
 import { safeBulkRefs, nextBulkSyncRef, canContinueBulkSync, bulkSyncCounts, type BulkSyncProgress } from "./tinder-bulk-sync-policy";
 import { senderMatchesLiveTinderThread } from "./tinder-sender-route-guard";
+import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
 
 const KEY = "tnnd.readOnlyBulkSync.v1";
 const ALARM = "tnnd.readOnlyBulkSync.tick";
@@ -24,6 +25,11 @@ function pathRef(url: string | undefined): string | null {
     const ref = decodeURIComponent(pathname.slice("/app/messages/".length)).replace(/\/+$/, "");
     return /^[a-zA-Z0-9_-]{3,512}$/.test(ref) ? ref : null;
   } catch { return null; }
+}
+function expectedThreadKey(ref: string): string {
+  // The content bridge emits the CANONICAL route key, not raw Tinder ID.
+  // Compare /app/messages/abc to /app/messages/abc, never "abc".
+  return tinderThreadKeyFromPath("/app/messages/" + ref);
 }
 async function load(): Promise<BulkSyncProgress | null> {
   const value = (await chrome.storage.local.get(KEY))[KEY] as BulkSyncProgress | undefined;
@@ -192,7 +198,7 @@ async function readBackToFirstRenderedPage(
     if(!moved?.ok)break;
     const snapshot=await chrome.tabs.sendMessage(tabId,{type:"TNND_GET_VISIBLE_THREAD_MESSAGES"})
       .catch(()=>null) as HistorySnapshot|null;
-    if(!snapshot?.ok || snapshot.threadKey!==ref || snapshot.conversationRef!==ref ||
+    if(!snapshot?.ok || snapshot.threadKey!==expectedThreadKey(ref) || snapshot.conversationRef!==ref ||
        snapshot.threadKeyHash!==threadHash || !Array.isArray(snapshot.messages)) break;
     const merged=mergeOlderHistory(all,snapshot.messages);
     if(!merged || merged.messages.length>1000)break;
@@ -253,8 +259,8 @@ async function tick(): Promise<void> {
           ? await chrome.tabs.sendMessage(state.tabId, { type: "TNND_GET_THREAD_INFO" }) as
             { ok?: boolean; threadKey?: string; composerFound?: boolean }
           : null;
-        if (!(snapshot?.ok && snapshot.threadKey === ref && snapshot.conversationRef === ref && Array.isArray(snapshot.messages))
-          && !(info?.ok && info.threadKey === ref && info.composerFound)) {
+        if (!(snapshot?.ok && snapshot.threadKey === expectedThreadKey(ref) && snapshot.conversationRef === ref && Array.isArray(snapshot.messages))
+          && !(info?.ok && info.threadKey === expectedThreadKey(ref) && info.composerFound)) {
           throw new Error("thread_transcript_not_verified");
         }
         const live = await load();
@@ -379,7 +385,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
         messages?:VisibleTinderMessage[];error?:string};
       const isEmpty = snapshot?.error === "no_recognized_messages";
       if (!isEmpty && !(snapshot?.ok && snapshot.conversationRef === ref &&
-          snapshot.threadKey === ref && Array.isArray(snapshot.messages)))
+          snapshot.threadKey === expectedThreadKey(ref) && Array.isArray(snapshot.messages)))
         return {ok:false,reason:"visible_messages_unavailable"};
       const observed = snapshot?.ok ? snapshot.messages! : [];
       // A running Chat scanner needs MESSAGE EVIDENCE, not a potentially slow
