@@ -25,6 +25,7 @@ const settings = {
   timeZone: "UTC"
 };
 const requests = [];
+const importedFixtureThreads = new Map();
 let ledger = { attemptsToday: 0, uiObservedToday: 0, unresolvedAttempts: 0 };
 let apiAvailable = true;
 const failingPaths = new Set();
@@ -51,6 +52,45 @@ const api = createServer(async (req, res) => {
   }
   if (path === "/api/v1/auth/session") return json(res, 200, { user: session.user });
   if (path === "/api/v1/profile") return json(res, 404, { error: "fixture_no_profile" });
+  if (path === "/api/v1/tinder/import-settings" && req.method === "GET")
+    return json(res, 200, { settings: {
+      autoSyncOpened: true, autoCollectLoaded: true, scope: "all",
+      ageMin: null, ageMax: null, requireMessages: false,
+      includeMessages: true, includeProfile: false, includePhotos: false
+    } });
+  if (path === "/api/v1/conversations/by-external-thread" &&
+      url.searchParams.get("externalThreadId") === "fixture-import-first") {
+    const saved = importedFixtureThreads.get("fixture-import-first");
+    return saved
+      ? json(res, 200, { conversation: {
+          id: saved.conversationId, externalThreadId: "fixture-import-first",
+          status: "paused", managementState: "unmanaged", explicitlySelected: false
+        }})
+      : json(res, 404, { error: "conversation_not_found" });
+  }
+  if (path === "/api/v1/conversations/sync" && req.method === "POST") {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    if (!input.readOnlyImport ||
+        !["fixture-old-incoming","fixture-import-first"].includes(input.externalThreadId))
+      return json(res, 400, {error:"unexpected_non_import_fixture_request"});
+    const prior = importedFixtureThreads.get(input.externalThreadId);
+    const conversationId = prior?.conversationId ?? (
+      input.externalThreadId === "fixture-old-incoming"
+        ? "fixture-conversation-id" : "fixture-new-import-id");
+    importedFixtureThreads.set(input.externalThreadId, {
+      conversationId, messages: input.messages, readOnlyImport: input.readOnlyImport,
+      status: input.status ?? null
+    });
+    return json(res, 200, {
+      conversationId, status: input.externalThreadId === "fixture-import-first" ? "paused":"active",
+      acceptedMessageIds: input.messages.map(m=>m.externalMessageId),
+      nextCursor: input.nextCursor ?? input.messages.at(-1)?.externalMessageId ?? "no-cursor",
+      serverTime: new Date().toISOString()
+    });
+  }
+
   if (path === "/api/v1/conversations/by-external-thread" &&
       url.searchParams.get("externalThreadId") === "fixture-old-incoming")
     return json(res, 200, { conversation: {
@@ -136,7 +176,8 @@ async function launch() {
       // previously concealed the broken one-tab orchestrator redirect.
       if (url.pathname === "/app/messages")
         return route.fulfill({ status: 404, contentType: "text/html", body: "Tinder 404: Messages requires native SPA navigation" });
-      if (url.pathname === "/app/messages/fixture-old-incoming")
+      if (url.pathname === "/app/messages/fixture-old-incoming" ||
+          url.pathname === "/app/messages/fixture-import-first")
         return route.fulfill({ status: 200, contentType: "text/html", body: fakeOldUnanswered });
       return route.fulfill({ status: 200, contentType: "text/html",
         body: url.pathname === "/app/matches" ? fakeMatches : fakeTinder });
@@ -409,6 +450,92 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
         ]));
       }, {stateKey,beforeState,beforeConfig});
       await tinder.goto("https://tinder.com/app/recs");
+    }
+  });
+
+  test("Chat syncs existing Tinder messages before AI; missing Web conversations stay unselected and paused", async () => {
+    const key = "tnnd.globalExistingRunner.v2";
+    const worker = context.serviceWorkers()[0] || await context.waitForEvent("serviceworker");
+    const before = (await storage())[key];
+    const now = new Date().toISOString();
+    try {
+      await tinder.goto("https://tinder.com/app/messages/fixture-import-first");
+      const tabId = await popup.evaluate(async () =>
+        (await chrome.tabs.query({url:"https://tinder.com/*"}))[0].id);
+      await worker.evaluate(({key,tabId,userId,now}) => chrome.storage.local.set({
+        [key]: { enabled:true,mode:"watcher",userId,tabId,startedAt:now,
+          lastRef:"fixture-import-first",awaitingChatRef:"fixture-import-first",
+          awaitingChatSince:now,phase:"waiting",activity:[],currentLabel:"Fixture" }
+      }),{key,tabId,userId,now});
+      const probe = await popup.evaluate(async () => {
+        const tab = (await chrome.tabs.query({url:"https://tinder.com/*"}))[0];
+        return chrome.tabs.sendMessage(tab.id,{
+          type:"TNND_EXISTING_SCAN_OPENED_THREAD",ref:"fixture-import-first"
+        });
+      });
+      expect(probe).toMatchObject({ok:true,status:"unanswered",incoming:1});
+      await expect.poll(() => importedFixtureThreads.get("fixture-import-first")?.messages?.length,
+        {timeout:15_000,intervals:[100,200,500]}).toBe(2);
+      const imported = importedFixtureThreads.get("fixture-import-first");
+      expect(imported).toMatchObject({readOnlyImport:true,status:"paused"});
+      expect(imported.messages.map(m=>m.direction)).toEqual(["outgoing","incoming"]);
+      // New imports do NOT auto-enable management and can never send without
+      // a separate explicit user opt-in in TNND Web.
+      await expect.poll(async () => ((await storage())[key]?.activity || [])
+        .map(e=>e.detail).join(" "),{timeout:12_000}).toContain("Gestion IA non activée");
+      expect(requests.filter(r=>r.path==="/api/v1/conversations/observed-boundary" &&
+        r.method==="POST").length).toBeGreaterThanOrEqual(0);
+      expect((await context.pages()).filter(p=>p.url().startsWith("https://tinder.com"))).toHaveLength(1);
+    } finally {
+      await worker.evaluate(({key,before})=>before===undefined
+        ? chrome.storage.local.remove(key) : chrome.storage.local.set({[key]:before}),
+        {key,before});
+      await tinder.goto("https://tinder.com/app/recs");
+      importedFixtureThreads.delete("fixture-import-first");
+    }
+  });
+
+  test("Chat imports stale managed Tinder transcript before semantic classification even across SPA navigation", async () => {
+    const key = "tnnd.globalExistingRunner.v2";
+    const worker = context.serviceWorkers()[0] || await context.waitForEvent("serviceworker");
+    const before = (await storage())[key];
+    const firstRequest = requests.length;
+    const now = new Date().toISOString();
+    try {
+      await tinder.goto("https://tinder.com/app/recs");
+      // Chrome retains its initial MessageSender.url; the live route differs.
+      await tinder.evaluate(()=>history.pushState({},"","/app/messages/fixture-old-incoming"));
+      const tabId = await popup.evaluate(async () =>
+        (await chrome.tabs.query({url:"https://tinder.com/*"}))[0].id);
+      await worker.evaluate(({key,tabId,userId,now}) => chrome.storage.local.set({
+        [key]: {enabled:true,mode:"watcher",userId,tabId,startedAt:now,
+          lastRef:"fixture-old-incoming",awaitingChatRef:"fixture-old-incoming",
+          awaitingChatSince:now,phase:"waiting",activity:[]}
+      }),{key,tabId,userId,now});
+      // Use real fictional chat DOM. A pathname change alone retains discovery
+      // fixture markup, so navigate the content to the explicit chat fixture.
+      await tinder.goto("https://tinder.com/app/messages/fixture-old-incoming");
+      const probe = await popup.evaluate(async () => {
+        const tab=(await chrome.tabs.query({url:"https://tinder.com/*"}))[0];
+        return chrome.tabs.sendMessage(tab.id,{
+          type:"TNND_EXISTING_SCAN_OPENED_THREAD",ref:"fixture-old-incoming"
+        });
+      });
+      expect(probe).toMatchObject({ok:true,status:"unanswered",incoming:1});
+      await expect.poll(() => requests.slice(firstRequest).filter(r =>
+        r.path==="/api/v1/conversations/observed-boundary" &&
+        r.method==="POST" && r.authorization).length,
+        {timeout:15_000,intervals:[100,200,500]}).toBeGreaterThan(0);
+      expect(importedFixtureThreads.get("fixture-old-incoming")?.messages?.map(m=>m.text))
+        .toEqual(["Salut","Coucou"]);
+      const phases=(await storage())[key]?.activity?.map(e=>e.detail).join(" ") ?? "";
+      expect(phases).not.toContain("Chat intent uncertain or not synchronized");
+    } finally {
+      await worker.evaluate(({key,before})=>before===undefined
+        ? chrome.storage.local.remove(key) : chrome.storage.local.set({[key]:before}),
+        {key,before});
+      await tinder.goto("https://tinder.com/app/recs");
+      importedFixtureThreads.delete("fixture-old-incoming");
     }
   });
 
