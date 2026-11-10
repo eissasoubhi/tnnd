@@ -6,12 +6,14 @@ import { uploadVisibleMatchProfileCapture } from "./tinder-match-profile-backend
 import { DEFAULT_TINDER_IMPORT_SETTINGS, validateTinderImportSettings, shouldImportThread, type TinderImportSettings } from "./tinder-import-settings";
 import type { TinderVisibleProfileSource } from "./tinder-match-profile-capture";
 import { safeBulkRefs, nextBulkSyncRef, canContinueBulkSync, bulkSyncCounts, type BulkSyncProgress } from "./tinder-bulk-sync-policy";
+import { senderMatchesLiveTinderThread } from "./tinder-sender-route-guard";
 
 const KEY = "tnnd.readOnlyBulkSync.v1";
 const ALARM = "tnnd.readOnlyBulkSync.tick";
 const API = "http://127.0.0.1:4000";
 let processing = false;
-const autoOpenedInFlight = new Set<string>();
+type OpenedSyncOutcome = {ok: boolean; reason?: string; importedMessages?: number};
+const autoOpenedInFlight = new Map<string, Promise<OpenedSyncOutcome>>();
 const popupOnly = (sender: chrome.runtime.MessageSender): boolean =>
   sender.id === chrome.runtime.id && sender.url === `chrome-extension://${chrome.runtime.id}/popup.html`;
 
@@ -345,38 +347,67 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   if (!message || typeof message !== "object" ||
       (message as {type?: unknown}).type !== "TNND_IMPORT_OPENED_THREAD_OBSERVED") return false;
   const ref = (message as {ref?: unknown}).ref;
+  const messagesOnly = (message as {messagesOnly?: unknown}).messagesOnly === true;
   if (sender.id !== chrome.runtime.id || !sender.tab?.id ||
-      !/^https:\/\/(?:www\.)?tinder\.com\//.test(sender.url ?? "") ||
-      typeof ref !== "string" || !/^[a-zA-Z0-9_-]{3,512}$/.test(ref) ||
-      pathRef(sender.url) !== ref) { sendResponse({ok:false});return false; }
-  void (async () => {
+      typeof ref !== "string" || !/^[a-zA-Z0-9_-]{3,512}$/.test(ref)) {
+    sendResponse({ok:false,reason:"invalid_tinder_thread"}); return false;
+  }
+  void (async (): Promise<OpenedSyncOutcome> => {
+    // sender.url often reflects the SPA's INITIAL document URL (/app/recs).
+    // Trust only the verified live tab location, main frame and same origin.
+    const tab = await chrome.tabs.get(sender.tab!.id!).catch(() => null);
+    if (!tab || !senderMatchesLiveTinderThread(sender.url, tab.url, ref, sender.frameId))
+      return {ok:false,reason:"tinder_thread_changed"};
     const session = await getBackendSession();
-    if (!session) return {ok:false};
-    const key = session.user.id + ":" + sender.tab!.id + ":" + ref;
-    if (autoOpenedInFlight.has(key)) return {ok:false};
-    const prefs = await settingsFor(session.user.id);
-    if (!prefs.autoSyncOpened) return {ok:false};
-    const tab = await chrome.tabs.get(sender.tab!.id!);
-    if (pathRef(tab.url) !== ref) return {ok:false};
-    autoOpenedInFlight.add(key);
-    try {
-      const snapshot = await chrome.tabs.sendMessage(tab.id!,{type:"TNND_GET_VISIBLE_THREAD_MESSAGES"}) as
-        {ok?:boolean;conversationRef?:string;threadKey?:string;messages?:VisibleTinderMessage[];error?:string};
+    if (!session) return {ok:false,reason:"tnnd_account_not_connected"};
+    const key = session.user.id + ":" + tab.id + ":" + ref;
+    // The passive observer and active Chat scanner may request sync together.
+    // Share the same import result instead of racing and falsely returning
+    // "already running" to the scanner.
+    const running = autoOpenedInFlight.get(key);
+    if (running) return running;
+    const work = (async (): Promise<OpenedSyncOutcome> => {
+      const prefs = await settingsFor(session.user.id);
+      if (!prefs.autoSyncOpened) return {ok:false,reason:"auto_sync_opened_disabled"};
+      if (messagesOnly && !prefs.includeMessages)
+        return {ok:false,reason:"message_sync_disabled"};
+      const current = await chrome.tabs.get(tab.id!);
+      if (pathRef(current.url) !== ref) return {ok:false,reason:"tinder_thread_changed"};
+      const snapshot = await chrome.tabs.sendMessage(tab.id!,{
+        type:"TNND_GET_VISIBLE_THREAD_MESSAGES"
+      }) as {ok?:boolean;conversationRef?:string;threadKey?:string;
+        messages?:VisibleTinderMessage[];error?:string};
       const isEmpty = snapshot?.error === "no_recognized_messages";
       if (!isEmpty && !(snapshot?.ok && snapshot.conversationRef === ref &&
-          snapshot.threadKey === ref && Array.isArray(snapshot.messages))) return {ok:false};
+          snapshot.threadKey === ref && Array.isArray(snapshot.messages)))
+        return {ok:false,reason:"visible_messages_unavailable"};
       const observed = snapshot?.ok ? snapshot.messages! : [];
-      const profile = await readProfile(tab.id!,ref);
-      const eligible = shouldImportThread(prefs,{age:profile?.visibleFields.age ?? null,
-        messageCount:observed.length});
-      if (!eligible.eligible) return {ok:false,reason:eligible.reason};
+      // A running Chat scanner needs MESSAGE EVIDENCE, not a potentially slow
+      // profile/photo download. Honour the account's import filters and
+      // includeMessages toggle, without enabling per-chat AI management.
+      const profile = (!messagesOnly || prefs.scope === "filtered")
+        ? await readProfile(tab.id!,ref).catch(() => null) : null;
+      const eligible = shouldImportThread(prefs,{
+        age:profile?.visibleFields.age ?? null,messageCount:observed.length
+      });
+      if (!eligible.eligible) return {ok:false,reason:"filtered_out_" + eligible.reason};
+      if (messagesOnly && !observed.length)
+        return {ok:false,reason:"no_recognized_messages"};
       if ((await getBackendSession())?.user.id !== session.user.id ||
           pathRef((await chrome.tabs.get(tab.id!)).url) !== ref ||
-          !(await settingsFor(session.user.id)).autoSyncOpened) return {ok:false};
-      await upload(ref,observed,session.user.id,prefs,profile);
-      return {ok:true};
-    } finally {autoOpenedInFlight.delete(key);}
-  })().then(sendResponse).catch(()=>sendResponse({ok:false}));
+          !(await settingsFor(session.user.id)).autoSyncOpened)
+        return {ok:false,reason:"tinder_thread_or_preferences_changed"};
+      const syncPrefs = messagesOnly
+        ? {...prefs,includeMessages:true,includeProfile:false,includePhotos:false}
+        : prefs;
+      await upload(ref,observed,session.user.id,syncPrefs,messagesOnly?null:profile);
+      return {ok:true,importedMessages:observed.length};
+    })();
+    autoOpenedInFlight.set(key,work);
+    try { return await work; }
+    finally { autoOpenedInFlight.delete(key); }
+  })().then(sendResponse).catch(() =>
+    sendResponse({ok:false,reason:"read_only_import_failed"}));
   return true;
 });
 
