@@ -63,6 +63,22 @@ const api = createServer(async (req, res) => {
       messages: [{ direction: "incoming", text: "Coucou" }],
       matchScreening: { action: "continue" }
     }});
+  if (path === "/api/v1/conversations/sync" && req.method === "POST") {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    if (input.externalThreadId !== "fixture-old-incoming" ||
+        input.readOnlyImport !== true || input.status !== undefined ||
+        !Array.isArray(input.messages) || !input.messages.length ||
+        input.messages.at(-1).direction !== "incoming" ||
+        !input.messages.every(item => item.timestampVerified !== true)) {
+      return json(res, 400, {error: "unsafe_or_invalid_fixture_import"});
+    }
+    return json(res, 200, {
+      conversationId:"fixture-conversation-id", acceptedMessageIds:input.messages.map(item=>item.externalMessageId),
+      nextCursor:input.nextCursor,serverTime:new Date().toISOString(),status:"active"
+    });
+  }
   if (path === "/api/v1/conversations/observed-boundary" && req.method === "POST") {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
@@ -393,6 +409,13 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
         .filter(item => item.path === "/api/v1/conversations/observed-boundary" &&
           item.method === "POST" && item.authorization).length,
         {timeout:15_000,intervals:[100,200,500]}).toBeGreaterThan(0);
+      const observedRequests = requests.slice(firstRequest);
+      const syncIndex = observedRequests.findIndex(item =>
+        item.path === "/api/v1/conversations/sync" && item.method === "POST" && item.authorization);
+      const classifyIndex = observedRequests.findIndex(item =>
+        item.path === "/api/v1/conversations/observed-boundary" && item.method === "POST" && item.authorization);
+      expect(syncIndex, "read-only transcript import must reach API").toBeGreaterThanOrEqual(0);
+      expect(classifyIndex, "semantic classification must follow import").toBeGreaterThan(syncIndex);
       const activity = (await storage())[stateKey]?.activity ?? [];
       expect(activity.map(event => event.detail).join(" ")).not.toContain("Vérification sémantique impossible");
       expect((await context.pages()).filter(page => page.url().startsWith("https://tinder.com"))).toHaveLength(1);
