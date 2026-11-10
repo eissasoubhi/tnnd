@@ -8,7 +8,7 @@ import "./tinder-smart-swipe-runtime-background";
 import "./tinder-smart-swipe-automation-background";
 import { newMatchSendPermission } from "./tinder-new-match-background";
 import {
-  validateBoundaryObservation, validateBoundaryBridgeDecision, safeBoundaryBridgeFailure
+  validateBoundaryObservation, validateBoundaryBridgeDecision, safeBoundaryBridgeFailure, safeSemanticDiagnostic
 } from "./tinder-conversation-boundary-bridge";
 import { currentAuthorizedTinderThread } from "./tinder-sender-route-guard";
 import "./tinder-global-existing-runner";
@@ -435,7 +435,7 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
         return { ok: false, error: "conversation_boundary_backend_unreachable" };
       }
       const payload = await response.json().catch(() => null) as {
-        error?: unknown; applied?: unknown; boundary?: unknown
+        error?: unknown; applied?: unknown; boundary?: unknown; diagnostic?: unknown
       } | null;
       if (!response.ok)
         return { ok: false, error: safeBoundaryBridgeFailure(payload?.error, response.status) };
@@ -443,7 +443,9 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
       if (!boundary) return { ok: false, error: "invalid_conversation_boundary_response" };
       // No Tinder action, no send, no raw messages, no provider credentials
       // are ever included in the response or the activity journal.
-      return { ok: true, applied: payload?.applied === true, boundary };
+      return { ok: true, applied: payload?.applied === true, boundary,
+        ...(boundary.kind === "unknown" && safeSemanticDiagnostic(payload?.diagnostic)
+          ? { diagnostic: safeSemanticDiagnostic(payload?.diagnostic) } : {}) };
     })().then(sendResponse).catch(() =>
       sendResponse({ ok: false, error: "conversation_boundary_backend_unreachable" }));
     return true;
