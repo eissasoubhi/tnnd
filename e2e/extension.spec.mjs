@@ -502,8 +502,9 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
     const firstRequest = requests.length;
     const now = new Date().toISOString();
     try {
-      await tinder.goto("https://tinder.com/app/recs");
-      // Chrome retains its initial MessageSender.url; the live route differs.
+      await tinder.goto("https://tinder.com/app/messages/fixture-import-first");
+      // Chrome keeps this original document URL, while Tinder SPA switches
+      // to an already AI-managed chat without a page reload.
       await tinder.evaluate(()=>history.pushState({},"","/app/messages/fixture-old-incoming"));
       const tabId = await popup.evaluate(async () =>
         (await chrome.tabs.query({url:"https://tinder.com/*"}))[0].id);
@@ -512,9 +513,6 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
           lastRef:"fixture-old-incoming",awaitingChatRef:"fixture-old-incoming",
           awaitingChatSince:now,phase:"waiting",activity:[]}
       }),{key,tabId,userId,now});
-      // Use real fictional chat DOM. A pathname change alone retains discovery
-      // fixture markup, so navigate the content to the explicit chat fixture.
-      await tinder.goto("https://tinder.com/app/messages/fixture-old-incoming");
       const probe = await popup.evaluate(async () => {
         const tab=(await chrome.tabs.query({url:"https://tinder.com/*"}))[0];
         return chrome.tabs.sendMessage(tab.id,{
