@@ -665,10 +665,12 @@ async function scan(): Promise<void> {
     // API against a verified persisted message tail; NEVER local keyword regex.
     // Unknown/unavailable classifications do not authorize an automatic send.
     let boundary: ConversationBoundary;
+    let boundaryDiagnostic: string | undefined;
     reportExistingRunner("generating", "Vérification IA de la conversation non répondue et de son historique…");
     try {
       const decision = await syncObservedConversationBoundary(conversationRef,visible);
       boundary = decision.boundary as ConversationBoundary;
+      boundaryDiagnostic = decision.diagnostic;
     } catch (error) {
       // Surface only the server's stable, non-sensitive error codes. Never log
       // a provider response, the transcript, the API key or the AI prompt.
@@ -677,7 +679,18 @@ async function scan(): Promise<void> {
       return;
     }
     if (boundary.kind === "unknown") {
-      reportExistingRunner("waiting","Chat intent uncertain or not synchronized; human review needed before automatic reply.");
+      const reasons: Record<string,string> = {
+        conversation_not_persisted: "Contrôle IA bloqué : conversation absente de la base TNND.",
+        no_persisted_messages: "Contrôle IA bloqué : aucun message enregistré en base.",
+        latest_message_mismatch: "Contrôle IA bloqué : dernier message Tinder différent de celui en base.",
+        previous_message_mismatch: "Contrôle IA bloqué : avant-dernier message Tinder différent de celui en base.",
+        unverified_observed_tail: "Contrôle IA bloqué : historique Tinder/base non vérifiable.",
+        semantic_decision_uncertain: "L'IA ne peut pas confirmer l'intention de la conversation ; validation humaine nécessaire.",
+        history_changed_during_classification: "Historique modifié pendant l'analyse IA ; aucun envoi effectué.",
+        conversation_changed_during_classification: "Conversation modifiée pendant l'analyse IA ; aucun envoi effectué."
+      };
+      reportExistingRunner("waiting", reasons[boundaryDiagnostic ?? ""] ??
+        "Analyse IA incertaine : vérifier la synchronisation et la décision sémantique.");
       return;
     }
     if (boundary.kind !== "continue") {
