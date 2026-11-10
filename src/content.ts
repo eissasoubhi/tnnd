@@ -1,5 +1,6 @@
 import { explainBackendReplyDenial, explainSemanticCheckFailure } from "./chat-auto-reply-diagnostics";
 import { TinderDomAdapter } from "./tinder-adapter";
+import { buildNormalizedMessageKeys } from "./tinder-message-key";
 import { observeSwipeDiscoveryControls } from "./tinder-swipe-discovery-evidence";
 import { executeReservedTinderRightLike } from "./tinder-swipe-live-action";
 import { redactDiagnosticInlineStyle } from "./tinder-diagnostic-inline-style-redaction";
@@ -597,6 +598,48 @@ async function scan(): Promise<void> {
       reportExistingRunner("skipped", "Manual Matches mode selected; existing-chat reply deferred.");
       return;
     }
+    // Repair the source-of-truth gap BEFORE requiring a matching backend tail.
+    // The old logic read Tinder correctly but then attempted semantic checks
+    // against old/missing backend messages, returning "unknown" forever.
+    const keyed = buildNormalizedMessageKeys(
+      snapshot.context, adapter.diagnose().threadKeyHash
+    ).slice(-12);
+    const visibleTail = adapter.readVisibleMessages().slice(-keyed.length);
+    const normalize = (value: string): string => value.replace(/\\s+/g, " ").trim();
+    const verified = keyed.length > 0 && keyed.length === visibleTail.length &&
+      keyed.every((item, index) => item.direction === visibleTail[index].direction &&
+        normalize(item.text) === normalize(visibleTail[index].text)) &&
+      keyed.at(-1)?.direction === "them";
+    if (!verified) {
+      reportExistingRunner("waiting",
+        "Import Chat différé : historique Tinder visible et contexte ne correspondent pas.");
+      return;
+    }
+    const imported = await sendRuntimeMessage<{
+      ok?:boolean; created?:boolean; importedCount?:number; reason?:string
+    }>({
+      type:"TNND_SYNC_OPENED_CHAT_HISTORY", conversationRef, messages:keyed
+    });
+    if (!imported?.ok) {
+      const reasons: Record<string,string> = {
+        read_only_chat_sync_unavailable: "API TNND inaccessible pendant l'import du chat.",
+        read_only_chat_sync_failed: "L'API TNND a refusé la synchronisation de l'historique visible.",
+        read_only_chat_sync_unconfirmed: "Synchronisation de l'historique non confirmée par TNND Web.",
+        conversation_not_eligible_for_sync: "Conversation en gestion manuelle, archivée ou désactivée : import automatique ignoré.",
+        wrong_live_tinder_thread: "Tinder a changé de conversation avant la synchronisation."
+      };
+      reportExistingRunner("waiting", reasons[imported?.reason ?? ""] ??
+        "Historique Tinder non synchronisé : vérifier l'API TNND et le journal backend.");
+      return;
+    }
+    if (imported.created) {
+      reportExistingRunner("skipped",
+        "Conversation importée dans TNND Web (statut en pause). Sélectionne explicitement sa gestion IA pour autoriser une réponse.");
+      return;
+    }
+    if ((imported.importedCount ?? 0) > 0)
+      reportExistingRunner("checking",
+        `Historique Tinder synchronisé dans TNND Web : ${imported.importedCount} nouveau(x) message(s) visible(s).`);
     const backendPermission = await backendAutomaticReplyPermission(conversationRef);
     if (!backendPermission.allowed) {
       reportExistingRunner("skipped", backendPermission.reason ??
