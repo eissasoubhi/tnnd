@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { loadAiProviderSettings } from "./ai-provider-settings-service.js";
 import { requestAiDecision, AiDecisionProviderError } from "./ai-decision-engine.js";
 import {
-  acceptStructuredBoundaryDecision, parseStructuredBoundaryDecision,
+  acceptStructuredBoundaryDecision, parseStructuredBoundaryDecision, minimumBoundaryConfidence,
   UNCERTAIN_BOUNDARY, type ConversationBoundaryMessage, type StructuredBoundaryDecision
 } from "../../../src/conversation-boundary-policy.js";
 
@@ -80,7 +80,7 @@ export async function classifyConversationSemantics(
             ? raw as Record<string,unknown> : null;
           onDiagnostic?.(parsed.kind === "unknown"
             ? data?.kind === "unknown" ? "semantic_model_uncertain" : "semantic_invalid_model_response"
-            : parsed.confidence < 0.9 ? "semantic_low_confidence" : "semantic_inconsistent_evidence");
+            : parsed.confidence < minimumBoundaryConfidence(parsed.kind) ? "semantic_low_confidence" : "semantic_inconsistent_evidence");
         }
         return accepted;
       },
