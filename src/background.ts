@@ -381,7 +381,9 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
         } | undefined;
         const isChatRunner = runState?.enabled === true && runState.userId === session.user.id &&
           (runState.mode === "runner" || (runState.mode === "watcher" && runState.manualActivity !== "new-match"));
-        if (isChatRunner && await currentAuthorizedTinderThread(sender, ref)) {
+        const localChatSettings = await getChatSettings("/app/messages/" + encodeURIComponent(ref));
+        if (isChatRunner && localChatSettings.enabled !== false &&
+            await currentAuthorizedTinderThread(sender, ref)) {
           const ownership = await fetch("http://127.0.0.1:4000/api/v1/conversations/management", {
             method: "PUT",
             headers: { "content-type": "application/json", authorization: "Bearer " + session.token },
