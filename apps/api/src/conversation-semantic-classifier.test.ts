@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  classifyConversationSemantics, classificationPrompt, classifyAuthenticatedBoundary
+  classifyConversationSemantics, classificationPrompt, classifyAuthenticatedBoundary,
+  type BoundarySemanticDiagnostic
 } from "./conversation-semantic-classifier.js";
 import { UNCERTAIN_BOUNDARY } from "../../../src/conversation-boundary-policy.js";
 
@@ -96,7 +97,7 @@ test("uncertain classifications are cached briefly with stable diagnostic to avo
   let calls=0;
   const reported:string[]=[];
   const classifier=async(_messages:unknown,_credentials:unknown,_fetcher?:unknown,
-    onDiagnostic?: (code:string)=>void)=>{
+    onDiagnostic?: (code:BoundarySemanticDiagnostic)=>void)=>{
     calls++;
     onDiagnostic?.("semantic_output_truncated");
     return UNCERTAIN_BOUNDARY;
