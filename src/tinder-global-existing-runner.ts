@@ -298,9 +298,19 @@ async function listEligible(autoEnrollUnmanaged = false): Promise<{ refs: string
   // an explicit per-chat OFF or a pending human action stays excluded.
   if (autoEnrollUnmanaged) {
     const plan = planAutomaticExistingChatEnrollment(records, summaries);
-    if (plan.manage.length) {
-      for (let i = 0; i < plan.manage.length; i += 100) {
-        const updates = plan.manage.slice(i, i + 100).map(conversationId => ({
+    // A saved local OFF is deliberate, even if Conversation management
+    // has never been selected. Do not silently change its backend status.
+    const refsById = new Map(records.map(record => [record.id, record.externalThreadId]));
+    const manageable: string[] = [];
+    for (const id of plan.manage) {
+      const ref = refsById.get(id);
+      if (!ref) continue;
+      const settings = await getChatSettings(tinderThreadKeyFromPath("/app/messages/" + encodeURIComponent(ref)));
+      if (settings.enabled !== false) manageable.push(id);
+    }
+    if (manageable.length) {
+      for (let i = 0; i < manageable.length; i += 100) {
+        const updates = manageable.slice(i, i + 100).map(conversationId => ({
           conversationId, managementState: "ai-managed"
         }));
         const result = await fetch(`${API}/api/v1/conversations/management`, {
@@ -311,7 +321,7 @@ async function listEligible(autoEnrollUnmanaged = false): Promise<{ refs: string
       }
       // Legacy imports start paused. Resume only the newly enrolled threads;
       // pre-existing AI-managed chats explicitly paused by the user stay paused.
-      for (const conversationId of plan.resume) {
+      for (const conversationId of plan.resume.filter(id => manageable.includes(id))) {
         const result = await fetch(`${API}/api/v1/conversations/${encodeURIComponent(conversationId)}`, {
           method: "PATCH", headers: { ...headers, "content-type": "application/json" },
           body: JSON.stringify({ status: "active" })
