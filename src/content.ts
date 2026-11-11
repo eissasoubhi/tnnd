@@ -616,7 +616,7 @@ async function scan(): Promise<void> {
       return;
     }
     const imported = await sendRuntimeMessage<{
-      ok?:boolean; created?:boolean; importedCount?:number; reason?:string
+      ok?:boolean; created?:boolean; autoManaged?:boolean; importedCount?:number; reason?:string
     }>({
       type:"TNND_SYNC_OPENED_CHAT_HISTORY", conversationRef, messages:keyed
     });
@@ -626,16 +626,21 @@ async function scan(): Promise<void> {
         read_only_chat_sync_failed: "L'API TNND a refusé la synchronisation de l'historique visible.",
         read_only_chat_sync_unconfirmed: "Synchronisation de l'historique non confirmée par TNND Web.",
         conversation_not_eligible_for_sync: "Conversation en gestion manuelle, archivée ou désactivée : import automatique ignoré.",
-        wrong_live_tinder_thread: "Tinder a changé de conversation avant la synchronisation."
+        wrong_live_tinder_thread: "Tinder a changé de conversation avant la synchronisation.",
+        chat_auto_management_failed: "Impossible d'autoriser automatiquement cette conversation dans Conversation management.",
+        chat_auto_activation_failed: "Impossible d'activer cette conversation synchronisée dans TNND Web."
       };
       reportExistingRunner("waiting", reasons[imported?.reason ?? ""] ??
         "Historique Tinder non synchronisé : vérifier l'API TNND et le journal backend.");
       return;
     }
-    if (imported.created) {
+    if (imported.created && imported.autoManaged !== true) {
       reportExistingRunner("skipped",
-        "Conversation importée dans TNND Web (statut en pause). Sélectionne explicitement sa gestion IA pour autoriser une réponse.");
+        "Conversation importée dans TNND Web mais Chat global non actif : gestion IA non activée.");
       return;
+    }
+    if (imported.autoManaged === true) {
+      reportExistingRunner("checking", "Nouvelle conversation synchronisée et autorisée par le mode Chat global.");
     }
     if ((imported.importedCount ?? 0) > 0)
       reportExistingRunner("checking",
