@@ -32,7 +32,11 @@ test("read-only sync only auto-enrolls newly imported chats during an active glo
   assert.match(content,/buildNormalizedMessageKeys\(/);
   assert.match(content,/keyed\.every\(/);
   assert.match(content,/TNND_SYNC_OPENED_CHAT_HISTORY/);
-  assert.match(content,/if \(imported\.created && imported\.autoManaged !== true\)/);\n  assert.match(background,/runState\?\.enabled === true && runState\.userId === session\.user\.id/);\n  assert.match(background,/managementState: "ai-managed"/);\n  assert.match(background,/status: "active"/);\n  assert.match(background,/autoManaged/);
+  assert.match(content,/if \(imported\.created && imported\.autoManaged !== true\)/);
+  assert.match(background,/runState\?\.enabled === true && runState\.userId === session\.user\.id/);
+  assert.match(background,/managementState: "ai-managed"/);
+  assert.match(background,/status: "active"/);
+  assert.match(background,/autoManaged/);
   assert.match(content,/const backendPermission = await backendAutomaticReplyPermission\(conversationRef\)/);
   assert.ok(content.indexOf("TNND_SYNC_OPENED_CHAT_HISTORY") < content.indexOf("const backendPermission = await backendAutomaticReplyPermission(conversationRef)"));
   assert.match(api,/ON CONFLICT \(conversation_id, external_message_id\) DO NOTHING/);
