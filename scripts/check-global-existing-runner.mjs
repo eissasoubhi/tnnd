@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { eligibleExistingThreadRefs, nextExistingThreadRef } from "../src/tinder-global-existing-policy.ts";
+import { eligibleExistingThreadRefs, nextExistingThreadRef, planAutomaticExistingChatEnrollment } from "../src/tinder-global-existing-policy.ts";
 
 const item = (id, managementState="ai-managed", explicitlySelected=true) => ({
  id, externalThreadId:id, managementState, explicitlySelected
@@ -81,4 +81,39 @@ test("operational runner states are persisted and reported without Tinder messag
  assert.match(panel, /TNND_GLOBAL_RUNNER_STATUS_V1/);
  assert.match(panel, /web-runner-phase/);
  assert.match(panel, /web-runner-sent/);
+});
+
+
+test("starting global Chat enrolls only never-selected synced threads, without overriding opt-outs", () => {
+  const records = [
+    item("new-active","unmanaged",false), item("old-import","unmanaged",false),
+    item("already-on"), item("selected-unmanaged","unmanaged",true),
+    item("human-manual","manual",true), item("archived","archived",true),
+    item("disabled-chat","unmanaged",false), item("action-blocked","unmanaged",false),
+    item("pending-user","unmanaged",false), item("no-history","unmanaged",false),
+    item("bad/path","unmanaged",false)
+  ];
+  const summaries = [
+    summary("new-active"),summary("old-import","paused"),summary("already-on"),
+    summary("selected-unmanaged"),summary("human-manual"),summary("archived"),
+    summary("disabled-chat","disabled"),summary("action-blocked","action-required"),
+    summary("pending-user","waiting-for-user"),summary("no-history","active",null),
+    summary("bad/path")
+  ];
+  assert.deepEqual(planAutomaticExistingChatEnrollment(records, summaries), {
+    manage:["new-active","old-import"],resume:["old-import"]
+  });
+  assert.deepEqual(planAutomaticExistingChatEnrollment(records, summaries.map(x =>
+    x.id === "old-import" ? {...x,pendingHumanActions:1} : x)), {
+      manage:["new-active"],resume:[]
+  });
+});
+
+test("global Chat enrolls only after checking the live Tinder tab", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const runner = await readFile(new URL("../src/tinder-global-existing-runner.ts", import.meta.url),"utf8");
+  assert.match(runner, /const selection = await listEligible\(true\)/);
+  assert.match(runner, /planAutomaticExistingChatEnrollment\(records, summaries\)/);
+  assert.ok(runner.indexOf("await waitForTinderContentBridge(tab.id)") <
+    runner.indexOf("const selection = await listEligible(true)"));
 });
