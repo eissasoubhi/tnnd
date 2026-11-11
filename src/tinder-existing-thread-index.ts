@@ -11,6 +11,8 @@ export interface IndexedThread {
   lastCheckedAt: string | null;
   queuedAt: string | null;
   unreadAt: string | null;
+  /** Last observed Tinder badge state: a persistent badge is NOT a new turn. */
+  unreadVisible?: boolean;
   /** Observed in Tinder's Messages sidebar even when absent from the DB. */
   tinderSeenAt?: string | null;
 }
@@ -58,6 +60,7 @@ export function reconcileExistingIndex(
       lastCheckedAt: old?.lastCheckedAt ?? null,
       queuedAt: pending ? (old?.queuedAt ?? now) : null,
       unreadAt: old?.unreadAt ?? null,
+      unreadVisible: old?.unreadVisible ?? false,
       tinderSeenAt: old?.tinderSeenAt ?? null
     });
     if (threads.length >= LIMIT) break;
@@ -92,18 +95,23 @@ export function observeTinderInbox(
     if (!goodRef(ref) || seen.has(ref)) continue;
     seen.add(ref);
     const old = threads.get(ref);
+    const badgeVisible = unread.has(ref);
     if (old) {
       const recheck = old.lastMessageDirection === null &&
         (!old.lastCheckedAt || Date.parse(at) - Date.parse(old.lastCheckedAt) >= 30 * 60_000);
-      threads.set(ref, { ...old, tinderSeenAt: at,
-        queuedAt: recheck ? (old.queuedAt ?? at) : old.queuedAt,
-        unreadAt: unread.has(ref) ? at : old.unreadAt });
+      // A badge which remained visible after the previous scan is not
+      // evidence of a NEW incoming message. Only a newly appearing badge,
+      // or a changed persisted inbound version, may interrupt Swipe.
+      const newBadge = badgeVisible && old.unreadVisible !== true;
+      threads.set(ref, { ...old, tinderSeenAt: at, unreadVisible: badgeVisible,
+        queuedAt: recheck || newBadge ? (old.queuedAt ?? at) : old.queuedAt,
+        unreadAt: newBadge ? at : old.unreadAt });
     } else {
       threads.set(ref, {
         ref, serverMessageAt: null, lastMessageDirection: null,
         checkedMessageAt: null, lastCheckedAt: null,
-        queuedAt: at, unreadAt: unread.has(ref) ? at : null,
-        tinderSeenAt: at
+        queuedAt: at, unreadAt: badgeVisible ? at : null,
+        unreadVisible: badgeVisible, tinderSeenAt: at
       });
     }
   }
@@ -134,11 +142,11 @@ export function observeUnreadThreads(
   const time = Date.parse(at);
   return { ...state,
     threads: state.threads.map(entry => {
-      if (!unread.has(entry.ref)) return entry;
-      // One hint per cooldown to avoid resending indefinitely while Tinder
-      // keeps the badge visible. A true new DB message time will requeue later.
+      if (!unread.has(entry.ref) || entry.unreadVisible === true) return entry;
+      // This event is a newly observed badge, not the same badge after
+      // an old chat was checked. The opened chat still verifies the messages.
       if (entry.lastCheckedAt && time - Date.parse(entry.lastCheckedAt) < UNREAD_HINT_COOLDOWN_MS) return entry;
-      return { ...entry, queuedAt: entry.queuedAt ?? at, unreadAt: at };
+      return { ...entry, queuedAt: entry.queuedAt ?? at, unreadAt: at, unreadVisible: true };
     }), updatedAt: at
   };
 }
