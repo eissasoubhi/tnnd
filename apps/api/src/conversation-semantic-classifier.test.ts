@@ -95,8 +95,8 @@ test("brief but clear old incoming conversation may continue when Gemini explici
 test("uncertain classifications are cached briefly with stable diagnostic to avoid duplicate Gemini spending",async()=>{
   let calls=0;
   const reported:string[]=[];
-  const classifier=async(_messages:unknown,_credentials:unknown,_fetcher:unknown,
-    onDiagnostic?: (code:"semantic_output_truncated")=>void)=>{
+  const classifier=async(_messages:unknown,_credentials:unknown,_fetcher?:unknown,
+    onDiagnostic?: (code:string)=>void)=>{
     calls++;
     onDiagnostic?.("semantic_output_truncated");
     return UNCERTAIN_BOUNDARY;
