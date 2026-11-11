@@ -44,6 +44,8 @@ let contentRuntimeAlive = true;
 let observer: MutationObserver | null = null;
 let runtimeObservedJobs: TinderScheduledJob[] = [];
 const runtimeProcessedThreadRefs = new Set<string>();
+/** Avoid repeated Gemini decisions for one unchanged incoming message. */
+const semanticRetryAfter = new Map<string, number>();
 
 interface AutoState {
   date: string;
@@ -662,6 +664,15 @@ async function scan(): Promise<void> {
       reportExistingRunner("error", "Moteur Chat : état de l'automatisation indisponible.");
       return;
     }
+    // Already handled incoming turns must never be reclassified on every DOM
+    // mutation or runner revisit; a new incoming bubble has a different key.
+    if (state.processed[snapshot.latestIncomingKey] ||
+        (snapshot.legacyIncomingKey && state.processed[snapshot.legacyIncomingKey])) {
+      return;
+    }
+    const retryAfter = semanticRetryAfter.get(snapshot.latestIncomingKey);
+    if (retryAfter && retryAfter > Date.now()) return;
+    semanticRetryAfter.delete(snapshot.latestIncomingKey);
     const visible = adapter.readVisibleMessages().map(message => ({
       direction: message.direction === "them" ? "incoming" as const : "outgoing" as const,
       text: message.text
@@ -684,6 +695,11 @@ async function scan(): Promise<void> {
       return;
     }
     if (boundary.kind === "unknown") {
+      // Retry later instead of hitting the same AI decision repeatedly.
+      // A different incoming bubble is still processed immediately.
+      if (semanticRetryAfter.size >= 100)
+        semanticRetryAfter.delete(semanticRetryAfter.keys().next().value!);
+      semanticRetryAfter.set(snapshot.latestIncomingKey, Date.now() + 120_000);
       const reasons: Record<string,string> = {
         conversation_not_persisted: "Contrôle IA bloqué : conversation absente de la base TNND.",
         no_persisted_messages: "Contrôle IA bloqué : aucun message enregistré en base.",
