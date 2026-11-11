@@ -852,6 +852,11 @@ async function scan(): Promise<void> {
       reportExistingRunner("waiting","Final chat intent check unavailable; generated reply not sent.");
       return;
     }
+    if (finalBoundary.kind === "unknown") {
+      semanticRetryAfter.set(finalSnapshot.latestIncomingKey, Date.now() + 120_000);
+      reportExistingRunner("waiting", "Vérification IA finale incertaine : aucune réponse envoyée, nouvel essai différé.");
+      return;
+    }
     if (finalBoundary.kind !== "continue" || finalHold || replyNeedsHumanReview(reply) || hasUnexpectedScriptMix(reply, finalMessages)) {
       const processed = await getState();
       if (!processed) return;
