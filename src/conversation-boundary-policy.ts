@@ -58,6 +58,11 @@ export function parseStructuredBoundaryDecision(value: unknown): StructuredBound
   };
 }
 
+/** Higher confidence is required for actions that close or redirect a chat. */
+export function minimumBoundaryConfidence(kind: ConversationBoundaryKind): number {
+  return kind === "continue" ? 0.7 : 0.9;
+}
+
 /**
  * Validate semantic evidence in context; the latest incoming turn has priority.
  * This does not infer meaning from texts. When confidence/evidence disagrees,
@@ -79,7 +84,9 @@ export function acceptStructuredBoundaryDecision(
     (decision.kind === "do-not-contact" && decision.evidence === "explicit-stop") ||
     (decision.kind === "off-tinder" && (decision.evidence === "direct-handoff" ||
       (mutual && decision.evidence === "accepted-handoff")));
-  if (!allowed || decision.confidence < 0.9 || decision.kind === "unknown")
+  // A clearly model-classified ongoing exchange should not be blocked by
+  // the very high certainty required to close a conversation or switch apps.
+  if (!allowed || decision.confidence < minimumBoundaryConfidence(decision.kind) || decision.kind === "unknown")
     return UNCERTAIN_BOUNDARY;
   return decision;
 }
