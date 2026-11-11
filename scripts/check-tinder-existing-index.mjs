@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {readFile} from "node:fs/promises";
-import { reconcileExistingIndex, markThreadChecked, observeUnreadThreads, nextIndexedExistingThread } from "../src/tinder-existing-thread-index.ts";
+import { reconcileExistingIndex, markThreadChecked, observeUnreadThreads, observeTinderInbox, nextIndexedExistingThread } from "../src/tinder-existing-thread-index.ts";
 const at=(s)=>({ref:s,lastMessageAt:"2026-10-13T18:00:00Z"});
 test("queue keys by stable Tinder ref, not the current sidebar order",()=>{
  let q=reconcileExistingIndex(null,"user-a",[at("srim"),at("youssra"),at("nawal")],"2026-10-13T20:00:00Z");
@@ -22,7 +22,12 @@ test("unread hint priority, no immediate duplicate requeue, account isolation",(
  q=markThreadChecked(markThreadChecked(q,"srim","2026-10-13T20:01:00Z"),"nawal","2026-10-13T20:01:00Z");
  q=observeUnreadThreads(q,["srim"],"2026-10-13T20:01:05Z");
  assert.equal(nextIndexedExistingThread(q),null);
+ // The identical still-visible unread badge must not look like a new reply.
  q=observeUnreadThreads(q,["srim"],"2026-10-13T20:03:05Z");
+ assert.equal(nextIndexedExistingThread(q),null);
+ // Once the badge disappears, a genuinely new badge may re-queue this chat.
+ q=observeTinderInbox(q,["srim"],[],"2026-10-13T20:03:10Z");
+ q=observeUnreadThreads(q,["srim"],"2026-10-13T20:03:15Z");
  assert.equal(nextIndexedExistingThread(q),"srim");
  q=reconcileExistingIndex(q,"other",[at("nawal")]);
  assert.equal(q.threads.length,1);
@@ -33,7 +38,9 @@ test("extension only runs indexed server-authorized refs and never stores messag
  const content=await readFile(new URL("../src/content.ts",import.meta.url),"utf8");
  assert.match(runner,/eligibleExistingThreadRefs\(records, summaries\)/);
  assert.match(runner,/reconcileExistingIndex\(await readWorkIndex\(session\.user\.id\)/);
- assert.match(runner,/state\.mode === "watcher" \? nextWatchedReply\(queued\) : nextIndexedExistingThread\(queued\)/);
+ assert.match(runner,/nextImmediateWatchedReply\(queued\)/);
+ assert.match(runner,/nextWatchedReply\(queued\)/);
+ assert.match(runner,/pendingImmediateWatcherReplies\(queued\)/);
  assert.match(runner,/markThreadChecked\(queued, nextRef\)/);
  assert.match(content,/discoverUnreadThreadCandidates\(\)/);
  assert.match(content,/TNND_EXISTING_RUNNER_UNREAD/);
