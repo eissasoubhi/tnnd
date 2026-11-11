@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { reconcileExistingIndex, observeTinderInbox, markThreadChecked, isExistingThreadIndex } from "../src/tinder-existing-thread-index.ts";
-import { nextWatchedReply, pendingWatchedReplies } from "../src/tinder-reply-watcher.ts";
+import { nextWatchedReply, pendingWatchedReplies, nextImmediateWatchedReply, pendingImmediateWatcherReplies } from "../src/tinder-reply-watcher.ts";
 import { nextSingleTabRotation, INBOX_SCAN_INTERVAL_MS, INBOX_MIN_DWELL_MS } from "../src/tinder-single-tab-rotation.ts";
 
 const at = "2026-11-07T10:00:00.000Z";
@@ -71,6 +71,55 @@ test("single-tab rotation prioritizes old pending chats and waits for a safe Mat
   assert.equal(nextSingleTabRotation({ ...base, matchPhase: "opener" }), "wait");
   assert.equal(nextSingleTabRotation({ ...base, watcherSafe: false }), "wait");
   assert.equal(nextSingleTabRotation({ ...base, lastMatchScanAt: new Date(t - 1).toISOString() }), "wait");
+});
+
+test("automatic Chat ignores periodically requeued old messages after they were reviewed", () => {
+  const t = Date.parse(at);
+  let index = reconcileExistingIndex(null, "owner", [
+    { ref: "incoming", lastMessageAt: at, lastMessageDirection: "incoming" },
+    { ref: "answered", lastMessageAt: at, lastMessageDirection: "outgoing" }
+  ], at);
+  assert.equal(nextImmediateWatchedReply(index), "incoming");
+  index = markThreadChecked(index, "incoming", new Date(t + 10_000).toISOString());
+  index = reconcileExistingIndex(index, "owner", [
+    { ref: "incoming", lastMessageAt: at, lastMessageDirection: "incoming" },
+    { ref: "answered", lastMessageAt: at, lastMessageDirection: "outgoing" }
+  ], new Date(t + 4 * 60_000).toISOString());
+  assert.equal(pendingImmediateWatcherReplies(index), 0,
+    "An unchanged incoming DB version was already checked, even when the maintenance queue reopens it");
+  assert.equal(nextImmediateWatchedReply(index), null);
+  assert.equal(nextWatchedReply(index), "incoming",
+    "The legacy/maintenance watcher may still recheck the thread");
+  index = reconcileExistingIndex(index, "owner", [
+    { ref: "incoming", lastMessageAt: new Date(t + 5 * 60_000).toISOString(), lastMessageDirection: "incoming" },
+    { ref: "answered", lastMessageAt: at, lastMessageDirection: "outgoing" }
+  ], new Date(t + 5 * 60_000).toISOString());
+  assert.equal(nextImmediateWatchedReply(index), "incoming",
+    "A genuinely new persisted incoming message immediately takes priority");
+});
+
+test("automatic rotation returns to Swipe as soon as the verified Matches scan finishes", () => {
+  const t = Date.parse(at);
+  assert.equal(INBOX_SCAN_INTERVAL_MS, 60_000, "While swiping, revisit inbox about once a minute");
+  assert.equal(INBOX_MIN_DWELL_MS, 0, "Do not wait for a match to answer after sending");
+  const state = {owner: "watcher", pendingReplies: 0, lastInboxVisitAt: t,
+    watcherStartedAt: t, lastMatchScanAt: new Date(t + 17_000).toISOString(),
+    matchPhase: "idle", watcherSafe: true, now: t + 18_000};
+  assert.equal(nextSingleTabRotation(state), "swipe");
+  assert.equal(nextSingleTabRotation({...state, matchPhase:"verifying"}), "wait");
+  assert.equal(nextSingleTabRotation({...state, pendingReplies:1}), "wait");
+  assert.equal(nextSingleTabRotation({...state, watcherSafe:false}), "wait");
+});
+
+test("a confirmed Tinder Send clears focus and wakes the watcher instead of waiting for another reply", async () => {
+  const runner = await readFile(new URL("../src/tinder-global-existing-runner.ts", import.meta.url),"utf8");
+  const event = runner.slice(runner.indexOf("async function contentEvent("),
+    runner.indexOf("chrome.alarms.onAlarm.addListener(",runner.indexOf("async function contentEvent(")));
+  assert.match(event,/phase === "sent"\s*\? \{ \.\.\.recordedActivity, activeConversationRef: null, activeConversationUntil: null \}/);
+  assert.match(event,/if \(completedVisit\) void tick\(\)/);
+  assert.match(runner,/pendingImmediateWatcherReplies\(queued\)/);
+  assert.match(runner,/nextImmediateWatchedReply\(queued\)/);
+  assert.match(runner,/return pendingImmediateWatcherReplies\(pending\)/);
 });
 
 test("the Tinder inventory is read-only, with original authorization and unique-tab gates retained", async () => {
