@@ -115,7 +115,7 @@ test("a confirmed Tinder Send clears focus and wakes the watcher instead of wait
   const runner = await readFile(new URL("../src/tinder-global-existing-runner.ts", import.meta.url),"utf8");
   const event = runner.slice(runner.indexOf("async function contentEvent("),
     runner.indexOf("chrome.alarms.onAlarm.addListener(",runner.indexOf("async function contentEvent(")));
-  assert.match(event,/phase === "sent"\s*\? \{ \.\.\.recordedActivity, activeConversationRef: null, activeConversationUntil: null \}/);
+  assert.match(event,/phase === "sent" \|\| phase === "skipped"\s*\? \{ \.\.\.recordedActivity, activeConversationRef: null, activeConversationUntil: null \}/);
   assert.match(event,/if \(completedVisit\) void tick\(\)/);
   assert.match(runner,/pendingImmediateWatcherReplies\(queued\)/);
   assert.match(runner,/nextImmediateWatchedReply\(queued\)/);
