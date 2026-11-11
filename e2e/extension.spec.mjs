@@ -394,7 +394,7 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
             activity:[]
           },
           "tnnd.config": { automation: {
-            enabled:true,maxFirstMessagesPerDay:5,
+            enabled:true,maxFirstMessagesPerDay:5,quietHoursEnabled:false,
             replyDelayMinSeconds:120,replyDelayMaxSeconds:120
           }}
         }), {stateKey,tabId,userId,now});
