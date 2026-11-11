@@ -73,7 +73,7 @@ export function inferConversationStatus(messages: ConversationMessageDelta[]): C
 export async function syncObservedConversationBoundary(
   externalThreadId: string,
   messages: readonly { direction: "incoming" | "outgoing"; text: string }[]
-): Promise<{ applied: boolean; boundary: { kind: string; platform: string | null } }> {
+): Promise<{ applied: boolean; boundary: { kind: string; platform: string | null }; diagnostic?: string }> {
   // Chrome MV3 content scripts cannot use the extension's cross-origin host
   // permissions: a fetch from https://tinder.com to localhost is subject to
   // Tinder-origin CORS. Route the SAME authenticated request through TNND's
@@ -84,7 +84,7 @@ export async function syncObservedConversationBoundary(
   }) as {
     ok?: boolean; applied?: boolean;
     boundary?: { kind: string; platform: string | null };
-    error?: string
+    error?: string; diagnostic?: string
   } | undefined;
   if (result?.ok !== true || !result.boundary) {
     // The worker only returns a stable, allowlisted error code, never a
@@ -93,7 +93,8 @@ export async function syncObservedConversationBoundary(
   }
   return {
     applied: result.applied === true,
-    boundary: { kind: result.boundary.kind, platform: result.boundary.platform }
+    boundary: { kind: result.boundary.kind, platform: result.boundary.platform },
+    ...(typeof result.diagnostic === "string" ? { diagnostic: result.diagnostic } : {})
   };
 }
 

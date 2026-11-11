@@ -8,7 +8,7 @@ import "./tinder-smart-swipe-runtime-background";
 import "./tinder-smart-swipe-automation-background";
 import { newMatchSendPermission } from "./tinder-new-match-background";
 import {
-  validateBoundaryObservation, validateBoundaryBridgeDecision, safeBoundaryBridgeFailure
+  validateBoundaryObservation, validateBoundaryBridgeDecision, safeBoundaryBridgeFailure, safeSemanticDiagnostic
 } from "./tinder-conversation-boundary-bridge";
 import { currentAuthorizedTinderThread } from "./tinder-sender-route-guard";
 import "./tinder-global-existing-runner";
@@ -17,6 +17,8 @@ import "./tinder-read-only-bulk-sync-background";
 import { generateSuggestions } from "./gemini";
 import { loadTinderConversationManagement } from "./tinder-backend-management";
 import { syncConversationDelta } from "./conversation-sync";
+import { prepareReadOnlyImport } from "./tinder-manual-import";
+import { validateLiveChatTail } from "./tinder-live-chat-tail-sync";
 import { syncObservedMatchProfile } from "./tinder-match-profile-runtime";
 import { buildReadOnlyProfileSource, hasMeaningfulVisibleProfileFields, type TinderProfileCaptureInput } from "./tinder-match-profile-capture";
 import type { VisibleTinderMatchIdentity } from "./tinder-chat-identity";
@@ -101,6 +103,7 @@ type TrustedContentRequest =
   | { type: "TNND_GET_CHAT_AUTOMATION"; threadKey: string }
   | { type: "TNND_GET_EXISTING_REPLY_MODE_PERMISSION" }
   | { type: "TNND_GET_BACKEND_AUTO_SEND_PERMISSION"; conversationRef: string }
+  | { type: "TNND_SYNC_OPENED_CHAT_HISTORY"; conversationRef: string; messages: unknown }
   | { type: "TNND_OBSERVE_CONVERSATION_BOUNDARY"; externalThreadId: string; messages: unknown }
   | { type: "TNND_SYNC_SENT_TINDER_BUBBLE"; conversationRef: string; bubble: unknown }
   | { type: "TNND_GET_FIRST_MESSAGE_PERMISSION"; conversationRef: string }
@@ -327,6 +330,57 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
     return true;
   }
 
+  if (message.type === "TNND_SYNC_OPENED_CHAT_HISTORY") {
+    // Tinder is the source of discovery; the database can lag behind. Read-only
+    // catch-up is NOT an opt-in to AI replies. New threads remain paused and
+    // unmanaged, even though the user selected the unified Chat watcher.
+    void (async () => {
+      const ref = message.conversationRef;
+      const visible = validateLiveChatTail(message.messages);
+      if (!visible || typeof ref !== "string" || !/^[a-zA-Z0-9_-]{3,512}$/.test(ref))
+        return { ok:false, reason:"invalid_visible_chat_tail" };
+      if (!await currentAuthorizedTinderThread(sender, ref))
+        return { ok:false, reason:"wrong_live_tinder_thread" };
+      const session = await getBackendSession();
+      if (!session) return { ok:false, reason:"backend_session_unavailable" };
+      const existing = await loadTinderConversationManagement(ref);
+      if (existing.management.state === "archived" ||
+          existing.management.state === "moved-off-tinder" ||
+          existing.management.state === "manual" ||
+          existing.conversationStatus === "disabled") {
+        return { ok:false, reason:"conversation_not_eligible_for_sync" };
+      }
+      const prepared = prepareReadOnlyImport(visible, Boolean(existing.conversationId), new Date().toISOString());
+      const response = await fetch("http://127.0.0.1:4000/api/v1/conversations/sync", {
+        method: "POST",
+        headers: { "content-type":"application/json", authorization:"Bearer "+session.token },
+        body: JSON.stringify({
+          externalThreadId: ref, readOnlyImport:true,
+          ...(existing.conversationId ? {} : { status:"paused" }),
+          messages:prepared.messages,
+          nextCursor:prepared.nextCursor
+        }),
+        signal: AbortSignal.timeout(15_000),
+        cache: "no-store"
+      });
+      if (!response.ok) return { ok:false, reason:"read_only_chat_sync_failed" };
+      const result = await response.json().catch(() => null) as {
+        conversationId?:unknown; acceptedMessageIds?:unknown; nextCursor?:unknown
+      } | null;
+      if (typeof result?.conversationId !== "string" ||
+          !Array.isArray(result.acceptedMessageIds) ||
+          result.nextCursor !== prepared.nextCursor)
+        return { ok:false, reason:"read_only_chat_sync_unconfirmed" };
+      // Message text and external refs are NEVER emitted into the journal.
+      return {
+        ok:true, created: !existing.conversationId,
+        importedCount: result.acceptedMessageIds.length
+      };
+    })().then(sendResponse).catch(() =>
+      sendResponse({ok:false, reason:"read_only_chat_sync_unavailable"}));
+    return true;
+  }
+
   if (message.type === "TNND_GET_BACKEND_AUTO_SEND_PERMISSION") {
     const ref = message.conversationRef?.trim();
     // The sender's document URL can be an OLD SPA chat after Tinder navigates.
@@ -381,7 +435,7 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
         return { ok: false, error: "conversation_boundary_backend_unreachable" };
       }
       const payload = await response.json().catch(() => null) as {
-        error?: unknown; applied?: unknown; boundary?: unknown
+        error?: unknown; applied?: unknown; boundary?: unknown; diagnostic?: unknown
       } | null;
       if (!response.ok)
         return { ok: false, error: safeBoundaryBridgeFailure(payload?.error, response.status) };
@@ -389,7 +443,9 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
       if (!boundary) return { ok: false, error: "invalid_conversation_boundary_response" };
       // No Tinder action, no send, no raw messages, no provider credentials
       // are ever included in the response or the activity journal.
-      return { ok: true, applied: payload?.applied === true, boundary };
+      return { ok: true, applied: payload?.applied === true, boundary,
+        ...(boundary.kind === "unknown" && safeSemanticDiagnostic(payload?.diagnostic)
+          ? { diagnostic: safeSemanticDiagnostic(payload?.diagnostic) } : {}) };
     })().then(sendResponse).catch(() =>
       sendResponse({ ok: false, error: "conversation_boundary_backend_unreachable" }));
     return true;

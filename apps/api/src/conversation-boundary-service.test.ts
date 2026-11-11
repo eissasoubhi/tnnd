@@ -3,7 +3,7 @@ import test from "node:test";
 import { UNCERTAIN_BOUNDARY, type StructuredBoundaryDecision } from "../../../src/conversation-boundary-policy.js";
 import {
   desiredBoundaryTransition, handoffProvenance, validateObservedConversationBoundary,
-  verifiedConversationBoundary
+  verifiedConversationBoundary, observedTailMismatch
 } from "./conversation-boundary-service.js";
 
 function outcome(kind: StructuredBoundaryDecision["kind"],
@@ -74,4 +74,12 @@ test("persisted platform provenance requires a verified latest incoming source I
   assert.equal(handoffProvenance(boundary,{direction:"incoming",external_message_id:""}),null);
   assert.equal(handoffProvenance(outcome("continue","ongoing"),{direction:"incoming",external_message_id:"id"}),null);
   assert.equal(handoffProvenance(outcome("rest","mutual-signoff"),{direction:"incoming",external_message_id:"id"}),null);
+});
+
+test("safe semantic diagnostics separate missing, stale and changed stored message tails", () => {
+  const live = exchange(["outgoing","Salut"],["incoming","Coucou"]);
+  assert.equal(observedTailMismatch(live,[]),"no_persisted_messages");
+  assert.equal(observedTailMismatch(live,exchange(["incoming","Ancien message"])),"latest_message_mismatch");
+  assert.equal(observedTailMismatch(live,exchange(["outgoing","Hello"],["incoming","Coucou"])),"previous_message_mismatch");
+  assert.equal(observedTailMismatch(live,live),null);
 });
