@@ -13,6 +13,7 @@ import { openerDelaySeconds, openerTypingDelaySeconds } from "./tinder-opener-ti
 import { naturalReplyBubbles } from "./tinder-reply-bubbles";
 import { type ConversationBoundary, type ConversationBoundaryMessage } from "./conversation-boundary-policy";
 import { automaticReplyHold, hasUnexpectedScriptMix, replyNeedsHumanReview } from "./conversation-reply-safety";
+import { visibleContextFingerprint, wasReviewedWithoutSend, type ReviewedTurn, type ReviewOutcome } from "./tinder-chat-review-ledger";
 import { syncObservedConversationBoundary } from "./conversation-sync";
 import { observeTinderRuntime } from "./tinder-runtime-observation";
 import { readCurrentTinderUiState } from "./tinder-runtime-state";
@@ -51,6 +52,7 @@ interface AutoState {
   date: string;
   dailyCount: number;
   processed: Record<string, number>;
+  reviewed: Record<string, ReviewedTurn>;
 }
 
 interface ContentConfig {
@@ -186,10 +188,20 @@ async function getState(): Promise<AutoState | null> {
 
 async function saveState(state: AutoState): Promise<boolean> {
   state.processed = Object.fromEntries(Object.entries(state.processed).slice(-5000));
+  state.reviewed = Object.fromEntries(Object.entries(state.reviewed).slice(-5000));
   const response = await sendRuntimeMessage<{ ok: boolean; error?: string }>({ type: "TNND_SAVE_AUTO_STATE", state });
   if (!response) return false;
   if (!response.ok) throw new Error(response.error ?? "Could not save TNND automation state.");
   return true;
+}
+
+/** Only use this ledger for an intentional NO-SEND outcome. Never overwrite
+ * the processed ledger, which is a durable one-shot attempt claim.
+ */
+function recordReviewWithoutSend(
+  state: AutoState, incomingKey: string, context: string, outcome: ReviewOutcome
+): void {
+  state.reviewed[incomingKey] = { contextHash: visibleContextFingerprint(context), outcome, at: Date.now() };
 }
 
 function minutes(value: string): number {
@@ -668,6 +680,20 @@ async function scan(): Promise<void> {
     // mutation or runner revisit; a new incoming bubble has a different key.
     if (state.processed[snapshot.latestIncomingKey] ||
         (snapshot.legacyIncomingKey && state.processed[snapshot.legacyIncomingKey])) {
+      // Before v0.2.59 the same ledger held both no-send reviews and real
+      // send attempts. Their provenance cannot be recovered safely: do not
+      // silently suppress the scan or clear a possible send claim.
+      reportExistingRunner("skipped",
+        "Message déjà marqué comme traité dans une ancienne version (analyse ou tentative d'envoi). Aucun renvoi automatique sans vérification du chat.");
+      return;
+    }
+    const previousReview = state.reviewed[snapshot.latestIncomingKey];
+    if (wasReviewedWithoutSend(previousReview, snapshot.context)) {
+      // The same evidence was already assessed without an actual send. If
+      // Tinder loads older history or the match sends something new, the
+      // fingerprint changes and a fresh AI classification is possible.
+      reportExistingRunner("skipped",
+        `Message déjà analysé sans envoi (${previousReview.outcome}) ; contexte inchangé. Nouvelle analyse seulement si le contexte change.`);
       return;
     }
     const retryAfter = semanticRetryAfter.get(snapshot.latestIncomingKey);
@@ -722,10 +748,8 @@ async function scan(): Promise<void> {
       return;
     }
     if (boundary.kind !== "continue") {
-      if (!state.processed[snapshot.latestIncomingKey]) {
-        state.processed[snapshot.latestIncomingKey] = Date.now();
-        if (!await saveState(state)) return;
-      }
+      recordReviewWithoutSend(state, snapshot.latestIncomingKey, snapshot.context, boundary.kind);
+      if (!await saveState(state)) return;
       reportExistingRunner("skipped", boundary.kind === "acknowledgement"
         ? "The match acknowledged the last message · no unnecessary follow-up sent."
         : boundaryDescription(boundary));
@@ -733,13 +757,9 @@ async function scan(): Promise<void> {
     }
     const hold = automaticReplyHold(visible);
     if (hold) {
-      // A match's consecutive messages belong to one turn: the latest "hhh"
-      // must not hide an earlier question about AI. Nor should "ok ça marche"
-      // trigger a final unnecessary joke. Never consume the reply quota.
-      if (!state.processed[snapshot.latestIncomingKey]) {
-        state.processed[snapshot.latestIncomingKey] = Date.now();
-        if (!await saveState(state)) return;
-      }
+      // AI identity questions require human review; no send claim is created.
+      recordReviewWithoutSend(state, snapshot.latestIncomingKey, snapshot.context, hold);
+      if (!await saveState(state)) return;
       reportExistingRunner(hold === "ai-identity" ? "skipped" : "waiting", hold === "ai-identity"
         ? "The match asked whether AI is involved · no automatic reply. Respond personally and truthfully, then review Action Center."
         : "The match acknowledged the previous message · conversation left in peace.");
@@ -835,7 +855,8 @@ async function scan(): Promise<void> {
     if (finalBoundary.kind !== "continue" || finalHold || replyNeedsHumanReview(reply) || hasUnexpectedScriptMix(reply, finalMessages)) {
       const processed = await getState();
       if (!processed) return;
-      processed.processed[finalSnapshot.latestIncomingKey] = Date.now();
+      recordReviewWithoutSend(processed, finalSnapshot.latestIncomingKey,
+        finalSnapshot.context, finalBoundary.kind !== "continue" ? finalBoundary.kind : "manual-review");
       if (!await saveState(processed)) return;
       reportExistingRunner("skipped", finalBoundary.kind !== "continue" ? boundaryDescription(finalBoundary) : finalHold === "ai-identity" || replyNeedsHumanReview(reply)
         ? "Possible AI disclosure or deceptive denial · reply blocked. Human review required."
