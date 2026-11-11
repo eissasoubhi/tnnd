@@ -114,6 +114,7 @@ test("global Chat enrolls only after checking the live Tinder tab", async () => 
   const runner = await readFile(new URL("../src/tinder-global-existing-runner.ts", import.meta.url),"utf8");
   assert.match(runner, /const selection = await listEligible\(true\)/);
   assert.match(runner, /planAutomaticExistingChatEnrollment\(records, summaries\)/);
+  assert.match(runner, /if \(settings\.enabled !== false\) manageable\.push\(id\)/);
   assert.ok(runner.indexOf("await waitForTinderContentBridge(tab.id)") <
     runner.indexOf("const selection = await listEligible(true)"));
 });
