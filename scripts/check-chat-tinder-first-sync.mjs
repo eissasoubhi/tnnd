@@ -37,6 +37,7 @@ test("read-only sync only auto-enrolls newly imported chats during an active glo
   assert.match(background,/managementState: "ai-managed"/);
   assert.match(background,/status: "active"/);
   assert.match(background,/autoManaged/);
+  assert.match(background,/localChatSettings\.enabled !== false/);
   assert.match(content,/const backendPermission = await backendAutomaticReplyPermission\(conversationRef\)/);
   assert.ok(content.indexOf("TNND_SYNC_OPENED_CHAT_HISTORY") < content.indexOf("const backendPermission = await backendAutomaticReplyPermission(conversationRef)"));
   assert.match(api,/ON CONFLICT \(conversation_id, external_message_id\) DO NOTHING/);
