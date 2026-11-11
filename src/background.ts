@@ -15,6 +15,7 @@ import "./tinder-global-existing-runner";
 import "./unified-controller-background";
 import "./tinder-read-only-bulk-sync-background";
 import { generateSuggestions } from "./gemini";
+import { normalizeReviewedTurns, type ReviewedTurn } from "./tinder-chat-review-ledger";
 import { loadTinderConversationManagement } from "./tinder-backend-management";
 import { syncConversationDelta } from "./conversation-sync";
 import { prepareReadOnlyImport } from "./tinder-manual-import";
@@ -96,6 +97,7 @@ interface AutoState {
   date: string;
   dailyCount: number;
   processed: Record<string, number>;
+  reviewed: Record<string, ReviewedTurn>;
 }
 
 type TrustedContentRequest =
@@ -128,7 +130,7 @@ function today(): string {
 }
 
 function defaultAutoState(): AutoState {
-  return { date: today(), dailyCount: 0, processed: {} };
+  return { date: today(), dailyCount: 0, processed: {}, reviewed: {} };
 }
 
 function normalizeAutoState(value: unknown): AutoState {
@@ -148,7 +150,8 @@ function normalizeAutoState(value: unknown): AutoState {
     dailyCount: candidate.date === today() && typeof candidate.dailyCount === "number" && Number.isFinite(candidate.dailyCount)
       ? Math.max(0, Math.floor(candidate.dailyCount))
       : 0,
-    processed
+    processed,
+    reviewed: normalizeReviewedTurns(candidate.reviewed)
   };
 }
 
@@ -162,6 +165,7 @@ async function saveAutoState(value: unknown): Promise<AutoState> {
   // Avoid automatic expiration: unanswered messages may be months old. Keep
   // the 5000 most recent fingerprints, without storing message text. 
   state.processed = Object.fromEntries(Object.entries(state.processed).slice(-5000));
+  state.reviewed = normalizeReviewedTurns(state.reviewed);
   await chrome.storage.local.set({ [AUTO_STATE_KEY]: state });
   return state;
 }
