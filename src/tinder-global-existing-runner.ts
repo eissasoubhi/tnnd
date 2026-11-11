@@ -3,7 +3,7 @@ import { observeSmartSwipeConversationFocus, smartSwipeChatBudgetDecision } from
 import { waitForTinderContentBridge, isMissingTinderReceiver, describeTinderBridgeError } from "./tinder-tab-connection";
 import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import { partitionExistingChatPermissions } from "./tinder-existing-chat-settings-policy";
-import { eligibleExistingThreadRefs } from "./tinder-global-existing-policy";
+import { eligibleExistingThreadRefs, planAutomaticExistingChatEnrollment } from "./tinder-global-existing-policy";
 import { reconcileExistingIndex, markThreadChecked, observeUnreadThreads, observeTinderInbox, nextIndexedExistingThread, isExistingThreadIndex, type ExistingThreadIndex } from "./tinder-existing-thread-index";
 import { nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus, newlyVisibleUnread } from "./tinder-reply-watcher";
 import { followConversationAfterSignal, shouldKeepConversationInFocus, normalizeConversationActivities, type ConversationActivity } from "./tinder-conversation-activity";
@@ -251,7 +251,7 @@ export async function readUnifiedPendingReplies(): Promise<number | null> {
     return null; // Unknown must never be reported as an empty inbox.
   }
 }
-async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[]; labels: Map<string, string>; messageTimes: Map<string, string | null>; messageDirections: Map<string, "incoming" | "outgoing" | null> }> {
+async function listEligible(autoEnrollUnmanaged = false): Promise<{ refs: string[]; disabledRefs: string[]; labels: Map<string, string>; messageTimes: Map<string, string | null>; messageDirections: Map<string, "incoming" | "outgoing" | null> }> {
   const session = await getBackendSession();
   if (!session) throw new Error("TNND account is not connected.");
   const headers = { authorization: `Bearer ${session.token}` };
@@ -293,6 +293,35 @@ async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[];
     }
   }
 
+  // Starting Chat is the user's global opt-in: prepare synced conversations
+  // that were never managed. A deliberate Manual/Archive/Unmanaged selection,
+  // an explicit per-chat OFF or a pending human action stays excluded.
+  if (autoEnrollUnmanaged) {
+    const plan = planAutomaticExistingChatEnrollment(records, summaries);
+    if (plan.manage.length) {
+      for (let i = 0; i < plan.manage.length; i += 100) {
+        const updates = plan.manage.slice(i, i + 100).map(conversationId => ({
+          conversationId, managementState: "ai-managed"
+        }));
+        const result = await fetch(`${API}/api/v1/conversations/management`, {
+          method: "PUT", headers: { ...headers, "content-type": "application/json" },
+          body: JSON.stringify({ updates })
+        });
+        if (!result.ok) throw new Error("Cannot authorize synchronized chats for global Chat.");
+      }
+      // Legacy imports start paused. Resume only the newly enrolled threads;
+      // pre-existing AI-managed chats explicitly paused by the user stay paused.
+      for (const conversationId of plan.resume) {
+        const result = await fetch(`${API}/api/v1/conversations/${encodeURIComponent(conversationId)}`, {
+          method: "PATCH", headers: { ...headers, "content-type": "application/json" },
+          body: JSON.stringify({ status: "active" })
+        });
+        if (!result.ok) throw new Error("Cannot resume newly enrolled chat.");
+      }
+      // Re-read authoritative ownership/status, never assume PUT/PATCH succeeded.
+      return listEligible(false);
+    }
+  }
   const authorized = eligibleExistingThreadRefs(records, summaries);
   const settingsByRef = new Map<string, { enabled: boolean }>();
   for (const ref of authorized) {
@@ -847,18 +876,16 @@ async function startExistingRunnerUnlocked(enablePreviouslyDisabled = false, mod
     const future = (await chrome.storage.local.get("tnnd.newMatchLinkObservation.v3"))["tnnd.newMatchLinkObservation.v3"] as { enabled?: boolean } | undefined;
     if (future?.enabled) throw new Error("New-match AI is active. Stop it before running existing chats: Tinder supports only one active tab.");
 
-    const selection = await listEligible();
+    // Validate the single live Tinder tab BEFORE enrolling any conversation.
+    const tab = await findSingleTinderTab();
+    await waitForTinderContentBridge(tab.id);
+    const selection = await listEligible(true);
     if (mode !== "watcher" && !selection.refs.length && !selection.disabledRefs.length) {
-      throw new Error("No eligible existing conversations. Sync chats and authorize AI management in TNND Web.");
+      throw new Error("No eligible existing conversations. Sync Tinder chats first.");
     }
     if (mode !== "watcher" && !selection.refs.length && !enablePreviouslyDisabled) {
       throw new Error(selection.disabledRefs.length + " eligible chat(s) are disabled individually. Start again and explicitly confirm bulk reactivation, or re-enable them one by one.");
     }
-    // Check Tinder tabs before modifying per-chat settings.
-    const tab = await findSingleTinderTab();
-    // Fail BEFORE enabling any per-chat settings or the global runner.
-    // A stale Tinder page after reloading the extension has no receiver.
-    await waitForTinderContentBridge(tab.id);
     if (enablePreviouslyDisabled) {
       // Only backend-confirmed AI-managed active existing chats enter this list.
       // Manual, archived, disabled and human-action-blocked chats stay excluded.
