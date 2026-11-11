@@ -102,8 +102,9 @@ export async function classifyAuthenticatedBoundary(
   userId: string,
   threadId: string,
   messages: readonly ConversationBoundaryMessage[],
-  classify: (messages: readonly ConversationBoundaryMessage[], credentials: BoundaryCredentials) => Promise<StructuredBoundaryDecision> =
-    classifyConversationSemantics,
+  classify: (messages: readonly ConversationBoundaryMessage[], credentials: BoundaryCredentials,
+    fetcher?: BoundaryAiFetcher, onDiagnostic?: (code: BoundarySemanticDiagnostic) => void
+  ) => Promise<StructuredBoundaryDecision> = classifyConversationSemantics,
   loadCredentials: typeof loadAiProviderSettings = loadAiProviderSettings,
   onDiagnostic?: (code: BoundarySemanticDiagnostic) => void
 ): Promise<StructuredBoundaryDecision> {
