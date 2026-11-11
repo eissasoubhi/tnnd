@@ -92,7 +92,7 @@ test("one-tab guarded round-trip and shared daily send journal remain enforced",
  assert.match(runner,/lastIncomingAt/);
  assert.match(runner,/scanMatchesCycle/);
  assert.match(runner,/nextWatchedReply\(queued\)/);
- assert.match(runner,/pendingWatchedReplies\(work\) > 0/);
+ assert.match(runner,/pendingImmediateWatcherReplies\(work\) > 0/);
  assert.match(runner,/claimWatchedOpener/);
  assert.match(runner,/sendSingleWatchedMatch/);
  assert.match(runner,/returnWatcherToMessages/);
