@@ -5,7 +5,7 @@ import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import { partitionExistingChatPermissions } from "./tinder-existing-chat-settings-policy";
 import { eligibleExistingThreadRefs, planAutomaticExistingChatEnrollment } from "./tinder-global-existing-policy";
 import { reconcileExistingIndex, markThreadChecked, observeUnreadThreads, observeTinderInbox, nextIndexedExistingThread, isExistingThreadIndex, type ExistingThreadIndex } from "./tinder-existing-thread-index";
-import { nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus, newlyVisibleUnread } from "./tinder-reply-watcher";
+import { nextWatchedReply, pendingWatchedReplies, nextImmediateWatchedReply, pendingImmediateWatcherReplies, watcherDisplayStatus, newlyVisibleUnread } from "./tinder-reply-watcher";
 import { followConversationAfterSignal, shouldKeepConversationInFocus, normalizeConversationActivities, type ConversationActivity } from "./tinder-conversation-activity";
 import { DEFAULT_ATTENTION_CAP_SECONDS, normalizeAttentionCapSeconds, validAttentionCapSeconds } from "./tinder-attention-cap";
 import { emptyWatchedMatches, isWatchedMatches, observeWatchedMatches, type WatchedMatches } from "./tinder-match-watcher";
@@ -246,7 +246,7 @@ export async function readUnifiedPendingReplies(): Promise<number | null> {
         await saveWorkIndex(pending);
       }
     }
-    return pendingWatchedReplies(pending);
+    return pendingImmediateWatcherReplies(pending);
   } catch {
     return null; // Unknown must never be reported as an empty inbox.
   }
@@ -474,7 +474,7 @@ async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void>
     refs.map(ref => ({ ref, lastMessageAt: messageTimes.get(ref) ?? null,
       lastMessageDirection: messageDirections.get(ref) ?? null })));
   await saveWorkIndex(work);
-  if (pendingWatchedReplies(work) > 0 && !current.preferUnstartedMatches) {
+  if (pendingImmediateWatcherReplies(work) > 0 && !current.preferUnstartedMatches) {
     await returnWatcherToMessages(await load(), "New reply detected; prioritizing Messages.");
     return;
   }
@@ -703,7 +703,8 @@ async function tick(): Promise<void> {
       } catch { /* The open page/alarm may reconnect on the next cycle. */ }
     }
     await saveWorkIndex(queued);
-    const pendingReplies = pendingWatchedReplies(queued);
+    const pendingReplies = state.mode === "watcher" && state.manualActivity === null
+      ? pendingImmediateWatcherReplies(queued) : pendingWatchedReplies(queued);
     // Complete/abort an in-flight Matches scan before any reply navigation:
     // it always switches back to Messages first.
     if (state.mode === "watcher" && state.matchPhase !== "idle") {
@@ -722,7 +723,9 @@ async function tick(): Promise<void> {
       await scanMatchesCycle({ ...current, pendingReplies });
       return;
     }
-    const nextRef = state.mode === "watcher" ? nextWatchedReply(queued) : nextIndexedExistingThread(queued);
+    const nextRef = state.mode === "watcher"
+      ? (state.manualActivity === null ? nextImmediateWatchedReply(queued) : nextWatchedReply(queued))
+      : nextIndexedExistingThread(queued);
     if (!nextRef) {
       const detail = state.mode === "watcher"
         ? `Checking ${queued.threads.length} Tinder chats, including unsynced conversations. Waiting for unanswered messages.`
@@ -991,8 +994,13 @@ async function contentEvent(sender: chrome.runtime.MessageSender, message: { pha
   if (!confirmedTab || tinderRefFromUrl(confirmedTab.url) !== senderRef) return;
   // Generating/sending is protected by the existing in-flight operation lease;
   // only observed incoming or confirmed outgoing events affect activity scores.
-  const focus = fresh.mode === "watcher" && (phase === "incoming" || phase === "sent")
+  const recordedActivity = fresh.mode === "watcher" && (phase === "incoming" || phase === "sent")
     ? followConversationAfterSignal(fresh, senderRef, phase) : {};
+  // A confirmed Send completes this turn. Keep activity timing for the next
+  // real incoming signal, but do NOT wait for the other person to reply.
+  const focus = phase === "sent"
+    ? { ...recordedActivity, activeConversationRef: null, activeConversationUntil: null }
+    : recordedActivity;
   // ONLY a definitive content-script outcome acknowledges a checked visit.
   // The "incoming" notification or a future scheduled reply is not success.
   // Skipped/error still need a later recheck if a real incoming turn exists.
@@ -1011,6 +1019,9 @@ async function contentEvent(sender: chrome.runtime.MessageSender, message: { pha
     }, phase, detail, senderRef),
     nextReplyAt
   });
+  // Immediately advance the current Chat cycle after a definite outcome;
+  // never spend the attention lease waiting for a hypothetical response.
+  if (completedVisit) void tick();
 }
 chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === ALARM) void tick();
