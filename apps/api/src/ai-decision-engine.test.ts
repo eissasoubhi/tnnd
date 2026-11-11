@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AiDecisionProviderError, requestAiDecision } from "./ai-decision-engine.js";
+import { AiDecisionProviderError, requestAiDecision, semanticDecisionThinkingConfig } from "./ai-decision-engine.js";
 const credentials = { apiKey:"test-secret", model:"gemini-test" };
 const task = {
   task:"conversation-strategy",
@@ -65,4 +65,31 @@ test("task and context size are validated before any provider call",async()=>{
   await assert.rejects(requestAiDecision({...task,task:"../foo"},credentials,fetcher),/invalid_ai_decision_task/);
   await assert.rejects(requestAiDecision({...task,evidence:{text:"x".repeat(36_000)}},credentials,fetcher),/invalid_ai_decision_evidence/);
   assert.equal(called,false);
+});
+
+test("Gemini thinking configuration depends on model generation and semantic task",()=>{
+  assert.deepEqual(semanticDecisionThinkingConfig("gemini-2.5-flash","conversation-boundary"),{thinkingBudget:256});
+  assert.deepEqual(semanticDecisionThinkingConfig("gemini-2.5-pro","conversation-boundary"),{thinkingBudget:512});
+  assert.deepEqual(semanticDecisionThinkingConfig("gemini-3.8-flash","conversation-boundary"),{thinkingLevel:"low"});
+  assert.deepEqual(semanticDecisionThinkingConfig("gemini-3.1-pro-preview","conversation-boundary"),{thinkingLevel:"low"});
+  assert.equal(semanticDecisionThinkingConfig("gemini-2.5-flash-lite","conversation-boundary"),undefined);
+  assert.equal(semanticDecisionThinkingConfig("gemini-2.5-flash","conversation-strategy"),undefined);
+  assert.equal(semanticDecisionThinkingConfig("unknown-model","conversation-boundary"),undefined);
+});
+
+test("MAX_TOKENS is diagnosed as exhausted Gemini budget without leaking model output",async()=>{
+  const diagnostics:string[]=[];
+  const provider=fake({candidates:[{finishReason:"MAX_TOKENS",content:{parts:[]}}]});
+  const result=await requestAiDecision({...task,onDiagnostic:code=>diagnostics.push(code)},
+    credentials,provider.fetcher);
+  assert.equal(result,null);
+  assert.deepEqual(diagnostics,["ai_output_max_tokens"]);
+  const empty=fake({candidates:[{finishReason:"STOP",content:{parts:[]}}]});
+  const emptyEvents:string[]=[];
+  await requestAiDecision({...task,onDiagnostic:code=>emptyEvents.push(code)},credentials,empty.fetcher);
+  assert.deepEqual(emptyEvents,["ai_output_empty"]);
+  const malformed=fake({candidates:[{content:{parts:[{text:"not JSON"}]}}]});
+  const badEvents:string[]=[];
+  await requestAiDecision({...task,onDiagnostic:code=>badEvents.push(code)},credentials,malformed.fetcher);
+  assert.deepEqual(badEvents,["ai_output_invalid_json"]);
 });

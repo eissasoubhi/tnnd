@@ -114,7 +114,10 @@ export async function recordObservedConversationBoundary(
   if (verifiedConversationBoundary(input.messages,messages,{...UNCERTAIN_BOUNDARY,kind:"continue",evidence:"ongoing",confidence:1}).kind !== "continue")
     return {boundary:UNCERTAIN_BOUNDARY,applied:false,status:null,
       diagnostic: observedTailMismatch(input.messages,messages) ?? "unverified_observed_tail"};
-  const aiDecision = await classify(userId,input.externalThreadId,messages);
+  const semanticDiagnostics: string[] = [];
+  const aiDecision = await classify(userId,input.externalThreadId,messages,
+    undefined, undefined, code => semanticDiagnostics.push(code));
+  const uncertainReason = semanticDiagnostics.at(-1) ?? "semantic_decision_uncertain";
   const client = await db.connect();
   let committed = false;
   try {
@@ -146,7 +149,7 @@ export async function recordObservedConversationBoundary(
       await client.query("COMMIT");committed=true;
       return {boundary,applied:false,status:row.status,
         ...(boundary.kind === "unknown" ? {
-          diagnostic: sameTail ? "semantic_decision_uncertain" : "history_changed_during_classification"
+          diagnostic: sameTail ? uncertainReason : "history_changed_during_classification"
         } : {})};
     }
     const update = await client.query<{status:string}>(

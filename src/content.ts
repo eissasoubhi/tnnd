@@ -686,6 +686,13 @@ async function scan(): Promise<void> {
         previous_message_mismatch: "Contrôle IA bloqué : avant-dernier message Tinder différent de celui en base.",
         unverified_observed_tail: "Contrôle IA bloqué : historique Tinder/base non vérifiable.",
         semantic_decision_uncertain: "L'IA ne peut pas confirmer l'intention de la conversation ; validation humaine nécessaire.",
+        semantic_model_uncertain: "Gemini indique que l'intention du message reste ambiguë. Validation humaine nécessaire.",
+        semantic_low_confidence: "Gemini reconnaît une intention mais sa confiance est trop faible : aucune réponse automatique.",
+        semantic_inconsistent_evidence: "La décision Gemini ne correspond pas au contexte des messages. Aucune réponse automatique.",
+        semantic_invalid_model_response: "Gemini a renvoyé une décision non conforme au schéma attendu.",
+        semantic_output_truncated: "Gemini a épuisé son budget de tokens avant de renvoyer la décision JSON. Vérifie le modèle et la configuration IA.",
+        semantic_output_empty: "Gemini n'a produit aucune décision JSON utilisable. Vérifie le modèle et la configuration IA.",
+        semantic_output_invalid_json: "Gemini a produit un JSON invalide pour la classification sémantique.",
         history_changed_during_classification: "Historique modifié pendant l'analyse IA ; aucun envoi effectué.",
         conversation_changed_during_classification: "Conversation modifiée pendant l'analyse IA ; aucun envoi effectué."
       };

@@ -47,7 +47,7 @@ test("semantic unknown has a safe separate cause from outdated backend history",
   ].map(read));
   assert.match(service,/observedTailMismatch\(/);
   assert.match(service,/diagnostic:"conversation_not_persisted"/);
-  assert.match(service,/diagnostic: sameTail \? "semantic_decision_uncertain"/);
+  assert.match(service,/diagnostic: sameTail \? uncertainReason/);
   assert.match(bridge,/safeSemanticDiagnostic/);
   assert.match(api,/sendJson\(response, 200, result\)/);
   assert.match(content,/semantic_decision_uncertain: "L'IA ne peut pas confirmer/);
