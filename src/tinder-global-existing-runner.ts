@@ -996,9 +996,10 @@ async function contentEvent(sender: chrome.runtime.MessageSender, message: { pha
   // only observed incoming or confirmed outgoing events affect activity scores.
   const recordedActivity = fresh.mode === "watcher" && (phase === "incoming" || phase === "sent")
     ? followConversationAfterSignal(fresh, senderRef, phase) : {};
-  // A confirmed Send completes this turn. Keep activity timing for the next
-  // real incoming signal, but do NOT wait for the other person to reply.
-  const focus = phase === "sent"
+  // A confirmed send OR a terminal no-send outcome completes this visit.
+  // Never keep the tab parked waiting for a reply that may never arrive.
+  // Incoming activity measurements remain stored for the next real message.
+  const focus = phase === "sent" || phase === "skipped"
     ? { ...recordedActivity, activeConversationRef: null, activeConversationUntil: null }
     : recordedActivity;
   // ONLY a definitive content-script outcome acknowledges a checked visit.
