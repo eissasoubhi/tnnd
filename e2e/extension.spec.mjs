@@ -202,7 +202,7 @@ async function seed() {
   const worker = context.serviceWorkers()[0] || await context.waitForEvent("serviceworker");
   await worker.evaluate(value => chrome.storage.local.set(value), {
     "tnnd.backendSession": session,
-    "tnnd.config": { automation: { enabled: true, maxFirstMessagesPerDay: 5 } }
+    "tnnd.config": { automation: { enabled: true, maxFirstMessagesPerDay: 5, quietHoursEnabled: false } }
   });
 }
 async function openPopup() {
@@ -420,7 +420,8 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
           },
           "tnnd.config": { automation: {
             enabled:true,maxFirstMessagesPerDay:5,
-            replyDelayMinSeconds:120,replyDelayMaxSeconds:120
+            replyDelayMinSeconds:120,replyDelayMaxSeconds:120,
+            quietHoursEnabled:false
           }}
         }), {stateKey,tabId,userId,now});
       const inspect = await popup.evaluate(async () => {
