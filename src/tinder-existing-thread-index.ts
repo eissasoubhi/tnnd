@@ -145,7 +145,8 @@ export function observeUnreadThreads(
       if (!unread.has(entry.ref) || entry.unreadVisible === true) return entry;
       // This event is a newly observed badge, not the same badge after
       // an old chat was checked. The opened chat still verifies the messages.
-      if (entry.lastCheckedAt && time - Date.parse(entry.lastCheckedAt) < UNREAD_HINT_COOLDOWN_MS) return entry;
+      if (entry.lastCheckedAt && time - Date.parse(entry.lastCheckedAt) < UNREAD_HINT_COOLDOWN_MS)
+        return { ...entry, unreadVisible: true };
       return { ...entry, queuedAt: entry.queuedAt ?? at, unreadAt: at, unreadVisible: true };
     }), updatedAt: at
   };
