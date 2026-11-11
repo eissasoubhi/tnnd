@@ -405,10 +405,25 @@ test.describe.serial("compiled MV3 extension in isolated Chrome", () => {
         });
       });
       expect(inspect).toMatchObject({ok:true,status:"unanswered",incoming:1});
-      await expect.poll(() => requests.slice(firstRequest)
-        .filter(item => item.path === "/api/v1/conversations/observed-boundary" &&
-          item.method === "POST" && item.authorization).length,
-        {timeout:15_000,intervals:[100,200,500]}).toBeGreaterThan(0);
+      try {
+        await expect.poll(() => requests.slice(firstRequest)
+          .filter(item => item.path === "/api/v1/conversations/sync" &&
+            item.method === "POST" && item.authorization).length,
+          {timeout:8_000,intervals:[100,250,500]}).toBeGreaterThan(0);
+        await expect.poll(() => requests.slice(firstRequest)
+          .filter(item => item.path === "/api/v1/conversations/observed-boundary" &&
+            item.method === "POST" && item.authorization).length,
+          {timeout:8_000,intervals:[100,250,500]}).toBeGreaterThan(0);
+      } catch (error) {
+        const activity = (await storage())[stateKey]?.activity?.map(item => ({
+          phase:item.phase, detail:item.detail
+        })) ?? [];
+        const paths = requests.slice(firstRequest).map(item => ({
+          method:item.method,path:item.path,auth:item.authorization
+        }));
+        throw new Error("Chat import/semantic bridge failed. " +
+          JSON.stringify({activity,paths,reason:String(error)}));
+      }
       const observedRequests = requests.slice(firstRequest);
       const syncIndex = observedRequests.findIndex(item =>
         item.path === "/api/v1/conversations/sync" && item.method === "POST" && item.authorization);
