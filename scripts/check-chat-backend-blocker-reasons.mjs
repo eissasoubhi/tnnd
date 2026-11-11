@@ -40,3 +40,14 @@ test("scanner retains both initial and post-generation backend authorization gat
   assert.match(background, /matchScreeningAllowsSend\(backend\.conversationId\)/);
   assert.match(api, /publicObservedBoundaryFailure\(error\)/);
 });
+
+
+test("an unchanged incoming message is not repeatedly classified by Gemini", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const content = await readFile(new URL("../src/content.ts", import.meta.url), "utf8");
+  assert.match(content, /const semanticRetryAfter = new Map/);
+  assert.match(content, /semanticRetryAfter\.set\(snapshot\.latestIncomingKey, Date\.now\(\) \+ 120_000\)/);
+  const handled = content.indexOf("if (state.processed[snapshot.latestIncomingKey]");
+  const classification = content.indexOf("const decision = await syncObservedConversationBoundary(");
+  assert.ok(handled !== -1 && classification !== -1 && handled < classification);
+});
