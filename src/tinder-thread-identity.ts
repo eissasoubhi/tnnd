@@ -27,3 +27,16 @@ export function hashTinderThreadKey(value: string): string {
   }
   return (hash >>> 0).toString(36);
 }
+
+/** Resolve the same opaque Tinder ref whether sent as a route or a raw ID.
+ * The browser stores per-chat preferences by route, but the API persists
+ * external_thread_id without the /app/messages/ prefix.
+ */
+export function tinderExternalThreadIdFromKey(value: string): string | null {
+  const input = value.trim();
+  const routePrefix = "/app/messages/";
+  const candidate = input.startsWith(routePrefix) ? input.slice(routePrefix.length) : input;
+  let decoded: string;
+  try { decoded = decodeURIComponent(candidate); } catch { return null; }
+  return /^[a-zA-Z0-9_-]{3,512}$/.test(decoded) ? decoded : null;
+}

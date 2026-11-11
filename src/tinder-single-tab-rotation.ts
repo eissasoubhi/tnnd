@@ -2,8 +2,12 @@
  * but navigation and irreversible actions NEVER run in parallel.
  * The persisted backlog covers old AND newly incoming unanswered messages.
  */
-export const INBOX_SCAN_INTERVAL_MS = 5 * 60_000;
-export const INBOX_MIN_DWELL_MS = 45_000;
+// With one Tinder tab we cannot read an offscreen chat instantly: revisit the
+// inbox each minute while swiping, or sooner on a verified incoming signal.
+export const INBOX_SCAN_INTERVAL_MS = 60_000;
+// Once the current reply and Matches verification are finished, no extra
+// dwell/wait-for-her-reply is needed before resuming Swipe.
+export const INBOX_MIN_DWELL_MS = 0;
 
 export interface SingleTabRotation {
   owner: "swipe" | "watcher";

@@ -1,3 +1,4 @@
+import { tinderExternalThreadIdFromKey } from "../../../src/tinder-thread-identity.js";
 import { loadGenerationProfile } from "./generation-user-profile-context.js";
 import { findConversationByExternalThreadId } from "./conversation-thread-lookup-service.js";
 import { getConversation } from "./conversation-service.js";
@@ -160,7 +161,7 @@ export async function generateExtensionSuggestions(
     const hold = automaticReplyHold(currentHistory);
     if (hold === "ai-identity") {
       const thread = request.threadKey
-        ? await findConversationByExternalThreadId(userId, request.threadKey) : null;
+        ? await findConversationByExternalThreadId(userId, tinderExternalThreadIdFromKey(request.threadKey) ?? "") : null;
       if (thread) await ensureAiIdentityAction(userId, thread.id);
       throw new Error("human_ai_identity_review_required");
     }
@@ -197,7 +198,7 @@ export async function generateExtensionSuggestions(
   // already synchronized under this authenticated user and its existing facts.
   const flowEnabled = configWithoutIdentity.conversationFlowEnabled !== false;
   const flowLookup = request.purpose !== "opener" && request.threadKey
-    ? await findConversationByExternalThreadId(userId, request.threadKey) : null;
+    ? await findConversationByExternalThreadId(userId, tinderExternalThreadIdFromKey(request.threadKey) ?? "") : null;
   const storedConversation = flowLookup ? await getConversation(userId, flowLookup.id) : null;
   // The extension may only see a virtualized slice of Tinder's DOM. For
   // automatic replies, never pretend it is the entire synchronized history.

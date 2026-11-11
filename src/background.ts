@@ -15,6 +15,7 @@ import "./tinder-global-existing-runner";
 import "./unified-controller-background";
 import "./tinder-read-only-bulk-sync-background";
 import { generateSuggestions } from "./gemini";
+import { normalizeReviewedTurns, type ReviewedTurn } from "./tinder-chat-review-ledger";
 import { loadTinderConversationManagement } from "./tinder-backend-management";
 import { syncConversationDelta } from "./conversation-sync";
 import { prepareReadOnlyImport } from "./tinder-manual-import";
@@ -96,6 +97,7 @@ interface AutoState {
   date: string;
   dailyCount: number;
   processed: Record<string, number>;
+  reviewed: Record<string, ReviewedTurn>;
 }
 
 type TrustedContentRequest =
@@ -128,7 +130,7 @@ function today(): string {
 }
 
 function defaultAutoState(): AutoState {
-  return { date: today(), dailyCount: 0, processed: {} };
+  return { date: today(), dailyCount: 0, processed: {}, reviewed: {} };
 }
 
 function normalizeAutoState(value: unknown): AutoState {
@@ -148,7 +150,8 @@ function normalizeAutoState(value: unknown): AutoState {
     dailyCount: candidate.date === today() && typeof candidate.dailyCount === "number" && Number.isFinite(candidate.dailyCount)
       ? Math.max(0, Math.floor(candidate.dailyCount))
       : 0,
-    processed
+    processed,
+    reviewed: normalizeReviewedTurns(candidate.reviewed)
   };
 }
 
@@ -162,6 +165,7 @@ async function saveAutoState(value: unknown): Promise<AutoState> {
   // Avoid automatic expiration: unanswered messages may be months old. Keep
   // the 5000 most recent fingerprints, without storing message text. 
   state.processed = Object.fromEntries(Object.entries(state.processed).slice(-5000));
+  state.reviewed = normalizeReviewedTurns(state.reviewed);
   await chrome.storage.local.set({ [AUTO_STATE_KEY]: state });
   return state;
 }
@@ -371,9 +375,39 @@ chrome.runtime.onMessage.addListener((message: GenerateRequest | TrustedContentR
           !Array.isArray(result.acceptedMessageIds) ||
           result.nextCursor !== prepared.nextCursor)
         return { ok:false, reason:"read_only_chat_sync_unconfirmed" };
+      // Starting the unified Chat runner is a deliberate global opt-in.
+      // Newly discovered chats can be enrolled immediately instead of being
+      // paused/unmanaged forever. Never touch manual/archived/off-Tinder chats.
+      let autoManaged = false;
+      if (!existing.conversationId) {
+        const runState = (await chrome.storage.local.get("tnnd.globalExistingRunner.v2"))["tnnd.globalExistingRunner.v2"] as {
+          enabled?: boolean; userId?: string; mode?: string; manualActivity?: string
+        } | undefined;
+        const isChatRunner = runState?.enabled === true && runState.userId === session.user.id &&
+          (runState.mode === "runner" || (runState.mode === "watcher" && runState.manualActivity !== "new-match"));
+        const localChatSettings = await getChatSettings("/app/messages/" + encodeURIComponent(ref));
+        if (isChatRunner && localChatSettings.enabled !== false &&
+            await currentAuthorizedTinderThread(sender, ref)) {
+          const ownership = await fetch("http://127.0.0.1:4000/api/v1/conversations/management", {
+            method: "PUT",
+            headers: { "content-type": "application/json", authorization: "Bearer " + session.token },
+            body: JSON.stringify({ updates: [{ conversationId: result.conversationId, managementState: "ai-managed" }] }),
+            signal: AbortSignal.timeout(15_000), cache: "no-store"
+          });
+          if (!ownership.ok) return { ok:false, reason:"chat_auto_management_failed" };
+          const activation = await fetch(`http://127.0.0.1:4000/api/v1/conversations/${encodeURIComponent(result.conversationId)}`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json", authorization: "Bearer " + session.token },
+            body: JSON.stringify({ status: "active" }),
+            signal: AbortSignal.timeout(15_000), cache: "no-store"
+          });
+          if (!activation.ok) return { ok:false, reason:"chat_auto_activation_failed" };
+          autoManaged = true;
+        }
+      }
       // Message text and external refs are NEVER emitted into the journal.
       return {
-        ok:true, created: !existing.conversationId,
+        ok:true, created: !existing.conversationId, autoManaged,
         importedCount: result.acceptedMessageIds.length
       };
     })().then(sendResponse).catch(() =>

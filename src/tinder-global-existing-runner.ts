@@ -3,9 +3,9 @@ import { observeSmartSwipeConversationFocus, smartSwipeChatBudgetDecision } from
 import { waitForTinderContentBridge, isMissingTinderReceiver, describeTinderBridgeError } from "./tinder-tab-connection";
 import { tinderThreadKeyFromPath } from "./tinder-thread-identity";
 import { partitionExistingChatPermissions } from "./tinder-existing-chat-settings-policy";
-import { eligibleExistingThreadRefs } from "./tinder-global-existing-policy";
+import { eligibleExistingThreadRefs, planAutomaticExistingChatEnrollment } from "./tinder-global-existing-policy";
 import { reconcileExistingIndex, markThreadChecked, observeUnreadThreads, observeTinderInbox, nextIndexedExistingThread, isExistingThreadIndex, type ExistingThreadIndex } from "./tinder-existing-thread-index";
-import { nextWatchedReply, pendingWatchedReplies, watcherDisplayStatus, newlyVisibleUnread } from "./tinder-reply-watcher";
+import { nextWatchedReply, pendingWatchedReplies, nextImmediateWatchedReply, pendingImmediateWatcherReplies, watcherDisplayStatus, newlyVisibleUnread } from "./tinder-reply-watcher";
 import { followConversationAfterSignal, shouldKeepConversationInFocus, normalizeConversationActivities, type ConversationActivity } from "./tinder-conversation-activity";
 import { DEFAULT_ATTENTION_CAP_SECONDS, normalizeAttentionCapSeconds, validAttentionCapSeconds } from "./tinder-attention-cap";
 import { emptyWatchedMatches, isWatchedMatches, observeWatchedMatches, type WatchedMatches } from "./tinder-match-watcher";
@@ -246,12 +246,12 @@ export async function readUnifiedPendingReplies(): Promise<number | null> {
         await saveWorkIndex(pending);
       }
     }
-    return pendingWatchedReplies(pending);
+    return pendingImmediateWatcherReplies(pending);
   } catch {
     return null; // Unknown must never be reported as an empty inbox.
   }
 }
-async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[]; labels: Map<string, string>; messageTimes: Map<string, string | null>; messageDirections: Map<string, "incoming" | "outgoing" | null> }> {
+async function listEligible(autoEnrollUnmanaged = false): Promise<{ refs: string[]; disabledRefs: string[]; labels: Map<string, string>; messageTimes: Map<string, string | null>; messageDirections: Map<string, "incoming" | "outgoing" | null> }> {
   const session = await getBackendSession();
   if (!session) throw new Error("TNND account is not connected.");
   const headers = { authorization: `Bearer ${session.token}` };
@@ -293,6 +293,45 @@ async function listEligible(): Promise<{ refs: string[]; disabledRefs: string[];
     }
   }
 
+  // Starting Chat is the user's global opt-in: prepare synced conversations
+  // that were never managed. A deliberate Manual/Archive/Unmanaged selection,
+  // an explicit per-chat OFF or a pending human action stays excluded.
+  if (autoEnrollUnmanaged) {
+    const plan = planAutomaticExistingChatEnrollment(records, summaries);
+    // A saved local OFF is deliberate, even if Conversation management
+    // has never been selected. Do not silently change its backend status.
+    const refsById = new Map(records.map(record => [record.id, record.externalThreadId]));
+    const manageable: string[] = [];
+    for (const id of plan.manage) {
+      const ref = refsById.get(id);
+      if (!ref) continue;
+      const settings = await getChatSettings(tinderThreadKeyFromPath("/app/messages/" + encodeURIComponent(ref)));
+      if (settings.enabled !== false) manageable.push(id);
+    }
+    if (manageable.length) {
+      for (let i = 0; i < manageable.length; i += 100) {
+        const updates = manageable.slice(i, i + 100).map(conversationId => ({
+          conversationId, managementState: "ai-managed"
+        }));
+        const result = await fetch(`${API}/api/v1/conversations/management`, {
+          method: "PUT", headers: { ...headers, "content-type": "application/json" },
+          body: JSON.stringify({ updates })
+        });
+        if (!result.ok) throw new Error("Cannot authorize synchronized chats for global Chat.");
+      }
+      // Legacy imports start paused. Resume only the newly enrolled threads;
+      // pre-existing AI-managed chats explicitly paused by the user stay paused.
+      for (const conversationId of plan.resume.filter(id => manageable.includes(id))) {
+        const result = await fetch(`${API}/api/v1/conversations/${encodeURIComponent(conversationId)}`, {
+          method: "PATCH", headers: { ...headers, "content-type": "application/json" },
+          body: JSON.stringify({ status: "active" })
+        });
+        if (!result.ok) throw new Error("Cannot resume newly enrolled chat.");
+      }
+      // Re-read authoritative ownership/status, never assume PUT/PATCH succeeded.
+      return listEligible(false);
+    }
+  }
   const authorized = eligibleExistingThreadRefs(records, summaries);
   const settingsByRef = new Map<string, { enabled: boolean }>();
   for (const ref of authorized) {
@@ -435,7 +474,7 @@ async function scanMatchesCycle(state: GlobalExistingRunnerState): Promise<void>
     refs.map(ref => ({ ref, lastMessageAt: messageTimes.get(ref) ?? null,
       lastMessageDirection: messageDirections.get(ref) ?? null })));
   await saveWorkIndex(work);
-  if (pendingWatchedReplies(work) > 0 && !current.preferUnstartedMatches) {
+  if (pendingImmediateWatcherReplies(work) > 0 && !current.preferUnstartedMatches) {
     await returnWatcherToMessages(await load(), "New reply detected; prioritizing Messages.");
     return;
   }
@@ -664,7 +703,8 @@ async function tick(): Promise<void> {
       } catch { /* The open page/alarm may reconnect on the next cycle. */ }
     }
     await saveWorkIndex(queued);
-    const pendingReplies = pendingWatchedReplies(queued);
+    const pendingReplies = state.mode === "watcher" && state.manualActivity === null
+      ? pendingImmediateWatcherReplies(queued) : pendingWatchedReplies(queued);
     // Complete/abort an in-flight Matches scan before any reply navigation:
     // it always switches back to Messages first.
     if (state.mode === "watcher" && state.matchPhase !== "idle") {
@@ -683,7 +723,9 @@ async function tick(): Promise<void> {
       await scanMatchesCycle({ ...current, pendingReplies });
       return;
     }
-    const nextRef = state.mode === "watcher" ? nextWatchedReply(queued) : nextIndexedExistingThread(queued);
+    const nextRef = state.mode === "watcher"
+      ? (state.manualActivity === null ? nextImmediateWatchedReply(queued) : nextWatchedReply(queued))
+      : nextIndexedExistingThread(queued);
     if (!nextRef) {
       const detail = state.mode === "watcher"
         ? `Checking ${queued.threads.length} Tinder chats, including unsynced conversations. Waiting for unanswered messages.`
@@ -847,18 +889,16 @@ async function startExistingRunnerUnlocked(enablePreviouslyDisabled = false, mod
     const future = (await chrome.storage.local.get("tnnd.newMatchLinkObservation.v3"))["tnnd.newMatchLinkObservation.v3"] as { enabled?: boolean } | undefined;
     if (future?.enabled) throw new Error("New-match AI is active. Stop it before running existing chats: Tinder supports only one active tab.");
 
-    const selection = await listEligible();
+    // Validate the single live Tinder tab BEFORE enrolling any conversation.
+    const tab = await findSingleTinderTab();
+    await waitForTinderContentBridge(tab.id);
+    const selection = await listEligible(true);
     if (mode !== "watcher" && !selection.refs.length && !selection.disabledRefs.length) {
-      throw new Error("No eligible existing conversations. Sync chats and authorize AI management in TNND Web.");
+      throw new Error("No eligible existing conversations. Sync Tinder chats first.");
     }
     if (mode !== "watcher" && !selection.refs.length && !enablePreviouslyDisabled) {
       throw new Error(selection.disabledRefs.length + " eligible chat(s) are disabled individually. Start again and explicitly confirm bulk reactivation, or re-enable them one by one.");
     }
-    // Check Tinder tabs before modifying per-chat settings.
-    const tab = await findSingleTinderTab();
-    // Fail BEFORE enabling any per-chat settings or the global runner.
-    // A stale Tinder page after reloading the extension has no receiver.
-    await waitForTinderContentBridge(tab.id);
     if (enablePreviouslyDisabled) {
       // Only backend-confirmed AI-managed active existing chats enter this list.
       // Manual, archived, disabled and human-action-blocked chats stay excluded.
@@ -954,8 +994,14 @@ async function contentEvent(sender: chrome.runtime.MessageSender, message: { pha
   if (!confirmedTab || tinderRefFromUrl(confirmedTab.url) !== senderRef) return;
   // Generating/sending is protected by the existing in-flight operation lease;
   // only observed incoming or confirmed outgoing events affect activity scores.
-  const focus = fresh.mode === "watcher" && (phase === "incoming" || phase === "sent")
+  const recordedActivity = fresh.mode === "watcher" && (phase === "incoming" || phase === "sent")
     ? followConversationAfterSignal(fresh, senderRef, phase) : {};
+  // A confirmed send OR a terminal no-send outcome completes this visit.
+  // Never keep the tab parked waiting for a reply that may never arrive.
+  // Incoming activity measurements remain stored for the next real message.
+  const focus = phase === "sent" || phase === "skipped"
+    ? { ...recordedActivity, activeConversationRef: null, activeConversationUntil: null }
+    : recordedActivity;
   // ONLY a definitive content-script outcome acknowledges a checked visit.
   // The "incoming" notification or a future scheduled reply is not success.
   // Skipped/error still need a later recheck if a real incoming turn exists.
@@ -974,6 +1020,9 @@ async function contentEvent(sender: chrome.runtime.MessageSender, message: { pha
     }, phase, detail, senderRef),
     nextReplyAt
   });
+  // Immediately advance the current Chat cycle after a definite outcome;
+  // never spend the attention lease waiting for a hypothetical response.
+  if (completedVisit) void tick();
 }
 chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === ALARM) void tick();

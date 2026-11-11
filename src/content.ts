@@ -13,6 +13,7 @@ import { openerDelaySeconds, openerTypingDelaySeconds } from "./tinder-opener-ti
 import { naturalReplyBubbles } from "./tinder-reply-bubbles";
 import { type ConversationBoundary, type ConversationBoundaryMessage } from "./conversation-boundary-policy";
 import { automaticReplyHold, hasUnexpectedScriptMix, replyNeedsHumanReview } from "./conversation-reply-safety";
+import { visibleContextFingerprint, wasReviewedWithoutSend, type ReviewedTurn, type ReviewOutcome } from "./tinder-chat-review-ledger";
 import { syncObservedConversationBoundary } from "./conversation-sync";
 import { observeTinderRuntime } from "./tinder-runtime-observation";
 import { readCurrentTinderUiState } from "./tinder-runtime-state";
@@ -44,11 +45,14 @@ let contentRuntimeAlive = true;
 let observer: MutationObserver | null = null;
 let runtimeObservedJobs: TinderScheduledJob[] = [];
 const runtimeProcessedThreadRefs = new Set<string>();
+/** Avoid repeated Gemini decisions for one unchanged incoming message. */
+const semanticRetryAfter = new Map<string, number>();
 
 interface AutoState {
   date: string;
   dailyCount: number;
   processed: Record<string, number>;
+  reviewed: Record<string, ReviewedTurn>;
 }
 
 interface ContentConfig {
@@ -184,10 +188,20 @@ async function getState(): Promise<AutoState | null> {
 
 async function saveState(state: AutoState): Promise<boolean> {
   state.processed = Object.fromEntries(Object.entries(state.processed).slice(-5000));
+  state.reviewed = Object.fromEntries(Object.entries(state.reviewed).slice(-5000));
   const response = await sendRuntimeMessage<{ ok: boolean; error?: string }>({ type: "TNND_SAVE_AUTO_STATE", state });
   if (!response) return false;
   if (!response.ok) throw new Error(response.error ?? "Could not save TNND automation state.");
   return true;
+}
+
+/** Only use this ledger for an intentional NO-SEND outcome. Never overwrite
+ * the processed ledger, which is a durable one-shot attempt claim.
+ */
+function recordReviewWithoutSend(
+  state: AutoState, incomingKey: string, context: string, outcome: ReviewOutcome
+): void {
+  state.reviewed[incomingKey] = { contextHash: visibleContextFingerprint(context), outcome, at: Date.now() };
 }
 
 function minutes(value: string): number {
@@ -616,7 +630,7 @@ async function scan(): Promise<void> {
       return;
     }
     const imported = await sendRuntimeMessage<{
-      ok?:boolean; created?:boolean; importedCount?:number; reason?:string
+      ok?:boolean; created?:boolean; autoManaged?:boolean; importedCount?:number; reason?:string
     }>({
       type:"TNND_SYNC_OPENED_CHAT_HISTORY", conversationRef, messages:keyed
     });
@@ -626,16 +640,21 @@ async function scan(): Promise<void> {
         read_only_chat_sync_failed: "L'API TNND a refusé la synchronisation de l'historique visible.",
         read_only_chat_sync_unconfirmed: "Synchronisation de l'historique non confirmée par TNND Web.",
         conversation_not_eligible_for_sync: "Conversation en gestion manuelle, archivée ou désactivée : import automatique ignoré.",
-        wrong_live_tinder_thread: "Tinder a changé de conversation avant la synchronisation."
+        wrong_live_tinder_thread: "Tinder a changé de conversation avant la synchronisation.",
+        chat_auto_management_failed: "Impossible d'autoriser automatiquement cette conversation dans Conversation management.",
+        chat_auto_activation_failed: "Impossible d'activer cette conversation synchronisée dans TNND Web."
       };
       reportExistingRunner("waiting", reasons[imported?.reason ?? ""] ??
         "Historique Tinder non synchronisé : vérifier l'API TNND et le journal backend.");
       return;
     }
-    if (imported.created) {
+    if (imported.created && imported.autoManaged !== true) {
       reportExistingRunner("skipped",
-        "Conversation importée dans TNND Web (statut en pause). Sélectionne explicitement sa gestion IA pour autoriser une réponse.");
+        "Conversation importée dans TNND Web mais Chat global non actif : gestion IA non activée.");
       return;
+    }
+    if (imported.autoManaged === true) {
+      reportExistingRunner("checking", "Nouvelle conversation synchronisée et autorisée par le mode Chat global.");
     }
     if ((imported.importedCount ?? 0) > 0)
       reportExistingRunner("checking",
@@ -657,6 +676,29 @@ async function scan(): Promise<void> {
       reportExistingRunner("error", "Moteur Chat : état de l'automatisation indisponible.");
       return;
     }
+    // Already handled incoming turns must never be reclassified on every DOM
+    // mutation or runner revisit; a new incoming bubble has a different key.
+    if (state.processed[snapshot.latestIncomingKey] ||
+        (snapshot.legacyIncomingKey && state.processed[snapshot.legacyIncomingKey])) {
+      // Before v0.2.59 the same ledger held both no-send reviews and real
+      // send attempts. Their provenance cannot be recovered safely: do not
+      // silently suppress the scan or clear a possible send claim.
+      reportExistingRunner("skipped",
+        "Message déjà marqué comme traité dans une ancienne version (analyse ou tentative d'envoi). Aucun renvoi automatique sans vérification du chat.");
+      return;
+    }
+    const previousReview = state.reviewed[snapshot.latestIncomingKey];
+    if (wasReviewedWithoutSend(previousReview, snapshot.context)) {
+      // The same evidence was already assessed without an actual send. If
+      // Tinder loads older history or the match sends something new, the
+      // fingerprint changes and a fresh AI classification is possible.
+      reportExistingRunner("skipped",
+        `Message déjà analysé sans envoi (${previousReview.outcome}) ; contexte inchangé. Nouvelle analyse seulement si le contexte change.`);
+      return;
+    }
+    const retryAfter = semanticRetryAfter.get(snapshot.latestIncomingKey);
+    if (retryAfter && retryAfter > Date.now()) return;
+    semanticRetryAfter.delete(snapshot.latestIncomingKey);
     const visible = adapter.readVisibleMessages().map(message => ({
       direction: message.direction === "them" ? "incoming" as const : "outgoing" as const,
       text: message.text
@@ -679,6 +721,11 @@ async function scan(): Promise<void> {
       return;
     }
     if (boundary.kind === "unknown") {
+      // Retry later instead of hitting the same AI decision repeatedly.
+      // A different incoming bubble is still processed immediately.
+      if (semanticRetryAfter.size >= 100)
+        semanticRetryAfter.delete(semanticRetryAfter.keys().next().value!);
+      semanticRetryAfter.set(snapshot.latestIncomingKey, Date.now() + 120_000);
       const reasons: Record<string,string> = {
         conversation_not_persisted: "Contrôle IA bloqué : conversation absente de la base TNND.",
         no_persisted_messages: "Contrôle IA bloqué : aucun message enregistré en base.",
@@ -701,10 +748,8 @@ async function scan(): Promise<void> {
       return;
     }
     if (boundary.kind !== "continue") {
-      if (!state.processed[snapshot.latestIncomingKey]) {
-        state.processed[snapshot.latestIncomingKey] = Date.now();
-        if (!await saveState(state)) return;
-      }
+      recordReviewWithoutSend(state, snapshot.latestIncomingKey, snapshot.context, boundary.kind);
+      if (!await saveState(state)) return;
       reportExistingRunner("skipped", boundary.kind === "acknowledgement"
         ? "The match acknowledged the last message · no unnecessary follow-up sent."
         : boundaryDescription(boundary));
@@ -712,13 +757,9 @@ async function scan(): Promise<void> {
     }
     const hold = automaticReplyHold(visible);
     if (hold) {
-      // A match's consecutive messages belong to one turn: the latest "hhh"
-      // must not hide an earlier question about AI. Nor should "ok ça marche"
-      // trigger a final unnecessary joke. Never consume the reply quota.
-      if (!state.processed[snapshot.latestIncomingKey]) {
-        state.processed[snapshot.latestIncomingKey] = Date.now();
-        if (!await saveState(state)) return;
-      }
+      // AI identity questions require human review; no send claim is created.
+      recordReviewWithoutSend(state, snapshot.latestIncomingKey, snapshot.context, hold);
+      if (!await saveState(state)) return;
       reportExistingRunner(hold === "ai-identity" ? "skipped" : "waiting", hold === "ai-identity"
         ? "The match asked whether AI is involved · no automatic reply. Respond personally and truthfully, then review Action Center."
         : "The match acknowledged the previous message · conversation left in peace.");
@@ -811,10 +852,16 @@ async function scan(): Promise<void> {
       reportExistingRunner("waiting","Final chat intent check unavailable; generated reply not sent.");
       return;
     }
+    if (finalBoundary.kind === "unknown") {
+      semanticRetryAfter.set(finalSnapshot.latestIncomingKey, Date.now() + 120_000);
+      reportExistingRunner("waiting", "Vérification IA finale incertaine : aucune réponse envoyée, nouvel essai différé.");
+      return;
+    }
     if (finalBoundary.kind !== "continue" || finalHold || replyNeedsHumanReview(reply) || hasUnexpectedScriptMix(reply, finalMessages)) {
       const processed = await getState();
       if (!processed) return;
-      processed.processed[finalSnapshot.latestIncomingKey] = Date.now();
+      recordReviewWithoutSend(processed, finalSnapshot.latestIncomingKey,
+        finalSnapshot.context, finalBoundary.kind !== "continue" ? finalBoundary.kind : "manual-review");
       if (!await saveState(processed)) return;
       reportExistingRunner("skipped", finalBoundary.kind !== "continue" ? boundaryDescription(finalBoundary) : finalHold === "ai-identity" || replyNeedsHumanReview(reply)
         ? "Possible AI disclosure or deceptive denial · reply blocked. Human review required."

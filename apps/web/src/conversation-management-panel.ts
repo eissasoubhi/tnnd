@@ -78,17 +78,17 @@ function mount(): { list: HTMLElement; status: HTMLElement } | null {
       <div><p class="eyebrow">AI takeover</p><h2>Conversation management</h2></div>
       <span class="pill" id="conversation-management-status">Sign in required</span>
     </div>
-    <p class="subtle">Choose which chats TNND is allowed to manage. Existing Tinder conversations are not selected automatically.</p>
+    <p class="subtle">Starting global Chat in the extension automatically authorizes eligible synced conversations. Chats you marked Manual, Disabled or Archived stay excluded.</p>
     <details class="conversation-management-explainer"><summary>How do I let TNND handle a Tinder conversation?</summary>
-      <p><strong>1. Synced</strong> means that TNND received the messages; it does not mean continuous monitoring. <strong>2. AI managed</strong> permits TNND to manage only this chat, after your confirmation. <strong>3. Paused</strong> stops server-side automation even if the chat is AI managed. Resume separately in Conversations. <strong>4. Extension automation</strong> must also be enabled globally and for this chat. Check the Tinder tab and test a manual draft first.</p>
+      <p><strong>1. Synced</strong> means that TNND received the messages; it does not mean continuous monitoring. <strong>2. AI managed</strong> permits TNND to handle the chat, either through your individual selection or by starting global Chat. <strong>3. Paused</strong> stops server-side automation even if the chat is AI managed. Resume separately in Conversations. <strong>4. Extension automation</strong> must also be enabled globally and for this chat. Check the Tinder tab and test a manual draft first.</p>
       <p><strong>Keep manual</strong> means you write/send messages yourself. <strong>Unmanaged</strong> means TNND has no automation permission. A draft preview never sends a message.</p>
     </details>
     <section class="management-bulk-panel" aria-label="Global AI control for existing conversations">
       <h3>Existing conversations · global AI takeover</h3>
-      <p class="subtle"><strong>Step 1 — Prepare conversations:</strong> authorize existing synced conversations for AI. This does not start the Tinder automation. Manual, blocked, disabled, archived and unsynced chats are excluded.</p>
+      <p class="subtle"><strong>Optional — Prepare conversations manually:</strong> starting global Chat already enrolls eligible synced chats automatically. These controls let you authorize or pause chats without starting automation. Manual, blocked, disabled, archived and unsynced chats stay excluded.</p>
       <p class="subtle" id="management-bulk-preview">Loading eligible conversations…</p>
       <div class="management-bulk-actions"><button type="button" id="management-bulk-enable">Authorize eligible chats</button><button type="button" id="management-bulk-pause">Pause existing chats</button></div>
-      <p class="subtle"><strong>Step 2 — Start the automation:</strong> open the TNND browser extension on Tinder → <strong>Existing conversations</strong> → <strong>Start global existing chat runner</strong>. Keep Chrome open. This is a separate control that cannot be started by the Web authorization button.</p>
+      <p class="subtle"><strong>Start global Chat:</strong> open the TNND browser extension on Tinder → <strong>Existing conversations</strong> → <strong>Start global existing chat runner</strong>. Eligible, previously unmanaged synced conversations are authorized automatically. Keep Chrome open.</p>
       <p id="management-bulk-status" class="subtle" role="status" aria-live="polite"></p>
     </section>
     <section class="management-runner-monitor" aria-label="Tinder AI runner live activity">
