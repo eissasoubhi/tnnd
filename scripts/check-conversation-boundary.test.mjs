@@ -32,7 +32,7 @@ test("bad or low-confidence model outputs always become unknown rather than cont
     {kind:"send-now",evidence:"ongoing",platform:"none",confidence:1},
     {kind:"continue",evidence:"ongoing",platform:"none",confidence:NaN}
   ]) assert.deepEqual(parse(obj),UNCERTAIN_BOUNDARY);
-  assert.deepEqual(accept(decision("continue","ongoing","none",0.89),
+  assert.deepEqual(accept(decision("continue","ongoing","none",0.65),
     exchange(["incoming","Hi"])),UNCERTAIN_BOUNDARY);
   assert.deepEqual(accept(decision("rest","unclear"),
     exchange(["outgoing","Bye"],["incoming","bye"])),UNCERTAIN_BOUNDARY);
@@ -41,6 +41,13 @@ test("bad or low-confidence model outputs always become unknown rather than cont
   assert.deepEqual(accept(decision("acknowledgement","plain-acknowledgement"),
     exchange(["incoming","ok"])),UNCERTAIN_BOUNDARY);
 });
+test("ordinary clear chat can continue below the close-or-handoff confidence requirement", () => {
+  const incoming = exchange(["incoming","Salut ! Tu fais quoi ?"]);
+  assert.equal(accept(decision("continue","ongoing","none",0.75), incoming).kind, "continue");
+  assert.equal(accept(decision("unknown","unclear","none",1), incoming).kind, "unknown");
+  assert.deepEqual(accept(decision("do-not-contact","explicit-stop","none",0.75), incoming), UNCERTAIN_BOUNDARY);
+});
+
 test("no outgoing-only, empty, or invalid last-message direction can approve model output", () => {
   for (const rows of [[],exchange(["outgoing","Bye"]),[{direction:"unknown",text:"hi"}]]) {
     assert.deepEqual(accept(decision("continue","ongoing"),rows),UNCERTAIN_BOUNDARY);
