@@ -64,7 +64,11 @@ const diagnostics = new Set([
   "latest_message_mismatch", "previous_message_mismatch",
   "unverified_observed_tail", "semantic_decision_uncertain",
   "history_changed_during_classification",
-  "conversation_changed_during_classification"
+  "conversation_changed_during_classification",
+  "semantic_model_uncertain", "semantic_low_confidence",
+  "semantic_inconsistent_evidence", "semantic_invalid_model_response",
+  "semantic_output_truncated", "semantic_output_empty",
+  "semantic_output_invalid_json"
 ]);
 export function safeSemanticDiagnostic(value: unknown): string | null {
   return typeof value === "string" && diagnostics.has(value) ? value : null;
