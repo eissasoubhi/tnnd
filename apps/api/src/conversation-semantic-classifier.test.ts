@@ -74,7 +74,7 @@ test("semantic diagnostic distinguishes actual model ambiguity from too little c
     genuinelyUnknown.fetcher,code=>codes.push(code)),UNCERTAIN_BOUNDARY);
   assert.deepEqual(codes,["semantic_model_uncertain"]);
   codes.length=0;
-  const lowConfidence=mock({kind:"continue",platform:"none",confidence:0.72,evidence:"ongoing"});
+  const lowConfidence=mock({kind:"continue",platform:"none",confidence:0.65,evidence:"ongoing"});
   assert.deepEqual(await classifyConversationSemantics(messages,credentials,
     lowConfidence.fetcher,code=>codes.push(code)),UNCERTAIN_BOUNDARY);
   assert.deepEqual(codes,["semantic_low_confidence"]);
@@ -83,6 +83,12 @@ test("semantic diagnostic distinguishes actual model ambiguity from too little c
   assert.deepEqual(await classifyConversationSemantics(messages,credentials,
     wrongEvidence.fetcher,code=>codes.push(code)),UNCERTAIN_BOUNDARY);
   assert.deepEqual(codes,["semantic_inconsistent_evidence"]);
+});
+
+test("Gemini can approve a normal continuation with moderate confidence",async()=>{
+  const regular=mock({kind:"continue",platform:"none",confidence:0.75,evidence:"ongoing"});
+  const output=await classifyConversationSemantics(messages,credentials,regular.fetcher);
+  assert.equal(output.kind,"continue");
 });
 
 test("brief but clear old incoming conversation may continue when Gemini explicitly confirms",async()=>{
