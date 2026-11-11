@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { senderMatchesLiveTinderThread } from "../src/tinder-sender-route-guard.ts";
+import { tinderThreadKeyFromPath } from "../src/tinder-thread-identity.ts";
 import { prepareReadOnlyImportBatches } from "../src/tinder-manual-import.ts";
 import { shouldImportThread, DEFAULT_TINDER_IMPORT_SETTINGS } from "../src/tinder-import-settings.ts";
 const read = file => readFile(new URL("../"+file,import.meta.url),"utf8");
@@ -19,6 +20,21 @@ test("same Tinder origin and live SPA route permits read-only import despite sta
     ["https://tinder.com/app/recs","https://tinder.com/app/messages/current","current",2],
     ["https://tinder.com/app/recs","https://www.tinder.com/app/messages/current","current",0]
   ]) assert.equal(senderMatchesLiveTinderThread(sender,tab,ref,frame),false);
+});
+
+test("importer compares canonical thread route rather than raw Tinder conversation ID",async()=>{
+  const rawRef="6a63b9c6";
+  const canonical=tinderThreadKeyFromPath("/app/messages/"+rawRef);
+  assert.equal(canonical,"/app/messages/6a63b9c6");
+  assert.notEqual(canonical,rawRef);
+  const worker=await read("src/tinder-read-only-bulk-sync-background.ts");
+  assert.match(worker,/function expectedThreadKey\(ref: string\)/);
+  assert.match(worker,/tinderThreadKeyFromPath\("\/app\/messages\/" \+ ref\)/);
+  assert.match(worker,/snapshot\.threadKey === expectedThreadKey\(ref\)/);
+  assert.match(worker,/snapshot\.threadKey!==expectedThreadKey\(ref\)/);
+  assert.match(worker,/info\.threadKey === expectedThreadKey\(ref\)/);
+  assert.doesNotMatch(worker,/snapshot\.threadKey\s*===\s*ref/);
+  assert.doesNotMatch(worker,/snapshot\.threadKey\s*!==\s*ref/);
 });
 
 test("read-only historical import never enables AI management, preserves existing status",()=>{
