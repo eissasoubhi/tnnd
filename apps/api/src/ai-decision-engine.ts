@@ -23,9 +23,25 @@ export interface AiDecisionTask<T> {
   validate: (parsed: unknown) => T | null;
   maxOutputTokens?: number;
   timeoutMs?: number;
+  /** Public error classification only. Never includes prompt or model output. */
+  onDiagnostic?: (code: "ai_output_max_tokens" | "ai_output_empty" | "ai_output_invalid_json") => void;
 }
 export class AiDecisionProviderError extends Error {
   constructor() { super("ai_decision_provider_unavailable"); }
+}
+/** Gemini thinking tokens count toward maxOutputTokens. Allocate a bounded
+ * thinking budget for this tiny JSON classification, not the model's default.
+ * Only known compatible model families receive thinkingConfig.
+ */
+export function semanticDecisionThinkingConfig(model: string, task: string):
+  {thinkingBudget: number} | {thinkingLevel: "low"} | undefined {
+  if (task !== "conversation-boundary") return undefined;
+  if (/^gemini-2\.5-flash(?:-.*)?$/i.test(model) && !/lite/i.test(model))
+    return { thinkingBudget: 256 };
+  if (/^gemini-2\.5-pro(?:-.*)?$/i.test(model)) return { thinkingBudget: 512 };
+  if (/^gemini-3(?:\.\d+)?-(?:flash|pro)(?:-.*)?$/i.test(model))
+    return { thinkingLevel: "low" };
+  return undefined;
 }
 function extractJsonText(payload: unknown): string | null {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
@@ -81,7 +97,9 @@ export async function requestAiDecision<T>(
           temperature:0,
           maxOutputTokens:task.maxOutputTokens ?? 300,
           responseMimeType:"application/json",
-          responseSchema:task.responseSchema
+          responseSchema:task.responseSchema,
+          ...(semanticDecisionThinkingConfig(credentials.model, task.task)
+            ? { thinkingConfig: semanticDecisionThinkingConfig(credentials.model, task.task) } : {})
         }
       }),
       signal:AbortSignal.timeout(task.timeoutMs ?? 12_000)
@@ -93,10 +111,18 @@ export async function requestAiDecision<T>(
   let json: unknown;
   try { json = await response.json(); } catch { return null; }
   const text = extractJsonText(json);
-  if (!text) return null;
+  if (!text) {
+    const candidates = (json && typeof json === "object" &&
+      !Array.isArray(json) && Array.isArray((json as {candidates?:unknown}).candidates))
+      ? (json as {candidates:Array<{finishReason?:unknown}>}).candidates : [];
+    task.onDiagnostic?.(candidates.some(candidate => candidate?.finishReason === "MAX_TOKENS")
+      ? "ai_output_max_tokens" : "ai_output_empty");
+    return null;
+  }
   try {
     return task.validate(JSON.parse(text));
   } catch {
+    task.onDiagnostic?.("ai_output_invalid_json");
     return null;
   }
 }
