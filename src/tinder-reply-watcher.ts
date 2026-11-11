@@ -58,6 +58,39 @@ export function pendingWatchedReplies(state: ExistingThreadIndex): number {
   return state.threads.filter(actionableWatcherCandidate).length;
 }
 
+/** Automatic mode should interrupt Swipe only for evidence that has NOT
+ * been checked yet. Periodic retries of already-reviewed old conversations
+ * stay as maintenance work, never as permanent active-chat backlog.
+ * The opened Tinder thread is still revalidated before any actual Send.
+ */
+export function immediateWatcherCandidate(entry: IndexedThread): boolean {
+  if (entry.queuedAt === null) return false;
+  const checkedAt = entry.lastCheckedAt ? Date.parse(entry.lastCheckedAt) : Number.NaN;
+  const unreadAt = entry.unreadAt ? Date.parse(entry.unreadAt) : Number.NaN;
+  if (Number.isFinite(unreadAt) &&
+      (!Number.isFinite(checkedAt) || unreadAt > checkedAt)) return true;
+  if (entry.lastMessageDirection === "incoming" && entry.serverMessageAt &&
+      entry.checkedMessageAt !== entry.serverMessageAt) return true;
+  // First visit for a newly discovered Tinder-only chat. Once checked, it
+  // must not keep Swipe suspended while waiting for someone to reply.
+  return entry.lastMessageDirection === null && Boolean(entry.tinderSeenAt) &&
+    entry.lastCheckedAt === null;
+}
+
+export function pendingImmediateWatcherReplies(state: ExistingThreadIndex): number {
+  return state.threads.filter(immediateWatcherCandidate).length;
+}
+
+export function nextImmediateWatchedReply(state: ExistingThreadIndex): string | null {
+  const candidates = state.threads.filter(immediateWatcherCandidate);
+  candidates.sort((a,b) =>
+    watcherReplyPriority(b) - watcherReplyPriority(a)
+    || (a.queuedAt ?? "").localeCompare(b.queuedAt ?? "")
+    || a.ref.localeCompare(b.ref)
+  );
+  return candidates[0]?.ref ?? null;
+}
+
 export type WatcherDisplayStatus = "stopped" | "waiting" | "new-replies"
   | "following" | "processing" | "paused" | "disconnected";
 export function watcherDisplayStatus(state: {
