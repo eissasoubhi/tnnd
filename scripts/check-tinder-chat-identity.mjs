@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { parseVisibleMatchHeading, parseVerifiedChatName, safeTinderPhotoUrl } from "../src/tinder-chat-identity.ts";
 import { buildReadOnlyProfileSource } from "../src/tinder-match-profile-capture.ts";
+import { tinderExternalThreadIdFromKey } from "../src/tinder-thread-identity.ts";
 
 test("visible Tinder header shows first name and age, never a thread id", () => {
   assert.deepEqual(parseVisibleMatchHeading("Srim 30"), { firstName: "Srim", age: 30 });
@@ -35,4 +36,15 @@ test("live chat headings are accepted only as names, never generic Tinder UI lab
   assert.deepEqual(parseVerifiedChatName("Conversation"),{});
   assert.deepEqual(parseVerifiedChatName("Profile"),{});
   assert.deepEqual(parseVerifiedChatName(""),{});
+});
+
+
+test("extension route keys resolve to the same persisted Tinder external thread ref", () => {
+  assert.equal(tinderExternalThreadIdFromKey("/app/messages/6a63b9c6"), "6a63b9c6");
+  assert.equal(tinderExternalThreadIdFromKey("6a63b9c6"), "6a63b9c6");
+  assert.equal(tinderExternalThreadIdFromKey("/app/messages/thread-123"), "thread-123");
+  assert.equal(tinderExternalThreadIdFromKey("/app/messages/another%5Fthread"), "another_thread");
+  assert.equal(tinderExternalThreadIdFromKey("/app/messages/x/other"), null);
+  assert.equal(tinderExternalThreadIdFromKey("/app/messages/%2F"), null);
+  assert.equal(tinderExternalThreadIdFromKey(""), null);
 });
