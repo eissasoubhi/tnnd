@@ -81,7 +81,10 @@ const api = createServer(async (req, res) => {
         ? "fixture-conversation-id" : "fixture-new-import-id");
     importedFixtureThreads.set(input.externalThreadId, {
       conversationId, messages: input.messages, readOnlyImport: input.readOnlyImport,
-      status: input.status ?? null
+      // A later read-only import must preserve the existing conversation
+      // status. Do not confuse a missing status in the second POST with an
+      // actual database transition to null.
+      status: prior?.status ?? input.status ?? null
     });
     return json(res, 200, {
       conversationId, status: input.externalThreadId === "fixture-import-first" ? "paused":"active",
